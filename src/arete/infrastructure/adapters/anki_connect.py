@@ -14,6 +14,7 @@ from arete.domain.constants import (
     FSRS_DIFFICULTY_SCALE,
     REQUEST_TIMEOUT,
     RESPONSIVENESS_TIMEOUT,
+    SYNC_CONCURRENCY,
 )
 from arete.domain.interfaces import AnkiBridge
 from arete.domain.models import AnkiCardStats, AnkiDeck, UpdateItem, WorkItem
@@ -29,6 +30,7 @@ class AnkiConnectAdapter(AnkiBridge):
         self._model_fields_cache = {}
         self.use_windows_curl = False
         self._client: httpx.AsyncClient | None = None
+        self._invoke_sem = asyncio.Semaphore(SYNC_CONCURRENCY)
 
         # 1. Environment Variable Override (Highest Priority)
         env_host = os.environ.get("ANKI_CONNECT_HOST")
@@ -160,10 +162,13 @@ class AnkiConnectAdapter(AnkiBridge):
             except Exception as e:
                 self.logger.warning(f"Failed to ensure source field for '{model_name}': {e}")
 
-        results = []
-        for item in work_items:
-            results.append(await self._sync_single_note(item))
-        return results
+        sem = asyncio.Semaphore(SYNC_CONCURRENCY)
+
+        async def _bounded(item: WorkItem) -> UpdateItem:
+            async with sem:
+                return await self._sync_single_note(item)
+
+        return list(await asyncio.gather(*(_bounded(item) for item in work_items)))
 
     async def _sync_single_note(self, item: WorkItem) -> UpdateItem:
         """Sync a single work item, routing to update or add/heal paths."""
@@ -349,59 +354,79 @@ class AnkiConnectAdapter(AnkiBridge):
 
     async def _invoke(self, action: str, **params) -> Any:
         payload = {"action": action, "version": 6, "params": params}
-        try:
-            if self.use_windows_curl:
-                # Use curl.exe indirectly via async subprocess
-                import asyncio
+        max_retries = 2
+        for attempt in range(max_retries + 1):
+            try:
+                async with self._invoke_sem:
+                    data = await asyncio.wait_for(
+                        self._http_request(payload), timeout=REQUEST_TIMEOUT
+                    )
 
-                cmd = ["curl.exe", "-s", "-X", "POST", self.url, "-d", "@-"]
-                proc = await asyncio.create_subprocess_exec(
-                    *cmd,
-                    stdin=asyncio.subprocess.PIPE,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
+                if len(data) != 2:
+                    raise ValueError("response has an unexpected number of fields")
+                if "error" not in data:
+                    raise ValueError("response is missing required error field")
+                if "result" not in data:
+                    raise ValueError("response is missing required result field")
+                if data["error"] is not None:
+                    raise Exception(data["error"])
+                return data["result"]
+            except asyncio.TimeoutError:
+                self.logger.warning(
+                    f"AnkiConnect timeout on '{action}' (attempt {attempt + 1}/{max_retries + 1})"
                 )
-                stdin_data = json.dumps(payload).encode("utf-8")
-                stdout, stderr = await asyncio.wait_for(
-                    proc.communicate(input=stdin_data), timeout=REQUEST_TIMEOUT
+                # Reset the HTTP client to drop stale connections
+                if self._client is not None:
+                    await self._client.aclose()
+                    self._client = None
+                if attempt < max_retries:
+                    await asyncio.sleep(1.0)
+                    continue
+                raise TimeoutError(
+                    f"AnkiConnect timeout on '{action}' after {max_retries + 1} attempts"
                 )
-                if proc.returncode != 0:
-                    raise Exception(f"curl.exe failed: {stderr.decode('utf-8')}")
+            except Exception as e:
+                self.logger.error(f"AnkiConnect call failed: {e}")
+                raise
 
-                data = json.loads(stdout.decode("utf-8"))
-            else:
-                # Standard httpx (Async) - Reuse client
-                if self._client is None:
-                    self._client = httpx.AsyncClient(timeout=REQUEST_TIMEOUT)
-
-                resp = await self._client.post(self.url, json=payload)
-                resp.raise_for_status()
-                data = resp.json()
-
-            if len(data) != 2:
-                raise ValueError("response has an unexpected number of fields")
-            if "error" not in data:
-                raise ValueError("response is missing required error field")
-            if "result" not in data:
-                raise ValueError("response is missing required result field")
-            if data["error"] is not None:
-                raise Exception(data["error"])
-            return data["result"]
-        except Exception as e:
-            self.logger.error(f"AnkiConnect call failed: {e}")
-            raise
+    async def _http_request(self, payload: dict) -> dict:
+        if self.use_windows_curl:
+            cmd = ["curl.exe", "-s", "-X", "POST", self.url, "-d", "@-"]
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdin_data = json.dumps(payload).encode("utf-8")
+            stdout, stderr = await proc.communicate(input=stdin_data)
+            if proc.returncode != 0:
+                raise Exception(f"curl.exe failed: {stderr.decode('utf-8')}")
+            return json.loads(stdout.decode("utf-8"))
+        else:
+            if self._client is None:
+                self._client = httpx.AsyncClient(
+                    timeout=REQUEST_TIMEOUT,
+                    limits=httpx.Limits(
+                        max_connections=SYNC_CONCURRENCY,
+                        max_keepalive_connections=SYNC_CONCURRENCY,
+                    ),
+                )
+            resp = await self._client.post(self.url, json=payload)
+            resp.raise_for_status()
+            return resp.json()
 
     async def get_deck_names(self) -> list[str]:
         return await self._invoke("deckNames")
 
-    async def get_due_cards(self, deck_name: str | None = None) -> list[int]:
-        """Fetch NIDs of due cards."""
-        query = "is:due"
-        if deck_name:
-            query = f'deck:"{deck_name}" {query}'
+    async def get_due_cards(
+        self, deck_name: str | None = None, include_new: bool = False
+    ) -> list[int]:
+        """Fetch NIDs of due cards, optionally including new cards."""
+        deck_filter = f'deck:"{deck_name}" ' if deck_name else ""
+        query = f"{deck_filter}(is:due)" if not include_new else f"{deck_filter}(is:due OR is:new)"
 
         try:
-            # findNotes returns list[int]
             return await self._invoke("findNotes", query=query)
         except Exception as e:
             self.logger.error(f"Failed to get due cards: {e}")
@@ -564,9 +589,9 @@ class AnkiConnectAdapter(AnkiBridge):
             return {}
 
     @staticmethod
-    def _build_card_stat(info: dict, fsrs_map: dict[int, float]) -> AnkiCardStats:
+    def _build_card_stat(info: dict[str, Any], fsrs_map: dict[int, float]) -> AnkiCardStats:
         """Build an AnkiCardStats from a single cardsInfo entry."""
-        cid = info.get("cardId")
+        cid = info.get("cardId", 0)
         difficulty = fsrs_map.get(cid)
         if difficulty is None:
             difficulty = info.get("difficulty")
@@ -579,7 +604,7 @@ class AnkiConnectAdapter(AnkiBridge):
 
         return AnkiCardStats(
             card_id=cid,
-            note_id=info.get("note"),
+            note_id=info.get("note", 0),
             lapses=info.get("lapses", 0),
             ease=info.get("factor", 0),
             difficulty=difficulty,
@@ -630,21 +655,27 @@ class AnkiConnectAdapter(AnkiBridge):
             return False
 
     async def get_card_ids_for_arete_ids(self, arete_ids: list[str]) -> list[int]:
-        """Resolve Arete IDs via 'findCards'."""
+        """Resolve Arete IDs to CIDs, preserving topological input order."""
         if not arete_ids:
             return []
-
-        # Construct query: tag:ID1 OR tag:ID2 ...
-        # Optimization: AnkiConnect might choke on massive queries.
-        # But let's try standard OR join.
-        query = " OR ".join([f"tag:{aid}" for aid in arete_ids])
         try:
-            cids = await self._invoke("findCards", query=query)
-            # We want to preserve order? The query result order is undefined/sorted by ID.
-            # The interface doc says "Resolve ... to CIDs". It doesn't strictly imply order here,
-            # but strict order is handled by the caller or by create_topo_deck receiving IDs.
-            # However, if multiple cards match one ID (unlikely for arete_id), we get them all.
-            return cids
+            cids_ordered: list[int] = []
+            seen: set[int] = set()
+            CHUNK = 50
+            for start in range(0, len(arete_ids), CHUNK):
+                chunk = arete_ids[start : start + CHUNK]
+                actions = [
+                    {"action": "findCards", "params": {"query": f"tag:{aid}"}}
+                    for aid in chunk
+                ]
+                results = await self._invoke("multi", actions=actions)
+                for result in results:
+                    if isinstance(result, list):
+                        for cid in result:
+                            if cid not in seen:
+                                seen.add(cid)
+                                cids_ordered.append(cid)
+            return cids_ordered
         except Exception as e:
             self.logger.error(f"Failed to resolve arete IDs: {e}")
             return []
@@ -652,15 +683,20 @@ class AnkiConnectAdapter(AnkiBridge):
     async def create_topo_deck(
         self, deck_name: str, cids: list[int], reschedule: bool = True
     ) -> bool:
-        """Return False; AnkiConnect lacks low-level 'due' manipulation for topo sort.
-
-        AnkiConnect doesn't expose the ability to manipulate the 'due' column
-        directly, which is required for topological sorting. A future
-        implementation could use a best-effort (unordered) filtered deck.
-        """
-        self.logger.warning("create_topo_deck is not fully supported via AnkiConnect yet.")
-        # Future: Use 'addCustomOne' or similar if available?
-        return False
+        """Create a filtered deck via the Arete AnkiConnect plugin."""
+        if not cids:
+            return False
+        try:
+            await self._invoke(
+                "createFilteredDeck",
+                name=deck_name,
+                cids=cids,
+                reschedule=reschedule,
+            )
+            return True
+        except Exception as e:
+            self.logger.error(f"create_topo_deck failed: {e}")
+            return False
 
     async def close(self) -> None:
         if self._client:

@@ -11,13 +11,15 @@ except ImportError:
     tqdm = None
 
 from arete.application.config import AppConfig
+from arete.application.id_service import ensure_card_ids
 from arete.application.parser import MarkdownParser
 from arete.application.utils.logging import RunRecorder
 from arete.application.utils.media import build_filename_index
+from arete.application.utils.text import parse_frontmatter, rebuild_markdown_with_frontmatter
 from arete.application.vault_service import VaultService
+from arete.domain.constants import CONSUMER_BATCH_SIZE
 from arete.domain.interfaces import AnkiBridge
 from arete.domain.models import AnkiDeck, UpdateItem, WorkItem
-from arete.domain.constants import CONSUMER_BATCH_SIZE
 from arete.infrastructure.persistence.cache import ContentCache
 
 
@@ -56,6 +58,32 @@ async def run_pipeline(
     if not compatible:
         logger.info("No compatible markdown files found.")
         return RunStats(0, 0, 0, [])
+
+    # -------- Stage 1.5: ensure all cards have Arete IDs --------
+    ids_total = 0
+    updated_compatible: list[tuple[Path, dict[str, Any], bool]] = []
+    for path, meta, is_fresh in compatible:
+        assigned = ensure_card_ids(meta)
+        if assigned > 0:
+            ids_total += assigned
+            # Rewrite the file so the parser sees the new id: fields
+            try:
+                text = path.read_text(encoding="utf-8")
+                _, body = parse_frontmatter(text)
+                new_text = rebuild_markdown_with_frontmatter(meta, body)
+                path.write_text(new_text, encoding="utf-8")
+                logger.info(f"[id] Assigned {assigned} new IDs in {path.name}")
+                # Re-parse so downstream stages see the updated meta
+                new_meta, _ = parse_frontmatter(new_text)
+                updated_compatible.append((path, new_meta, True))
+            except Exception as e:
+                logger.error(f"[id-error] Failed to rewrite {path}: {e}")
+                updated_compatible.append((path, meta, is_fresh))
+        else:
+            updated_compatible.append((path, meta, is_fresh))
+    compatible = updated_compatible
+    if ids_total > 0:
+        logger.info(f"[id] Assigned {ids_total} new Arete IDs across vault")
 
     # -------- Stage 2: build media index --------
     assert config.vault_root is not None  # Guaranteed by resolve_config
@@ -177,12 +205,13 @@ async def run_pipeline(
     for _ in range(max_sync_concurrency):
         await work_q.put(None)
 
-    # Wait for all work to be processed
-    await work_q.join()
-
-    # Clean up consumers
-    for c in consumers:
-        c.cancel()
+    # Wait for consumers to finish processing and exit
+    # NOTE: Do NOT use work_q.join() here. When a consumer encounters a None
+    # sentinel during batch building (get_nowait), it re-queues the None via
+    # put(), which increments unfinished_tasks without a matching task_done().
+    # This causes join() to hang indefinitely. gather() simply waits for all
+    # consumer coroutines to return.
+    await asyncio.gather(*consumers)
 
     # -------- Stage 4: Persist Updates (Write back NIDs) --------
     if updates:

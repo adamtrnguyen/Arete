@@ -222,6 +222,9 @@ def queue(
 
     config = _resolve_with_overrides(root_input=path)
     vault_root = config.root_input
+    if vault_root is None:
+        typer.secho("No vault root configured. Pass a path or set O2A_ROOT_INPUT.", fg="red")
+        raise typer.Exit(1)
 
     if include_related:
         typer.secho(
@@ -298,6 +301,95 @@ def queue(
     asyncio.run(run())
 
 
+@app.command()
+def report(
+    json_output: Annotated[
+        bool, typer.Option("--json", help="Output as JSON for programmatic use.")
+    ] = False,
+    clear: Annotated[
+        int | None,
+        typer.Option(
+            "--clear",
+            help="Clear reports. Pass 0 to clear all, or a 1-based index to clear one.",
+        ),
+    ] = None,
+):
+    """Show or clear reported card issues from Anki review sessions."""
+    from arete.application.report_service import clear_reports, load_reports
+
+    if clear is not None:
+        if clear == 0:
+            cleared = clear_reports()
+        else:
+            cleared = clear_reports([clear])
+
+        if not cleared:
+            typer.secho("No reports to clear.", fg="yellow")
+            return
+
+        # Reconcile: unsuspend cards no longer in the report list
+        remaining = load_reports()
+        remaining_cids = {r["cid"] for r in remaining if r.get("cid")}
+        to_unsuspend = [
+            r["cid"] for r in cleared
+            if r.get("cid") and r["cid"] not in remaining_cids
+        ]
+
+        if to_unsuspend:
+            import asyncio
+
+            from arete.application.factory import get_anki_bridge
+
+            config = _resolve_with_overrides()
+
+            async def unsuspend():
+                anki = await get_anki_bridge(config)
+                return await anki.unsuspend_cards(to_unsuspend)
+
+            try:
+                asyncio.run(unsuspend())
+                typer.secho(
+                    f"Cleared {len(cleared)} report(s), unsuspended {len(to_unsuspend)} card(s).",
+                    fg="green",
+                )
+            except Exception:
+                typer.secho(
+                    f"Cleared {len(cleared)} report(s). Could not connect to Anki to unsuspend.",
+                    fg="yellow",
+                )
+        else:
+            typer.secho(f"Cleared {len(cleared)} report(s).", fg="green")
+        return
+
+    reports = load_reports()
+    if not reports:
+        typer.secho("No reported cards.", fg="green")
+        return
+
+    if json_output:
+        typer.echo(json.dumps(reports, indent=2, ensure_ascii=False))
+        return
+
+    typer.echo(f"Reported cards: {len(reports)}\n")
+    for i, r in enumerate(reports, 1):
+        file_path = r.get("file_path", "?")
+        line = r.get("line", "?")
+        arete_id = r.get("arete_id", "")
+        front = r.get("front", "")
+        note = r.get("note", "")
+        ts = r.get("timestamp", "")
+
+        # Format timestamp: strip timezone offset for display
+        when = ts[:16].replace("T", " ") if ts else "?"
+
+        id_part = f" ({arete_id})" if arete_id else ""
+        typer.echo(f"{i}. {file_path}:{line}{id_part}")
+        typer.echo(f"   Front: {front}")
+        typer.echo(f"   Issue: {note}")
+        typer.echo(f"   When:  {when}")
+        typer.echo()
+
+
 # ---------------------------------------------------------------------------
 # Config subgroup
 # ---------------------------------------------------------------------------
@@ -348,7 +440,11 @@ def graph_check(
     )
 
     config = _resolve_with_overrides(root_input=path)
-    graph = build_graph(config.root_input)
+    vault_root = config.root_input
+    if vault_root is None:
+        typer.secho("No vault root configured. Pass a path or set O2A_ROOT_INPUT.", fg="red")
+        raise typer.Exit(1)
+    graph = build_graph(vault_root)
 
     cycles = detect_cycles(graph)
     isolated = find_isolated_nodes(graph)
@@ -440,7 +536,7 @@ def graph_check(
 
 # Vault commands that moved from root to `vault` subgroup
 
-from arete.interface.vault_commands import (  # noqa: E402
+from arete.interface.vault_commands import (  # noqa: E402, I001
     check as vault_check,
     fix as vault_fix,
     format_cmd as vault_format_cmd,

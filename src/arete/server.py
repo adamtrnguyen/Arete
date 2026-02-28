@@ -16,7 +16,7 @@ logger = logging.getLogger("arete.server")
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(_app: FastAPI):
     # Startup
     logger.info(f"Arete Server v{VERSION} starting up...")
     yield
