@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from arete.application.config import AppConfig
-from arete.main import run_sync_logic
+from arete.application.orchestrator import run_sync_logic
 
 
 @pytest.fixture
@@ -38,8 +38,8 @@ def mock_config(tmp_path):
 
 
 @pytest.mark.asyncio
-@patch("arete.main.run_pipeline")
-@patch("arete.main.setup_logging")
+@patch("arete.application.orchestrator.run_pipeline")
+@patch("arete.application.orchestrator.setup_logging")
 async def test_cache_clearing(mock_setup_logging, mock_run_pipeline, mock_config):
     """Test that cache is cleared when clear_cache is True."""
     mock_logger = MagicMock()
@@ -62,8 +62,8 @@ async def test_cache_clearing(mock_setup_logging, mock_run_pipeline, mock_config
 
 
 @pytest.mark.asyncio
-@patch("arete.main.run_pipeline")
-@patch("arete.main.setup_logging")
+@patch("arete.application.orchestrator.run_pipeline")
+@patch("arete.application.orchestrator.setup_logging")
 async def test_vault_root_assertion(mock_setup_logging, mock_run_pipeline, mock_config):
     """Test that assertions ensure vault_root and anki_media_dir are set."""
     mock_logger = MagicMock()
@@ -85,8 +85,8 @@ async def test_vault_root_assertion(mock_setup_logging, mock_run_pipeline, mock_
 
 
 @pytest.mark.asyncio
-@patch("arete.main.run_pipeline")
-@patch("arete.main.setup_logging")
+@patch("arete.application.orchestrator.run_pipeline")
+@patch("arete.application.orchestrator.setup_logging")
 async def test_services_initialization(mock_setup_logging, mock_run_pipeline, mock_config):
     """Test that all services are properly initialized."""
     mock_logger = MagicMock()
@@ -105,8 +105,8 @@ async def test_services_initialization(mock_setup_logging, mock_run_pipeline, mo
     assert len(call_args) == 7  # run_pipeline takes 7 args
 
     # Verify types (config, logger, run_id, vault_service, parser, anki_bridge, cache)
-    from arete.application.parser import MarkdownParser
-    from arete.application.vault_service import VaultService
+    from arete.application.sync.parser import MarkdownParser
+    from arete.application.sync.vault_service import VaultService
     from arete.infrastructure.persistence.cache import ContentCache
 
     assert isinstance(call_args[6], ContentCache)  # cache

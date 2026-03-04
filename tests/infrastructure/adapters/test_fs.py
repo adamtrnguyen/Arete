@@ -1,4 +1,6 @@
-from arete.application.utils.fs import iter_markdown_files
+from unittest.mock import patch
+
+from arete.application.utils.fs import file_md5, iter_markdown_files
 
 
 def test_iter_markdown_files_simple(tmp_path):
@@ -78,3 +80,34 @@ def test_iter_markdown_files_nested_excludes(tmp_path):
 
     assert len(files) == 1
     assert files[0].name == "good.md"
+
+
+def test_iter_single_file(tmp_path):
+    """When given a single file path, return just that file."""
+    f = tmp_path / "test.md"
+    f.touch()
+    files = list(iter_markdown_files(f))
+    assert files == [f]
+
+
+def test_iter_value_error_fallback(tmp_path):
+    """ValueError from relative_to doesn't crash iteration."""
+    with patch("pathlib.Path.relative_to", side_effect=ValueError("Mismatch")):
+        d = tmp_path / "dir"
+        d.mkdir()
+        f = d / "test.md"
+        f.touch()
+        files = list(iter_markdown_files(d))
+        assert files == [f]
+
+
+def test_file_md5(tmp_path):
+    """file_md5 returns a 32-char hex digest that changes with content."""
+    f = tmp_path / "test.txt"
+    f.write_text("hello world")
+    h1 = file_md5(f)
+    assert len(h1) == 32
+
+    f.write_text("hello world!")
+    h2 = file_md5(f)
+    assert h1 != h2

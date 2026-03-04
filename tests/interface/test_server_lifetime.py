@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from arete.server import app, lifespan
+from arete.interface.http_server import app, lifespan
 
 client = TestClient(app)
 

@@ -31,7 +31,7 @@ def test_mock_vault_scenarios(filename, expected_msg):
     if not file_path.exists():
         pytest.skip(f"Mock file {filename} not found at {file_path}")
 
-    result = runner.invoke(app, ["check-file", str(file_path)])
+    result = runner.invoke(app, ["vault", "check", str(file_path)])
 
     # Assert failure
     assert result.exit_code == 1, f"{filename} should have failed validation but passed."

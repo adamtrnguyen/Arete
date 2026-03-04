@@ -1,4 +1,4 @@
-"""Tests for the check-file CLI command."""
+"""Tests for the vault check CLI command."""
 
 import json
 from unittest.mock import patch
@@ -13,7 +13,7 @@ from arete.interface.cli import app
 runner = CliRunner()
 
 
-# --- Parametrized: write content -> run check-file -> assert exit code + output ---
+# --- Parametrized: write content -> run vault check -> assert exit code + output ---
 
 
 @pytest.mark.parametrize(
@@ -66,9 +66,10 @@ runner = CliRunner()
     ],
 )
 def test_check_file(tmp_path, content, exit_code, expected_output):
+    """Test via new 'vault check' path."""
     f = tmp_path / "test.md"
     f.write_text(content, encoding="utf-8")
-    result = runner.invoke(app, ["check-file", str(f)])
+    result = runner.invoke(app, ["vault", "check", str(f)])
     assert result.exit_code == exit_code
     assert expected_output in result.stdout
 
@@ -77,13 +78,13 @@ def test_check_file(tmp_path, content, exit_code, expected_output):
 
 
 def test_check_file_not_found():
-    result = runner.invoke(app, ["check-file", "nonexistent.md"])
+    result = runner.invoke(app, ["vault", "check", "nonexistent.md"])
     assert result.exit_code == 1
     assert "File not found" in result.stdout
 
 
 def test_check_file_not_found_json():
-    result = runner.invoke(app, ["check-file", "nonexistent.md", "--json"])
+    result = runner.invoke(app, ["vault", "check", "nonexistent.md", "--json"])
     assert result.exit_code == 1
     assert '"ok": false' in result.stdout
     assert "File not found." in result.stdout
@@ -96,7 +97,7 @@ def test_check_file_json_output_failure(tmp_path):
     f = tmp_path / "bad.md"
     f.write_text("---\ndeck: D\n  bad: i\n---\n", encoding="utf-8")
 
-    result = runner.invoke(app, ["check-file", str(f), "--json"])
+    result = runner.invoke(app, ["vault", "check", str(f), "--json"])
     assert result.exit_code == 0
 
     data = json.loads(result.stdout)
@@ -109,7 +110,7 @@ def test_check_file_json_output_success(tmp_path):
     f = tmp_path / "good.md"
     f.write_text("---\ndeck: D\ncards: []\n---\n", encoding="utf-8")
 
-    result = runner.invoke(app, ["check-file", str(f), "--json"])
+    result = runner.invoke(app, ["vault", "check", str(f), "--json"])
     data = json.loads(result.stdout)
     assert data["ok"] is True
     assert data["stats"]["deck"] == "D"
@@ -120,7 +121,7 @@ def test_check_file_valid_card_count(tmp_path):
     f.write_text(
         "---\ndeck: Default\ncards:\n  - Front: A\n    Back: B\n---\nContent", encoding="utf-8"
     )
-    result = runner.invoke(app, ["check-file", str(f)])
+    result = runner.invoke(app, ["vault", "check", str(f)])
     assert result.exit_code == 0
     assert "Cards: 1" in result.stdout
 
@@ -138,7 +139,7 @@ def test_check_file_yaml_error_context(tmp_path):
     err.context = "context_info"  # type: ignore
 
     with patch("arete.application.utils.text.validate_frontmatter", side_effect=err):
-        result = runner.invoke(app, ["check-file", str(f)])
+        result = runner.invoke(app, ["vault", "check", str(f)])
         assert result.exit_code == 1
         assert "context_info" in result.stdout
 
@@ -151,6 +152,6 @@ def test_check_file_generic_exception(tmp_path):
         "arete.application.utils.text.validate_frontmatter",
         side_effect=Exception("Generic Error"),
     ):
-        result = runner.invoke(app, ["check-file", str(f), "--json"])
+        result = runner.invoke(app, ["vault", "check", str(f), "--json"])
         assert result.exit_code == 0
         assert "Generic Error" in result.stdout

@@ -8,6 +8,16 @@ from unittest.mock import patch
 import pytest
 import requests
 
+# --- Auto-mark integration tests ---
+
+
+def pytest_collection_modifyitems(items):
+    """Auto-apply the 'integration' marker to all tests under tests/integration/."""
+    for item in items:
+        if "/integration/" in str(item.fspath):
+            item.add_marker(pytest.mark.integration)
+
+
 # --- Global Config ---
 
 
@@ -25,18 +35,6 @@ def anki_media_dir():
     p = Path("docker/anki_data/.local/share/Anki2/User 1/collection.media").resolve()
     p.mkdir(parents=True, exist_ok=True)
     return p
-
-
-@pytest.fixture(scope="session")
-def check_anki_available(anki_url):
-    """Verifies AnkiConnect is running before running any integration tests."""
-    try:
-        # Action version returns results like 6
-        resp = requests.post(anki_url, json={"action": "version", "version": 6}, timeout=2)
-        if resp.status_code != 200:
-            pytest.fail(f"AnkiConnect returned {resp.status_code} at {anki_url}")
-    except requests.exceptions.ConnectionError:
-        pytest.fail(f"AnkiConnect not running at {anki_url}. Start Anki or Docker.")
 
 
 @pytest.fixture
@@ -96,7 +94,7 @@ def run_arete(anki_url):
         cmd = [
             sys.executable,
             "-m",
-            "arete.main",
+            "arete",
             "-v",
             "sync",
             str(vault_path),

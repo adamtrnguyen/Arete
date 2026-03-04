@@ -79,7 +79,8 @@ class ContentCache:
     def set_hash(self, md_path: Path, card_index: int, content_hash: str):
         with self._lock:
             self._conn.execute(
-                "INSERT OR REPLACE INTO cards (path, idx, hash) VALUES (?, ?, ?)",
+                """INSERT INTO cards (path, idx, hash) VALUES (?, ?, ?)
+                   ON CONFLICT(path, idx) DO UPDATE SET hash = excluded.hash""",
                 (str(md_path), card_index, content_hash),
             )
             self._conn.commit()

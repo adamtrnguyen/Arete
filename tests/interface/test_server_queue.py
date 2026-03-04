@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from arete.server import app
+from arete.interface.http_server import app
 
 client = TestClient(app)
 
@@ -21,8 +21,8 @@ async def test_server_get_decks(mock_bridge_factory):
 
 
 @patch("arete.application.factory.get_anki_bridge")
-@patch("arete.application.queue_builder.build_simple_queue")
-@patch("arete.application.graph_resolver.build_graph")
+@patch("arete.application.queue.builder.build_simple_queue")
+@patch("arete.application.queue.graph_resolver.build_graph")
 @pytest.mark.asyncio
 async def test_server_build_queue(mock_build_graph, mock_build_queue, mock_bridge_factory):
     # Mock Anki Bridge
@@ -43,7 +43,7 @@ async def test_server_build_queue(mock_build_graph, mock_build_queue, mock_bridg
     mock_build_graph.return_value = graph
 
     # Mock Queue Result
-    from arete.application.queue_builder import QueueBuildResult
+    from arete.application.queue.builder import QueueBuildResult
 
     mock_build_queue.return_value = QueueBuildResult(
         prereq_queue=["arete_P"],

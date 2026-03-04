@@ -101,7 +101,7 @@ def test_stats_retrieval(runner, vault_scenarios, anki_url):
 
     from fastapi.testclient import TestClient
 
-    from arete.server import app
+    from arete.interface.http_server import app
 
     client = TestClient(app)
 

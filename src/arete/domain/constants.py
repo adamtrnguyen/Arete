@@ -12,6 +12,7 @@ REQUEST_TIMEOUT = 30.0
 RESPONSIVENESS_TIMEOUT = 2.0
 SEARCH_TRUNCATE_LEN = 100
 CHUNK_SIZE = 500
+SYNC_CONCURRENCY = 8  # Max concurrent card syncs within a batch
 
 # ---------- FSRS ----------
 FSRS_DIFFICULTY_SCALE = 10.0

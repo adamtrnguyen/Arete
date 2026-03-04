@@ -28,7 +28,7 @@ cards:
     cmd = [
         sys.executable,
         "-m",
-        "arete.main",
+        "arete",
         "-v",
         "sync",  # Add subcommand
         str(tmp_path),  # Vault root

@@ -130,24 +130,8 @@ def resolve_config(
     3. Environment variables (O2A_*)
     4. cli_overrides (passed from Typer)
     """
-    # We create the config instance. CLI overrides take final precedence.
-    # We inject the config_file into the constructor if provided
     init_kwargs = cli_overrides or {}
-    if config_file:
-        # We need a way to pass this to the settings source.
-        # Pydantic Settings is tricky with dynamic sources.
-        # A simpler way is to set the TOML file location via a hidden field or context
-        # but here we can just pass it directly if we modify AppConfig to accept it.
-        # OR better: monkeypatch/override the toml_file list in a subclass or locally.
-        pass
 
-    # Actually, the cleanest way with pydantic-settings is to use a specific source instance.
-    # But for now, let's rely on the environment variable trick for testing,
-    # OR simpler: check if config_file is passed, and if so, read it and merge it manually
-    # into cli_overrides (as a heavy hammer)
-    # OR force pydantic to load it.
-
-    # Let's try the dynamic source approach by creating a specific config instance.
     if config_file:
         from pydantic_settings import TomlConfigSettingsSource
 

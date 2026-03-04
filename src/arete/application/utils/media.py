@@ -3,9 +3,9 @@ import os
 import re
 import shutil
 from pathlib import Path
-from urllib.parse import unquote
+from urllib.parse import quote, unquote
 
-from arete.application.utils.consts import MARKDOWN_IMG_RE, WIKILINK_IMG_RE
+from arete.application.utils.consts import MARKDOWN_IMG_RE, WIKILINK_IMG_RE, WIKILINK_RE
 from arete.application.utils.fs import file_md5
 from arete.domain.constants import MEDIA_DIR_NAMES
 
@@ -115,3 +115,24 @@ def transform_images_in_text(
 
     out = MARKDOWN_IMG_RE.sub(repl_markdown_img, out)
     return out
+
+
+def transform_wikilinks_to_uri(text: str, vault_name: str) -> str:
+    """Convert ``[[Target]]`` and ``[[Target|display]]`` wikilinks to
+    clickable ``obsidian://open`` URIs.  The resulting markdown link is
+    later rendered to an ``<a>`` tag by the markdown→HTML converter.
+    """
+
+    def _repl(m: re.Match) -> str:
+        raw = m.group(1)
+        if "|" in raw:
+            target, display = raw.split("|", 1)
+        else:
+            target = raw
+            display = raw
+        target = target.strip()
+        display = display.strip()
+        uri = f"obsidian://open?vault={quote(vault_name)}&file={quote(target)}"
+        return f"[{display}]({uri})"
+
+    return WIKILINK_RE.sub(_repl, text)

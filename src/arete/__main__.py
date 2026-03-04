@@ -1,4 +1,4 @@
-from arete.main import main
+from arete.interface.cli import app
 
 if __name__ == "__main__":
-    main()
+    app()

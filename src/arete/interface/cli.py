@@ -1,4 +1,4 @@
-"""Arete CLI — root commands, subgroup registration, and deprecated aliases."""
+"""Arete CLI — root commands and subgroup registration."""
 
 import json
 import logging
@@ -11,9 +11,9 @@ import typer
 
 from arete.application.config import resolve_config
 from arete.interface._common import _resolve_with_overrides
-
-# Re-export for backward compatibility (tests import humanize_error from here)
-from arete.interface.vault_commands import humanize_error  # noqa: F401
+from arete.interface.anki_commands import anki_app
+from arete.interface.serve_commands import serve_app
+from arete.interface.vault_commands import vault_app
 
 # ---------------------------------------------------------------------------
 # Root app
@@ -35,14 +35,6 @@ logging.basicConfig(
     stream=sys.stderr,
 )
 logger = logging.getLogger(__name__)
-
-# ---------------------------------------------------------------------------
-# Register subgroups
-# ---------------------------------------------------------------------------
-
-from arete.interface.anki_commands import anki_app  # noqa: E402
-from arete.interface.serve_commands import serve_app  # noqa: E402
-from arete.interface.vault_commands import vault_app  # noqa: E402
 
 app.add_typer(vault_app, name="vault")
 app.add_typer(anki_app, name="anki")
@@ -131,7 +123,7 @@ def sync(
 
     import asyncio
 
-    from arete.main import run_sync_logic
+    from arete.application.orchestrator import run_sync_logic
 
     asyncio.run(run_sync_logic(config))
 
@@ -218,7 +210,7 @@ def queue(
     import asyncio
 
     from arete.application.factory import get_anki_bridge
-    from arete.application.queue_builder import build_dependency_queue, build_dynamic_queue
+    from arete.application.queue.builder import build_dependency_queue, build_dynamic_queue
 
     config = _resolve_with_overrides(root_input=path)
     vault_root = config.root_input
@@ -285,7 +277,7 @@ def queue(
             if algo == "dynamic" and result.ordered_queue:
                 combined = result.ordered_queue
             else:
-                from arete.application.graph_resolver import build_graph, topological_sort
+                from arete.application.queue.graph_resolver import build_graph, topological_sort
 
                 all_ids = list(dict.fromkeys(result.prereq_queue + result.main_queue))
                 graph = build_graph(vault_root)
@@ -432,7 +424,7 @@ def graph_check(
     json_output: Annotated[bool, typer.Option("--json", help="Output as JSON.")] = False,
 ):
     """Check dependency graph health: cycles, isolated cards, missing refs, components."""
-    from arete.application.graph_resolver import (
+    from arete.application.queue.graph_resolver import (
         build_graph,
         detect_cycles,
         find_connected_components,
@@ -530,143 +522,3 @@ def graph_check(
             raise typer.Exit(1)
 
 
-# ---------------------------------------------------------------------------
-# Deprecated aliases (hidden from --help, warn on use)
-# ---------------------------------------------------------------------------
-
-# Vault commands that moved from root to `vault` subgroup
-
-from arete.interface.vault_commands import (  # noqa: E402, I001
-    check as vault_check,
-    fix as vault_fix,
-    format_cmd as vault_format_cmd,
-    migrate_cmd as vault_migrate_cmd,
-)
-
-
-@app.command("check-file", deprecated=True, hidden=True)
-def _deprecated_check_file(
-    path: Annotated[Path, typer.Argument(help="Path to the markdown file to check.")],
-    json_output: Annotated[bool, typer.Option("--json", help="Output results as JSON.")] = False,
-):
-    """(Deprecated) Use 'arete vault check' instead."""
-    vault_check(path=path, json_output=json_output)
-
-
-@app.command("fix-file", deprecated=True, hidden=True)
-def _deprecated_fix_file(
-    path: Annotated[Path, typer.Argument(help="Path to the markdown file to fix.")],
-):
-    """(Deprecated) Use 'arete vault fix' instead."""
-    vault_fix(path=path)
-
-
-@app.command("format", deprecated=True, hidden=True)
-def _deprecated_format(
-    ctx: typer.Context,
-    path: Annotated[
-        Path | None,
-        typer.Argument(help="Path to vault or file. Defaults to config."),
-    ] = None,
-    dry_run: Annotated[
-        bool, typer.Option("--dry-run", help="Preview changes without saving.")
-    ] = False,
-):
-    """(Deprecated) Use 'arete vault format' instead."""
-    vault_format_cmd(ctx=ctx, path=path, dry_run=dry_run)
-
-
-@app.command("migrate", deprecated=True, hidden=True)
-def _deprecated_migrate(
-    ctx: typer.Context,
-    path: Annotated[Path, typer.Argument(help="Path to file or directory.")] = Path("."),
-    dry_run: Annotated[
-        bool, typer.Option("--dry-run", help="Preview changes without saving.")
-    ] = False,
-    verbose: Annotated[
-        int,
-        typer.Option(
-            "--verbose", "-v", count=True, help="Increase verbosity. Repeat for more detail."
-        ),
-    ] = 0,
-):
-    """(Deprecated) Use 'arete vault migrate' instead."""
-    vault_migrate_cmd(ctx=ctx, path=path, dry_run=dry_run, verbose=verbose)
-
-
-# Serve commands that moved from root to `serve` subgroup
-
-from arete.interface.serve_commands import daemon as serve_daemon  # noqa: E402
-from arete.interface.serve_commands import mcp as serve_mcp  # noqa: E402
-
-
-@app.command("server", deprecated=True, hidden=True)
-def _deprecated_server(
-    port: Annotated[int, typer.Option(help="Port to bind the server to.")] = 8777,
-    host: Annotated[str, typer.Option(help="Host to bind the server to.")] = "127.0.0.1",
-    reload: Annotated[bool, typer.Option(help="Enable auto-reload.")] = False,
-):
-    """(Deprecated) Use 'arete serve daemon' instead."""
-    serve_daemon(port=port, host=host, reload=reload)
-
-
-@app.command("mcp-server", deprecated=True, hidden=True)
-def _deprecated_mcp_server():
-    """(Deprecated) Use 'arete serve mcp' instead."""
-    serve_mcp()
-
-
-# Deprecated `anki queue` alias (promoted to root `queue`)
-
-@anki_app.command("queue", deprecated=True, hidden=True)
-def _deprecated_anki_queue(
-    ctx: typer.Context,
-    path: Annotated[
-        Path | None, typer.Argument(help="Path to Obsidian vault. Defaults to config.")
-    ] = None,
-    deck: Annotated[str | None, typer.Option(help="Filter by deck name.")] = None,
-    depth: Annotated[int, typer.Option(help="Prerequisite search depth.")] = 2,
-    include_new: Annotated[
-        bool, typer.Option("--include-new", help="Include new (unreviewed) cards.")
-    ] = False,
-    include_related: Annotated[
-        bool,
-        typer.Option(
-            "--include-related",
-            help="Reserved for future related-card boost. Currently not implemented.",
-        ),
-    ] = False,
-    dry_run: Annotated[
-        bool, typer.Option("--dry-run", help="Show plan without creating decks.")
-    ] = False,
-    cross_deck: Annotated[
-        bool,
-        typer.Option(
-            "--cross-deck",
-            help="Pull in prerequisites from other decks. Without this, --deck is an isolated set.",
-        ),
-    ] = False,
-    algo: Annotated[
-        Literal["static", "dynamic"],
-        typer.Option(
-            "--algo",
-            help=(
-                "Queue algorithm. "
-                "'static' = build once and study as-is. "
-                "'dynamic' = ready-frontier ordering for prerequisite-aware sequencing."
-            ),
-        ),
-    ] = "static",
-):
-    """(Deprecated) Use 'arete queue' instead."""
-    queue(
-        ctx=ctx,
-        path=path,
-        deck=deck,
-        depth=depth,
-        include_new=include_new,
-        include_related=include_related,
-        dry_run=dry_run,
-        cross_deck=cross_deck,
-        algo=algo,
-    )

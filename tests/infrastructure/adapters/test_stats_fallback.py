@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 from arete.domain.stats.models import CardStatsAggregate, FsrsMemoryState
 from arete.infrastructure.adapters.anki_connect import AnkiConnectAdapter
 from arete.infrastructure.adapters.anki_direct import AnkiDirectAdapter
-from arete.server import app
+from arete.interface.http_server import app
 
 
 # Mock Anki Repository for Direct Adapter

@@ -142,24 +142,29 @@ class AnkiDirectAdapter(AnkiBridge):
                 return repo.col.decks.all_names()
         return []
 
-    async def get_due_cards(self, deck_name: str | None = None) -> list[int]:
-        """Get all cards due today from Anki, optionally filtered by deck.
+    async def get_due_cards(
+        self, deck_name: str | None = None, include_new: bool = False
+    ) -> list[int]:
+        """Get cards due today (and optionally new cards) from Anki.
 
         Args:
             deck_name: Optional deck name (supports nested, e.g., "Math::Calculus")
+            include_new: If True, also include new (unreviewed) cards.
 
         Returns:
-            List of Anki note IDs (nids) that are due
+            List of Anki note IDs (nids)
 
         """
         with AnkiRepository(self.anki_base) as repo:
             if not repo.col:
                 return []
 
-            # Build Anki search query
-            query = "is:due"
-            if deck_name:
-                query = f'deck:"{deck_name}" {query}'
+            deck_filter = f'deck:"{deck_name}" ' if deck_name else ""
+            query = (
+                f"{deck_filter}(is:due OR is:new)"
+                if include_new
+                else f"{deck_filter}(is:due)"
+            )
 
             nids = repo.find_notes(query)
             return nids
@@ -518,8 +523,6 @@ class AnkiDirectAdapter(AnkiBridge):
 
         return cids_ordered
 
-    # Removed unused create_filtered_deck stub
-
     async def create_topo_deck(
         self, deck_name: str, cids: list[int], reschedule: bool = True
     ) -> bool:
@@ -534,96 +537,37 @@ class AnkiDirectAdapter(AnkiBridge):
             # 1. Get/Create Dynamic Deck
             did = repo.col.decks.id(deck_name, create=False)
             if did:
-                # If it exists but is not dynamic, we might have an issue.
-                # Assuming users use unique names for queues.
-                # Check if dyn
                 deck = repo.col.decks.get(did)
                 if not deck or not deck.get("dyn"):
-                    # Delete standard deck? No, too dangerous. Error out.
                     self.logger.error(f"Deck {deck_name} exists and is not a filtered deck.")
                     return False
+                # Empty existing filtered deck before rebuilding
+                repo.col.sched.empty_filtered_deck(did)
             else:
                 did = repo.col.decks.new_filtered(deck_name)
 
-            # 2. Configure Deck Search
-            # We want to pull EXACTLY these cards.
-            # Query: "cid:1 OR cid:2 ..."
-            # Note: Max query length limits? Anki handles large queries okay usually.
-
-            # Reset the deck config
+            # 2. Configure search terms
             deck = repo.col.decks.get(did)
             if not deck:
                 return False
 
-            # We use a single search term
             query = " OR ".join([f"cid:{cid}" for cid in cids])
-
-            # "terms" is a list of [search, limit, order]
-            # order=0 (Random), 1 (Oldest), etc.
-            # We'll use order=0 initially, then manually sort.
             deck["terms"] = [[query, len(cids), 0]]
-
-            # "resched": True/False.
-            # If False, they return to home deck after review.
-            # If True, reviewing them updates their actual scheduling.
-            # Usually for Study Queue we WANT rescheduling (it's real study).
             deck["resched"] = reschedule
-
             repo.col.decks.save(deck)
 
-            # 3. Rebuild (Pull cards)
-            # This pulls them into the deck.
+            # 3. Rebuild (pull cards into filtered deck)
             repo.col.sched.rebuild_filtered_deck(did)
 
-            # 4. Enforce Topological Order
-            # Rebuild pulls them in whatever order. We must REPOSITION them.
-            # In V3 scheduler, filtered deck cards are sorted by 'due'.
-            # We can use col.sched.sort_cards(cids, start=1) ?
-            # Or manually update 'due' field for these cards to 0, 1, 2...
-
-            # Note: cids list is in correct Topo Order.
-            # We want the first cid to be due=0, second due=1...
-            # Note: 'due' in filtered decks is a large integer usually?
-            # Actually for dyn decks, 'due' is the order.
-
-            # repo.col.sched.set_due_date(cids, "0") # This sets them to today?
-
-            # We can manually update db?
-            # Or use 'reposition'.
-            # repo.col.sched.reposition_cards(cids, 0, 1, False, False)
-            # Wait, reposition works on 'new' queue.
-            # For 'rev' queue cards inside dyn deck, 'due' is somewhat complex.
-
-            # Let's try explicit update.
-            # Cards in dyn deck: odid != 0.
-            # queue: 0=new, 1=lrn, 2=rev.
-            # In dyn deck, queue might be different depending on state.
-
-            # SIMPLIFICATION:
-            # We will rely on Anki's "Order Added"? No.
-            # We will iterate and set 'due' directly.
-
-            # But wait, Anki's rebuild might not include ALL cards if they are suspended/buried?
-            # Ensure query includes 'is:suspended' if we want to force them?
-
-            try:
-                # Update 'due' to force order.
-                # For dyn decks, lower 'due' = shown first (usually).
-                # We need to act on the CARD objects.
-
-                for i, cid in enumerate(cids):
-                    # cast cid to CardId if needed, though get_card usually takes int in runtime
-                    # but type checker wants CardId
+            # 4. Enforce topological order via due values
+            for i, cid in enumerate(cids):
+                try:
                     card = repo.col.get_card(cast(Any, cid))
-                    # verify it is in our deck
                     if card.did == did:
-                        card.due = i + 1000  # just to be safe and ordered
-                        # Actually due needs to be consistent.
-                        # Simple integer increment is fine for Dyn decks (Rev/New) usually.
+                        card.due = i + 1000
                         repo.col.update_card(card)
-
-            except Exception as e:
-                self.logger.warning(f"Failed to force order: {e}")
+                except Exception:
+                    pass  # Card may not have been pulled (suspended, etc.)
 
             return True
 

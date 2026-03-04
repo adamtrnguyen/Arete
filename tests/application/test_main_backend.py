@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from arete.application.config import AppConfig
-from arete.main import run_sync_logic
+from arete.application.orchestrator import run_sync_logic
 
 
 @pytest.fixture
@@ -39,8 +39,8 @@ def mock_config(tmp_path):
 
 @pytest.mark.asyncio
 @patch("arete.infrastructure.adapters.anki_connect.AnkiConnectAdapter.is_responsive")
-@patch("arete.main.run_pipeline")
-@patch("arete.main.setup_logging")
+@patch("arete.application.orchestrator.run_pipeline")
+@patch("arete.application.orchestrator.setup_logging")
 async def test_backend_selection_ankiconnect(
     mock_setup_logging, mock_run_pipeline, mock_is_responsive, mock_config
 ):
@@ -82,8 +82,8 @@ async def test_backend_selection_ankiconnect(
 
 @pytest.mark.asyncio
 @patch("arete.infrastructure.adapters.anki_connect.AnkiConnectAdapter.is_responsive")
-@patch("arete.main.run_pipeline")
-@patch("arete.main.setup_logging")
+@patch("arete.application.orchestrator.run_pipeline")
+@patch("arete.application.orchestrator.setup_logging")
 async def test_backend_selection_apy_fallback(
     mock_setup_logging, mock_run_pipeline, mock_is_responsive, mock_config
 ):
@@ -118,8 +118,8 @@ async def test_backend_selection_apy_fallback(
 
 @pytest.mark.asyncio
 @patch("arete.application.factory.AnkiConnectAdapter")
-@patch("arete.main.run_pipeline")
-@patch("arete.main.setup_logging")
+@patch("arete.application.orchestrator.run_pipeline")
+@patch("arete.application.orchestrator.setup_logging")
 async def test_backend_manual_ankiconnect_and_fallback(
     mock_setup_logging, mock_run_pipeline, mock_anki_connect_adapter_cls, mock_config
 ):
@@ -162,8 +162,8 @@ async def test_backend_manual_ankiconnect_and_fallback(
 
 
 @pytest.mark.asyncio
-@patch("arete.main.run_pipeline")
-@patch("arete.main.setup_logging")
+@patch("arete.application.orchestrator.run_pipeline")
+@patch("arete.application.orchestrator.setup_logging")
 async def test_backend_manual_direct(mock_setup_logging, mock_run_pipeline, mock_config):
     """Test manual selection of direct backend."""
     mock_logger = MagicMock()

@@ -148,8 +148,13 @@ class AnkiBridge(ABC):
         pass
 
     @abstractmethod
-    async def get_due_cards(self, deck_name: str | None = None) -> list[int]:
-        """Fetch NIDs of due cards, optionally filtered by deck."""
+    async def get_due_cards(
+        self, deck_name: str | None = None, include_new: bool = False
+    ) -> list[int]:
+        """Fetch NIDs of due cards, optionally filtered by deck.
+
+        If include_new is True, also includes new (unreviewed) cards.
+        """
         pass
 
     @abstractmethod

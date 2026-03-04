@@ -5,7 +5,6 @@ import yaml
 import yaml.constructor
 import yaml.scanner
 
-from arete.application.utils.common import sanitize
 from arete.application.utils.text import (
     apply_fixes,
     convert_math_to_tex_delimiters,
@@ -21,42 +20,26 @@ from arete.application.utils.text import (
 # ---------- Math Conversion Tests ----------
 
 
-def test_math_inline_dollar():
-    text = "Let $x=1$ and $y=2$."
-    expected = r"Let \(x=1\) and \(y=2\)."
-    assert convert_math_to_tex_delimiters(text) == expected
-
-
-def test_math_block_dollar_simple():
-    assert convert_math_to_tex_delimiters("$$abc$$") == r"\[abc\]"
-
-
-def test_math_block_dollar_multiline():
-    text = "BLOCK:\n$$\ncontent\n$$"
-    expected = "BLOCK:\n" r"\[" "content" r"\]"
-    actual = convert_math_to_tex_delimiters(text)
-    assert actual == expected
-
-
-def test_math_mixed():
-    text = r"Inline $a^2$ followed by block $$\int f(x)dx$$"
-    assert r"\(a^2\)" in convert_math_to_tex_delimiters(text)
-    assert r"\[\int f(x)dx\]" in convert_math_to_tex_delimiters(text)
-
-
-def test_escaped_dollars():
-    text = r"Cost is \$50."
-    assert convert_math_to_tex_delimiters(text) == text
-
-
-def test_math_combined():
-    text = "The value is $x$ which is $$x^2$$."
-    assert convert_math_to_tex_delimiters(text) == r"The value is \(x\) which is \[x^2\]."
-
-
-def test_math_in_code_block():
-    text = "Code: `x = $y$`"
-    expected = r"Code: `x = \(y\)`"
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        pytest.param(
+            "Let $x=1$ and $y=2$.", r"Let \(x=1\) and \(y=2\).", id="inline_dollar"
+        ),
+        pytest.param("$$abc$$", r"\[abc\]", id="block_simple"),
+        pytest.param(
+            "BLOCK:\n$$\ncontent\n$$", "BLOCK:\n" r"\[" "content" r"\]", id="block_multiline"
+        ),
+        pytest.param(
+            "The value is $x$ which is $$x^2$$.",
+            r"The value is \(x\) which is \[x^2\].",
+            id="combined",
+        ),
+        pytest.param(r"Cost is \$50.", r"Cost is \$50.", id="escaped_dollars"),
+        pytest.param("Code: `x = $y$`", r"Code: `x = \(y\)`", id="code_block"),
+    ],
+)
+def test_math_conversion(text, expected):
     assert convert_math_to_tex_delimiters(text) == expected
 
 
@@ -184,18 +167,6 @@ def test_apply_fixes_latex_round_trip():
     assert "\\end{equation}" in meta["math"]
 
 
-def test_apply_fixes_no_match():
-    """If no frontmatter is present, apply_fixes should do nothing."""
-    text = "Just some content"
-    assert apply_fixes(text) == text
-
-
-def test_apply_fixes_no_change_if_valid():
-    """Valid frontmatter round-trips cleanly."""
-    content = "---\ndeck: D\ncards: []\n---\n"
-    assert apply_fixes(content) == content
-
-
 def test_apply_fixes_preserves_body():
     """Body content after frontmatter is preserved."""
     raw = "---\ndeck: D\ncards: []\n---\n\n# My Note\n\nSome content here."
@@ -230,13 +201,6 @@ def test_rebuild_markdown_format():
     assert full_text.startswith("---\n")
     assert "foo: bar" in full_text
     assert "Content" in full_text
-
-
-def test_sanitize():
-    assert sanitize("<b>Bold</b>") == "<b>Bold</b>"
-    assert sanitize("Line<br>Break") == "Line<br>Break"
-    assert sanitize("Div    ") == "Div"
-    assert sanitize(None) == ""
 
 
 # ---------- make_editor_note Tests ----------

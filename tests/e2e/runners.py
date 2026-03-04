@@ -5,7 +5,7 @@ from typing import Protocol
 
 from fastapi.testclient import TestClient
 
-from arete.server import app
+from arete.interface.http_server import app
 
 
 class AreteRunner(Protocol):
@@ -38,7 +38,7 @@ class CliRunner:
         cmd = [
             sys.executable,
             "-m",
-            "arete.main",
+            "arete",
             "-v",
             "sync",
             str(vault_path),

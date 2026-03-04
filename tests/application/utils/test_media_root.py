@@ -59,7 +59,7 @@ def test_unique_media_name_diff_content(tmp_path):
     assert name.endswith(".png")
 
 
-def test_build_filename_index(tmp_path, mock_logger):
+def test_build_filename_index_nested_dirs(tmp_path, mock_logger):
     vault = tmp_path / "Vault"
     vault.mkdir()
     (vault / "assets").mkdir()
@@ -77,7 +77,7 @@ def test_build_filename_index(tmp_path, mock_logger):
     assert idx["a.png"][0].name == "a.png"
 
 
-def test_resolve_candidate_paths(tmp_path):
+def test_resolve_candidate_paths_sibling_and_index(tmp_path):
     vault = tmp_path / "Vault"
     md_path = vault / "Notes/note.md"
 

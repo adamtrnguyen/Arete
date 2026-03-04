@@ -1,4 +1,4 @@
-"""Tests for CLI commands: help, init, config, logs, server, mcp, anki subcommands, and humanize_error."""
+"""Tests for CLI commands: help, init, config, serve, anki subcommands, queue, graph, and humanize_error."""
 
 import json
 from pathlib import Path
@@ -6,7 +6,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from typer.testing import CliRunner
 
-from arete.interface.cli import app, humanize_error
+from arete.interface.cli import app
+from arete.interface.vault_commands import humanize_error
 
 runner = CliRunner()
 
@@ -22,6 +23,15 @@ def test_cli_help():
     assert "sync" in result.stdout
     assert "init" in result.stdout
     assert "config" in result.stdout
+
+
+def test_cli_help_shows_new_subgroups():
+    """New subgroups (vault, serve, queue) appear in --help."""
+    result = runner.invoke(app, ["--help"])
+    assert result.exit_code == 0
+    assert "vault" in result.stdout
+    assert "serve" in result.stdout
+    assert "queue" in result.stdout
 
 
 # --- Init ---
@@ -61,17 +71,10 @@ def test_config_show_command(mock_resolve_config):
 
 
 @patch("uvicorn.run")
-def test_server_command(mock_run):
-    result = runner.invoke(app, ["server", "--port", "9000"])
+def test_serve_daemon_command(mock_run):
+    result = runner.invoke(app, ["serve", "daemon", "--port", "9000"])
     assert result.exit_code == 0
-    mock_run.assert_called_with("arete.server:app", host="127.0.0.1", port=9000, reload=False)
-
-
-@patch("arete.mcp_server.main")
-def test_mcp_server_command(mock_main):
-    result = runner.invoke(app, ["mcp-server"])
-    assert result.exit_code == 0
-    mock_main.assert_called_once()
+    mock_run.assert_called_with("arete.interface.http_server:app", host="127.0.0.1", port=9000, reload=False)
 
 
 # --- Anki Subcommands ---
@@ -173,7 +176,7 @@ def test_suspend_cards():
             app,
             [
                 "anki",
-                "cards-suspend",
+                "suspend",
                 "--cids",
                 "123,456",
                 "--backend",
@@ -196,7 +199,7 @@ def test_unsuspend_cards():
             app,
             [
                 "anki",
-                "cards-unsuspend",
+                "unsuspend",
                 "--cids",
                 "123",
                 "--backend",
@@ -219,7 +222,7 @@ def test_model_styling():
             app,
             [
                 "anki",
-                "models-styling",
+                "model-css",
                 "Basic",
                 "--backend",
                 "ankiconnect",
@@ -241,7 +244,7 @@ def test_model_templates():
             app,
             [
                 "anki",
-                "models-templates",
+                "model-templates",
                 "Basic",
                 "--backend",
                 "ankiconnect",
@@ -276,6 +279,86 @@ def test_anki_browse():
         assert '{"ok": true}' in result.stdout
 
 
+# --- Queue (promoted to root, deprecated alias on anki) ---
+
+
+@patch("arete.interface._common.resolve_config")
+@patch("arete.application.factory.get_anki_bridge")
+@patch("arete.application.queue.builder.build_dynamic_queue")
+@patch("arete.application.queue.builder.build_dependency_queue")
+def test_queue_root_static_default(
+    mock_build_static,
+    mock_build_dynamic,
+    mock_get_bridge,
+    mock_resolve_config,
+):
+    """Root 'queue' command defaults to static algorithm."""
+    from arete.application.queue.builder import QueueBuildResult
+
+    mock_config = MagicMock()
+    mock_config.root_input = Path("/tmp/vault")
+    mock_resolve_config.return_value = mock_config
+
+    mock_anki = AsyncMock()
+    mock_anki.get_due_cards = AsyncMock(return_value=[101])
+    mock_anki.map_nids_to_arete_ids = AsyncMock(return_value=["arete_A"])
+    mock_get_bridge.return_value = mock_anki
+
+    mock_build_static.return_value = QueueBuildResult(
+        prereq_queue=["arete_P"],
+        main_queue=["arete_A"],
+        skipped_strong=[],
+        missing_prereqs=[],
+        cycles=[],
+    )
+
+    result = runner.invoke(app, ["queue", "--dry-run"])
+
+    assert result.exit_code == 0
+    assert "Algorithm: static" in result.stdout
+    mock_build_static.assert_called_once()
+    mock_build_dynamic.assert_not_called()
+
+
+@patch("arete.interface._common.resolve_config")
+@patch("arete.application.factory.get_anki_bridge")
+@patch("arete.application.queue.builder.build_dynamic_queue")
+@patch("arete.application.queue.builder.build_dependency_queue")
+def test_queue_dynamic_algo(
+    mock_build_static,
+    mock_build_dynamic,
+    mock_get_bridge,
+    mock_resolve_config,
+):
+    """Queue command can use dynamic algorithm via --algo dynamic."""
+    from arete.application.queue.builder import QueueBuildResult
+
+    mock_config = MagicMock()
+    mock_config.root_input = Path("/tmp/vault")
+    mock_resolve_config.return_value = mock_config
+
+    mock_anki = AsyncMock()
+    mock_anki.get_due_cards = AsyncMock(return_value=[101])
+    mock_anki.map_nids_to_arete_ids = AsyncMock(return_value=["arete_A"])
+    mock_get_bridge.return_value = mock_anki
+
+    mock_build_dynamic.return_value = QueueBuildResult(
+        prereq_queue=["arete_P"],
+        main_queue=["arete_A"],
+        skipped_strong=[],
+        missing_prereqs=[],
+        cycles=[],
+        ordered_queue=["arete_P", "arete_A"],
+    )
+
+    result = runner.invoke(app, ["queue", "--algo", "dynamic", "--dry-run"])
+
+    assert result.exit_code == 0
+    assert "Algorithm: dynamic" in result.stdout
+    mock_build_dynamic.assert_called_once()
+    mock_build_static.assert_not_called()
+
+
 # --- humanize_error ---
 
 
@@ -291,6 +374,56 @@ def test_humanize_error_block_end():
 def test_humanize_error_scanner():
     msg = humanize_error("scanner error")
     assert "Syntax Error" in msg
+
+
+# --- Graph ---
+
+
+@patch("arete.application.queue.graph_resolver.build_graph")
+@patch("arete.interface._common.resolve_config")
+def test_graph_check_clean(mock_resolve_config, mock_build_graph):
+    """Clean graph exits 0."""
+    from arete.domain.graph import CardNode, DependencyGraph
+
+    mock_config = MagicMock()
+    mock_config.root_input = Path("/tmp/vault")
+    mock_resolve_config.return_value = mock_config
+
+    graph = DependencyGraph()
+    graph.add_node(CardNode("a", "A", "/a.md", 1))
+    graph.add_node(CardNode("b", "B", "/b.md", 1))
+    graph.add_requires("a", "b")
+    mock_build_graph.return_value = graph
+
+    result = runner.invoke(app, ["graph", "check"])
+    assert result.exit_code == 0
+    assert "Cycles: 0" in result.output
+    assert "Unresolved: 0" in result.output
+
+
+@patch("arete.application.queue.graph_resolver.build_graph")
+@patch("arete.interface._common.resolve_config")
+def test_graph_check_with_cycles(mock_resolve_config, mock_build_graph):
+    """Graph with cycle exits 1 and reports cycles."""
+    from arete.domain.graph import CardNode, DependencyGraph
+
+    mock_config = MagicMock()
+    mock_config.root_input = Path("/tmp/vault")
+    mock_resolve_config.return_value = mock_config
+
+    graph = DependencyGraph()
+    graph.add_node(CardNode("a", "A", "/a.md", 1))
+    graph.add_node(CardNode("b", "B", "/b.md", 1))
+    graph.add_requires("a", "b")
+    graph.add_requires("b", "a")
+    mock_build_graph.return_value = graph
+
+    result = runner.invoke(app, ["graph", "check"])
+    assert result.exit_code == 1
+    assert "Cycles:" in result.output
+
+
+# --- humanize_error ---
 
 
 def test_humanize_error_extra_cases():

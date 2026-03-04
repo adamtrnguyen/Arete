@@ -30,7 +30,6 @@ class AnkiRepository:
 
     def __init__(self, base_path: Path | None = None, profile_name: str | None = None):
         if not base_path:
-            # TODO: Auto-detection logic? For now assume it's passed from config.
             raise ValueError("Anki base path must be provided.")
 
         self.base_path = base_path
@@ -90,13 +89,6 @@ class AnkiRepository:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         if self.col:
-            # Explicitly save changes to invalid memory state if needed, but mainly to commit to DB.
-            # Modern Anki might auto-save on close, but let's be explicit for safety.
-            # Only save if no exception occurred.
-            if exc_type is None:
-                # self.col.save() is deprecated in modern Anki, col.close() handles it.
-                pass
-
             self.col.close()
             self.col = None
 

@@ -1,18 +1,39 @@
+"""Healing/recovery tests for AnkiConnectAdapter.
+
+Tests the dict-comparison healing path: when a note has no NID or an invalid NID,
+the adapter searches for existing notes by field content and heals the link.
+"""
+
+import json
 from pathlib import Path
 from unittest.mock import AsyncMock
 
 import pytest
+import respx
+from httpx import Response
 
 from arete.domain.models import AnkiNote, WorkItem
 from arete.infrastructure.adapters.anki_connect import AnkiConnectAdapter
 
 
+# ---------------------------------------------------------------------------
+# Fixtures & helpers (mock-_invoke style)
+# ---------------------------------------------------------------------------
+
+
 @pytest.fixture
 def adapter():
+    """Adapter with _invoke and ensure_deck mocked for unit-level healing tests."""
     a = AnkiConnectAdapter("http://localhost:8765")
     setattr(a, "_invoke", AsyncMock())  # noqa: B010
     setattr(a, "ensure_deck", AsyncMock(return_value=True))  # noqa: B010
     return a
+
+
+@pytest.fixture
+def adapter_respx():
+    """Adapter for respx-level (HTTP) healing tests."""
+    return AnkiConnectAdapter(url="http://mock-anki:8765")
 
 
 def _make_work_item(fields, model="Basic", deck="TestDeck"):
@@ -27,6 +48,29 @@ def _make_work_item(fields, model="Basic", deck="TestDeck"):
         source_index=1,
     )
     return WorkItem(note=note, source_file=Path("test.md"), source_index=1)
+
+
+# ---------------------------------------------------------------------------
+# _normalize_field
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_normalize_field():
+    """Verify _normalize_field strips HTML, cloze markers, and normalizes whitespace."""
+    norm = AnkiConnectAdapter._normalize_field
+
+    assert norm("Hello World") == "hello world"
+    assert norm("<b>Bold</b>") == "bold"
+    assert norm("{{c1::answer}} is {{c2::correct}}") == "answer is correct"
+    assert norm("<!-- comment -->\n<p>Text</p>") == "text"
+    assert norm("  lots   of    spaces  ") == "lots of spaces"
+    assert norm("Mixed: {{c1::cloze}} and <em>html</em>") == "mixed: cloze and html"
+
+
+# ---------------------------------------------------------------------------
+# Dict-comparison healing (mock-_invoke)
+# ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
@@ -69,7 +113,6 @@ async def test_healing_cloze_normalization(adapter):
         if action == "findNotes":
             return [500]
         if action == "notesInfo":
-            # Anki stores the cloze syntax in the field
             return [
                 {
                     "noteId": 500,
@@ -206,7 +249,7 @@ async def test_healing_duplicate_error_propagates_when_no_match(adapter):
 
     async def side_effect(action, **kwargs):
         if action == "findNotes":
-            return []  # No candidates found
+            return []
         if action == "addNote":
             raise Exception("cannot create note because it is a duplicate")
         return None
@@ -218,17 +261,9 @@ async def test_healing_duplicate_error_propagates_when_no_match(adapter):
     assert "duplicate" in results[0].error
 
 
-@pytest.mark.asyncio
-async def test_normalize_field():
-    """Verify _normalize_field strips HTML, cloze markers, and normalizes whitespace."""
-    norm = AnkiConnectAdapter._normalize_field
-
-    assert norm("Hello World") == "hello world"
-    assert norm("<b>Bold</b>") == "bold"
-    assert norm("{{c1::answer}} is {{c2::correct}}") == "answer is correct"
-    assert norm("<!-- comment -->\n<p>Text</p>") == "text"
-    assert norm("  lots   of    spaces  ") == "lots of spaces"
-    assert norm("Mixed: {{c1::cloze}} and <em>html</em>") == "mixed: cloze and html"
+# ---------------------------------------------------------------------------
+# CID fetching
+# ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
@@ -283,3 +318,93 @@ async def test_cid_fetching_on_heal(adapter):
     assert results[0].ok is True
     assert results[0].new_nid == "5555"
     assert results[0].new_cid == "6666"
+
+
+# ---------------------------------------------------------------------------
+# Healing via respx (HTTP-level)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_healing_failure_respx(adapter_respx):
+    """addNote fails with 'duplicate', findNotes returns empty — error propagates."""
+    sample_note = AnkiNote(
+        model="Basic",
+        deck="Default",
+        fields={"Front": "Front", "Back": "Back"},
+        tags=["tag1"],
+        start_line=1,
+        end_line=10,
+        source_file=Path("test.md"),
+        source_index=1,
+    )
+
+    def side_effect(request):
+        data = json.loads(request.content)
+        action = data["action"]
+        if action == "createDeck":
+            return Response(200, json={"result": 1, "error": None})
+        if action == "addNote":
+            return Response(
+                200, json={"result": None, "error": "cannot create note because it is a duplicate"}
+            )
+        if action == "findNotes":
+            return Response(200, json={"result": [], "error": None})
+        return Response(200, json={"result": None, "error": None})
+
+    respx.post("http://mock-anki:8765").mock(side_effect=side_effect)
+
+    item = WorkItem(note=sample_note, source_file=Path("test.md"), source_index=1)
+    results = await adapter_respx.sync_notes([item])
+
+    assert len(results) == 1
+    assert results[0].ok is False
+    assert "duplicate" in results[0].error
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_healing_success_respx(adapter_respx):
+    """Dict-comparison healing via HTTP: findNotes returns candidates, match is found."""
+    sample_note = AnkiNote(
+        model="Basic",
+        deck="Default",
+        fields={"Front": "Front", "Back": "Back"},
+        tags=["tag1"],
+        start_line=1,
+        end_line=10,
+        source_file=Path("test.md"),
+        source_index=1,
+    )
+
+    def side_effect(request):
+        data = json.loads(request.content)
+        action = data["action"]
+        if action == "createDeck":
+            return Response(200, json={"result": 1, "error": None})
+        if action == "findNotes":
+            return Response(200, json={"result": [123999], "error": None})
+        if action == "notesInfo":
+            notes = data.get("params", {}).get("notes", [])
+            if 123999 in notes:
+                return Response(200, json={"result": [
+                    {
+                        "noteId": 123999,
+                        "fields": {"Front": {"value": "Front"}, "Back": {"value": "Back"}},
+                        "cards": [999],
+                    }
+                ], "error": None})
+            return Response(200, json={"result": [], "error": None})
+        if action == "updateNoteFields":
+            return Response(200, json={"result": None, "error": None})
+        return Response(200, json={"result": None, "error": None})
+
+    respx.post("http://mock-anki:8765").mock(side_effect=side_effect)
+
+    item = WorkItem(note=sample_note, source_file=Path("test.md"), source_index=1)
+    results = await adapter_respx.sync_notes([item])
+
+    assert len(results) == 1
+    assert results[0].ok is True
+    assert results[0].new_nid == "123999"

@@ -123,3 +123,52 @@ def test_wizard_overwrite_no(mock_home):
 
     # Should still satisfy old config
     assert (config_dir / "config.toml").read_text() == "old config"
+
+
+def test_wizard_path_validation_and_reprompt(tmp_path):
+    new_home = tmp_path / "home"
+    new_home.mkdir()
+    v_good = tmp_path / "good_v"
+    v_good.mkdir()
+    m = tmp_path / "m"
+    m.mkdir()
+
+    with patch("pathlib.Path.home", return_value=new_home):
+        with patch("arete.application.wizard.detect_anki_paths", return_value=(None, None)):
+            with patch(
+                "builtins.input",
+                side_effect=[
+                    str(v_good),
+                    "",  # empty for media (no default) -> "Value required"
+                    str(m),
+                    "1",
+                ],
+            ):
+                run_init_wizard()
+    assert (new_home / ".config/arete/config.toml").exists()
+
+
+def test_wizard_nonexistent_confirm(tmp_path):
+    new_home = tmp_path / "home"
+    new_home.mkdir()
+    v_bad = tmp_path / "bad_v"
+    m_bad = tmp_path / "bad_m"
+    with patch("pathlib.Path.home", return_value=new_home):
+        with patch("arete.application.wizard.detect_anki_paths", return_value=(None, None)):
+            with patch("builtins.input", side_effect=[str(v_bad), "y", str(m_bad), "y", "1"]):
+                run_init_wizard()
+    assert (new_home / ".config/arete/config.toml").exists()
+
+
+def test_wizard_write_error(tmp_path):
+    new_home = tmp_path / "home"
+    new_home.mkdir()
+    v = tmp_path / "v"
+    v.mkdir()
+    m = tmp_path / "m"
+    m.mkdir()
+    with patch("pathlib.Path.home", return_value=new_home):
+        with patch("arete.application.wizard.detect_anki_paths", return_value=(None, None)):
+            with patch("builtins.input", side_effect=[str(v), str(m), "1", "y"]):
+                with patch("builtins.open", side_effect=OSError("Permission denied")):
+                    run_init_wizard()

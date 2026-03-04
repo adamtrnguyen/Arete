@@ -26,8 +26,8 @@ def test_sync_command_help():
     assert "--backend" in output
 
 
-@patch("arete.main.run_sync_logic")
-@patch("arete.interface.cli.resolve_config")
+@patch("arete.application.orchestrator.run_sync_logic")
+@patch("arete.interface._common.resolve_config")
 def test_sync_command_basic(mock_resolve_config, mock_run_sync):
     """Test basic sync command execution."""
     mock_config = MagicMock()
@@ -45,8 +45,8 @@ def test_sync_command_basic(mock_resolve_config, mock_run_sync):
     assert str(call_args["root_input"]) == expected_path
 
 
-@patch("arete.main.run_sync_logic")
-@patch("arete.interface.cli.resolve_config")
+@patch("arete.application.orchestrator.run_sync_logic")
+@patch("arete.interface._common.resolve_config")
 def test_sync_command_with_flags(mock_resolve_config, mock_run_sync):
     """Test sync command with various flags."""
     mock_config = MagicMock()
@@ -78,8 +78,8 @@ def test_sync_command_with_flags(mock_resolve_config, mock_run_sync):
     assert call_args["workers"] == 4
 
 
-@patch("arete.main.run_sync_logic")
-@patch("arete.interface.cli.resolve_config")
+@patch("arete.application.orchestrator.run_sync_logic")
+@patch("arete.interface._common.resolve_config")
 def test_sync_command_verbose_flag(mock_resolve_config, mock_run_sync):
     """Test verbose flag increments verbosity."""
     mock_config = MagicMock()
@@ -97,8 +97,8 @@ def test_sync_command_verbose_flag(mock_resolve_config, mock_run_sync):
     assert call_args["verbose"] == 2
 
 
-@patch("arete.main.run_sync_logic")
-@patch("arete.interface.cli.resolve_config")
+@patch("arete.application.orchestrator.run_sync_logic")
+@patch("arete.interface._common.resolve_config")
 def test_sync_command_no_path_uses_cwd(mock_resolve_config, mock_run_sync):
     """Test sync without path argument defaults to CWD."""
     mock_config = MagicMock()
@@ -112,8 +112,8 @@ def test_sync_command_no_path_uses_cwd(mock_resolve_config, mock_run_sync):
     assert "root_input" not in call_args or call_args["root_input"] is None
 
 
-@patch("arete.main.run_sync_logic")
-@patch("arete.interface.cli.resolve_config")
+@patch("arete.application.orchestrator.run_sync_logic")
+@patch("arete.interface._common.resolve_config")
 def test_sync_command_anki_connect_url(mock_resolve_config, mock_run_sync):
     """Test custom AnkiConnect URL."""
     mock_config = MagicMock()
@@ -127,8 +127,8 @@ def test_sync_command_anki_connect_url(mock_resolve_config, mock_run_sync):
     assert call_args["anki_connect_url"] == "http://custom:9999"
 
 
-@patch("arete.main.run_sync_logic")
-@patch("arete.interface.cli.resolve_config")
+@patch("arete.application.orchestrator.run_sync_logic")
+@patch("arete.interface._common.resolve_config")
 def test_sync_command_clear_cache(mock_resolve_config, mock_run_sync):
     """Test --clear-cache flag."""
     mock_config = MagicMock()

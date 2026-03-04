@@ -2,7 +2,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from arete.application.parser import MarkdownParser
+from arete.application.sync.parser import MarkdownParser
 
 
 @pytest.fixture

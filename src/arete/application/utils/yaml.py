@@ -8,10 +8,6 @@ class _LiteralDumper(yaml.SafeDumper):
         return True
 
 
-def _is_mathy(s: str) -> bool:
-    return any(ch in s for ch in ("\\", "$", "{", "}", "^", "_", "~"))
-
-
 def _str_representer(dumper, data: str):
     # Triggers for |- block scalar: matching Obsidian plugin.
     # We exclude characters common in keys like '_' and '^' to avoid unnecessary quoting.

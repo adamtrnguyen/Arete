@@ -3,14 +3,6 @@ from pathlib import Path
 
 
 @dataclass
-class AnkiModel:
-    """Represents an Anki Note Type (Model)."""
-
-    name: str
-    fields: list[str]
-
-
-@dataclass
 class AnkiDeck:
     """Represents an Anki Deck."""
 

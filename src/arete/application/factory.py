@@ -1,15 +1,18 @@
-"""Anki Bridge Factory
-Centralizes the logic for selecting the appropriate Anki adapter.
+"""Composition Root
+Centralizes construction of concrete infrastructure implementations.
+This is the ONLY application-layer module allowed to import from infrastructure.
 """
 
+from pathlib import Path
+
 from arete.application.config import AppConfig
-from arete.application.vault_service import VaultService
-from arete.domain.interfaces import AnkiBridge
+from arete.application.sync.vault_service import VaultService
+from arete.domain.interfaces import AnkiBridge, ContentCache
 from arete.domain.stats.ports import StatsRepository
 from arete.infrastructure.adapters.anki_connect import AnkiConnectAdapter
 from arete.infrastructure.adapters.anki_direct import AnkiDirectAdapter
 from arete.infrastructure.adapters.stats import ConnectStatsRepository, DirectStatsRepository
-from arete.infrastructure.persistence.cache import ContentCache
+from arete.infrastructure.persistence.cache import ContentCache as _CacheImpl
 
 
 async def get_anki_bridge(config: AppConfig) -> AnkiBridge:
@@ -35,11 +38,16 @@ async def get_anki_bridge(config: AppConfig) -> AnkiBridge:
     return AnkiDirectAdapter(anki_base=config.anki_base)
 
 
+def get_cache(db_path: Path | None = None) -> ContentCache:
+    """Returns a ContentCache implementation."""
+    return _CacheImpl(db_path=db_path)
+
+
 def get_vault_service(config: AppConfig) -> VaultService:
     """Returns the VaultService instance configured for the given app config."""
     if config.vault_root is None:
         raise ValueError("vault_root is required for VaultService")
-    cache = ContentCache(config.vault_root / ".arete.db")
+    cache = _CacheImpl(config.vault_root / ".arete.db")
     return VaultService(config.vault_root, cache, ignore_cache=config.clear_cache)
 
 

@@ -1,4 +1,4 @@
-"""Tests for fix-file and migrate CLI commands."""
+"""Tests for vault fix and vault migrate CLI commands."""
 
 from pathlib import Path
 from unittest.mock import patch
@@ -11,14 +11,14 @@ from arete.interface.cli import app
 runner = CliRunner()
 
 
-# --- Fix File ---
+# --- Fix File (vault fix) ---
 
 
 def test_fix_file_replaces_tabs(tmp_path):
     f = tmp_path / "broken.md"
     f.write_text("---\ndeck:\tTabbed\ncards: []\n---\n")
 
-    result = runner.invoke(app, ["fix-file", str(f)])
+    result = runner.invoke(app, ["vault", "fix", str(f)])
     assert result.exit_code == 0
     assert "auto-fixed" in result.stdout
     assert "\t" not in f.read_text()
@@ -28,18 +28,18 @@ def test_fix_file_no_changes(tmp_path):
     f = tmp_path / "clean.md"
     f.write_text("---\nkey: val\n---\n")
 
-    result = runner.invoke(app, ["fix-file", str(f)])
+    result = runner.invoke(app, ["vault", "fix", str(f)])
     assert result.exit_code == 0
     assert "No fixable issues found" in result.stdout
 
 
 def test_fix_file_not_found():
-    result = runner.invoke(app, ["fix-file", "nonexistent.md"])
+    result = runner.invoke(app, ["vault", "fix", "nonexistent.md"])
     assert result.exit_code == 1
     assert "File not found" in result.stdout
 
 
-# --- Migrate ---
+# --- Migrate (vault migrate) ---
 
 
 def test_migrate_assigns_ids(tmp_path: Path):
@@ -48,7 +48,7 @@ def test_migrate_assigns_ids(tmp_path: Path):
         "---\narete: true\ncards:\n  - fields:\n      Front: Question\n      Back: Answer\n---\n"
     )
 
-    result = runner.invoke(app, ["migrate", str(md_file)])
+    result = runner.invoke(app, ["vault", "migrate", str(md_file)])
     assert result.exit_code == 0
     assert "Migrated" in result.output
 
@@ -67,7 +67,7 @@ def test_migrate_dry_run(tmp_path: Path):
     )
     md_file.write_text(original_content)
 
-    result = runner.invoke(app, ["migrate", "--dry-run", str(md_file)])
+    result = runner.invoke(app, ["vault", "migrate", "--dry-run", str(md_file)])
     assert result.exit_code == 0
     assert "[DRY RUN]" in result.output
     assert md_file.read_text() == original_content
@@ -79,7 +79,7 @@ def test_migrate_preserves_existing_ids(tmp_path: Path):
         "---\narete: true\ncards:\n  - id: arete_EXISTING\n    fields:\n      Front: Q\n---\n"
     )
 
-    runner.invoke(app, ["migrate", str(md_file)])
+    runner.invoke(app, ["vault", "migrate", str(md_file)])
 
     content = md_file.read_text()
     meta, _ = parse_frontmatter(content)
@@ -90,7 +90,7 @@ def test_migrate_yaml_error(tmp_path):
     p = tmp_path / "fail.md"
     p.write_text("---\narete: true\ninvalid: [\n---\nBody", encoding="utf-8")
 
-    result = runner.invoke(app, ["migrate", str(tmp_path), "-vv"])
+    result = runner.invoke(app, ["vault", "migrate", str(tmp_path), "-vv"])
     assert result.exit_code == 0
 
 
@@ -98,7 +98,7 @@ def test_migrate_skip(tmp_path):
     p = tmp_path / "skip.md"
     p.write_text("---\nother: true\n---\nBody", encoding="utf-8")
 
-    result = runner.invoke(app, ["migrate", str(tmp_path), "-vvv"])
+    result = runner.invoke(app, ["vault", "migrate", str(tmp_path), "-vvv"])
     assert result.exit_code == 0
 
 
@@ -106,7 +106,7 @@ def test_migrate_redundant_frontmatter(tmp_path):
     p = tmp_path / "redundant.md"
     p.write_text("---\narete: true\n---\n---\n Body\n", encoding="utf-8")
 
-    result = runner.invoke(app, ["migrate", str(tmp_path)])
+    result = runner.invoke(app, ["vault", "migrate", str(tmp_path)])
     assert result.exit_code == 0
     content = p.read_text(encoding="utf-8")
     assert content.count("---") == 2
@@ -118,7 +118,7 @@ def test_migrate_legacy_version(mock_iter, tmp_path):
     f.write_text("---\nanki_template_version: 1\n---\n")
     mock_iter.return_value = [f]
 
-    result = runner.invoke(app, ["migrate", str(tmp_path)])
+    result = runner.invoke(app, ["vault", "migrate", str(tmp_path)])
     assert result.exit_code == 0
     assert "Migrated" in result.stdout
     assert "arete: true" in f.read_text()
@@ -130,7 +130,7 @@ def test_migrate_skip_no_flag(mock_iter, tmp_path):
     f.write_text("---\ntitle: Hello\n---\n")
     mock_iter.return_value = [f]
 
-    result = runner.invoke(app, ["migrate", str(tmp_path), "-v"])
+    result = runner.invoke(app, ["vault", "migrate", str(tmp_path), "-v"])
     assert result.exit_code == 0
     assert "title: Hello" in f.read_text()
 
@@ -141,7 +141,7 @@ def test_migrate_auto_heal_split(mock_iter, tmp_path):
     f.write_text("---\narete: true\ncards:\n- Front: Q\n- Back: A\n---\n")
     mock_iter.return_value = [f]
 
-    runner.invoke(app, ["migrate", str(tmp_path)])
+    runner.invoke(app, ["vault", "migrate", str(tmp_path)])
 
     content = f.read_text()
     assert "Front: Q" in content

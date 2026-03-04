@@ -15,7 +15,7 @@ def test_integration_vault_parity(integration_vault, anki_url, setup_anki, test_
     cmd = [
         sys.executable,
         "-m",
-        "arete.main",
+        "arete",
         "-v",
         "sync",
         str(tmp_path),

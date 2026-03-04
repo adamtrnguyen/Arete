@@ -104,3 +104,62 @@ class TestAnkiOrderingReal:
             print("Verification Successful: Cards are ordered correctly in the filtered deck!")
         finally:
             col.close()
+
+    @pytest.mark.asyncio
+    async def test_rebuild_empties_stale_cards(self, setup_anki_data, adapter):
+        """Rebuilding a filtered deck should empty stale cards first."""
+        col_path, cids = setup_anki_data
+
+        # First build: all 3 cards
+        ok = await adapter.create_topo_deck("Queue", cids, reschedule=True)
+        assert ok is True
+
+        # Second build: only first 2 cards
+        ok = await adapter.create_topo_deck("Queue", cids[:2], reschedule=True)
+        assert ok is True
+
+        # Verify: card[2] should NOT be in the filtered deck anymore
+        col = Collection(str(col_path))
+        try:
+            did = col.decks.id("Queue", create=False)
+            assert did is not None
+
+            c0 = col.get_card(cids[0])
+            c1 = col.get_card(cids[1])
+            c2 = col.get_card(cids[2])
+
+            assert c0.did == did
+            assert c1.did == did
+            assert c2.did != did, "Stale card should have been returned to home deck"
+
+            assert c0.due == 1000
+            assert c1.due == 1001
+        finally:
+            col.close()
+
+    @pytest.mark.asyncio
+    async def test_rebuild_reorders_existing_deck(self, setup_anki_data, adapter):
+        """Rebuilding with a different order should update due values."""
+        col_path, cids = setup_anki_data
+
+        # First build: order [0, 1, 2]
+        await adapter.create_topo_deck("Queue", cids)
+
+        # Second build: reversed order [2, 1, 0]
+        reversed_cids = list(reversed(cids))
+        ok = await adapter.create_topo_deck("Queue", reversed_cids)
+        assert ok is True
+
+        col = Collection(str(col_path))
+        try:
+            did = col.decks.id("Queue", create=False)
+            c0 = col.get_card(cids[0])
+            c1 = col.get_card(cids[1])
+            c2 = col.get_card(cids[2])
+
+            # New order: cids[2] first, cids[1] second, cids[0] third
+            assert c2.due == 1000
+            assert c1.due == 1001
+            assert c0.due == 1002
+        finally:
+            col.close()

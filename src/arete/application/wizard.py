@@ -13,7 +13,7 @@ def run_init_wizard():
     vault_root = _ask_path("Obsidian Vault Root", default=str(Path.home() / "Obsidian Vault"))
 
     # 2. Anki Media
-    detected_base, detected_media = detect_anki_paths()
+    _, detected_media = detect_anki_paths()
     anki_media = _ask_path(
         "Anki Media Directory", default=str(detected_media) if detected_media else None
     )
