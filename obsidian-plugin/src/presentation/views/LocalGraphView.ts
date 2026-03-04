@@ -700,27 +700,6 @@ export class LocalGraphView extends ItemView {
 		});
 	}
 
-	drag(simulation: d3.Simulation<GraphNode, GraphLink>) {
-		function dragstarted(event: any, d: any) {
-			if (!event.active) simulation.alphaTarget(0.3).restart();
-			d.fx = d.x;
-			d.fy = d.y;
-		}
-
-		function dragged(event: any, d: any) {
-			d.fx = event.x;
-			d.fy = event.y;
-		}
-
-		function dragended(event: any, d: any) {
-			if (!event.active) simulation.alphaTarget(0);
-			d.fx = null;
-			d.fy = null;
-		}
-
-		return d3.drag().on('start', dragstarted).on('drag', dragged).on('end', dragended);
-	}
-
 	async openFile(filePath: string) {
 		this.currentFilePath = filePath;
 		const file = this.app.vault.getAbstractFileByPath(filePath);
@@ -732,13 +711,6 @@ export class LocalGraphView extends ItemView {
 	async onClose() {
 		if (this.simulation) this.simulation.stop();
 		this.tooltipComponent.unload();
-	}
-
-	async focusCard(cardId: string) {
-		console.log('[Arete Graph] Focusing card via direct call:', cardId);
-		this.centeredCardId = cardId;
-		// Ensure active file is correct or refresh uses current context
-		await this.refresh();
 	}
 
 	/**

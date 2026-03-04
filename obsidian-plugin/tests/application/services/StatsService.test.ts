@@ -1,12 +1,15 @@
 import '../../test-setup';
 import { App, TFile } from 'obsidian';
-import { StatsService, AnkiCardStats } from '@application/services/StatsService';
+import { StatsService } from '@application/services/StatsService';
+import { AnkiCardStats } from '@domain/stats';
 import { AretePluginSettings } from '@domain/settings';
+import { AreteClient } from '@infrastructure/arete/AreteClient';
 
 describe('StatsService', () => {
 	let app: App;
 	let settings: AretePluginSettings;
 	let service: StatsService;
+	let client: AreteClient;
 
 	beforeEach(() => {
 		app = new App();
@@ -24,7 +27,8 @@ describe('StatsService', () => {
 			stats_difficulty_threshold: 0.9,
 		} as any;
 
-		service = new StatsService(app, settings);
+		client = new AreteClient(settings);
+		service = new StatsService(app, settings, client);
 	});
 
 	test('refreshStats aggregates cards correctly by file and prioritizes YAML deck', async () => {

@@ -40,8 +40,6 @@ describe('SyncService', () => {
 			last_sync_time: null,
 			execution_mode: 'cli',
 			server_port: 8777,
-			ai_api_key: '',
-			ai_provider: 'openai',
 			project_root: '',
 			server_reload: false,
 		};
@@ -106,11 +104,12 @@ describe('SyncService', () => {
 
 		expect(spawn).toHaveBeenCalledWith(
 			'python3',
-			['-m', 'arete', 'sync', '--workers', '4', '/mock/vault/path'],
-			expect.objectContaining({
-				env: expect.objectContaining({ PYTHONPATH: '/path/to' }),
-			}),
+			expect.arrayContaining(['-m', 'arete', 'sync', '--workers', '4', '/mock/vault/path']),
+			expect.any(Object),
 		);
+		const spawnCall = (spawn as jest.Mock).mock.calls[0];
+		const env = spawnCall[2].env;
+		expect(env.PYTHONPATH).toContain('/path/to');
 	});
 
 	describe('runSyncServer', () => {

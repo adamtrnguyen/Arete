@@ -1,18 +1,15 @@
 import '../../test-setup';
-import { App } from 'obsidian';
 import { LeechService } from '@application/services/LeechService';
 import { AreteClient } from '@infrastructure/arete/AreteClient';
 import { DEFAULT_SETTINGS } from '@domain/settings';
 
 describe('LeechService', () => {
 	let service: LeechService;
-	let app: App;
 	let areteClient: AreteClient;
 
 	beforeEach(() => {
-		app = new App();
 		areteClient = new AreteClient(DEFAULT_SETTINGS);
-		service = new LeechService(app, areteClient);
+		service = new LeechService(areteClient);
 	});
 
 	test('getLeeches flattens and sorts by lapses', () => {

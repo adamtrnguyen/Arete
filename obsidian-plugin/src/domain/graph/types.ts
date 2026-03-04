@@ -32,13 +32,20 @@ export interface DependencyEdge {
 	toId: string;
 }
 
-/**
- * Complete dependency graph for a vault.
- */
-export interface DependencyGraph {
-	nodes: Map<string, CardNode>;
-	requires: Map<string, string[]>; // id → [prereq ids]
-	related: Map<string, string[]>; // id → [related ids]
+/** A file node representing a markdown file containing cards. */
+export interface FileNode {
+	path: string;           // Vault-relative path
+	basename: string;       // File stem without .md
+	cardCount: number;      // Number of cards in this file
+	cardIds: string[];      // Card IDs in this file
+}
+
+/** Result of a global graph query across the entire vault. */
+export interface GlobalGraphResult {
+	files: FileNode[];
+	cards: CardNode[];
+	requiresEdges: DependencyEdge[];
+	relatedEdges: DependencyEdge[];
 }
 
 /**
@@ -117,11 +124,4 @@ export class DependencyGraphBuilder {
 		return Array.from(this.nodes.values());
 	}
 
-	toGraph(): DependencyGraph {
-		return {
-			nodes: new Map(this.nodes),
-			requires: new Map(this.requires),
-			related: new Map(this.related),
-		};
-	}
 }

@@ -8,8 +8,6 @@ describe('ServerManager', () => {
 	let service: ServerManager;
 	let app: App;
 	let settings: any;
-	let manifest: any;
-
 	beforeEach(() => {
 		jest.clearAllMocks();
 		jest.useFakeTimers();
@@ -20,8 +18,7 @@ describe('ServerManager', () => {
 			server_port: 8777,
 			project_root: '/mock/project',
 		};
-		manifest = { dir: '/mock/plugin' };
-		service = new ServerManager(app, settings, manifest);
+		service = new ServerManager(app, settings);
 	});
 
 	afterEach(() => {
@@ -167,10 +164,11 @@ describe('ServerManager', () => {
 			expect(spawn).toHaveBeenCalledWith(
 				'python3',
 				expect.arrayContaining(['-m', 'arete', 'server']),
-				expect.objectContaining({
-					env: expect.objectContaining({ PYTHONPATH: '/path' }),
-				}),
+				expect.any(Object),
 			);
+			const spawnCall = (spawn as jest.Mock).mock.calls[0];
+			const env = spawnCall[2].env;
+			expect(env.PYTHONPATH).toContain('/path');
 			// Cleanup
 			(requestUrl as jest.Mock).mockResolvedValue({ status: 200 });
 			await jest.advanceTimersByTimeAsync(1500);

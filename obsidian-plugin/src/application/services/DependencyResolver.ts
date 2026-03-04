@@ -5,25 +5,20 @@
  * and builds a local graph for UI rendering.
  */
 
-import { App, TFile } from 'obsidian';
+import { App } from 'obsidian';
 import { AretePluginSettings } from '@/domain/settings';
-import { CardNode, DependencyGraphBuilder, LocalGraphResult } from '@/domain/graph/types';
+import { CardNode, DependencyEdge, DependencyGraphBuilder, FileNode, GlobalGraphResult, LocalGraphResult } from '@/domain/graph/types';
 
 export class DependencyResolver {
 	private app: App;
 	private settings: AretePluginSettings;
 	private graphBuilder: DependencyGraphBuilder;
-	private lastRefresh = 0;
 	private fileIndex: Map<string, string[]> = new Map(); // basename → card IDs
 
 	constructor(app: App, settings: AretePluginSettings) {
 		this.app = app;
 		this.settings = settings;
 		this.graphBuilder = new DependencyGraphBuilder();
-	}
-
-	updateSettings(settings: AretePluginSettings): void {
-		this.settings = settings;
 	}
 
 	/**
@@ -122,7 +117,6 @@ export class DependencyResolver {
 			}
 		}
 
-		this.lastRefresh = Date.now();
 	}
 
 	/**
@@ -154,76 +148,51 @@ export class DependencyResolver {
 	}
 
 	/**
-	 * Parse a single file and add its cards to the graph.
-	 * Note: For incremental updates. For full rebuild, use buildGraph().
+	 * Get the full vault-wide dependency graph for global visualization.
 	 */
-	async parseFile(file: TFile): Promise<void> {
-		try {
-			const cache = this.app.metadataCache.getFileCache(file);
-			const frontmatter = cache?.frontmatter;
+	getGlobalGraph(): GlobalGraphResult {
+		const allNodes = this.graphBuilder.getAllNodes();
 
-			if (!frontmatter || !frontmatter.cards) return;
-
-			const cards = frontmatter.cards;
-			if (!Array.isArray(cards)) return;
-
-			const basename = file.basename;
-			if (!this.fileIndex.has(basename)) {
-				this.fileIndex.set(basename, []);
+		// Build file index
+		const fileMap = new Map<string, FileNode>();
+		for (const node of allNodes) {
+			if (!fileMap.has(node.filePath)) {
+				const basename = node.filePath.replace(/\.md$/, '').split('/').pop() || node.filePath;
+				fileMap.set(node.filePath, {
+					path: node.filePath,
+					basename,
+					cardCount: 0,
+					cardIds: [],
+				});
 			}
-
-			for (const card of cards) {
-				if (typeof card !== 'object' || !card.id) continue;
-
-				let title = card.id;
-				if (card.fields && typeof card.fields === 'object') {
-					title = card.fields.Front || card.id;
-				}
-
-				const lineNumber = card.__line__ || 1;
-
-				const node: CardNode = {
-					id: card.id,
-					title: String(title).slice(0, 100),
-					filePath: file.path,
-					lineNumber,
-				};
-
-				this.graphBuilder.addNode(node);
-				this.fileIndex.get(basename)!.push(card.id);
-
-				// Resolve deps immediately (file index may be incomplete for incremental)
-				if (card.deps && typeof card.deps === 'object') {
-					const requires = Array.isArray(card.deps.requires) ? card.deps.requires : [];
-					const related = Array.isArray(card.deps.related) ? card.deps.related : [];
-
-					for (const ref of requires) {
-						if (typeof ref === 'string') {
-							for (const targetId of this.resolveReference(ref)) {
-								this.graphBuilder.addRequires(card.id, targetId);
-							}
-						}
-					}
-
-					for (const ref of related) {
-						if (typeof ref === 'string') {
-							for (const targetId of this.resolveReference(ref)) {
-								this.graphBuilder.addRelated(card.id, targetId);
-							}
-						}
-					}
-				}
-			}
-		} catch (e) {
-			console.warn(`[DependencyResolver] Failed to parse ${file.path}:`, e);
+			const file = fileMap.get(node.filePath)!;
+			file.cardCount++;
+			file.cardIds.push(node.id);
 		}
+
+		// Collect ALL edges
+		const requiresEdges: DependencyEdge[] = [];
+		const relatedEdges: DependencyEdge[] = [];
+		for (const node of allNodes) {
+			for (const prereqId of this.graphBuilder.getPrerequisites(node.id)) {
+				requiresEdges.push({ type: 'requires', fromId: node.id, toId: prereqId });
+			}
+			for (const relId of this.graphBuilder.getRelated(node.id)) {
+				relatedEdges.push({ type: 'related', fromId: node.id, toId: relId });
+			}
+		}
+
+		return {
+			files: Array.from(fileMap.values()),
+			cards: allNodes,
+			requiresEdges,
+			relatedEdges,
+		};
 	}
 
 	/**
 	 * Get local subgraph centered on a card.
 	 */
-	// ... inside DependencyResolver
-
 	getLocalGraph(cardId: string, depth = 2): LocalGraphResult | null {
 		if (!this.graphBuilder.hasNode(cardId)) {
 			return null;
@@ -235,10 +204,10 @@ export class DependencyResolver {
 		const relatedIds = new Set<string>();
 
 		// Walk prerequisites backward
-		this.walkPrereqs(cardId, depth, prereqIds, new Set());
+		this.walkPrereqs(cardId, depth, prereqIds);
 
 		// Walk dependents forward
-		this.walkDependents(cardId, depth, dependentIds, new Set());
+		this.walkDependents(cardId, depth, dependentIds);
 
 		// Get direct related
 		for (const relId of this.graphBuilder.getRelated(cardId)) {
@@ -315,9 +284,6 @@ export class DependencyResolver {
 		startCardId: string,
 		maxDepth: number,
 		collected: Set<string>,
-		// visited set not strictly needed as we handle it per-level or via distance map
-		// keeping signature compatible if needed, but implementation is new.
-		_unused?: Set<string>,
 	): void {
 		if (maxDepth <= 0) return;
 
@@ -353,7 +319,6 @@ export class DependencyResolver {
 		startCardId: string,
 		maxDepth: number,
 		collected: Set<string>,
-		_unused?: Set<string>,
 	): void {
 		if (maxDepth <= 0) return;
 

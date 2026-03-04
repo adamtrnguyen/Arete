@@ -1,6 +1,6 @@
 import { App, TFile, Notice } from 'obsidian';
 import { AretePluginSettings } from '@/domain/settings';
-import { ConceptStats } from '@application/services/StatsService';
+import { ConceptStats } from '@/domain/stats';
 
 export class GraphService {
 	app: App;

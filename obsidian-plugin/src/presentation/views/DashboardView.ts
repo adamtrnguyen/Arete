@@ -1,6 +1,6 @@
 import { ItemView, WorkspaceLeaf, setIcon, Notice, MarkdownView, TFile } from 'obsidian';
 import AretePlugin from '@/main';
-import { ConceptStats, StatsNode } from '@application/services/StatsService';
+import { ConceptStats, StatsNode } from '@/domain/stats';
 import { CardStatsModal } from '@/presentation/modals/CardStatsModal';
 import { BrokenReference } from '@application/services/LinkCheckerService';
 
@@ -15,8 +15,6 @@ export class DashboardView extends ItemView {
 	// Overview State
 	expandedConcepts: Set<string>;
 	expandedDecks: Set<string>;
-	overviewMode: 'hierarchy' | 'leaderboard' = 'hierarchy'; // Leaderboard deprecated for now
-
 	// Integrity State
 	brokenRefs: BrokenReference[] | null = null;
 	isScanning = false;

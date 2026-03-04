@@ -1,7 +1,7 @@
 import { requestUrl } from 'obsidian';
 import { spawn } from 'child_process';
-import * as path from 'path';
 import { AretePluginSettings } from '@/domain/settings';
+import { resolvePythonCommand } from '@infrastructure/arete/PythonProcess';
 
 export class AreteClient {
 	private settings: AretePluginSettings;
@@ -104,29 +104,11 @@ export class AreteClient {
 
 		// Spawn Logic
 		return new Promise((resolve, reject) => {
-			const pythonSetting = this.settings.python_path || 'python3';
-			const scriptPath = this.settings.arete_script_path || '';
-			const projectRoot = this.settings.project_root || '';
+			const resolved = resolvePythonCommand(this.settings);
+			const finalArgs = [...resolved.args, ...args];
 
-			const parts = pythonSetting.split(' ');
-			const cmd = parts[0];
-			const cmdArgs = parts.slice(1);
-			const env = Object.assign({}, process.env);
-
-			if (scriptPath && scriptPath.endsWith('.py')) {
-				const scriptDir = path.dirname(scriptPath);
-				const packageRoot = path.dirname(scriptDir);
-				env['PYTHONPATH'] = packageRoot;
-				cmdArgs.push('-m', 'arete');
-			} else if (!cmdArgs.includes('-m')) {
-				cmdArgs.push('-m', 'arete');
-			}
-
-			const finalArgs = [...cmdArgs, ...args];
-			const runCwd = projectRoot || '.';
-
-			console.log(`[Arete] Spawning: ${cmd} ${finalArgs.join(' ')}`);
-			const child = spawn(cmd, finalArgs, { cwd: runCwd, env });
+			console.log(`[Arete] Spawning: ${resolved.cmd} ${finalArgs.join(' ')}`);
+			const child = spawn(resolved.cmd, finalArgs, { cwd: resolved.cwd, env: resolved.env });
 
 			let stdout = '';
 			let stderr = '';
@@ -202,10 +184,6 @@ export class AreteClient {
 		return response.json || {};
 	}
 
-	async version(): Promise<number> {
-		return 6;
-	}
-
 	async suspendCards(cardIds: number[]): Promise<boolean> {
 		const res = await this.invoke('/anki/cards/suspend', { cids: cardIds });
 		return res.ok;
@@ -214,10 +192,6 @@ export class AreteClient {
 	async unsuspendCards(cardIds: number[]): Promise<boolean> {
 		const res = await this.invoke('/anki/cards/unsuspend', { cids: cardIds });
 		return res.ok;
-	}
-
-	async getCardInfo(_cardIds: number[]): Promise<any[]> {
-		return [];
 	}
 
 	async browse(query: string): Promise<boolean> {

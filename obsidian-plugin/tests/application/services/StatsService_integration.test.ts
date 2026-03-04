@@ -34,12 +34,8 @@ describe('StatsService Integration', () => {
 			stats_difficulty_threshold: 0.9,
 		} as any;
 
-		service = new StatsService(app, settings);
-
-		// In StatsService constructor, a new AreteClient is created.
-		// We can get the instance from the mock implementation if needed,
-		// or just access the private client property for testing purposes.
-		mockClient = (service as any).client;
+		mockClient = new AreteClient(settings) as jest.Mocked<AreteClient>;
+		service = new StatsService(app, settings, mockClient);
 		mockClient.invoke.mockClear();
 	});
 

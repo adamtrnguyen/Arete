@@ -1,6 +1,5 @@
-import { App } from 'obsidian';
 import { AreteClient } from '../../infrastructure/arete/AreteClient';
-import { StatsCache, ProblematicCard } from './StatsService';
+import { StatsCache, ProblematicCard } from '@/domain/stats';
 
 export interface LeechCard extends ProblematicCard {
 	filePath: string;
@@ -11,7 +10,7 @@ export interface LeechCard extends ProblematicCard {
 export class LeechService {
 	private areteClient: AreteClient;
 
-	constructor(_app: App, areteClient: AreteClient) {
+	constructor(areteClient: AreteClient) {
 		this.areteClient = areteClient;
 	}
 

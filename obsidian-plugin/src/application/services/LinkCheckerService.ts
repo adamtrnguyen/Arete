@@ -80,24 +80,6 @@ export class LinkCheckerService {
 			// 2. Standard Body Scan (Only if NOT a YAML card file)
 
 			// Check Links
-			// Check Links (DISABLED per user request - only check images)
-			/*
-			if (cache.links) {
-				for (const link of cache.links) {
-					const dest = this.app.metadataCache.getFirstLinkpathDest(link.link, file.path);
-					if (!dest) {
-						broken.push({
-							sourceFile: file,
-							linkText: link.original,
-							linkPath: link.link,
-							type: 'link',
-							position: link.position,
-						});
-					}
-				}
-			}
-			*/
-
 			// Check Embeds (Images, Transclusions)
 			if (cache.embeds) {
 				for (const embed of cache.embeds) {

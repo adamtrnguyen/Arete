@@ -23,9 +23,8 @@ export interface AnkiCardStats {
 	daysOverdue?: number;
 	volatility?: number;
 	lapseRate?: number;
-	intervalGrowth?: number; // Replaces stabilityGain
-	pressFatigue?: number; // New metric
-	stabilityGain?: number; // Deprecated but kept for type safety
+	intervalGrowth?: number;
+	pressFatigue?: number;
 	retAtReview?: number;
 	scheduleAdherence?: number;
 	isOverlearning?: boolean;

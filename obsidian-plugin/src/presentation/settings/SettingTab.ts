@@ -217,39 +217,6 @@ export class AreteSettingTab extends PluginSettingTab {
 		}
 
 		// ═══════════════════════════════════════════════════════════════════
-		// AI ASSISTANT (Atomic Agents)
-		// ═══════════════════════════════════════════════════════════════════
-		containerEl.createEl('h3', { text: 'AI Assistant' });
-
-		new Setting(containerEl)
-			.setName('API Provider')
-			.setDesc('LLM provider for the AI agent.')
-			.addDropdown((dropdown) =>
-				dropdown
-					.addOption('openai', 'OpenAI')
-					.addOption('gemini', 'Google Gemini')
-					.addOption('anthropic', 'Anthropic')
-					.setValue(this.plugin.settings.ai_provider)
-					.onChange(async (value: 'openai' | 'gemini' | 'anthropic') => {
-						this.plugin.settings.ai_provider = value;
-						await this.plugin.saveSettings();
-					}),
-			);
-
-		new Setting(containerEl)
-			.setName('API Key')
-			.setDesc('API Key for the selected provider.')
-			.addText((text) =>
-				text
-					.setPlaceholder('sk-...')
-					.setValue(this.plugin.settings.ai_api_key)
-					.onChange(async (value) => {
-						this.plugin.settings.ai_api_key = value;
-						await this.plugin.saveSettings();
-					}),
-			);
-
-		// ═══════════════════════════════════════════════════════════════════
 		// ANKI CONNECTION
 		// ═══════════════════════════════════════════════════════════════════
 		containerEl.createEl('h3', { text: 'Anki Connection' });

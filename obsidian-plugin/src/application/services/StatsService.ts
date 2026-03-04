@@ -2,15 +2,6 @@ import { App, TFile } from 'obsidian';
 import { AretePluginSettings } from '@/domain/settings';
 import { AreteClient } from '@/infrastructure/arete/AreteClient';
 
-// Re-export domain types for backwards compatibility
-export type {
-	AnkiCardStats,
-	ProblematicCard,
-	ConceptStats,
-	StatsNode,
-	StatsCache,
-} from '@/domain/stats';
-
 import type {
 	AnkiCardStats,
 	ConceptStats,
@@ -24,11 +15,11 @@ export class StatsService {
 	cache: StatsCache;
 	private client: AreteClient;
 
-	constructor(app: App, settings: AretePluginSettings, initialCache?: StatsCache) {
+	constructor(app: App, settings: AretePluginSettings, client: AreteClient, initialCache?: StatsCache) {
 		this.app = app;
 		this.settings = settings;
+		this.client = client;
 		this.cache = initialCache || { concepts: {}, lastFetched: 0 };
-		this.client = new AreteClient(settings);
 	}
 
 	getCache(): StatsCache {
@@ -448,7 +439,6 @@ export class StatsService {
 					lapseRate: d.lapse_rate,
 					intervalGrowth: d.interval_growth,
 					pressFatigue: d.press_fatigue,
-					stabilityGain: d.stability_gain,
 					retAtReview: d.ret_at_review,
 					scheduleAdherence: d.schedule_adherence,
 					isOverlearning: d.is_overlearning,

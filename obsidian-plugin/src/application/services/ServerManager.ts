@@ -1,13 +1,13 @@
 import { App, Notice, requestUrl } from 'obsidian';
 import { spawn, ChildProcess } from 'child_process';
-import * as path from 'path';
 import { AretePluginSettings } from '@domain/settings';
+import { resolvePythonCommand } from '@infrastructure/arete/PythonProcess';
 
 export class ServerManager {
 	app: App;
 	settings: AretePluginSettings;
 	private serverProcess: ChildProcess | null = null;
-	constructor(app: App, settings: AretePluginSettings, _manifest: any) {
+	constructor(app: App, settings: AretePluginSettings) {
 		this.app = app;
 		this.settings = settings;
 	}
@@ -107,30 +107,11 @@ export class ServerManager {
 	}
 
 	private spawnServer() {
-		const pythonSetting = this.settings.python_path || 'python3';
-		const scriptPath = this.settings.arete_script_path || '';
-		const projectRoot = this.settings.project_root || '';
+		const vaultConfig = this.app.vault.adapter as any;
+		const vaultPath = vaultConfig.getBasePath ? vaultConfig.getBasePath() : process.cwd();
 
-		const parts = pythonSetting.split(' ');
-		const cmd = parts[0];
-		const args = parts.slice(1);
-		const env = Object.assign({}, process.env);
-
-		// 1. Resolve executable and initial args
-		if (scriptPath && scriptPath.endsWith('.py')) {
-			const scriptDir = path.dirname(scriptPath);
-			const packageRoot = path.dirname(scriptDir);
-			env['PYTHONPATH'] = packageRoot;
-			args.push('-m', 'arete');
-		} else {
-			// Check if we need to add '-m arete'
-			// If args already contains 'arete' or '-m', skip
-			const hasArete = args.some((a) => a.toLowerCase().includes('arete'));
-			const hasModule = args.includes('-m');
-			if (!hasArete && !hasModule) {
-				args.push('-m', 'arete');
-			}
-		}
+		const resolved = resolvePythonCommand(this.settings, vaultPath);
+		const args = [...resolved.args];
 
 		if (this.settings.server_reload) {
 			args.push('--reload');
@@ -138,16 +119,12 @@ export class ServerManager {
 
 		args.push('server', '--port', (this.settings.server_port || 8777).toString());
 
-		console.log(`[Arete] Spawning server: ${cmd} ${args.join(' ')}`);
+		console.log(`[Arete] Spawning server: ${resolved.cmd} ${args.join(' ')}`);
 
-		const vaultConfig = this.app.vault.adapter as any;
-		const vaultPath = vaultConfig.getBasePath ? vaultConfig.getBasePath() : process.cwd();
-		const cwd = projectRoot || vaultPath;
-
-		this.serverProcess = spawn(cmd, args, {
-			cwd: cwd,
-			env: env,
-			stdio: ['ignore', 'pipe', 'pipe'], // Pipe stdout and stderr to debug
+		this.serverProcess = spawn(resolved.cmd, args, {
+			cwd: resolved.cwd,
+			env: resolved.env,
+			stdio: ['ignore', 'pipe', 'pipe'],
 		});
 
 		this.serverProcess.stdout?.on('data', (data) => {

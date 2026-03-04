@@ -22,23 +22,6 @@ describe('CheckService', () => {
 		service = new CheckService(app, plugin.settings);
 	});
 
-	describe('getEnv', () => {
-		test('adds src to PYTHONPATH if cwd is provided', () => {
-			const env = service['getEnv']('/mock/cwd');
-			expect(env.PYTHONPATH).toContain('/mock/cwd/src');
-		});
-
-		test('adds extra paths on darwin', () => {
-			const originalPlatform = process.platform;
-			Object.defineProperty(process, 'platform', { value: 'darwin' });
-
-			const env = service['getEnv']();
-			expect(env.PATH).toContain('/opt/homebrew/bin');
-
-			Object.defineProperty(process, 'platform', { value: originalPlatform });
-		});
-	});
-
 	describe('getCheckResult', () => {
 		test('successfully parses JSON output', async () => {
 			const mockChild = createMockChildProcess();
@@ -124,13 +107,9 @@ describe('CheckService', () => {
 		mockChild.emit('close', 0);
 		await promise;
 
-		expect(spawn).toHaveBeenCalledWith(
-			'python3',
-			expect.any(Array),
-			expect.objectContaining({
-				env: expect.objectContaining({ PYTHONPATH: '/path/to' }),
-			}),
-		);
+		const spawnCall = (spawn as jest.Mock).mock.calls[0];
+		const env = spawnCall[2].env;
+		expect(env.PYTHONPATH).toContain('/path/to');
 	});
 
 	test('testConfig calls exec (success)', async () => {

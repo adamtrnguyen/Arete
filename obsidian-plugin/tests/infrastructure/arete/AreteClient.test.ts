@@ -325,11 +325,4 @@ describe('AreteClient', () => {
 		});
 	});
 
-	test('getCardInfo returns empty array', async () => {
-		expect(await client.getCardInfo([1])).toEqual([]);
-	});
-
-	test('version returns 6', async () => {
-		expect(await client.version()).toBe(6);
-	});
 });
