@@ -71,7 +71,8 @@ DEFAULT_CONFIG = {
     "apiLogPath": None,
     "apiPollInterval": 25,
     "apiVersion": 6,
-    "webBacklog": 5,
+    # Higher backlog helps absorb bursty parallel clients during sync.
+    "webBacklog": 128,
     "webBindAddress": os.getenv("ANKICONNECT_BIND_ADDRESS", "127.0.0.1"),
     "webBindPort": 8765,
     "webCorsOrigin": os.getenv("ANKICONNECT_CORS_ORIGIN", None),

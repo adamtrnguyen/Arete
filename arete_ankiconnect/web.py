@@ -135,14 +135,24 @@ class WebServer:
             self.advanceClients()
 
     def acceptClients(self):
-        rlist = select.select([self.sock], [], [], 0)[0]
-        if not rlist:
-            return
+        # Drain all pending accepts each tick.
+        # The original single-accept behavior can overflow backlog under
+        # bursty callers (e.g., parallel sync workers), causing intermittent
+        # connection failures.
+        while True:
+            try:
+                rlist = select.select([self.sock], [], [], 0)[0]
+                if not rlist:
+                    return
 
-        clientSock = self.sock.accept()[0]
-        if clientSock is not None:
-            clientSock.setblocking(False)
-            self.clients.append(WebClient(clientSock, self.handlerWrapper))
+                clientSock = self.sock.accept()[0]
+                if clientSock is None:
+                    return
+
+                clientSock.setblocking(False)
+                self.clients.append(WebClient(clientSock, self.handlerWrapper))
+            except (BlockingIOError, OSError):
+                return
 
     def advanceClients(self):
         self.clients = list(filter(lambda c: c.advance(), self.clients))

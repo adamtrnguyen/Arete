@@ -594,6 +594,51 @@ class AnkiConnect:
             self.stopEditing()
 
     @util.api()
+    def createFilteredDeck(self, name, cids, reschedule=True):
+        """Create/rebuild a filtered deck with cards in the specified CID order."""
+        if not cids:
+            raise Exception("No card IDs provided")
+
+        self.startEditing()
+        try:
+            col = self.collection()
+
+            # 1. Find or create filtered deck
+            did = col.decks.id(name, create=False)
+            if did:
+                deck = col.decks.get(did)
+                if not deck or not deck.get("dyn"):
+                    raise Exception(f"Deck '{name}' exists and is not a filtered deck")
+                # Empty existing filtered deck before rebuilding
+                col.sched.empty_filtered_deck(did)
+            else:
+                did = col.decks.new_filtered(name)
+
+            # 2. Configure search terms
+            deck = col.decks.get(did)
+            query = " OR ".join([f"cid:{cid}" for cid in cids])
+            deck["terms"] = [[query, len(cids), 0]]  # [query, limit, order=oldest]
+            deck["resched"] = reschedule
+            col.decks.save(deck)
+
+            # 3. Rebuild (pull cards into filtered deck)
+            col.sched.rebuild_filtered_deck(did)
+
+            # 4. Enforce topological order via due values
+            for i, cid in enumerate(cids):
+                try:
+                    card = col.get_card(cid)
+                    if card.did == did:
+                        card.due = i + 1000
+                        col.update_card(card)
+                except Exception:
+                    pass  # Card may not have been pulled (suspended, etc.)
+
+            return did
+        finally:
+            self.stopEditing()
+
+    @util.api()
     def getDeckConfig(self, deck):
         if deck not in self.deckNames():
             return False
