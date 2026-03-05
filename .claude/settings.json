@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(just *)",
+      "Bash(uv run pytest *)",
+      "Bash(uv run ruff *)",
+      "Bash(uv run pyright *)",
+      "Bash(uv run lint-imports *)",
+      "Bash(uv run arete *)",
+      "Bash(uv sync *)",
+      "Bash(uv run ty *)",
+      "Bash(docker compose *)",
+      "Bash(orb start)",
+      "Bash(git *)",
+      "Bash(npm --prefix obsidian-plugin *)",
+      "Bash(npx tsc *)",
+      "Read"
+    ],
+    "deny": [
+      "Bash(uv run arete sync --force *)",
+      "Bash(uv run arete prune --force *)"
+    ]
+  },
+  "env": {
+    "ENABLE_LSP_TOOL": "1"
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'INPUT=$(cat); FILE=$(echo \"$INPUT\" | jq -r \".tool_input.file_path // empty\" 2>/dev/null); case \"$FILE\" in */anki_data/*|*/arete_ankiconnect/*) echo \"Blocked: do not edit Anki data or ankiconnect plugin files\" >&2; exit 2;; esac; exit 0'"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash /Users/adam/.claude/hooks/ruff-format.sh"
+          }
+        ]
+      }
+    ]
+  },
+  "enabledPlugins": {
+    "pyright-lsp@claude-plugins-official": true,
+    "typescript-lsp@claude-plugins-official": true,
+    "astral@astral-sh": true
+  }
+}

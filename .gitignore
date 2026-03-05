@@ -54,7 +54,9 @@ site/
 # BMAD Framework
 _bmad/
 _bmad-output/
-.claude/
+# Claude Code — track shared config, ignore local/ephemeral
+.claude/settings.local.json
+.claude/commands/
 
 # Temporary Files
 *.diff
