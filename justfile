@@ -39,13 +39,21 @@ default:
 test *args:
     {{PYTEST}} {{TESTS}}/application {{TESTS}}/interface {{TESTS}}/infrastructure {{TESTS}}/domain {{args}}
 
-# Run backend integration tests (requires Anki)
-test-integration:
-    {{PYTEST}} {{TESTS}}/integration
+# Run backend integration tests (auto-starts Docker, random port)
+test-integration *args:
+    {{PYTEST}} {{TESTS}}/integration {{args}}
 
 # Run tests with coverage
 coverage:
     {{PYTEST}} --cov=src/arete --cov-report=xml --cov-report=term-missing {{TESTS}}/application {{TESTS}}/interface {{TESTS}}/infrastructure {{TESTS}}/domain
+
+# Integration tests with coverage
+test-integration-coverage *args:
+    {{PYTEST}} --cov=src/arete --cov-report=term-missing {{TESTS}}/integration {{args}}
+
+# All tests with coverage (unit + integration + e2e)
+coverage-all *args:
+    {{PYTEST}} --cov=src/arete --cov-report=term-missing {{TESTS}} {{args}}
 
 
 # Lint backend code with Ruff

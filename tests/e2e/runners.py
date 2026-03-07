@@ -1,5 +1,3 @@
-import subprocess
-import sys
 from pathlib import Path
 from typing import Protocol
 
@@ -35,16 +33,11 @@ class CliRunner:
         clear_cache: bool = False,
         force: bool = False,
     ) -> None:
-        cmd = [
-            sys.executable,
-            "-m",
-            "arete",
-            "-v",
-            "sync",
-            str(vault_path),
-            "--anki-connect-url",
-            anki_url,
-        ]
+        from typer.testing import CliRunner as TyperRunner
+
+        from arete.interface.cli import app
+
+        cmd = ["-v", "sync", str(vault_path), "--anki-connect-url", anki_url]
         if prune:
             cmd.append("--prune")
         if clear_cache:
@@ -52,13 +45,14 @@ class CliRunner:
         if force:
             cmd.append("--force")
 
-        self._last_result = subprocess.run(cmd, capture_output=True, text=True)
-        if self._last_result.returncode != 0:
-            raise RuntimeError(f"CLI failed: {self._last_result.stderr}")
+        runner = TyperRunner()
+        self._last_result = runner.invoke(app, cmd)
+        if self._last_result.exit_code != 0:
+            raise RuntimeError(f"CLI failed: {self._last_result.output}")
 
     def get_log_output(self) -> str:
         if self._last_result:
-            return self._last_result.stderr
+            return self._last_result.output
         return ""
 
 
