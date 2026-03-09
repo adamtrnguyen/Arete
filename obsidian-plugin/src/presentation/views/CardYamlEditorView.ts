@@ -823,7 +823,7 @@ export class CardYamlEditorView extends ItemView {
 
 	private async openInAnki(index: number) {
 		const card = this.cards[index];
-		const nid = card?.['nid'];
+		const nid = card?.['nid'] || card?.['anki']?.['nid'];
 		if (nid) {
 			try {
 				const success = await this.plugin.areteClient.browse(`nid:${nid}`);
@@ -845,7 +845,7 @@ export class CardYamlEditorView extends ItemView {
 		if (!stats || !stats.problematicCards) return false;
 
 		const card = this.cards[index];
-		const nid = card?.['nid'];
+		const nid = card?.['nid'] || card?.['anki']?.['nid'];
 		if (!nid) return false;
 
 		return stats.problematicCards.some((c) => c.noteId === nid);
