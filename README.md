@@ -57,11 +57,5 @@ uv run arete sync   # Your first sync
 
 ---
 
-## 🔄 Upgrading to v2.0
-Upgrading from a legacy version? `arete` includes a migration tool to normalize your metadata:
-```bash
-uv run arete vault migrate
-```
-
 ## 📄 License
 MIT

@@ -4,7 +4,8 @@ import requests
 
 
 def test_model_migration_basic_to_cloze(tmp_path, anki_url, setup_anki, run_arete, test_deck):
-    """Verify changing a card's model from Basic to Cloze keeps the node ID (if possible)
+    """Verify changing a card's model from Basic to Cloze keeps the node ID (if possible).
+
     or handles it gracefully.
     (Note: AnkiConnect implementation of updateModelTemplates is complex,
     arete might assume it's a new card if model mismatch, or try to update fields?).

@@ -10,7 +10,7 @@ from arete.domain.graph import CardNode, DependencyGraph
 
 
 def _make_graph() -> DependencyGraph:
-    """Build a test graph:
+    """Build a test graph.
 
     Prereq1 → CardA → CardC
     Prereq2 → CardB → CardC

@@ -22,6 +22,7 @@ def generate_arete_id() -> str:
 
 def ensure_card_ids(meta: dict[str, Any]) -> int:
     """Ensure all cards in the metadata have an ID.
+
     Modifies the metadata in-place.
     Returns the number of IDs assigned.
     """
@@ -45,8 +46,9 @@ def ensure_card_ids(meta: dict[str, Any]) -> int:
 
 
 def assign_arete_ids(vault_root: Path, dry_run: bool = False) -> int:
-    """Scans the vault and ensures every card has a stable Arete ID.
-    Returns the number of IDs assigned.
+    """Scan the vault and ensure every card has a stable Arete ID.
+
+    Return the number of IDs assigned.
     """
     ids_assigned = 0
     scanned = 0

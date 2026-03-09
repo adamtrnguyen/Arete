@@ -2,7 +2,8 @@ import requests
 
 
 def test_list_reordering(tmp_path, anki_url, setup_anki, run_arete, test_deck):
-    """Verify that swapping card order in YAML creates stable updates (via NID)
+    """Verify that swapping card order in YAML creates stable updates (via NID).
+
     instead of overwriting based on index.
 
     1. Create A and B. Get NIDs.

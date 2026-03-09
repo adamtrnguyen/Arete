@@ -14,15 +14,17 @@ from arete.domain.models import UpdateItem
 
 class VaultService:
     def __init__(self, root: Path, cache: ContentCache, ignore_cache: bool = False):
+        """Initialize VaultService."""
         self.root = root
         self.cache = cache
         self.ignore_cache = ignore_cache
         self.logger = logging.getLogger(__name__)
 
     def scan_for_compatible_files(self) -> Iterable[tuple[Path, dict[str, Any], bool]]:
-        """Iterates over all markdown files in the vault, checks them for validity
-        (frontmatter, version), and yields valid files.
-        Returns: (path, meta, is_fresh)
+        """Iterate over all markdown files in the vault, check them for validity.
+
+        (frontmatter, version), and yield valid files.
+        Return: (path, meta, is_fresh)
                  is_fresh=True means we just parsed it (cache was cold/dirty).
                  is_fresh=False means we loaded meta from stat-cache (cache was warm).
         """
@@ -30,10 +32,7 @@ class VaultService:
             ok, _, reason, meta, is_fresh = self._quick_check_file(p)
             if ok and meta:
                 cards_count = len(meta.get("cards", []))
-                self.logger.debug(
-                    f"[vault] Accepted {p.name} (v{meta.get('anki_template_version')}) "
-                    f"cards={cards_count} fresh={is_fresh}"
-                )
+                self.logger.debug(f"[vault] Accepted {p.name} cards={cards_count} fresh={is_fresh}")
                 yield p, meta, is_fresh
             else:
                 self.logger.debug(f"[vault] Skipped {p.name}: {reason}")
@@ -67,12 +66,7 @@ class VaultService:
         # Heuristic: only parse if it looks like an arete file
         # We check the first 2KB for efficiency
         header = text[:2048].lower()
-        if (
-            "arete:" not in header
-            and "anki_template_version:" not in header
-            and "anki_plugin_version:" not in header
-            and "cards:" not in header
-        ):
+        if "arete:" not in header and "cards:" not in header:
             return (False, 0, "not_arete_file", None, True)
 
         meta, _body = parse_frontmatter(text)
@@ -102,8 +96,9 @@ class VaultService:
         return (True, len(cards), None, meta, True)
 
     def format_vault(self, dry_run: bool = False) -> int:
-        """Scans and re-serializes all compatible files to normalize YAML.
-        Returns the number of files updated.
+        """Scan and re-serialize all compatible files to normalize YAML.
+
+        Return the number of files updated.
         """
         count = 0
         for md_path, meta, _is_fresh in self.scan_for_compatible_files():
@@ -135,7 +130,7 @@ class VaultService:
         return count
 
     def apply_updates(self, updates: list[UpdateItem], dry_run: bool = False):
-        """Writes back new NIDs/CIDs to the markdown files."""
+        """Write back new NIDs/CIDs to the markdown files."""
         by_file: dict[Path, list[UpdateItem]] = defaultdict(list)
         for u in updates:
             if u.ok and (u.new_nid or u.new_cid):
@@ -167,15 +162,6 @@ class VaultService:
 
                         if anki_block:
                             card_data["anki"] = anki_block
-
-                        # Also migrate legacy root-level nid/cid to anki block
-                        for legacy_key in ["nid", "cid"]:
-                            if legacy_key in card_data and legacy_key not in ["anki"]:
-                                if legacy_key not in anki_block:
-                                    anki_block[legacy_key] = card_data[legacy_key]
-                                del card_data[legacy_key]
-                                card_data["anki"] = anki_block
-                                changed = True
                 # FORCE FIX: If we are ignoring cache (force sync), always mark as changed
                 # to trigger a rewrite with normalized YAML (|- block style).
                 if self.ignore_cache:

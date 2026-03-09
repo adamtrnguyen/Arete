@@ -73,8 +73,7 @@ export class StatsService {
 					cards.forEach((card: any, index: number) => {
 						if (!card) return; // Skip null/malformed cards
 
-						// Support both V1 (root level) and V2 (nested in 'anki' block)
-						const rawNid = card.anki?.nid || card.nid;
+						const rawNid = card.anki?.nid;
 
 						if (rawNid) {
 							const nid = parseInt(rawNid);

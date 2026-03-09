@@ -23,15 +23,16 @@ def pytest_collection_modifyitems(items):
 
 @pytest.fixture(scope="session")
 def anki_url():
-    """Returns the URL for AnkiConnect.
-    Defaults to 8766 (Anki 24+ default/Docker default).
+    """Return the URL for AnkiConnect.
+
+    Default to 8766 (Anki 24+ default/Docker default).
     """
     return os.getenv("ANKI_CONNECT_URL", "http://127.0.0.1:8766")
 
 
 @pytest.fixture(scope="session")
 def anki_media_dir():
-    """Returns the path to the Docker bind-mount media dir on the host."""
+    """Return the path to the Docker bind-mount media dir on the host."""
     p = Path("docker/anki_data/.local/share/Anki2/User 1/collection.media").resolve()
     p.mkdir(parents=True, exist_ok=True)
     return p
@@ -63,7 +64,7 @@ def test_deck(anki_url):
 
 @pytest.fixture
 def setup_anki(anki_url, test_deck):
-    """Ensures O2A_Basic model exists with expected fields."""
+    """Ensure O2A_Basic model exists with expected fields."""
     # Create it (ignore error if exists)
     requests.post(
         anki_url,
@@ -88,7 +89,7 @@ def setup_anki(anki_url, test_deck):
 
 @pytest.fixture
 def run_arete(anki_url):
-    """Helper to run the CLI tool in subprocess."""
+    """Run the CLI tool in subprocess."""
 
     def _run(vault_path, anki_url=anki_url, args=None, capture_output=True):
         cmd = [
@@ -118,14 +119,14 @@ def run_arete(anki_url):
 
 @pytest.fixture
 def mock_home(tmp_path):
-    """Mocks Path.home() to a temporary directory."""
+    """Mock Path.home() to a temporary directory."""
     with patch("pathlib.Path.home", return_value=tmp_path):
         yield tmp_path
 
 
 @pytest.fixture
 def mock_vault(tmp_path):
-    """Creates a basic mock vault for unit tests."""
+    """Create a basic mock vault for unit tests."""
     vault = tmp_path / "MockVault"
     vault.mkdir()
     (vault / "test.md").write_text("# Test Note\n\n- card :: back", encoding="utf-8")
@@ -134,7 +135,7 @@ def mock_vault(tmp_path):
 
 @pytest.fixture
 def integration_vault(tmp_path):
-    """Copies the static integration vault fixtures to a temp dir."""
+    """Copy the static integration vault fixtures to a temp dir."""
     src = Path(__file__).parent / "fixtures" / "integration_vault"
     dest = tmp_path / "integration_vault"
     if dest.exists():

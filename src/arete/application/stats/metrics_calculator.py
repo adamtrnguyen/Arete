@@ -226,6 +226,7 @@ class MetricsCalculator:
 
     def _compute_ret_at_review(self, reviews: list[ReviewEntry]) -> float | None:
         """Extract the retrievability at the moment of the last review.
+
         This represents the 'difficulty' of the test for the learner.
         """
         if not reviews:
@@ -233,7 +234,8 @@ class MetricsCalculator:
         return reviews[-1].retrievability
 
     def _detect_overlearning(self, card: CardStatsAggregate) -> bool:
-        """Flags cards that are being reviewed too often for their stability.
+        """Flag cards that are being reviewed too often for their stability.
+
         Criteria: Stability > 90 days AND Retrievability > 98% AND days_overdue < -30.
         """
         if not card.fsrs or card.fsrs.stability < 90:

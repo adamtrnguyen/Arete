@@ -32,7 +32,6 @@ uv sync
 | `arete vault check PATH` | Validate a single file for arete compatibility. |
 | `arete vault fix PATH` | Auto-fix common format errors in a file. |
 | `arete vault format [PATH]` | Normalize YAML frontmatter serialization. |
-| `arete vault migrate [PATH]` | Upgrade legacy files and normalize YAML. |
 
 ### Anki Management (`arete anki`)
 
@@ -126,7 +125,6 @@ The following commands still work but are hidden from `--help` and print a depre
 | `arete check-file` | `arete vault check` |
 | `arete fix-file` | `arete vault fix` |
 | `arete format` | `arete vault format` |
-| `arete migrate` | `arete vault migrate` |
 | `arete server` | `arete serve daemon` |
 | `arete mcp-server` | `arete serve mcp` |
 | `arete anki queue` | `arete queue` |

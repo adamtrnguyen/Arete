@@ -157,34 +157,6 @@ class TestBasicCard:
         assert card.model_extra is not None
         assert card.model_extra.get("custom_field") == "value"
 
-    def test_legacy_nid_promoted(self):
-        card = BasicCard.model_validate({
-            "Front": "Q?",
-            "Back": "A.",
-            "nid": "legacy_123",
-        })
-        assert card.anki is not None
-        assert card.anki.nid == "legacy_123"
-
-    def test_legacy_cid_promoted(self):
-        card = BasicCard.model_validate({
-            "Front": "Q?",
-            "Back": "A.",
-            "cid": "legacy_456",
-        })
-        assert card.anki is not None
-        assert card.anki.cid == "legacy_456"
-
-    def test_anki_block_takes_precedence_over_legacy(self):
-        card = BasicCard.model_validate({
-            "Front": "Q?",
-            "Back": "A.",
-            "nid": "legacy",
-            "anki": {"nid": "modern"},
-        })
-        assert card.anki is not None
-        assert card.anki.nid == "modern"
-
 
 # ===================================================================
 # ClozeCard
@@ -230,14 +202,6 @@ class TestClozeCard:
         card = ClozeCard(Text="{{c1::X}}")
         assert card.Back_Extra is None
 
-    def test_legacy_nid_promoted(self):
-        card = ClozeCard.model_validate({
-            "Text": "{{c1::X}}",
-            "nid": "789",
-        })
-        assert card.anki is not None
-        assert card.anki.nid == "789"
-
 
 # ===================================================================
 # CustomCard
@@ -282,17 +246,6 @@ class TestCustomCard:
         })
         assert "__line__" not in card.content_fields
         assert "Field1" in card.content_fields
-
-    def test_legacy_ids(self):
-        card = CustomCard.model_validate({
-            "model": "Custom",
-            "nid": "100",
-            "cid": "200",
-            "Question": "Q?",
-        })
-        assert card.anki is not None
-        assert card.anki.nid == "100"
-        assert card.anki.cid == "200"
 
 
 # ===================================================================
@@ -461,26 +414,3 @@ class TestEdgeCases:
         assert card.deps.requires == ["dep1"]
         assert card.markdown is False
 
-    def test_legacy_both_nid_and_cid(self):
-        card = BasicCard.model_validate({
-            "Front": "Q?",
-            "Back": "A.",
-            "nid": "100",
-            "cid": "200",
-        })
-        assert card.anki is not None
-        assert card.anki.nid == "100"
-        assert card.anki.cid == "200"
-
-    def test_mixed_legacy_and_anki_block(self):
-        """Legacy cid fills in, but anki block nid takes precedence."""
-        card = BasicCard.model_validate({
-            "Front": "Q?",
-            "Back": "A.",
-            "nid": "legacy_nid",
-            "cid": "legacy_cid",
-            "anki": {"nid": "block_nid"},
-        })
-        assert card.anki is not None
-        assert card.anki.nid == "block_nid"  # anki block wins
-        assert card.anki.cid == "legacy_cid"  # filled from legacy

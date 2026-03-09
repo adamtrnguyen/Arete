@@ -1,4 +1,5 @@
-"""Anki Repository
+"""Anki Repository.
+
 Provides direct access to the Anki Collection (SQLite) using the `anki` python library.
 From `anki` library calls.
 """
@@ -29,6 +30,7 @@ class AnkiRepository:
     """Direct interface to Anki's database."""
 
     def __init__(self, base_path: Path | None = None, profile_name: str | None = None):
+        """Initialize AnkiRepository."""
         if not base_path:
             raise ValueError("Anki base path must be provided.")
 
@@ -38,7 +40,7 @@ class AnkiRepository:
         self._collection_path: Path | None = None
 
     def _resolve_collection_path(self) -> Path:
-        """Determines the path to collection.anki2 by checking prefs21.db for the active profile."""
+        """Determine the path to collection.anki2 by checking prefs21.db for the active profile."""
         if self._collection_path:
             return self._collection_path
 
@@ -73,6 +75,7 @@ class AnkiRepository:
             conn.close()
 
     def __enter__(self) -> AnkiRepository:
+        """Enter context manager and open the Anki collection."""
         path = self._resolve_collection_path()
 
         # Save CWD because Anki changes it (legacy behavior)
@@ -88,6 +91,7 @@ class AnkiRepository:
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
+        """Exit context manager and close the Anki collection."""
         if self.col:
             self.col.close()
             self.col = None
@@ -109,6 +113,7 @@ class AnkiRepository:
 
     def add_note(self, note_data: AnkiNote) -> int:
         """Add a new note to the collection.
+
         Returns the new Note ID (nid).
         """
         if not self.col:

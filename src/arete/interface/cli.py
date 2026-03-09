@@ -250,8 +250,9 @@ def queue(
 
             if result.unmapped_count > 0:
                 typer.secho(
-                    f"WARNING: {result.unmapped_count}/{result.due_count} cards have no Arete ID tag. "
-                    f"Run 'arete sync' to assign IDs and fix this.",
+                    f"WARNING: {result.unmapped_count}/{result.due_count}"
+                    " cards have no Arete ID tag."
+                    " Run 'arete sync' to assign IDs and fix this.",
                     fg="yellow",
                 )
 

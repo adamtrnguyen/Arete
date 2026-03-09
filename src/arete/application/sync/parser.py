@@ -20,6 +20,7 @@ class MarkdownParser:
         default_deck: str = "Default",
         logger=None,
     ):
+        """Initialize MarkdownParser."""
         self.vault_root = vault_root
         self.anki_media_dir = anki_media_dir
         self.ignore_cache = ignore_cache
@@ -141,10 +142,10 @@ class MarkdownParser:
                         # We use the converter which includes MathJax protection
                         fields[fk] = markdown_to_anki_html(txt)
 
-                # 2) IDs - check v2 anki block first, then legacy root level
+                # 2) IDs from anki block
                 anki_block = card.get("anki", {}) if isinstance(card.get("anki"), dict) else {}
-                nid = sanitize(anki_block.get("nid", "") or card.get("nid", "")).strip() or None
-                cid = sanitize(anki_block.get("cid", "") or card.get("cid", "")).strip() or None
+                nid = sanitize(anki_block.get("nid", "")).strip() or None
+                cid = sanitize(anki_block.get("cid", "")).strip() or None
                 start_line = int(card.get("__line__", 0))
 
                 # 3) Deck

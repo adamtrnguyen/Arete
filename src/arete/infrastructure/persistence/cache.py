@@ -8,6 +8,7 @@ from typing import Any
 
 class ContentCache:
     def __init__(self, db_path: Path | None = None):
+        """Initialize ContentCache."""
         if db_path is None:
             # Default to XDG-ish standard: ~/.config/arete/cache.db
             # Fallback to old path if the cachedb already exists there?

@@ -7,6 +7,7 @@ import requests
 
 def test_integration_vault_parity(integration_vault, anki_url, setup_anki, test_deck):
     """Tests that the integration_vault can be synced and verified.
+
     This replaces inline file creation with a static vault.
     """
     tmp_path = integration_vault

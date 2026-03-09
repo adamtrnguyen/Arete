@@ -6,6 +6,7 @@ class FsrsStatsService:
     """Application service for fetching and enriching card statistics using FSRS logic."""
 
     def __init__(self, repo: StatsRepository, calculator: MetricsCalculator):
+        """Initialize FsrsStatsService."""
         self.repo = repo
         self.calculator = calculator
 

@@ -69,6 +69,7 @@ class AnkiNote:
 @dataclass
 class AnkiCardStats:
     """Statistics for a specific Anki card/note.
+
     Used for dashboard analytics.
     """
 

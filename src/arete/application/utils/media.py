@@ -118,7 +118,8 @@ def transform_images_in_text(
 
 
 def transform_wikilinks_to_uri(text: str, vault_name: str) -> str:
-    """Convert ``[[Target]]`` and ``[[Target|display]]`` wikilinks to
+    """Convert ``[[Target]]`` and ``[[Target|display]]`` wikilinks to.
+
     clickable ``obsidian://open`` URIs.  The resulting markdown link is
     later rendered to an ``<a>`` tag by the markdown→HTML converter.
     """

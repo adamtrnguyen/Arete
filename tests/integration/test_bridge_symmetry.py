@@ -10,7 +10,7 @@ from tests.integration.bridge_runners import ConnectBridgeRunner, DirectBridgeRu
 
 
 def init_direct_collection(base_path: Path):
-    """Initializes a minimal Anki structure for Direct adapter testing."""
+    """Initialize a minimal Anki structure for Direct adapter testing."""
     col_dir = base_path / "User 1"
     col_dir.mkdir(parents=True, exist_ok=True)
     col_path = col_dir / "collection.anki2"
@@ -58,7 +58,8 @@ def bridge_runner(request, anki_url, tmp_path):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("bridge_runner", ["connect", "direct"], indirect=True)
 async def test_bridge_sync_add_new(bridge_runner):
-    """Symmetrical test: verifies that both adapters can add a new note
+    """Symmetrical test: verifies that both adapters can add a new note.
+
     and result in the same state in their respective backends.
     """
     deck = "SymmetryTest"

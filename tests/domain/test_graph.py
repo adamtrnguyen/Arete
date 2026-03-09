@@ -52,7 +52,7 @@ class TestCardNode:
 
 
 def _make_node(id_: str, title: str = "card") -> CardNode:
-    """Helper to create a CardNode with minimal boilerplate."""
+    """Create a CardNode with minimal boilerplate."""
     return CardNode(id=id_, title=title, file_path="test.md", line_number=1)
 
 
@@ -166,6 +166,7 @@ class TestDependencyGraphRequires:
 
     def test_add_requires_with_nonexistent_nodes(self):
         """Adding requires for nodes not added via add_node still works in nx.
+
         The graph implicitly creates the node ids, though they won't be in
         the nodes dict.
         """

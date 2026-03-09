@@ -16,14 +16,8 @@ export class CardRenderer {
 		// We iterate over all keys to support dynamic fields (Front/Back/Text/Extra/etc)
 
 		for (const [key, value] of Object.entries(card)) {
-			// Exclude system fields
-			// Note: CardYamlEditorView excluded: ['model', 'Model', 'nid', 'NID', 'cid', 'CID']
-			// We add 'id'/'ID'/'anki'/'deps' to be safe as they are structural
-			if (
-				['id', 'ID', 'model', 'Model', 'nid', 'NID', 'cid', 'CID', 'anki', 'deps'].includes(
-					key,
-				)
-			) {
+			// Exclude structural/system fields from rendering
+			if (['id', 'ID', 'model', 'Model', 'anki', 'deps'].includes(key)) {
 				continue;
 			}
 

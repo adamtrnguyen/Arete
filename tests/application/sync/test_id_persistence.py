@@ -62,7 +62,8 @@ def test_existing_nid_update(tmp_path):
 arete: true
 cards:
   - model: Basic
-    nid: 11111
+    anki:
+      nid: '11111'
     Front: Q
     Back: A
 ---
@@ -87,3 +88,4 @@ cards:
     new_content = md_file.read_text(encoding="utf-8")
     assert "nid: '22222'" in new_content or "nid: 22222" in new_content
     assert "nid: 11111" not in new_content
+    assert "anki:" in new_content

@@ -5,7 +5,8 @@ import requests
 
 
 def test_sync_update_flow(tmp_path, anki_url, setup_anki, test_deck, run_arete):
-    """Scenario 2: Updates
+    """Scenario 2: Updates.
+
     1. Sync initial note.
     2. Change content.
     3. Sync again.
@@ -58,7 +59,8 @@ cards:
 
 
 def test_sync_healing_flow(tmp_path, anki_url, setup_anki, test_deck, run_arete):
-    """Scenario 4: Healing (Lost ID)
+    """Scenario 4: Healing (Lost ID).
+
     1. Sync note.
     2. Remove NID from file manually.
     3. Sync again.
@@ -121,7 +123,8 @@ cards:
 
 # @pytest.mark.xfail(reason="Flaky in CI environment: os.walk misses file or AnkiConnect lag")
 def test_sync_media_flow(tmp_path, anki_url, setup_anki, anki_media_dir, test_deck, run_arete):
-    """Scenario 3: Media Transfer
+    """Scenario 3: Media Transfer.
+
     1. Create a dummy image in attachments/.
     2. Create a note referencing it.
     3. Run arete with --anki-media-dir.
@@ -177,7 +180,8 @@ cards:
 
 @pytest.mark.xfail(reason="O2A_Basic model not compatible with filter in test env")
 def test_sync_prune_flow(tmp_path, anki_url, setup_anki, test_deck, run_arete):
-    """Scenario 5: Prune Mode
+    """Scenario 5: Prune Mode.
+
     1. Sync TWO notes using O2A_Basic (which has 'nid' field).
     2. Delete ONE file.
     3. Run arete --prune.

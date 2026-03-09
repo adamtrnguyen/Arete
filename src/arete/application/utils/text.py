@@ -46,6 +46,7 @@ def convert_math_to_tex_delimiters(text: str) -> str:
 
 def parse_frontmatter(md_text: str) -> tuple[dict[str, Any], str]:
     """Parse YAML frontmatter from markdown text.
+
     Uses line-by-line parsing instead of regex for reliability.
     """
     # Handle potential BOM (Byte Order Mark)
@@ -125,9 +126,10 @@ class UniqueKeyLoader(yaml.SafeLoader):
 
 
 def validate_frontmatter(md_text: str) -> dict[str, Any]:
-    """Parses frontmatter but raises detailed exceptions on failure.
-    Uses line-by-line parsing instead of regex for reliability.
-    Returns the metadata dict if successful.
+    """Parse frontmatter and raise detailed exceptions on failure.
+
+    Use line-by-line parsing instead of regex for reliability.
+    Return the metadata dict if successful.
     """
     # Handle potential BOM (Byte Order Mark)
     md_text = md_text.lstrip("\ufeff")
@@ -205,6 +207,7 @@ def rebuild_markdown_with_frontmatter(meta: dict[str, Any], body: str) -> str:
 
 def _extract_frontmatter_bounds(md_text: str) -> tuple[str, int, int] | None:
     """Extract frontmatter content and its character bounds from markdown text.
+
     Returns (yaml_content, start_index, end_index) or None if no frontmatter.
     Uses line-by-line parsing (no regex).
     """
@@ -297,9 +300,10 @@ def apply_fixes(md_text: str) -> str:
 
 
 def fix_mathjax_escapes(md_text: str) -> str:
-    r"""Finds double-quoted strings in frontmatter that contain common MathJax
-    escapes like \\in or \\mathbb and ensures they are double-escaped so
-    PyYAML can parse them. This allows us to migrate broken files to |- blocks.
+    r"""Find double-quoted strings in frontmatter that contain common MathJax.
+
+    escapes like \\in or \\mathbb and ensure they are double-escaped so
+    PyYAML can parse them. This allows migrating broken files to |- blocks.
     """
     bounds = _extract_frontmatter_bounds(md_text)
     if bounds is None:

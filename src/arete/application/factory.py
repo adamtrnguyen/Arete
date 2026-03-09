@@ -1,4 +1,5 @@
-"""Composition Root
+"""Composition Root.
+
 Centralizes construction of concrete infrastructure implementations.
 This is the ONLY application-layer module allowed to import from infrastructure.
 """
@@ -22,7 +23,7 @@ from arete.infrastructure.persistence.cache import ContentCache as _CacheImpl
 
 
 async def get_anki_bridge(config: AppConfig) -> AnkiBridge:
-    """Returns the appropriate AnkiBridge implementation based on config and responsiveness."""
+    """Return the appropriate AnkiBridge implementation based on config and responsiveness."""
     # 1. Manual selection
     if config.backend == "ankiconnect":
         return AnkiConnectAdapter(url=config.anki_connect_url)
@@ -45,12 +46,12 @@ async def get_anki_bridge(config: AppConfig) -> AnkiBridge:
 
 
 def get_cache(db_path: Path | None = None) -> ContentCache:
-    """Returns a ContentCache implementation."""
+    """Return a ContentCache implementation."""
     return _CacheImpl(db_path=db_path)
 
 
 def get_vault_service(config: AppConfig) -> VaultService:
-    """Returns the VaultService instance configured for the given app config."""
+    """Return the VaultService instance configured for the given app config."""
     if config.vault_root is None:
         raise ValueError("vault_root is required for VaultService")
     cache = _CacheImpl(config.vault_root / ".arete.db")
@@ -58,7 +59,7 @@ def get_vault_service(config: AppConfig) -> VaultService:
 
 
 def get_stats_repo(config: AppConfig) -> StatsRepository:
-    """Returns the appropriate StatsRepository implementation based on config."""
+    """Return the appropriate StatsRepository implementation based on config."""
     if config.backend == "ankiconnect":
         url = config.anki_connect_url or "http://localhost:8765"
         return ConnectStatsRepository(url=url)
@@ -66,7 +67,7 @@ def get_stats_repo(config: AppConfig) -> StatsRepository:
 
 
 def get_stats_service(config: AppConfig) -> FsrsStatsService:
-    """Returns a fully wired FsrsStatsService instance."""
+    """Return a fully wired FsrsStatsService instance."""
     from arete.application.stats.metrics_calculator import MetricsCalculator
     from arete.application.stats.service import FsrsStatsService
 

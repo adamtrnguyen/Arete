@@ -70,6 +70,7 @@ class AnkiBridge(ABC):
     @abstractmethod
     async def ensure_deck(self, deck: AnkiDeck | str) -> bool:
         """Ensure the named deck exists.
+
         Implementations should handle nested '::' hierarchies.
         """
         pass
@@ -82,6 +83,7 @@ class AnkiBridge(ABC):
     @abstractmethod
     async def get_notes_in_deck(self, deck_name: str) -> dict[str, int]:
         """Return mapping of {obsidian_nid: anki_nid} for all notes in a deck.
+
         Used primarily by the Pruning stage to identify orphaned cards.
         """
         pass
@@ -99,6 +101,7 @@ class AnkiBridge(ABC):
     @abstractmethod
     async def get_learning_insights(self, lapse_threshold: int = 3) -> Any:
         """Fetch learning statistics and identify problematic notes.
+
         Returns a LearningStats-compatible object or data.
         """
         pass
@@ -106,6 +109,7 @@ class AnkiBridge(ABC):
     @abstractmethod
     async def get_card_stats(self, nids: list[int]) -> list[AnkiCardStats]:
         """Fetch detailed statistics for a list of Note IDs.
+
         Used by the dashboard to show lapses, difficulty, etc.
         """
         pass

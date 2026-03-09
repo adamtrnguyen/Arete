@@ -54,7 +54,7 @@ class RunRecorder:
 
 
 def setup_logging(log_dir: Path, verbose: int) -> tuple[logging.Logger, Path, str]:
-    """Returns: (logger, log_path, run_id)."""
+    """Return (logger, log_path, run_id)."""
     log_dir.mkdir(parents=True, exist_ok=True)
     run_id = f"{datetime.now().strftime('%Y%m%d-%H%M%S')}_{os.getpid()}"
     main_log_path = log_dir / f"run_{run_id}.log"

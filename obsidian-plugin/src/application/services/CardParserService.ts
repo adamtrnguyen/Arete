@@ -107,8 +107,8 @@ export class CardParserService {
 								ankiBlock = data.anki;
 							}
 
-							const rawNid = ankiBlock.nid ?? ankiBlock.NID ?? data.nid ?? data.NID;
-							const rawCid = ankiBlock.cid ?? ankiBlock.CID ?? data.cid ?? data.CID;
+							const rawNid = ankiBlock.nid;
+							const rawCid = ankiBlock.cid;
 
 							if (rawNid !== undefined && rawNid !== null) {
 								const parsed =
@@ -127,9 +127,9 @@ export class CardParserService {
 						}
 					} catch (e) {
 						// Fallback to regex if parseYaml fails
-						const nidMatch = block.match(/['"]?(?:nid|NID)['"]?\s*:\s*['"]?(\d+)/i);
+						const nidMatch = block.match(/['"]?nid['"]?\s*:\s*['"]?(\d+)/);
 						if (nidMatch) nid = parseInt(nidMatch[1]);
-						const cidMatch = block.match(/['"]?(?:cid|CID)['"]?\s*:\s*['"]?(\d+)/i);
+						const cidMatch = block.match(/['"]?cid['"]?\s*:\s*['"]?(\d+)/);
 						if (cidMatch) cid = parseInt(cidMatch[1]);
 					}
 

@@ -137,7 +137,6 @@ uv run arete queue --dry-run
 uv run arete vault check somefile.md
 uv run arete vault fix somefile.md
 uv run arete vault format
-uv run arete vault migrate
 
 # Anki management
 uv run arete anki stats --nids 123

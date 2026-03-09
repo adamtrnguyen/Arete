@@ -61,7 +61,7 @@ def _check_arete_flags(meta: dict, result: ValidationResult) -> None:
     """Validate arete flag, cards presence, and deck/model requirements."""
     is_explicit_arete = meta.get("arete") is True
 
-    if "anki_template_version" not in meta and "cards" not in meta and not is_explicit_arete:
+    if "cards" not in meta and not is_explicit_arete:
         if "card" in meta and isinstance(meta["card"], list):
             result.ok = False
             result.errors.append(

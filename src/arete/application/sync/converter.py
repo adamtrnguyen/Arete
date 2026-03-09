@@ -1,4 +1,5 @@
 """Markdown to Anki HTML conversion logic.
+
 Extracted from apy logic to allow direct Python usage.
 """
 
@@ -16,6 +17,7 @@ class MathProtectExtension(Extension):
     """Extension to avoid converting markdown within math blocks."""
 
     def __init__(self, markdown_latex_mode: str = "mathjax") -> None:
+        """Initialize MathProtectExtension."""
         super().__init__()
         self.markdown_latex_mode: str = markdown_latex_mode
 
@@ -29,6 +31,7 @@ class MathProtectExtension(Extension):
 
 class MathPreprocessor(Preprocessor):
     def __init__(self, md: markdown.Markdown, markdown_latex_mode: str) -> None:
+        """Initialize MathPreprocessor."""
         super().__init__(md)
         self.counter: int = 0
         self.placeholders: dict[str, str] = {}
@@ -215,6 +218,7 @@ class MathPreprocessor(Preprocessor):
 
 class MathPostprocessor(Postprocessor):
     def __init__(self, md: markdown.Markdown, placeholders: dict[str, str]) -> None:
+        """Initialize MathPostprocessor."""
         super().__init__(md)
         self.placeholders: dict[str, str] = placeholders
 
@@ -234,6 +238,7 @@ _md_instance: markdown.Markdown | None = None
 
 def markdown_to_anki_html(text: str, latex_mode: str = "mathjax") -> str:
     """Convert markdown text to Anki-compatible HTML.
+
     Includes special handling for MathJax protection.
     """
     global _md_instance

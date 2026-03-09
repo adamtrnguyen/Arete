@@ -25,6 +25,7 @@ class BridgeRunner(Protocol):
 
 class ConnectBridgeRunner:
     def __init__(self, url: str):
+        """Initialize ConnectBridgeRunner."""
         self.adapter = AnkiConnectAdapter(url=url)
         self.url = url
 
@@ -61,6 +62,7 @@ class ConnectBridgeRunner:
 
 class DirectBridgeRunner:
     def __init__(self, anki_base: Path):
+        """Initialize DirectBridgeRunner."""
         self.adapter = AnkiDirectAdapter(anki_base=anki_base)
         self.anki_base = anki_base
 

@@ -100,22 +100,6 @@ class TestFileHeuristicDetection:
 
         assert len(files) == 0
 
-    def test_legacy_anki_template_version_1_is_detected(self, temp_vault, mock_cache):
-        """Legacy ``anki_template_version: 1`` files are accepted."""
-        md = temp_vault / "legacy.md"
-        md.write_text(
-            "---\nanki_template_version: 1\ndeck: Legacy\ncards:\n  - Front: Q\n    Back: A\n---\n",
-            encoding="utf-8",
-        )
-        mock_cache.get_file_meta_by_stat.return_value = None
-
-        service = VaultService(temp_vault, mock_cache)
-        files = list(service.scan_for_compatible_files())
-
-        assert len(files) == 1
-        _path, meta, _fresh = files[0]
-        assert meta.get("anki_template_version") == 1
-
     def test_cards_only_without_arete_marker_is_accepted(self, temp_vault, mock_cache):
         """A file with ``cards:`` and ``deck:`` is accepted even without ``arete: true``."""
         md = temp_vault / "cards_only.md"
@@ -151,7 +135,8 @@ class TestEdgeCaseFiles:
         assert len(files) == 0
 
     def test_binary_content_is_skipped(self, temp_vault, mock_cache):
-        """A .md file with binary (non-UTF-8) content should be skipped
+        """A .md file with binary (non-UTF-8) content should be skipped.
+
         because read_text with errors='strict' will fail.
         """
         md = temp_vault / "binary.md"
@@ -275,7 +260,8 @@ class TestDeckRequirement:
         assert len(files) == 0
 
     def test_no_deck_accepted_when_ignore_cache(self, temp_vault, mock_cache):
-        """No deck at all is accepted when ignore_cache=True (--force mode),
+        """No deck at all is accepted when ignore_cache=True (--force mode),.
+
         because it is still useful for normalization.
         """
         md = temp_vault / "no_deck_force.md"
@@ -367,7 +353,8 @@ class TestFormatVault:
     """Tests for the ``format_vault`` method."""
 
     def test_dry_run_returns_count_without_writing(self, temp_vault, mock_cache):
-        """``format_vault(dry_run=True)`` should report files that *would*
+        """``format_vault(dry_run=True)`` should report files that *would*.
+
         change but NOT modify them on disk.
         """
         # Write a file with formatting that will differ after round-trip
@@ -417,7 +404,8 @@ class TestApplyUpdates:
     """Tests for the ``apply_updates`` method that persists nid/cid back."""
 
     def test_apply_updates_persists_nid_cid(self, temp_vault, mock_cache):
-        """After apply_updates, the file on disk should contain the new
+        """After apply_updates, the file on disk should contain the new.
+
         nid and cid inside an ``anki:`` block on the card.
         """
         md = temp_vault / "update_me.md"
@@ -529,36 +517,6 @@ class TestApplyUpdates:
         )
         service = VaultService(tmp_path, mock_cache)
         service.apply_updates([update])
-
-    def test_apply_updates_migrates_legacy_root_nid(self, temp_vault, mock_cache):
-        """Legacy root-level nid/cid on a card should be migrated into the
-        ``anki:`` block and removed from the card root.
-        """
-        md = temp_vault / "legacy_nid.md"
-        md.write_text(
-            "---\narete: true\ndeck: D\ncards:\n"
-            "  - Front: Q\n    Back: A\n    nid: '555'\n    cid: '666'\n"
-            "---\nBody",
-            encoding="utf-8",
-        )
-
-        # Provide a new nid to trigger the update path
-        update = UpdateItem(
-            source_file=md,
-            source_index=1,
-            new_nid="777",
-            new_cid="888",
-            ok=True,
-        )
-
-        service = VaultService(temp_vault, mock_cache)
-        service.apply_updates([update])
-
-        text = md.read_text(encoding="utf-8")
-        # The anki block should exist with the new values
-        assert "anki:" in text
-        assert "777" in text
-        assert "888" in text
 
 
 # ---------------------------------------------------------------------------

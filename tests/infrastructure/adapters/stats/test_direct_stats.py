@@ -20,7 +20,7 @@ def mock_repo():
 
 
 def _make_card(cid=101, nid=1, lapses=0, factor=2500, ivl=10, due=0, reps=5, did=1):
-    """Helper to create a mock card object."""
+    """Create a mock card object."""
     card = MagicMock()
     card.id = cid
     card.nid = nid
@@ -243,9 +243,9 @@ async def test_get_card_stats_answer_distribution(mock_repo):
     result = await repo.get_card_stats([9])
 
     dist = result[0].answer_distribution
-    assert dist[1] == 2   # Again x2
+    assert dist[1] == 2  # Again x2
     assert dist[3] == 10  # Good x10
-    assert dist[4] == 5   # Easy x5
+    assert dist[4] == 5  # Easy x5
 
 
 @pytest.mark.asyncio
@@ -314,10 +314,15 @@ async def test_get_review_history_basic(mock_repo):
     """Review history entries are parsed correctly from revlog rows."""
     # Simulate PRAGMA returning columns without 'data'
     mock_repo.col.db.execute.side_effect = [
-        [(0, "id", "", 0, None, 0), (1, "cid", "", 0, None, 0),
-         (2, "ease", "", 0, None, 0), (3, "ivl", "", 0, None, 0),
-         (4, "lastIvl", "", 0, None, 0), (5, "time", "", 0, None, 0),
-         (6, "type", "", 0, None, 0)],  # PRAGMA table_info
+        [
+            (0, "id", "", 0, None, 0),
+            (1, "cid", "", 0, None, 0),
+            (2, "ease", "", 0, None, 0),
+            (3, "ivl", "", 0, None, 0),
+            (4, "lastIvl", "", 0, None, 0),
+            (5, "time", "", 0, None, 0),
+            (6, "type", "", 0, None, 0),
+        ],  # PRAGMA table_info
         [  # SELECT query results (id, cid, ease, ivl, lastIvl, time, type)
             (1700000000000, 101, 3, 7, 1, 5000, 1),
             (1690000000000, 101, 2, 1, 0, 8000, 0),
@@ -343,10 +348,16 @@ async def test_get_review_history_with_fsrs_data(mock_repo):
     fsrs_data = json.dumps({"s": 15.0, "d": 5.0, "r": 0.92})
 
     mock_repo.col.db.execute.side_effect = [
-        [(0, "id", "", 0, None, 0), (1, "cid", "", 0, None, 0),
-         (2, "ease", "", 0, None, 0), (3, "ivl", "", 0, None, 0),
-         (4, "lastIvl", "", 0, None, 0), (5, "time", "", 0, None, 0),
-         (6, "type", "", 0, None, 0), (7, "data", "", 0, None, 0)],  # has 'data' column
+        [
+            (0, "id", "", 0, None, 0),
+            (1, "cid", "", 0, None, 0),
+            (2, "ease", "", 0, None, 0),
+            (3, "ivl", "", 0, None, 0),
+            (4, "lastIvl", "", 0, None, 0),
+            (5, "time", "", 0, None, 0),
+            (6, "type", "", 0, None, 0),
+            (7, "data", "", 0, None, 0),
+        ],  # has 'data' column
         [  # SELECT results with data column
             (1700000000000, 101, 3, 7, 1, 5000, 1, fsrs_data),
         ],

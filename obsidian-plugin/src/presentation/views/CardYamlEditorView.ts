@@ -290,7 +290,7 @@ export class CardYamlEditorView extends ItemView {
 
 		const activeFile = this.app.workspace.getActiveFile();
 		const card = this.cards[this.currentCardIndex];
-		const nid = card?.['nid'] || card?.['anki']?.['nid'];
+		const nid = card?.['anki']?.['nid'];
 
 		if (activeFile && nid) {
 			const cache = this.plugin.statsService.getCache().concepts[activeFile.path];
@@ -522,8 +522,6 @@ export class CardYamlEditorView extends ItemView {
 		const excludeFields = [
 			'id',
 			'model',
-			'nid',
-			'cid',
 			'deps',
 			'prerequisites',
 			'related',
@@ -678,8 +676,6 @@ export class CardYamlEditorView extends ItemView {
 						const lines = [`anki:`];
 						if (ankiBlock.nid) lines.push(`  nid: ${ankiBlock.nid}`);
 						if (ankiBlock.cid) lines.push(`  cid: ${ankiBlock.cid}`);
-						if (ankiBlock.note_id) lines.push(`  note_id: ${ankiBlock.note_id}`);
-						if (ankiBlock.card_id) lines.push(`  card_id: ${ankiBlock.card_id}`);
 						// If empty anki block, just return anki: {}
 						if (lines.length === 1) return `anki: {}`;
 						return lines.join('\n');
@@ -736,14 +732,9 @@ export class CardYamlEditorView extends ItemView {
 		// Map common uppercase keys to lowercase
 		if (card.ID && !card.id) normalized.id = card.ID;
 		if (card.Model && !card.model) normalized.model = card.Model;
-		if (card.NID && !card.nid) normalized.nid = card.NID;
-		if (card.CID && !card.cid) normalized.cid = card.CID;
-
 		// Cleanup uppercase leftover if mapped
 		if (card.ID) delete normalized['ID'];
 		if (card.Model) delete normalized['Model'];
-		if (card.NID) delete normalized['NID'];
-		if (card.CID) delete normalized['CID'];
 
 		return normalized;
 	}
@@ -823,7 +814,7 @@ export class CardYamlEditorView extends ItemView {
 
 	private async openInAnki(index: number) {
 		const card = this.cards[index];
-		const nid = card?.['nid'] || card?.['anki']?.['nid'];
+		const nid = card?.['anki']?.['nid'];
 		if (nid) {
 			try {
 				const success = await this.plugin.areteClient.browse(`nid:${nid}`);
@@ -845,7 +836,7 @@ export class CardYamlEditorView extends ItemView {
 		if (!stats || !stats.problematicCards) return false;
 
 		const card = this.cards[index];
-		const nid = card?.['nid'] || card?.['anki']?.['nid'];
+		const nid = card?.['anki']?.['nid'];
 		if (!nid) return false;
 
 		return stats.problematicCards.some((c) => c.noteId === nid);

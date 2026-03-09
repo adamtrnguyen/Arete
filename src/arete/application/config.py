@@ -14,6 +14,7 @@ from arete.application.utils.common import detect_anki_paths
 
 class AppConfig(BaseSettings):
     """Professional configuration model for arete.
+
     Supports loading from:
     1. Environment variables (O2A_*)
     2. Config file (~/.config/arete/config.toml)
@@ -125,6 +126,7 @@ def resolve_config(
     cli_overrides: dict[str, Any] | None = None, config_file: Path | None = None
 ) -> AppConfig:
     """Multi-layered configuration resolution.
+
     1. Defaults in AppConfig
     2. ~/.config/arete/config.toml (if exists) OR explicit config_file
     3. Environment variables (O2A_*)

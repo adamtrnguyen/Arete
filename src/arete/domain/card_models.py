@@ -7,7 +7,7 @@ they define what an Arete card IS.
 
 from __future__ import annotations
 
-from typing import Any, Union
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -53,28 +53,19 @@ class DepsBlock(BaseModel):
 # ---------------------------------------------------------------------------
 
 RESERVED_CARD_FIELDS: set[str] = {
-    "cid", "model", "deck", "tags", "markdown", "anki", "nid", "id", "deps",
+    "model",
+    "deck",
+    "tags",
+    "markdown",
+    "anki",
+    "id",
+    "deps",
 }
 
 
 # ---------------------------------------------------------------------------
 # Card models
 # ---------------------------------------------------------------------------
-
-
-def _get_case_insensitive(data: dict[str, Any], *keys: str) -> Any:
-    """Return the first value found for any of the given keys (case-insensitive)."""
-    for key in keys:
-        if key in data:
-            return data[key]
-        lower = key.lower()
-        if lower in data:
-            return data[lower]
-        # Also try Title Case
-        titled = key.title()
-        if titled in data:
-            return data[titled]
-    return None
 
 
 class BasicCard(BaseModel):
@@ -102,8 +93,6 @@ class BasicCard(BaseModel):
         back = data.get("Back") or data.get("back") or ""
         data["Front"] = str(front).strip() if front else ""
         data["Back"] = str(back).strip() if back else ""
-        # Handle legacy nid/cid at root level
-        data = _promote_legacy_ids(data)
         return data
 
     @model_validator(mode="after")
@@ -147,8 +136,6 @@ class ClozeCard(BaseModel):
             or data.get("extra")
         )
         data["Back_Extra"] = str(extra).strip() if extra else None
-        # Handle legacy nid/cid at root level
-        data = _promote_legacy_ids(data)
         return data
 
     @model_validator(mode="after")
@@ -180,7 +167,6 @@ class CustomCard(BaseModel):
     def normalize_fields(cls, data: Any) -> Any:
         if not isinstance(data, dict):
             return data
-        data = _promote_legacy_ids(data)
         return data
 
     @property
@@ -189,7 +175,8 @@ class CustomCard(BaseModel):
         if self.model_extra is None:
             return {}
         return {
-            k: v for k, v in self.model_extra.items()
+            k: v
+            for k, v in self.model_extra.items()
             if k not in RESERVED_CARD_FIELDS and not k.startswith("__")
         }
 
@@ -237,48 +224,11 @@ class AreteFileMetadata(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-def _promote_legacy_ids(data: dict[str, Any]) -> dict[str, Any]:
-    """Promote legacy root-level nid/cid into the ``anki`` block.
-
-    Old format::
-
-        nid: "123"
-        cid: "456"
-
-    New format::
-
-        anki:
-            nid: "123"
-            cid: "456"
-
-    If both legacy and ``anki`` block exist, the ``anki`` block takes precedence.
-    """
-    legacy_nid = data.get("nid")
-    legacy_cid = data.get("cid")
-
-    if legacy_nid is not None or legacy_cid is not None:
-        anki = data.get("anki")
-        if anki is None:
-            anki = {}
-        elif not isinstance(anki, dict):
-            anki = {}
-
-        # Only fill in if not already set in anki block
-        if legacy_nid is not None and anki.get("nid") is None:
-            anki["nid"] = legacy_nid
-        if legacy_cid is not None and anki.get("cid") is None:
-            anki["cid"] = legacy_cid
-
-        data["anki"] = anki
-
-    return data
-
-
 # ---------------------------------------------------------------------------
 # Dispatch
 # ---------------------------------------------------------------------------
 
-CardModel = Union[BasicCard, ClozeCard, CustomCard]
+CardModel = BasicCard | ClozeCard | CustomCard
 
 
 def parse_card(raw: dict[str, Any], default_model: str = "Basic") -> CardModel:

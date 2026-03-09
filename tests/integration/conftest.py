@@ -119,11 +119,13 @@ def _anki_container(tmp_path_factory):
 
     try:
         _wait_for_anki(url)
-    except TimeoutError:
+    except TimeoutError as exc:
         logs = container.logs(tail=50).decode()
         container.stop()
         container.remove()
-        raise TimeoutError(f"Anki not reachable at {url} after 60s.\nContainer logs:\n{logs}")
+        raise TimeoutError(
+            f"Anki not reachable at {url} after 60s.\nContainer logs:\n{logs}"
+        ) from exc
 
     yield url, anki_data
 

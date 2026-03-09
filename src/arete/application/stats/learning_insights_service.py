@@ -1,4 +1,5 @@
-"""Learning Insights Service
+"""Learning Insights Service.
+
 Wraps AnkiBridge to provide learning statistics and note name cleaning.
 """
 
@@ -14,11 +15,13 @@ class LearningInsightsService:
     """Service to interact with Anki and generate learning insights."""
 
     def __init__(self, anki_bridge: Any):
+        """Initialize LearningInsightsService."""
         self.anki = anki_bridge
 
     @staticmethod
     def clean_note_name(raw_name: str) -> str:
-        """Cleans raw _obsidian_source strings.
+        """Clean raw _obsidian_source strings.
+
         Example: 'Obsidian Vault|My Note.md|89' -> 'My Note'.
         """
         import re

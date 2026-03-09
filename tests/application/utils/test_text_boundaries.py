@@ -1,6 +1,7 @@
 """Boundary and edge-case tests for frontmatter parsing."""
 
 import pytest
+import yaml
 
 from arete.application.utils.text import (
     parse_frontmatter,
@@ -29,7 +30,7 @@ def test_parse_unclosed_frontmatter():
 
 
 def test_validate_unclosed_frontmatter_raises():
-    with pytest.raises(Exception):
+    with pytest.raises(yaml.YAMLError):
         validate_frontmatter("---\nkey: val\n")
 
 
@@ -51,7 +52,7 @@ def test_parse_tabs_in_yaml():
 
 def test_validate_tabs_raises():
     text = "---\nkey:\tvalue\n---\nbody"
-    with pytest.raises(Exception):
+    with pytest.raises(yaml.YAMLError):
         validate_frontmatter(text)
 
 
@@ -64,7 +65,7 @@ def test_parse_duplicate_keys():
 
 def test_validate_duplicate_keys_raises():
     text = "---\nkey: 1\nkey: 2\n---\n"
-    with pytest.raises(Exception):
+    with pytest.raises(yaml.YAMLError):
         validate_frontmatter(text)
 
 

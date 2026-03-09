@@ -52,7 +52,3 @@ uv sync
     uv run arete sync
     ```
 
-3.  **Migrate** (if coming from v1):
-    ```bash
-    uv run arete vault migrate
-    ```

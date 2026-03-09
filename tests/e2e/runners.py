@@ -23,6 +23,7 @@ class AreteRunner(Protocol):
 
 class CliRunner:
     def __init__(self):
+        """Initialize CliRunner."""
         self._last_result = None
 
     def sync_vault(
@@ -58,6 +59,7 @@ class CliRunner:
 
 class ServerRunner:
     def __init__(self):
+        """Initialize ServerRunner."""
         self.client = TestClient(app)
         self._last_logs = ""
 

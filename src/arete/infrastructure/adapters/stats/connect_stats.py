@@ -22,6 +22,7 @@ class ConnectStatsRepository(StatsRepository):
     """
 
     def __init__(self, url: str = "http://127.0.0.1:8765"):
+        """Initialize ConnectStatsRepository."""
         self.url = url
         self._client: httpx.AsyncClient | None = None
 

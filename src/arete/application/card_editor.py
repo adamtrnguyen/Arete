@@ -123,10 +123,6 @@ def _get_card_nid(card: dict[str, Any]) -> int | None:
         nid = anki_block.get("nid")
         if nid:
             return int(str(nid).strip("'\""))
-    # Legacy: nid at root level
-    nid = card.get("nid")
-    if nid:
-        return int(str(nid).strip("'\""))
     return None
 
 
@@ -173,7 +169,10 @@ async def edit_body(file_path: Path, old_text: str, new_text: str) -> EditResult
         if fm_end >= 0 and old_text in raw[:fm_end]:
             return EditResult(
                 success=False,
-                message="old_text was found in frontmatter, not body. Use edit_card for frontmatter changes.",
+                message=(
+                    "old_text was found in frontmatter, not body."
+                    " Use edit_card for frontmatter changes."
+                ),
             )
         return EditResult(
             success=False,
@@ -206,7 +205,10 @@ async def edit_card(
     if not isinstance(cards, list) or card_index < 0 or card_index >= len(cards):
         return EditResult(
             success=False,
-            message=f"Invalid card_index {card_index}. File has {len(cards) if isinstance(cards, list) else 0} cards.",
+            message=(
+                f"Invalid card_index {card_index}."
+                f" File has {len(cards) if isinstance(cards, list) else 0} cards."
+            ),
         )
 
     card = cards[card_index]
@@ -247,7 +249,10 @@ async def edit_card(
     if not applied and blocked:
         return EditResult(
             success=False,
-            message=f"All edits blocked by maturity guard (card is {maturity}, interval >21d). Use force=True to override.",
+            message=(
+                f"All edits blocked by maturity guard (card is {maturity},"
+                " interval >21d). Use force=True to override."
+            ),
             blocked=blocked,
             maturity=maturity,
         )
@@ -331,7 +336,10 @@ async def delete_card(
     if not isinstance(cards, list) or card_index < 0 or card_index >= len(cards):
         return DeleteResult(
             success=False,
-            message=f"Invalid card_index {card_index}. File has {len(cards) if isinstance(cards, list) else 0} cards.",
+            message=(
+                f"Invalid card_index {card_index}."
+                f" File has {len(cards) if isinstance(cards, list) else 0} cards."
+            ),
         )
 
     card = cards[card_index]
@@ -344,14 +352,20 @@ async def delete_card(
         front = card.get("Front", card.get("Text", "(unknown)"))
         return DeleteResult(
             success=False,
-            message=f"Cannot delete mature card (interval >21d). Front: '{front}'. Use force=True to override.",
+            message=(
+                f"Cannot delete mature card (interval >21d)."
+                f" Front: '{front}'. Use force=True to override."
+            ),
         )
 
     if maturity == "young" and not force:
         front = card.get("Front", card.get("Text", "(unknown)"))
         return DeleteResult(
             success=False,
-            message=f"Warning: deleting young card (1-21d interval). Front: '{front}'. Use force=True to override.",
+            message=(
+                f"Warning: deleting young card (1-21d interval)."
+                f" Front: '{front}'. Use force=True to override."
+            ),
         )
 
     cards.pop(card_index)

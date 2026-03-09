@@ -5,6 +5,7 @@ import requests
 
 def test_nid_cid_writeback(tmp_path, anki_url, setup_anki, run_arete, test_deck):
     """Verify that NID and CID are written back to the markdown file after creation.
+
     This ensures that the Anki bridge (AnkiConnect in this env) correctly returns
     ID information and the VaultService persists it.
     """

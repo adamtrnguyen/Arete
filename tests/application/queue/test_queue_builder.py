@@ -15,7 +15,8 @@ from arete.domain.graph import CardNode, DependencyGraph
 
 @pytest.fixture
 def mock_graph_deps():
-    """Creates a dependency graph:
+    """Create a dependency graph.
+
     A -> B (A requires B)
     B -> C (B requires C)
     D (independent)
@@ -150,7 +151,8 @@ def test_build_dynamic_queue_uses_weakness_signal(mock_build_graph):
 
 @pytest.fixture
 def disconnected_graph():
-    """Graph with two disconnected components:
+    """Graph with two disconnected components.
+
     Component 1: X -> Y (X requires Y)
     Component 2: P -> Q (P requires Q)
     No edges between the two components.
@@ -213,7 +215,8 @@ def test_build_dynamic_queue_isolated_due_cards(mock_build_graph):
 
 @pytest.fixture
 def diamond_graph():
-    r"""Diamond dependency graph:
+    r"""Diamond dependency graph.
+
          A
         / \\
        B   C

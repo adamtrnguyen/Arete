@@ -20,6 +20,7 @@ class DirectStatsRepository(StatsRepository):
     """
 
     def __init__(self, anki_base: Path | None = None):
+        """Initialize DirectStatsRepository."""
         self.anki_base = anki_base
 
     async def get_card_stats(self, nids: list[int]) -> list[CardStatsAggregate]:

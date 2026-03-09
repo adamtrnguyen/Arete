@@ -1,4 +1,4 @@
-"""Vault maintenance commands: validate, fix, format, migrate."""
+"""Vault maintenance commands: validate, fix, format."""
 
 import json
 from dataclasses import asdict
@@ -9,7 +9,7 @@ import typer
 
 from arete.interface._common import _resolve_with_overrides
 
-vault_app = typer.Typer(name="vault", help="Vault maintenance: validate, fix, format, migrate.")
+vault_app = typer.Typer(name="vault", help="Vault maintenance: validate, fix, format.")
 
 
 # ---------------------------------------------------------------------------
@@ -80,94 +80,6 @@ def fix(
         typer.secho("✨ File auto-fixed!", fg="green")
         typer.echo("  - Replaced tabs with spaces")
         typer.echo("  - Added missing cards list (if applicable)")
-
-
-@vault_app.command("migrate")
-def migrate_cmd(
-    ctx: typer.Context,
-    path: Annotated[Path, typer.Argument(help="Path to file or directory.")] = Path("."),
-    dry_run: Annotated[
-        bool, typer.Option("--dry-run", help="Preview changes without saving.")
-    ] = False,
-    verbose: Annotated[
-        int,
-        typer.Option(
-            "--verbose", "-v", count=True, help="Increase verbosity. Repeat for more detail."
-        ),
-    ] = 0,
-):
-    """Migrate legacy files and normalize YAML frontmatter.
-
-    1. Upgrades 'anki_template_version: 1' to 'arete: true'.
-    2. Normalizes YAML serialization to use consistent block scalars (|-).
-    """
-    from arete.application.sync.id_service import assign_arete_ids, ensure_card_ids
-    from arete.application.sync.migration import _migrate_single_file
-    from arete.application.utils.fs import iter_markdown_files
-    from arete.application.utils.text import (
-        apply_fixes,
-        fix_mathjax_escapes,
-        parse_frontmatter,
-        rebuild_markdown_with_frontmatter,
-    )
-
-    text_utils = {
-        "apply_fixes": apply_fixes,
-        "fix_mathjax_escapes": fix_mathjax_escapes,
-        "parse_frontmatter": parse_frontmatter,
-        "rebuild_markdown_with_frontmatter": rebuild_markdown_with_frontmatter,
-    }
-
-    scanned = 0
-    migrated = 0
-
-    files = [path] if path.is_file() else iter_markdown_files(path)
-    bonus = ctx.obj.get("verbose_bonus", 0) if ctx.obj else 0
-    final_verbose = max(verbose, bonus) if verbose or bonus else 1
-    config = _resolve_with_overrides(verbose=final_verbose)
-
-    skipped = 0
-    already_ok = 0
-    errors = 0
-    for p in files:
-        scanned += 1
-        try:
-            original_content = p.read_text(encoding="utf-8")
-            content = _migrate_single_file(p, config, ensure_card_ids, text_utils)
-            if content is None:
-                skipped += 1
-                if config.verbose >= 2:
-                    typer.echo(f"  [Skip] {p}: not an arete note or YAML error")
-                continue
-
-            if content != original_content:
-                migrated += 1
-                if dry_run:
-                    typer.echo(f"[DRY RUN] Would migrate/normalize: {p}")
-                else:
-                    p.write_text(content, encoding="utf-8")
-                    typer.echo(f"Migrated: {p}")
-            else:
-                already_ok += 1
-                if config.verbose >= 2:
-                    typer.echo(f"  [Equal] {p}: Already normalized.")
-        except Exception as e:
-            errors += 1
-            if config.verbose >= 1:
-                typer.secho(f"Error reading {p}: {e}", fg="red")
-
-    summary = f"Scanned {scanned} files: {migrated} migrated, {already_ok} already ok, {skipped} skipped, {errors} errors."
-    if dry_run:
-        typer.secho(f"\n[DRY RUN] {summary}", fg="yellow")
-    else:
-        typer.secho(f"\n{summary}", fg="green")
-
-    typer.echo("\n--- ID Generation (Milestone 1) ---")
-    ids_assigned = assign_arete_ids(path, dry_run=dry_run)
-    if dry_run:
-        typer.secho(f"[DRY RUN] Would assign {ids_assigned} new Arete IDs.", fg="yellow")
-    else:
-        typer.secho(f"Assigned {ids_assigned} new Arete IDs.", fg="green")
 
 
 @vault_app.command("format")

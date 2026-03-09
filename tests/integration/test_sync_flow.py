@@ -4,6 +4,7 @@ import sys
 
 def test_basic_sync_flow(tmp_path, anki_url, setup_anki, test_deck):
     """Scenario 1: The "Hello World" Sync.
+
     1. Create a markdown file with a Basic card.
     2. Run arete.
     3. Verify Anki has the card.

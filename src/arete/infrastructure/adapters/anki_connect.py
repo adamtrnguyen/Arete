@@ -358,7 +358,7 @@ class AnkiConnectAdapter(AnkiBridge):
                 if data["error"] is not None:
                     raise Exception(data["error"])
                 return data["result"]
-            except TimeoutError:
+            except TimeoutError as exc:
                 self.logger.warning(
                     f"AnkiConnect timeout on '{action}' (attempt {attempt + 1}/{max_retries + 1})"
                 )
@@ -371,7 +371,7 @@ class AnkiConnectAdapter(AnkiBridge):
                     continue
                 raise TimeoutError(
                     f"AnkiConnect timeout on '{action}' after {max_retries + 1} attempts"
-                )
+                ) from exc
             except Exception as e:
                 self.logger.error(f"AnkiConnect call failed: {e}")
                 raise

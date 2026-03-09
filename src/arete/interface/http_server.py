@@ -44,7 +44,7 @@ start_time = time.time()
 
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
-    """Simple health check to verify server is reachable."""
+    """Check that the server is reachable."""
     return HealthResponse(status="ok", version=VERSION, uptime_seconds=time.time() - start_time)
 
 
@@ -261,7 +261,8 @@ async def get_model_templates(
 
 @app.post("/shutdown")
 async def shutdown_server():
-    """Gracefully shuts down the server.
+    """Gracefully shut down the server.
+
     Useful for plugins to kill the process when they unload.
     """
     logger.info("Received shutdown request.")
@@ -290,6 +291,7 @@ class StatsRequest(BaseModel):
 @app.post("/anki/stats")
 async def get_stats(req: StatsRequest):
     """Get stats for a list of Note IDs.
+
     Uses the configured backend (Auto/Direct/Connect).
     """
     from arete.application.config import resolve_config

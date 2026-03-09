@@ -18,7 +18,7 @@ def parser_fixture(tmp_path):
 
 
 def parse_card(parser, vault, frontmatter_cards):
-    """Helper to parse a simulated file."""
+    """Parse a simulated file."""
     md_file = vault / "consistency.md"
     meta = {"cards": frontmatter_cards, "deck": "Default"}
     cache = MagicMock()
