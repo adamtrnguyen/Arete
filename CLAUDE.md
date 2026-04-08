@@ -221,6 +221,10 @@ Same DDD layer structure as the Python backend: `domain/`, `infrastructure/`, `a
 - Jest for tests, ESLint + Prettier for lint/format
 - Dependencies: CodeMirror 6 (YAML editor), D3 + three.js (3D force graph), Mustache (templates)
 
+## TODO
+
+- [ ] Explore Claude Agent SDK (`claude-agent-sdk`) for programmatic card quality reviews. The SDK's `can_use_tool` permission handler, `output_format` (JSON schema validation), and `max_turns`/`max_budget_usd` guardrails could make audit agents more deterministic than CLI-based subagents. Key gotcha: `setting_sources: ["project"]` is required or CLAUDE.md won't load. See: https://platform.claude.com/docs/en/agent-sdk/python
+
 ## Key Conventions
 
 - **Python**: 3.12+, managed with `uv`, async throughout
