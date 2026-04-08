@@ -1,0 +1,39 @@
+schema: spec-driven
+context: |
+  Arete — One-way sync: Obsidian → Anki. Obsidian is the source of truth.
+  Parses YAML frontmatter from markdown files, syncs cards to Anki,
+  builds dependency-aware study queues via topological sort.
+
+  Domain-Driven Design with strict layered architecture (enforced by import-linter):
+    interface → application → infrastructure → domain
+
+  Layers:
+    domain/         — Models, interfaces (AnkiBridge ABC), constants
+    infrastructure/ — Adapters (AnkiConnect HTTP, AnkiDirect file-based, stats, persistence)
+    application/    — Use cases (sync, queue builder, graph resolver, config, stats, card editor)
+    interface/      — CLI (Typer), MCP server (FastMCP), HTTP server
+
+  Two Anki backends (auto-selected by factory.py):
+    AnkiConnect — HTTP to localhost:8765 when Anki is running
+    AnkiDirect  — Opens collection.anki2 directly when Anki is closed
+    Both implement AnkiBridge interface (domain/interfaces.py)
+
+  Also includes: Obsidian plugin (TypeScript, obsidian-plugin/)
+
+  Stack: Python 3.12+, uv, async throughout, Ruff, Pyright
+  Testing: pytest, Docker-based integration tests (OrbStack), just recipes
+  All dev commands: justfile (just qa for full quality gate)
+rules:
+  specs:
+    - Use SHALL/MUST for normative requirements
+    - Every requirement must have at least one WHEN/THEN scenario
+    - Respect DDD layer boundaries — domain specs must not reference infrastructure details
+    - Separate specs by bounded context, not by layer
+  proposal:
+    - Reference existing specs when proposing modifications
+    - Identify which DDD layer(s) are affected
+    - Note if change crosses layer boundaries
+  design:
+    - Include alternatives considered for each decision
+    - Explain how the change respects the layered architecture
+    - Note if new interfaces/ABCs are needed in domain
