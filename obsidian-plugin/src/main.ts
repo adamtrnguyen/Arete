@@ -116,25 +116,16 @@ export default class AretePlugin extends Plugin {
 		this.statusBarItem.addEventListener('click', () => this.runSync());
 		this.updateStatusBar('idle');
 
-		// 2. Ribbon Icon
+		// 2. Ribbon Icons — only the two daily-driver entry points.
+		// Force sync, graph views, and YAML editor remain accessible via the
+		// command palette; they're context-dependent on being in an Arete file
+		// and don't earn a permanent ribbon slot.
 		this.addRibbonIcon('sheets-in-box', 'Sync to Anki (Arete)', (_evt: MouseEvent) => {
 			this.runSync();
 		});
 
-		this.addRibbonIcon('refresh-cw', 'Force Sync All (Arete)', (_evt: MouseEvent) => {
-			this.runSync(false, null, true);
-		});
-
 		this.addRibbonIcon('layout-dashboard', 'Arete Dashboard', (_evt: MouseEvent) => {
 			this.activateDashboardView();
-		});
-
-		this.addRibbonIcon('network', 'Arete Local Graph', (_evt: MouseEvent) => {
-			this.activateLocalGraphView();
-		});
-
-		this.addRibbonIcon('globe', 'Arete Global Graph', (_evt: MouseEvent) => {
-			this.activateGlobalGraphView();
 		});
 
 		// 3. Commands
@@ -254,11 +245,7 @@ export default class AretePlugin extends Plugin {
 		// 4. Settings
 		this.addSettingTab(new AreteSettingTab(this.app, this));
 
-		// 5. Ribbon Icon and Commands
-		this.addRibbonIcon('file-code', 'Open YAML Editor', () => {
-			this.activateYamlEditorView();
-		});
-
+		// 5. YAML Editor command (no ribbon icon — context-dependent)
 		this.addCommand({
 			id: 'open-yaml-editor',
 			name: 'Open YAML Editor',
