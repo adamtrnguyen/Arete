@@ -48,7 +48,10 @@ def test_html_output_not_empty(text):
     assert len(result) > 0
 
 
-@given(code=st.from_regex(r"[a-zA-Z0-9_ ]{1,30}", fullmatch=True))
+# Require non-whitespace at both ends: markdown legitimately strips/normalizes
+# leading/trailing/whitespace-only code content, so a verbatim-preservation
+# property only holds for code that actually carries non-whitespace boundaries.
+@given(code=st.from_regex(r"[a-zA-Z0-9_]([a-zA-Z0-9_ ]{0,28}[a-zA-Z0-9_])?", fullmatch=True))
 @settings(max_examples=30)
 def test_code_blocks_preserved(code):
     """Fenced code content appears verbatim in output."""
