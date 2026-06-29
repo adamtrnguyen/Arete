@@ -62,7 +62,7 @@ wheels = [
 
 [[package]]
 name = "arete"
-version = "2.2.1"
+version = "2.3.0"
 source = { editable = "." }
 dependencies = [
     { name = "anki" },
@@ -118,7 +118,7 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "requests", specifier = ">=2.31.0" },
     { name = "tqdm", specifier = ">=4.67.1" },
-    { name = "typer", extras = ["all"], specifier = ">=0.21.0" },
+    { name = "typer", specifier = ">=0.21.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.27.0" },
     { name = "watchdog", specifier = ">=4.0.0" },
 ]
