@@ -91,14 +91,20 @@ def test_iter_single_file(tmp_path):
 
 
 def test_iter_value_error_fallback(tmp_path):
-    """ValueError from relative_to doesn't crash iteration."""
+    """A ValueError from relative_to is handled gracefully, never crashing.
+
+    rglob always yields paths under root, so relative_to never raises in
+    practice; the except branch is purely defensive. When it does trip, the
+    file is skipped (it can't be classified against skip_dirs) rather than
+    crashing iteration.
+    """
     with patch("pathlib.Path.relative_to", side_effect=ValueError("Mismatch")):
         d = tmp_path / "dir"
         d.mkdir()
         f = d / "test.md"
         f.touch()
         files = list(iter_markdown_files(d))
-        assert files == [f]
+        assert files == []
 
 
 def test_file_md5(tmp_path):

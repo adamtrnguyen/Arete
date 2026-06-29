@@ -519,14 +519,7 @@ export class CardYamlEditorView extends ItemView {
 		if (!deps.related) deps.related = [];
 
 		// Standard fields to exclude from generic loop
-		const excludeFields = [
-			'id',
-			'model',
-			'deps',
-			'prerequisites',
-			'related',
-			'anki',
-		];
+		const excludeFields = ['id', 'model', 'deps', 'prerequisites', 'related', 'anki'];
 
 		// Render generic fields
 		Object.entries(card).forEach(([key, value]) => {
