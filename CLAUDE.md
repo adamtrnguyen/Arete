@@ -217,18 +217,45 @@ Same DDD layer structure as the Python backend: `domain/`, `infrastructure/`, `a
 
 ### Stack
 
-- TypeScript 5, esbuild bundler
-- Jest for tests, ESLint + Prettier for lint/format
+- TypeScript 6, esbuild bundler
+- Jest for tests, ESLint 10 (flat config `eslint.config.mjs`) + Prettier for lint/format
 - Dependencies: CodeMirror 6 (YAML editor), D3 + three.js (3D force graph), Mustache (templates)
 
 ## TODO
 
-- [ ] Explore Claude Agent SDK (`claude-agent-sdk`) for programmatic card quality reviews. The SDK's `can_use_tool` permission handler, `output_format` (JSON schema validation), and `max_turns`/`max_budget_usd` guardrails could make audit agents more deterministic than CLI-based subagents. Key gotcha: `setting_sources: ["project"]` is required or CLAUDE.md won't load. See: https://platform.claude.com/docs/en/agent-sdk/python
+- [ ] ~~Explore Claude Agent SDK (`claude-agent-sdk`) for programmatic card quality reviews~~ — **deprioritized**: AI features were removed to keep sync simple and deterministic (the `agent` optional-dependency extra no longer exists).
+
+### Known issues & follow-ups (surfaced by the 2.3.0 deps refresh — 2026-06-29)
+
+All **pre-existing**: these shipped in 2.1.0 too but were hidden because CI died at
+the install step (`uv sync --extra agent`, an extra that no longer exists) before
+reaching them. Fixing the pipeline (`--extra agent` → `--dev`) made them visible.
+**None of these block the 2.3.0 release**, which is published and is the BRAT `latest`.
+
+**Likely real bugs — investigate first:**
+
+- [ ] **Plugin Jest failures** (`obsidian-plugin/tests/application/services/StatsService.test.ts`, `CardParserService.test.ts` — 7 tests). Fail on pristine `main`. Determine stale-test vs. a real bug in the shipped plugin's stats-aggregation / card-parsing logic.
+- [ ] **Windows path & encoding bugs** (3 Python tests, Windows-only; macOS + Ubuntu pass):
+  - `test_common.py::test_to_list_path` and `test_models.py::TestAnkiNote::test_to_dict_converts_path` — emit OS separators (`\vault\note.md`) instead of POSIX (`/vault/note.md`); vault paths should be POSIX for cross-platform portability.
+  - `test_graph_resolver.py::...resolves_nfd_filename_with_nfc_ref` — `UnicodeDecodeError: 'utf-8' codec can't decode byte 0xe9` reading an accented (NFD) filename on Windows. Likely a real bug for Windows users with accented filenames.
+- [ ] **anki 25 sync round-trip.** The 24.4.1 → 25.9.2 bump was validated by static API audit + unit tests (which mock `AnkiBridge`) but **not** a full Obsidian→Anki round-trip — integration tests are currently dark (below). FSRS-6 changed scheduling internals; confirm a real round-trip once integration can run.
+
+**Test / CI infrastructure:**
+
+- [ ] **Integration + e2e suites can't run anywhere.** `docker/docker-compose*.yml` pin `image: ghcr.io/adanato/arete/anki-custom:latest`, which was never published (`manifest unknown` in CI; base image also has no arm64 manifest locally). Either publish the image built from `docker/Dockerfile` to GHCR, or add a `build:` stanza so compose builds it locally. Until fixed, `tests/integration` + `tests/e2e` provide zero coverage.
+- [ ] **Ruff lint gate can never pass.** `[tool.ruff.lint]` selects mutually-exclusive docstring rules (`D203`+`D211`, `D212`+`D213`) — pick one of each pair. Plus ~22 pre-existing `C901` complexity violations (max-complexity 10) in `builder.py`, `cli.py`, `pipeline.py`, `graph_resolver.py`, etc. — refactor or ignore. Also `target-version = "py311"` should be `"py312"` to match `requires-python`.
+- [ ] **PyPI trusted publishing is not configured.** `release.yml`'s publish step fails `invalid-publisher`; it's deliberately `continue-on-error` so it can't block the GitHub/BRAT release. Configure a PyPI trusted publisher for `adamtrnguyen/Arete` + `release.yml`, or drop the PyPI step (PyPI has been stale since 2.0.1; the plugin ships via the GitHub release, not pip).
+
+**Housekeeping:**
+
+- [ ] Delete the dangling `v2.2.1` tag on origin (a tag was pushed but its release run failed, so no release exists): `git push origin :v2.2.1`.
+- [ ] Bump GitHub Actions versions (Dependabot PR #48). Node 20 actions are being force-run on Node 24: `actions/checkout@v4`→v6, `astral-sh/setup-uv@v5`→v7, `actions/setup-node@v4`→v6, etc.
+- [ ] `arete_ankiconnect/manifest.json` stayed at 2.2.1 (a pre-tool hook blocks editing ankiconnect files) — align its version if a consistent bump is wanted.
 
 ## Key Conventions
 
 - **Python**: 3.12+, managed with `uv`, async throughout
-- **TypeScript**: 5.x, esbuild bundler, Jest tests
+- **TypeScript**: 6.x, esbuild bundler, Jest tests
 - Card IDs: `arete_` prefix + 26-char ULID, auto-generated on first sync
 - `anki.nid`/`anki.cid` in YAML: written by Arete after sync, never manually set
 - Deps references: arete ULID (specific card) or basename (all cards in that file)
