@@ -234,8 +234,15 @@ def test_parse_duplicate_nid_is_dropped(parser_fixture, mock_cache):
     parser.logger.warning.assert_called()
 
 
-def test_parse_cid_equals_nid_is_dropped(parser_fixture, mock_cache):
-    """cid==nid is impossible (distinct id spaces); drop both fabricated ids."""
+def test_parse_cid_equals_nid_is_preserved(parser_fixture, mock_cache):
+    """nid==cid is the NORMAL state for single-card notes and must be trusted.
+
+    Anki assigns a single-card note's first card id equal to the note id, so the
+    two coincide for the large majority of real cards (Arete itself writes them
+    back equal). Treating equality as fabrication would strip valid ids and
+    re-create the note as a duplicate on the next sync — this is a regression
+    test for that bug.
+    """
     parser, vault = parser_fixture
     parser.logger = MagicMock()
     meta = {
@@ -248,18 +255,22 @@ def test_parse_cid_equals_nid_is_dropped(parser_fixture, mock_cache):
 
     assert len(notes) == 1
     assert len(skipped) == 0
-    assert notes[0].nid is None
-    assert notes[0].cid is None
-    parser.logger.warning.assert_called()
+    assert notes[0].nid == "999"
+    assert notes[0].cid == "999"
+    parser.logger.warning.assert_not_called()
 
 
 def test_parse_valid_ids_are_preserved(parser_fixture, mock_cache):
-    """A normal, unique nid (with a distinct cid) must be trusted untouched."""
+    """Normal, unique nids must be trusted untouched — including nid==cid.
+
+    nid==cid (first card id == note id) is exactly what Arete writes back for
+    single-card notes, so it is the dominant real-world case and must survive.
+    """
     parser, vault = parser_fixture
     meta = {
         "deck": "Default",
         "cards": [
-            {"model": "Basic", "Front": "Q1", "Back": "A1", "anki": {"nid": "111", "cid": "222"}},
+            {"model": "Basic", "Front": "Q1", "Back": "A1", "anki": {"nid": "111", "cid": "111"}},
             {"model": "Basic", "Front": "Q2", "Back": "A2", "anki": {"nid": "333"}},
         ],
     }
@@ -267,7 +278,7 @@ def test_parse_valid_ids_are_preserved(parser_fixture, mock_cache):
 
     assert len(skipped) == 0
     assert notes[0].nid == "111"
-    assert notes[0].cid == "222"
+    assert notes[0].cid == "111"
     assert notes[1].nid == "333"
 
 

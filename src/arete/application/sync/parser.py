@@ -62,26 +62,23 @@ class MarkdownParser:
         """Reject provably-invalid Anki ids so sync can't hijack the wrong note.
 
         ``anki.nid``/``anki.cid`` are written by Arete after a sync and are not
-        meant to be authored by hand. Two situations are impossible in a real
-        Anki collection and therefore indicate fabricated metadata:
+        meant to be authored by hand. One situation is impossible in a real Anki
+        collection and therefore indicates fabricated/copy-pasted metadata: a
+        ``nid`` shared by more than one card in the same file (a note id
+        identifies exactly one note).
 
-        - ``cid == nid``: note ids and card ids are distinct id spaces assigned
-          at different moments, so they are never equal.
-        - a ``nid`` shared by more than one card in the same file.
+        When detected, the suspect nid is discarded (returning ``None``) and a
+        warning is logged, so the card is matched by its arete id / content
+        (created fresh or healed) rather than overwriting an unrelated note. We
+        never rewrite the user's file here; Arete persists a real nid on the
+        next successful sync as it normally does.
 
-        In either case the suspect ids are discarded (returning ``None``) and a
-        warning is logged. The card is then matched by its arete id / content,
-        i.e. created fresh or healed, rather than overwriting an unrelated note.
-        Note that we never rewrite the user's file here; Arete persists a real
-        nid on the next successful sync as it normally does.
+        Note: ``nid == cid`` is NOT a fabrication signal. For single-card note
+        types Anki assigns the first card's id equal to the note id, so the two
+        coincide for the large majority of normal notes (~80%+ of a real vault)
+        and equality must be trusted — stripping it would re-create the note as
+        a duplicate on the next sync of an edited card.
         """
-        if nid and cid and nid == cid:
-            self.logger.warning(
-                f"[meta] {md_path.name} card#{idx}: anki.cid equals anki.nid ({nid}); "
-                "this is impossible in Anki, so the fabricated ids are ignored "
-                "and the card will sync as new."
-            )
-            return None, None
         if nid and nid in duplicate_nids:
             self.logger.warning(
                 f"[meta] {md_path.name} card#{idx}: anki.nid {nid} is shared by another "
