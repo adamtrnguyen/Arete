@@ -27,6 +27,70 @@ class MarkdownParser:
         self.default_deck = default_deck
         self.logger = logger or logging.getLogger(__name__)
 
+    @staticmethod
+    def _extract_raw_nid(card: dict[str, Any]) -> str | None:
+        """Read a card's declared nid from the v2 ``anki`` block."""
+        anki_block = card.get("anki") if isinstance(card.get("anki"), dict) else {}
+        raw = sanitize((anki_block or {}).get("nid", "")).strip()
+        return raw or None
+
+    @classmethod
+    def _find_duplicate_nids(cls, cards: list[Any]) -> set[str]:
+        """Return nids declared by more than one card in this file.
+
+        A note id uniquely identifies a single Anki note, so the same nid
+        appearing on two cards is impossible in a real collection and signals
+        fabricated/copy-pasted metadata.
+        """
+        counts: dict[str, int] = {}
+        for card in cards:
+            if not isinstance(card, dict):
+                continue
+            raw = cls._extract_raw_nid(card)
+            if raw:
+                counts[raw] = counts.get(raw, 0) + 1
+        return {nid for nid, n in counts.items() if n > 1}
+
+    def _validate_card_ids(
+        self,
+        nid: str | None,
+        cid: str | None,
+        duplicate_nids: set[str],
+        md_path: Path,
+        idx: int,
+    ) -> tuple[str | None, str | None]:
+        """Reject provably-invalid Anki ids so sync can't hijack the wrong note.
+
+        ``anki.nid``/``anki.cid`` are written by Arete after a sync and are not
+        meant to be authored by hand. Two situations are impossible in a real
+        Anki collection and therefore indicate fabricated metadata:
+
+        - ``cid == nid``: note ids and card ids are distinct id spaces assigned
+          at different moments, so they are never equal.
+        - a ``nid`` shared by more than one card in the same file.
+
+        In either case the suspect ids are discarded (returning ``None``) and a
+        warning is logged. The card is then matched by its arete id / content,
+        i.e. created fresh or healed, rather than overwriting an unrelated note.
+        Note that we never rewrite the user's file here; Arete persists a real
+        nid on the next successful sync as it normally does.
+        """
+        if nid and cid and nid == cid:
+            self.logger.warning(
+                f"[meta] {md_path.name} card#{idx}: anki.cid equals anki.nid ({nid}); "
+                "this is impossible in Anki, so the fabricated ids are ignored "
+                "and the card will sync as new."
+            )
+            return None, None
+        if nid and nid in duplicate_nids:
+            self.logger.warning(
+                f"[meta] {md_path.name} card#{idx}: anki.nid {nid} is shared by another "
+                "card in this file; ignoring it so the card syncs as new instead of "
+                "overwriting an unrelated note."
+            )
+            return None, None
+        return nid, cid
+
     def parse_file(
         self,
         md_path: Path,
@@ -43,6 +107,13 @@ class MarkdownParser:
         cards = meta.get("cards", [])
 
         self.logger.debug(f"[parser] Parsing {md_path.name}. cards={len(cards)} fresh={is_fresh}")
+
+        # Arete writes anki.nid/anki.cid itself after a successful sync; these
+        # fields are never meant to be authored by hand. When they are (e.g.
+        # AI-generated or copy-pasted cards), the ids are frequently fabricated
+        # and would make sync UPDATE an unrelated note instead of creating one.
+        # Pre-scan for nids claimed by more than one card so we can reject them.
+        duplicate_nids = self._find_duplicate_nids(cards)
 
         notes: list[AnkiNote] = []
         skipped_indices: list[int] = []
@@ -144,9 +215,13 @@ class MarkdownParser:
 
                 # 2) IDs from anki block
                 anki_block = card.get("anki", {}) if isinstance(card.get("anki"), dict) else {}
-                nid = sanitize(anki_block.get("nid", "")).strip() or None
+                nid = self._extract_raw_nid(card)
                 cid = sanitize(anki_block.get("cid", "")).strip() or None
                 start_line = int(card.get("__line__", 0))
+
+                # Discard provably-invalid ids so a fabricated value can't make
+                # sync overwrite an unrelated note (see _validate_card_ids).
+                nid, cid = self._validate_card_ids(nid, cid, duplicate_nids, md_path, idx)
 
                 # 3) Deck
                 deck_this = (

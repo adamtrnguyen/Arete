@@ -213,6 +213,77 @@ def test_parse_no_deck_set(parser_fixture):
     assert notes[0].deck == "Default"
 
 
+def test_parse_duplicate_nid_is_dropped(parser_fixture, mock_cache):
+    """Two cards sharing one nid is impossible in Anki; trust neither nid."""
+    parser, vault = parser_fixture
+    parser.logger = MagicMock()
+    meta = {
+        "deck": "Default",
+        "cards": [
+            {"model": "Basic", "Front": "Q1", "Back": "A1", "anki": {"nid": "111"}},
+            {"model": "Basic", "Front": "Q2", "Back": "A2", "anki": {"nid": "111"}},
+        ],
+    }
+    notes, skipped, _ = parser.parse_file(vault / "dup.md", meta, mock_cache)
+
+    assert len(notes) == 2
+    assert len(skipped) == 0
+    # Both cards must drop the shared nid so they sync as new notes.
+    assert notes[0].nid is None
+    assert notes[1].nid is None
+    parser.logger.warning.assert_called()
+
+
+def test_parse_cid_equals_nid_is_dropped(parser_fixture, mock_cache):
+    """cid==nid is impossible (distinct id spaces); drop both fabricated ids."""
+    parser, vault = parser_fixture
+    parser.logger = MagicMock()
+    meta = {
+        "deck": "Default",
+        "cards": [
+            {"model": "Basic", "Front": "Q", "Back": "A", "anki": {"nid": "999", "cid": "999"}},
+        ],
+    }
+    notes, skipped, _ = parser.parse_file(vault / "cidnid.md", meta, mock_cache)
+
+    assert len(notes) == 1
+    assert len(skipped) == 0
+    assert notes[0].nid is None
+    assert notes[0].cid is None
+    parser.logger.warning.assert_called()
+
+
+def test_parse_valid_ids_are_preserved(parser_fixture, mock_cache):
+    """A normal, unique nid (with a distinct cid) must be trusted untouched."""
+    parser, vault = parser_fixture
+    meta = {
+        "deck": "Default",
+        "cards": [
+            {"model": "Basic", "Front": "Q1", "Back": "A1", "anki": {"nid": "111", "cid": "222"}},
+            {"model": "Basic", "Front": "Q2", "Back": "A2", "anki": {"nid": "333"}},
+        ],
+    }
+    notes, skipped, _ = parser.parse_file(vault / "ok.md", meta, mock_cache)
+
+    assert len(skipped) == 0
+    assert notes[0].nid == "111"
+    assert notes[0].cid == "222"
+    assert notes[1].nid == "333"
+
+
+def test_find_duplicate_nids_helper():
+    """Helper detects nids declared by more than one card (v2 anki block only)."""
+    cards = [
+        {"anki": {"nid": "111"}},
+        {"anki": {"nid": "111"}},  # same id -> duplicate
+        {"anki": {"nid": "222"}},  # unique
+        {"nid": "111"},  # legacy root-level nid is ignored (v1 support removed)
+        "not a dict",  # ignored
+        {"anki": {}},  # no nid
+    ]
+    assert MarkdownParser._find_duplicate_nids(cards) == {"111"}
+
+
 def test_parse_cache_save_fail(parser_fixture):
     parser, vault = parser_fixture
     mock_cache = MagicMock()
