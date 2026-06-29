@@ -16,6 +16,10 @@ def iter_markdown_files(root: Path) -> Iterable[Path]:
         try:
             rel = p.relative_to(root)
         except ValueError:
+            # p isn't under root (shouldn't happen for rglob results). Fail open:
+            # yield the markdown file rather than silently dropping it; we just
+            # can't apply the skip-dir filter to a path we can't make relative.
+            yield p
             continue
         rel_parts = set(rel.parts[:-1])
         if rel_parts & skip_dirs:
