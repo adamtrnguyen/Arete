@@ -27,7 +27,7 @@ FastMCP-based server exposing Arete tools to AI agents. Entry point: `uv run are
   "mcpServers": {
     "arete": {
       "command": "uv",
-      "args": ["run", "--project", "/Users/adam/Research/arete", "arete", "serve", "mcp"]
+      "args": ["run", "--project", "/Users/adam/Research/ObsidianSuite/arete", "arete", "serve", "mcp"]
     }
   }
 }

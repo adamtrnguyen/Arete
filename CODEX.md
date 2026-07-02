@@ -4,7 +4,7 @@
 
 Arete is a one-way sync tool: Obsidian → Anki. Obsidian is the source of truth. It parses YAML frontmatter from markdown files, syncs cards to Anki, and builds dependency-aware study queues.
 
-**Source:** `/Users/adam/Research/arete`
+**Source:** `/Users/adam/Research/ObsidianSuite/arete`
 **Vault:** `/Users/adam/Library/CloudStorage/OneDrive-Personal/Obsidian Vault`
 
 ## Architecture
