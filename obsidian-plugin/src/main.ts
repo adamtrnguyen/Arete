@@ -9,6 +9,7 @@ import {
 } from 'obsidian';
 import { EditorView } from '@codemirror/view';
 import * as path from 'path';
+import * as os from 'os';
 
 import { AretePluginSettings, DEFAULT_SETTINGS } from '@domain/settings';
 
@@ -576,10 +577,19 @@ export default class AretePlugin extends Plugin {
 		const data = await this.loadData();
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, data);
 		this.statsCache = data?.statsCache;
+		const home = os.homedir();
+		if (this.settings.project_root.startsWith('~')) {
+			this.settings.project_root = this.settings.project_root.replace('~', home);
+		}
 	}
 
 	async saveSettings() {
-		await this.saveData({ ...this.settings, statsCache: this.statsCache });
+		const toSave = { ...this.settings, statsCache: this.statsCache };
+		const home = os.homedir();
+		if (toSave.project_root.startsWith(home)) {
+			toSave.project_root = toSave.project_root.replace(home, '~');
+		}
+		await this.saveData(toSave);
 		// Update services with new settings
 		this.syncService.settings = this.settings;
 		this.checkService.settings = this.settings;
