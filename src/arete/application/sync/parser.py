@@ -262,11 +262,18 @@ class MarkdownParser:
                     self.logger.debug(f"[cache-hit] {md_path} card#{idx}: skipping")
                     continue
 
-                # Construct per-card tag list (base + arete ID for reverse lookup)
+                # Construct per-card tag list (file base + card-level + arete ID)
                 card_tags = list(base_tags)  # Copy to avoid mutating shared list
+                card_tags.extend(
+                    t.strip()
+                    for t in to_list(card.get("tags") or [])
+                    if t and t.strip()
+                )
                 card_id = sanitize(card.get("id", "")).strip()
                 if card_id:
                     card_tags.append(card_id)  # ID already has arete_ prefix
+                # Dedupe while preserving order (file/card overlap, arete ID)
+                card_tags = list(dict.fromkeys(card_tags))
 
                 note_obj = AnkiNote(
                     model=model,

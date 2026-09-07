@@ -305,3 +305,32 @@ def test_parse_cache_save_fail(parser_fixture):
 
     assert len(notes) == 1
     # Should catch exception and log warning (assert logic flows)
+
+
+def test_parse_card_level_tags_merge_with_file_tags(parser_fixture, mock_cache):
+    parser, vault = parser_fixture
+    md_file = vault / "test.md"
+
+    meta = {
+        "deck": "Default",
+        "tags": ["file_tag", "file_dupe"],
+        "cards": [
+            {
+                "model": "Basic",
+                "Front": "Q",
+                "Back": "A",
+                "id": "arete_01HANDBUILTVAULEXAMPLE",
+                "tags": ["card_tag", "file_dupe"],
+            }
+        ],
+    }
+
+    notes, _, _ = parser.parse_file(md_file, meta, mock_cache)
+    assert len(notes) == 1
+    tags = notes[0].tags
+
+    # file + card tags merge, dedupe, order preserved, arete id appended
+    assert tags[0] == "file_tag"
+    assert "card_tag" in tags
+    assert tags.count("file_dupe") == 1
+    assert any(t.startswith("arete_") for t in tags)
