@@ -20,7 +20,7 @@ from arete.application.queue.builder import (
     build_simple_queue,
 )
 from arete.application.queue.graph_resolver import build_graph, topological_sort
-from arete.domain.interfaces import AnkiBridge
+from arete.domain.interfaces import QueuePort
 
 # The one queue-algorithm vocabulary. CLI, HTTP and MCP all expose exactly this.
 QueueAlgo = Literal["static", "dynamic", "simple"]
@@ -90,7 +90,7 @@ class QueueOrchestratorResult:
 
 
 async def build_study_queue(  # noqa: PLR0913
-    anki: AnkiBridge,
+    anki: QueuePort,
     vault_root: Path,
     *,
     deck: str | None = None,
@@ -114,7 +114,7 @@ async def build_study_queue(  # noqa: PLR0913
         5. Optionally create the filtered deck in Anki
 
     Args:
-        anki: AnkiBridge instance (caller provides; factory is not our concern)
+        anki: Anki queue port (caller provides; factory is not our concern)
         vault_root: Path to the Obsidian vault
         deck: Optional deck name filter for due cards
         depth: Prerequisite search depth

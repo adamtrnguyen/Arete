@@ -1,4 +1,15 @@
-from abc import ABC, abstractmethod
+"""Ports: what the application layer is allowed to ask of the outside world.
+
+`AnkiBridge` used to be one interface of eighteen methods, so both adapters had to
+implement all eighteen whatever they were used for, and a use-case that only reads
+card statistics still received a handle that could delete decks.
+
+The four role ports below are what each caller actually uses. Type a use-case on
+its role and the type checker refuses any call outside it. `AnkiBridge` stays as
+the composite: it is the type of an adapter and of the shared test fake, nothing else.
+"""
+
+from abc import abstractmethod
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
@@ -33,30 +44,19 @@ class ContentCache(Protocol):
     def clear(self) -> None: ...
 
 
-class AnkiBridge(ABC):
-    """Abstract interface for Anki backend operations.
-
-    Implementations (Adapters) are responsible for translating domain-level
-    WorkItems into backend-specific commands (e.g., HTTP for AnkiConnect
-    or SQLite/CLI for apy).
-    """
-
-    @property
-    @abstractmethod
-    def is_sequential(self) -> bool:
-        """Whether this bridge requires sequential access."""
-        pass
+@runtime_checkable
+class SyncPort(Protocol):
+    """What the sync pipeline needs. Used by application/sync only."""
 
     @abstractmethod
     async def sync_notes(self, work_items: list[WorkItem]) -> list[UpdateItem]:
         """Process a batch of notes: add new ones or update existing ones.
 
-        If a note has an existing 'nid', the adapter should attempt to
-        update the existing note. If no 'nid' is provided, it should create
-         a new one.
+        If a note has an existing 'nid', the adapter updates that note. If it has
+        none, the adapter reconciles by Arete ID tag, then by content, then creates.
 
-        Note: AnkiConnect implementation additionally performs 'Self-Healing'
-        by searching for duplicate content if creation fails.
+        The adapter owns its own concurrency. A caller may issue overlapping
+        sync_notes calls; a backend that cannot take them serializes internally.
         """
         pass
 
@@ -69,7 +69,7 @@ class AnkiBridge(ABC):
     async def get_notes_in_deck(self, deck_name: str) -> dict[str, int]:
         """Return mapping of {obsidian_nid: anki_nid} for all notes in a deck.
 
-        Used primarily by the Pruning stage to identify orphaned cards.
+        Used by the prune stage to identify orphaned cards.
         """
         pass
 
@@ -83,6 +83,48 @@ class AnkiBridge(ABC):
         """Permanently delete specified decks (and their notes) from Anki."""
         pass
 
+
+@runtime_checkable
+class QueuePort(Protocol):
+    """What the study-queue builder needs. Used by application/queue only."""
+
+    @abstractmethod
+    async def get_due_cards(
+        self, deck_name: str | None = None, include_new: bool = False
+    ) -> list[int]:
+        """Fetch NIDs of due cards, optionally filtered by deck.
+
+        If include_new is True, also includes new (unreviewed) cards.
+        """
+        pass
+
+    @abstractmethod
+    async def map_nids_to_arete_ids(self, nids: list[int]) -> list[str]:
+        """Convert Anki Note IDs to Arete IDs."""
+        pass
+
+    @abstractmethod
+    async def get_card_ids_for_arete_ids(self, arete_ids: list[str]) -> list[int]:
+        """Resolve Arete IDs (e.g. arete_123) to Anki Card IDs (CIDs)."""
+        pass
+
+    @abstractmethod
+    async def create_topo_deck(
+        self, deck_name: str, cids: list[int], reschedule: bool = True
+    ) -> bool:
+        """Create a filtered deck with topological ordering enforced."""
+        pass
+
+
+@runtime_checkable
+class CardStatsPort(Protocol):
+    """Read-only review history. Used by the stats services and the card editor."""
+
+    @abstractmethod
+    async def get_card_stats(self, nids: list[int]) -> list[AnkiCardStats]:
+        """Fetch detailed statistics for a list of Note IDs."""
+        pass
+
     @abstractmethod
     async def get_learning_insights(self, lapse_threshold: int = 3) -> Any:
         """Fetch learning statistics and identify problematic notes.
@@ -91,13 +133,10 @@ class AnkiBridge(ABC):
         """
         pass
 
-    @abstractmethod
-    async def get_card_stats(self, nids: list[int]) -> list[AnkiCardStats]:
-        """Fetch detailed statistics for a list of Note IDs.
 
-        Used by the dashboard to show lapses, difficulty, etc.
-        """
-        pass
+@runtime_checkable
+class AnkiAdminPort(Protocol):
+    """Direct Anki housekeeping the user asks for by name (suspend, browse, styling)."""
 
     @abstractmethod
     async def gui_browse(self, query: str) -> bool:
@@ -124,32 +163,13 @@ class AnkiBridge(ABC):
         """Fetch front/back templates for all cards in an Anki model."""
         pass
 
-    @abstractmethod
-    async def create_topo_deck(
-        self, deck_name: str, cids: list[int], reschedule: bool = True
-    ) -> bool:
-        """Create a filtered deck with topological ordering enforced."""
-        pass
 
-    @abstractmethod
-    async def get_card_ids_for_arete_ids(self, arete_ids: list[str]) -> list[int]:
-        """Resolve Arete IDs (e.g. arete_123) to Anki Card IDs (CIDs)."""
-        pass
+class AnkiBridge(SyncPort, QueuePort, CardStatsPort, AnkiAdminPort):
+    """Every role at once: the type of an adapter and of the shared test fake.
 
-    @abstractmethod
-    async def get_due_cards(
-        self, deck_name: str | None = None, include_new: bool = False
-    ) -> list[int]:
-        """Fetch NIDs of due cards, optionally filtered by deck.
-
-        If include_new is True, also includes new (unreviewed) cards.
-        """
-        pass
-
-    @abstractmethod
-    async def map_nids_to_arete_ids(self, nids: list[int]) -> list[str]:
-        """Convert Anki Note IDs to Arete IDs."""
-        pass
+    Use a role port in a use-case signature. Use this one only where something
+    must own the connection itself, which means the composition root.
+    """
 
     @abstractmethod
     async def close(self) -> None:

@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from arete.domain.constants import (
     BROWSE_INITIAL_DELAY,
@@ -16,6 +17,10 @@ from arete.domain.models import AnkiCardStats, AnkiDeck, UpdateItem, WorkItem
 from arete.infrastructure.anki.fsrs import fsrs_state_of
 from arete.infrastructure.anki.repository import AnkiRepository
 
+if TYPE_CHECKING:  # importing these eagerly cycles inside the anki package
+    from anki.decks import DeckId
+    from anki.notes import NoteId
+
 
 class AnkiDirectAdapter(AnkiBridge):
     """Direct Python adapter for Anki using the 'anki' library."""
@@ -24,6 +29,7 @@ class AnkiDirectAdapter(AnkiBridge):
         """Initialize with path to the Anki base directory."""
         self.anki_base = anki_base
         self.logger = logging.getLogger(__name__)
+        self._sync_lock = asyncio.Lock()
 
     async def ensure_deck(self, deck: AnkiDeck | str) -> bool:
         # AnkiRepository creates/ensures decks on the fly during add_note
@@ -37,13 +43,17 @@ class AnkiDirectAdapter(AnkiBridge):
                 return True
         return False
 
-    @property
-    def is_sequential(self) -> bool:
-        return True
-
     async def sync_notes(self, work_items: list[WorkItem]) -> list[UpdateItem]:
         results = []
 
+        # One collection at a time: this backend opens the Anki SQLite file, so
+        # overlapping calls would open it twice. The caller does not need to know.
+        async with self._sync_lock:
+            return await self._sync_notes_locked(work_items, results)
+
+    async def _sync_notes_locked(
+        self, work_items: list[WorkItem], results: list[UpdateItem]
+    ) -> list[UpdateItem]:
         # Batch operation: Open DB once
         try:
             with AnkiRepository(self.anki_base) as repo:
@@ -256,8 +266,8 @@ class AnkiDirectAdapter(AnkiBridge):
             troublesome_cids = repo.col.find_cards(f"prop:lapses>={lapse_threshold}")
 
             # Map NIDs to max lapses, and remember the deck of the worst card
-            nid_to_lapses: dict[int, int] = {}
-            nid_to_did: dict[int, int] = {}
+            nid_to_lapses: dict[NoteId, int] = {}
+            nid_to_did: dict[NoteId, DeckId] = {}
             for cid in troublesome_cids:
                 card = repo.col.get_card(cid)
                 nid = card.nid

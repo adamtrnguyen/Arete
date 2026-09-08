@@ -16,7 +16,7 @@ from pydantic import ValidationError
 from arete.application.sync.id_service import generate_arete_id
 from arete.application.utils.text import parse_frontmatter, rebuild_markdown_with_frontmatter
 from arete.domain.card_models import parse_card
-from arete.domain.interfaces import AnkiBridge
+from arete.domain.interfaces import CardStatsPort
 
 logger = logging.getLogger(__name__)
 
@@ -126,7 +126,7 @@ def _get_card_nid(card: dict[str, Any]) -> int | None:
     return None
 
 
-async def _get_maturity(bridge: AnkiBridge | None, card: dict[str, Any]) -> str:
+async def _get_maturity(bridge: CardStatsPort | None, card: dict[str, Any]) -> str:
     """Get maturity classification for a card.
 
     bridge=None (Anki offline) deliberately defaults to "mature", the conservative
@@ -200,7 +200,7 @@ async def edit_card(
     file_path: Path,
     card_index: int,
     fields: dict[str, Any],
-    bridge: AnkiBridge | None = None,
+    bridge: CardStatsPort | None = None,
     force: bool = False,
 ) -> EditResult:
     """Edit fields of an existing card. Maturity-guarded."""
@@ -331,7 +331,7 @@ async def add_card(file_path: Path, card_dict: dict[str, Any]) -> AddResult:
 async def delete_card(
     file_path: Path,
     card_index: int,
-    bridge: AnkiBridge | None = None,
+    bridge: CardStatsPort | None = None,
     force: bool = False,
 ) -> DeleteResult:
     """Remove a card by index. Maturity-guarded."""

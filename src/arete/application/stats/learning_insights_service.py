@@ -4,8 +4,8 @@ Wraps AnkiBridge to provide learning statistics and note name cleaning.
 """
 
 import logging
-from typing import Any
 
+from arete.domain.interfaces import CardStatsPort
 from arete.domain.stats.models import LearningStats
 
 logger = logging.getLogger(__name__)
@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 class LearningInsightsService:
     """Service to interact with Anki and generate learning insights."""
 
-    def __init__(self, anki_bridge: Any):
+    def __init__(self, anki_bridge: CardStatsPort):
         """Initialize LearningInsightsService."""
         self.anki = anki_bridge
 

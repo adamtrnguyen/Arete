@@ -15,7 +15,7 @@ from arete.application.utils.logging import RunRecorder
 from arete.application.utils.media import build_filename_index
 from arete.application.utils.text import parse_frontmatter, rebuild_markdown_with_frontmatter
 from arete.domain.constants import CONSUMER_BATCH_SIZE
-from arete.domain.interfaces import AnkiBridge, ContentCache
+from arete.domain.interfaces import ContentCache, SyncPort
 from arete.domain.models import AnkiDeck, UpdateItem, WorkItem
 
 
@@ -32,7 +32,7 @@ async def run_pipeline(
     run_id: str,
     vault_service: VaultService,
     parser: MarkdownParser,
-    anki_bridge: AnkiBridge,
+    anki_bridge: SyncPort,
     cache: ContentCache,
 ) -> RunStats:
     recorder = RunRecorder()
@@ -89,10 +89,9 @@ async def run_pipeline(
     updates: list[UpdateItem] = []
     updates_lock = asyncio.Lock()
 
-    # Concurrency control:
-    # AnkiConnect can handle multiple requests, but apy (SQLite/CLI) should be sequential.
-
-    max_sync_concurrency = 1 if anki_bridge.is_sequential else max(1, config.workers)
+    # How many batches may be in flight. A backend that cannot take overlapping
+    # calls serializes them itself, so this does not depend on which one we got.
+    max_sync_concurrency = max(1, config.workers)
     sync_semaphore = asyncio.Semaphore(max_sync_concurrency)
 
     async def producer_file(md_file: Path, meta: dict[str, Any], is_fresh: bool):
@@ -254,7 +253,7 @@ async def run_pipeline(
 
 
 async def _prune_orphans(
-    config: AppConfig, recorder: RunRecorder, bridge: AnkiBridge, logger: logging.Logger
+    config: AppConfig, recorder: RunRecorder, bridge: SyncPort, logger: logging.Logger
 ):
     if config.root_input != config.vault_root:
         logger.warning(

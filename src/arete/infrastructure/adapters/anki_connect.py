@@ -77,10 +77,6 @@ class AnkiConnectAdapter(AnkiBridge):
             f"(curl_bridge={self.use_windows_curl})"
         )
 
-    @property
-    def is_sequential(self) -> bool:
-        return False
-
     async def is_responsive(self) -> bool:
         """Check if AnkiConnect is reachable and has the expected API version."""
         try:
