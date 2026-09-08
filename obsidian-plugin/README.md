@@ -4,7 +4,7 @@
 
 Arete treats your Obsidian vault as the **Source of Truth**. Write your flashcards in Markdown, and let Arete handle the synchronization to Anki, including media, math, and updates.
 
-![Demo Screenshot](https://raw.githubusercontent.com/Adanato/Arete/main/docs/assets/demo.png)
+![Demo Screenshot](https://raw.githubusercontent.com/adamtrnguyen/Arete/main/docs/assets/demo.png)
 
 ## Features
 
@@ -64,4 +64,4 @@ The capital of {{c1::France}} is {{c2::Paris}}.
 
 ## License
 
-MIT License. See [LICENSE](https://github.com/Adanato/Arete/blob/main/LICENSE) for details.
+MIT License. See [LICENSE](https://github.com/adamtrnguyen/Arete/blob/main/LICENSE) for details.

@@ -36,7 +36,7 @@ dependencies = [
 ]
 
 [project.urls]
-Repository = "https://github.com/Adanato/Arete"
+Repository = "https://github.com/adamtrnguyen/Arete"
 
 [build-system]
 requires = ["hatchling"]

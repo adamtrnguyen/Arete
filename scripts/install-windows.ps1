@@ -1,5 +1,5 @@
 # Arete Windows Installer
-# Run in PowerShell: irm https://raw.githubusercontent.com/Adanato/Arete/main/scripts/install-windows.ps1 | iex
+# Run in PowerShell: irm https://raw.githubusercontent.com/adamtrnguyen/Arete/main/scripts/install-windows.ps1 | iex
 
 param(
     [string]$VaultPath = "",
@@ -12,7 +12,7 @@ Write-Host "=== Arete Installer for Windows ===" -ForegroundColor Cyan
 Write-Host ""
 
 # --- Configuration ---
-$GH_REPO = "Adanato/Arete"
+$GH_REPO = "adamtrnguyen/Arete"
 $RELEASE_URL = "https://github.com/$GH_REPO/releases/download/$Version"
 
 # --- Detect Paths ---

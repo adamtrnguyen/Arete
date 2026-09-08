@@ -17,6 +17,14 @@ describe('resolvePythonCommand', () => {
 		expect(result.cwd).toBe('.');
 	});
 
+	test('the installed console script is used as-is, not as a module', () => {
+		// Setting python_path to "arete" is how a user stops depending on a checked-out
+		// repository. Appending "-m arete" to it produced "arete -m arete", which fails.
+		const result = resolvePythonCommand({ ...baseSettings, python_path: 'arete' });
+		expect(result.cmd).toBe('arete');
+		expect(result.args).toEqual([]);
+	});
+
 	test('multi-word python_path is split correctly', () => {
 		const settings = { ...baseSettings, python_path: 'uv run python' };
 		const result = resolvePythonCommand(settings);

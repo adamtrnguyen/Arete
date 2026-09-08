@@ -55,7 +55,7 @@ To get your plugin into the official list inside Obsidian, you must submit a Pul
           "name": "Arete",
           "author": "Adam Nguyen",
           "description": "Sync Obsidian vault to Anki with topological queues and FSRS support.",
-          "repo": "Adanato/Arete"
+          "repo": "adamtrnguyen/Arete"
         }
         ```
 3.  **Submit PR**: Open a Pull Request on their repo.
@@ -103,7 +103,7 @@ BRAT looks for the released artifacts (`main.js`, `manifest.json`, `styles.css`)
 To test the pre-release version of Arete:
 1.  Install the **BRAT** plugin from the Obsidian Community Store.
 2.  Open BRAT settings -> "Add Beta plugin".
-3.  Enter the repository URL: `https://github.com/Adanato/Arete`.
+3.  Enter the repository URL: `https://github.com/adamtrnguyen/Arete`.
 4.  BRAT will download the latest release and keep it auto-updated.
 
 ### Important for Maintainers

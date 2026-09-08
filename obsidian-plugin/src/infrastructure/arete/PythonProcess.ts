@@ -33,10 +33,15 @@ export function resolvePythonCommand(
 		env['PYTHONPATH'] = packageRoot;
 		args.push('-m', 'arete');
 	} else {
-		// Add -m arete unless already present
+		// Add "-m arete" unless the command already reaches arete.
+		// The check must include `cmd`, not only `args`: with python_path set to the
+		// installed console script ("arete"), args is empty, and looking at args alone
+		// produced "arete -m arete". That is the setting a user needs in order to stop
+		// depending on a checked-out repository, so it has to work.
+		const invokesArete = cmd.toLowerCase().includes('arete');
 		const hasArete = args.some((a) => a.toLowerCase().includes('arete'));
 		const hasModule = args.includes('-m');
-		if (!hasArete && !hasModule) {
+		if (!invokesArete && !hasArete && !hasModule) {
 			args.push('-m', 'arete');
 		}
 	}

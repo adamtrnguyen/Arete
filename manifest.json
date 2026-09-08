@@ -5,6 +5,6 @@
 	"minAppVersion": "0.15.0",
 	"description": "Professional one-way sync from Obsidian to Anki. Supports media, MathJax, and automatic card management.",
 	"author": "Adam Nguyen",
-	"authorUrl": "https://github.com/Adanato/Arete",
+	"authorUrl": "https://github.com/adamtrnguyen/Arete",
 	"isDesktopOnly": true
 }

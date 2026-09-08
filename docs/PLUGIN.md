@@ -4,7 +4,7 @@ The **Arete** Obsidian Plugin provides a rich graphical interface for synchroniz
 
 ## Installation
 
-1.  Download the latest `main.js`, `manifest.json`, and `styles.css` from [GitHub Releases](https://github.com/Adanato/Arete/releases).
+1.  Download the latest `main.js`, `manifest.json`, and `styles.css` from [GitHub Releases](https://github.com/adamtrnguyen/Arete/releases).
 2.  Create a folder: `<Vault>/.obsidian/plugins/arete`.
 3.  Place the 3 files into that folder and enable the plugin in Obsidian settings.
 

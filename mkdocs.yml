@@ -3,8 +3,8 @@ site_description: "Pro-grade synchronization from Obsidian to Anki with topologi
 site_author: "Adam Nguyen"
 site_url: "https://adanato.github.io/Arete/"
 
-repo_name: "Adanato/Arete"
-repo_url: "https://github.com/Adanato/Arete"
+repo_name: "adamtrnguyen/Arete"
+repo_url: "https://github.com/adamtrnguyen/Arete"
 
 theme:
   name: material

@@ -7,7 +7,7 @@ This guide covers the advanced usage, configuration, and syntax for the `arete` 
 `arete` uses [uv](https://github.com/astral-sh/uv) for lightning-fast dependency management and isolated environments.
 
 ```bash
-git clone https://github.com/Adanato/Arete
+git clone https://github.com/adamtrnguyen/Arete
 cd Arete
 uv sync
 ```
