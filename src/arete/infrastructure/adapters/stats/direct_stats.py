@@ -6,8 +6,9 @@ Implements StatsRepository by querying the Anki collection directly.
 import logging
 from pathlib import Path
 
-from arete.domain.stats.models import CardStatsAggregate, FsrsMemoryState, ReviewEntry
+from arete.domain.stats.models import CardStatsAggregate, ReviewEntry
 from arete.domain.stats.ports import StatsRepository
+from arete.infrastructure.anki.fsrs import fsrs_state_of
 from arete.infrastructure.anki.repository import AnkiRepository
 
 logger = logging.getLogger(__name__)
@@ -45,16 +46,7 @@ class DirectStatsRepository(StatsRepository):
                         deck_name = deck["name"] if deck else "Unknown"
 
                         # Extract FSRS memory state
-                        # None until the card has been reviewed under FSRS.
-                        # anki 25.9.2: Card.memory_state is Optional[FsrsMemoryState]
-                        # (protobuf: stability, difficulty; difficulty on the native 1-10 scale).
-                        fsrs_state: FsrsMemoryState | None = None
-                        if card.memory_state:
-                            fsrs_state = FsrsMemoryState(
-                                stability=card.memory_state.stability,
-                                difficulty=card.memory_state.difficulty,
-                                retrievability=None,  # Computed by application layer
-                            )
+                        fsrs_state = fsrs_state_of(card)
 
                         # Get last review time from revlog
                         last_review = self._get_last_review_time(repo, cid)

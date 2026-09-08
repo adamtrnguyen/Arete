@@ -9,11 +9,11 @@ from arete.domain.constants import (
     BROWSE_INITIAL_DELAY,
     BROWSE_POLL_ATTEMPTS,
     BROWSE_POLL_INTERVAL,
-    FSRS_DIFFICULTY_SCALE,
     MAX_PROBLEMATIC_NOTES,
 )
 from arete.domain.interfaces import AnkiBridge
 from arete.domain.models import AnkiCardStats, AnkiDeck, UpdateItem, WorkItem
+from arete.infrastructure.anki.fsrs import fsrs_state_of
 from arete.infrastructure.anki.repository import AnkiRepository
 
 
@@ -262,12 +262,15 @@ class AnkiDirectAdapter(AnkiBridge):
             # Efficiently find cards with lapses >= threshold
             troublesome_cids = repo.col.find_cards(f"prop:lapses>={lapse_threshold}")
 
-            # Map NIDs to max lapses
-            nid_to_lapses = {}
+            # Map NIDs to max lapses, and remember the deck of the worst card
+            nid_to_lapses: dict[int, int] = {}
+            nid_to_did: dict[int, int] = {}
             for cid in troublesome_cids:
                 card = repo.col.get_card(cid)
                 nid = card.nid
-                nid_to_lapses[nid] = max(nid_to_lapses.get(nid, 0), card.lapses)
+                if card.lapses >= nid_to_lapses.get(nid, 0):
+                    nid_to_lapses[nid] = card.lapses
+                    nid_to_did[nid] = card.did
 
             # 3. Process notes
             for nid, lapses in nid_to_lapses.items():
@@ -287,12 +290,15 @@ class AnkiDirectAdapter(AnkiBridge):
                 # Strip HTML
                 note_name = re.sub("<[^<]+?>", "", note_name).strip()
 
+                deck = repo.col.decks.get(nid_to_did[nid])
                 problematic_notes.append(
                     NoteInsight(
                         note_name=note_name,
                         issue=f"{lapses} lapses",
                         lapses=lapses,
-                        deck=model["name"],
+                        deck=deck["name"]
+                        if deck
+                        else "Unknown",  # the card's deck, not the note type
                     )
                 )
 
@@ -327,12 +333,8 @@ class AnkiDirectAdapter(AnkiBridge):
                         deck = repo.col.decks.get(card.did)
                         deck_name = deck["name"] if deck else "Unknown"
 
-                        # FSRS memory state is None until the card has been reviewed under FSRS.
-                        # anki 25.9.2: Card.memory_state is Optional[FsrsMemoryState]
-                        # (protobuf: stability, difficulty). difficulty is on a 1-10 scale.
-                        difficulty = None
-                        if card.memory_state:
-                            difficulty = card.memory_state.difficulty / FSRS_DIFFICULTY_SCALE
+                        state = fsrs_state_of(card)
+                        difficulty = state.difficulty if state else None
 
                         try:
                             note = repo.col.get_note(card.nid)

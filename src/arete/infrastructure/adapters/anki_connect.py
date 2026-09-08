@@ -1,7 +1,6 @@
 import asyncio
 import json
 import logging
-import os
 import platform
 import re
 import shutil
@@ -36,18 +35,10 @@ class AnkiConnectAdapter(AnkiBridge):
         self._client: httpx.AsyncClient | None = None
         self._invoke_sem = asyncio.Semaphore(SYNC_CONCURRENCY)
 
-        # 1. Environment Variable Override (Highest Priority)
-        env_host = os.environ.get("ANKI_CONNECT_HOST")
-        if env_host:
-            # If user provides a host (e.g. 192.168.1.5), we reconstruct the URL
-            # Assumes port 8765 if not specified, or user can provide full authority?
-            # Let's assume input is just the host IP/name
-            url = f"http://{env_host}:8765"
-            self.logger.info(f"Using ANKI_CONNECT_HOST override: {url}")
-            self.url = url
-            return
+        # The URL comes from config.anki_connect_url (CLI flag, config.toml, or the
+        # O2A_ANKI_CONNECT_URL env var). No second env var is read here.
 
-        # 2. WSL Logic
+        # WSL Logic
         if "microsoft" in platform.uname().release.lower():
             # Strategy A: curl.exe bridge (Preferred for 127.0.0.1)
             curl_path = shutil.which("curl.exe")
@@ -494,11 +485,9 @@ class AnkiConnectAdapter(AnkiBridge):
         deck_filter = f'deck:"{deck_name}" ' if deck_name else ""
         query = f"{deck_filter}(is:due)" if not include_new else f"{deck_filter}(is:due OR is:new)"
 
-        try:
-            return await self._invoke("findNotes", query=query)
-        except Exception as e:
-            self.logger.error(f"Failed to get due cards: {e}")
-            return []
+        # No fallback: an empty list here would build an empty queue and report
+        # "nothing due" during an AnkiConnect outage. Let the caller fail loudly.
+        return await self._invoke("findNotes", query=query)
 
     async def find_all_arete_nids(self) -> list[int]:
         """Find all note IDs that have arete tags."""

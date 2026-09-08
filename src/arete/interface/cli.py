@@ -5,11 +5,12 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated
 
 import typer
 
 from arete.application.config import resolve_config
+from arete.application.queue.service import QueueAlgo
 from arete.interface._common import _resolve_with_overrides
 from arete.interface.anki_commands import anki_app
 from arete.interface.serve_commands import serve_app
@@ -186,13 +187,14 @@ def queue(
         ),
     ] = False,
     algo: Annotated[
-        Literal["static", "dynamic"],
+        QueueAlgo,
         typer.Option(
             "--algo",
             help=(
                 "Queue algorithm. "
                 "'static' = build once and study as-is. "
-                "'dynamic' = ready-frontier ordering for prerequisite-aware sequencing."
+                "'dynamic' = ready-frontier ordering for prerequisite-aware sequencing. "
+                "'simple' = due cards plus prerequisites, no ordering (what the plugin uses)."
             ),
         ),
     ] = "static",
@@ -467,5 +469,14 @@ def graph_check(
         if result.components > 1:
             typer.secho(f"\nConnected components: {result.components}", fg="yellow")
 
-        if result.cycles or result.unresolved_refs:
+        if result.skipped_files:
+            typer.secho(
+                f"\nFiles that could not be parsed (their cards are missing from the graph): "
+                f"{len(result.skipped_files)}",
+                fg="red",
+            )
+            for entry in result.skipped_files:
+                typer.echo(f"  {entry}")
+
+        if result.cycles or result.unresolved_refs or result.skipped_files:
             raise typer.Exit(1)

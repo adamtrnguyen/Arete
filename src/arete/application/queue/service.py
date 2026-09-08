@@ -23,6 +23,9 @@ from arete.application.queue.builder import (
 from arete.application.queue.graph_resolver import build_graph, topological_sort
 from arete.domain.interfaces import AnkiBridge
 
+# The one queue-algorithm vocabulary. CLI, HTTP and MCP all expose exactly this.
+QueueAlgo = Literal["static", "dynamic", "simple"]
+
 logger = logging.getLogger(__name__)
 
 
@@ -49,7 +52,7 @@ class QueueOrchestratorResult:
     unmapped_count: int = 0
 
     # Algorithm used
-    algo: Literal["static", "dynamic", "simple"] = "static"
+    algo: QueueAlgo = "static"
 
     # Queue build result (from builder)
     build_result: QueueBuildResult | None = None
@@ -97,7 +100,7 @@ async def build_study_queue(  # noqa: PLR0913
     include_new: bool = False,
     include_related: bool = False,
     cross_deck: bool = False,
-    algo: Literal["static", "dynamic", "simple"] = "static",
+    algo: QueueAlgo = "static",
     dry_run: bool = False,
     deck_name: str = "Arete::Queue",
     reschedule: bool = True,

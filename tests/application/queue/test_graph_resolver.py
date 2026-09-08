@@ -783,3 +783,26 @@ class TestGetSubgraphForFiles:
 
         result = get_subgraph_for_files(tmp_path, [str(f)])
         assert len(result.cycles_involving_batch) == 1
+
+
+def test_unparseable_file_is_reported_not_dropped(tmp_path: Path):
+    """An unreadable file must show up in the health result.
+
+    Otherwise its cards vanish from the dependency graph without a trace (row 22).
+    """
+    from arete.application.queue.graph_resolver import build_graph, check_graph_health
+
+    (tmp_path / "good.md").write_text(
+        "---\narete: true\ncards:\n  - id: arete_01GOOD\n    Front: q\n    Back: a\n---\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "bad.md").write_bytes(b"\xff\xfe not utf-8 at all")
+
+    graph = build_graph(tmp_path)
+    assert "arete_01GOOD" in graph.nodes
+    assert len(graph.skipped_files) == 1
+    assert graph.skipped_files[0][0].endswith("bad.md")
+
+    health = check_graph_health(tmp_path)
+    assert health.ok is False
+    assert len(health.skipped_files) == 1 and "bad.md" in health.skipped_files[0]

@@ -14,6 +14,7 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 from arete.application.config import AppConfig, resolve_config
+from arete.application.queue.service import QueueAlgo
 from arete.composition.factory import get_anki_bridge
 from arete.composition.orchestrator import execute_sync
 from arete.domain.interfaces import AnkiBridge
@@ -268,6 +269,7 @@ def create_server() -> FastMCP:  # noqa: C901
         deck: str = "CS::DSA",
         depth: int = 2,
         include_new: bool = False,
+        algo: QueueAlgo = "simple",
     ) -> str:
         """Build a dependency-ordered study queue in Anki.
 
@@ -278,6 +280,7 @@ def create_server() -> FastMCP:  # noqa: C901
             deck: Deck to build queue from (default: "CS::DSA")
             depth: How many prerequisite levels to include (default: 2)
             include_new: Whether to include new (unreviewed) cards
+            algo: "simple" (default), "static" or "dynamic" -- same vocabulary as the CLI --algo
 
         """
         from arete.application.queue.service import build_study_queue as _build_queue
@@ -294,7 +297,7 @@ def create_server() -> FastMCP:  # noqa: C901
             deck=deck,
             depth=depth,
             include_new=include_new,
-            algo="simple",
+            algo=algo,
             enrich=False,
         )
 

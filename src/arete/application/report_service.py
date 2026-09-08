@@ -1,7 +1,10 @@
 """Service for reading and managing card issue reports."""
 
 import json
+import logging
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 REPORTS_PATH = Path.home() / ".config" / "arete" / "reports.json"
 
@@ -13,7 +16,8 @@ def load_reports() -> list[dict]:
     try:
         data = json.loads(REPORTS_PATH.read_text(encoding="utf-8"))
         return data if isinstance(data, list) else []
-    except (json.JSONDecodeError, OSError):
+    except (json.JSONDecodeError, OSError) as e:
+        logger.warning(f"[reports] cannot read {REPORTS_PATH}, treating as empty: {e}")
         return []
 
 

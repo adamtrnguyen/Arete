@@ -9,6 +9,8 @@ from importlib.metadata import version
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
+from arete.application.queue.service import QueueAlgo
+
 VERSION = version("arete")
 
 # Setup logging
@@ -385,6 +387,8 @@ class QueueBuildRequest(BaseModel):
     deck: str | None = None
     depth: int = 2
     max_cards: int = 50
+    algo: QueueAlgo = "simple"  # same vocabulary as the CLI --algo
+    algo: QueueAlgo = "simple"  # same vocabulary as the CLI --algo
     vault_root: str | None = None
     backend: str | None = None
     anki_connect_url: str | None = None
@@ -422,7 +426,7 @@ async def build_queue(req: QueueBuildRequest):
                 deck=req.deck,
                 depth=req.depth,
                 max_cards=req.max_cards,
-                algo="simple",
+                algo=req.algo,
                 dry_run=True,  # /queue/build only plans; /queue/create-deck creates
                 enrich=True,
             )

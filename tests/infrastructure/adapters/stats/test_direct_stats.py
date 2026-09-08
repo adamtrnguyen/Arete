@@ -109,7 +109,7 @@ async def test_get_card_stats_with_fsrs_memory_state(mock_repo):
     assert len(result) == 1
     s = result[0]
     assert s.fsrs is not None
-    assert s.fsrs.difficulty == 7.5  # Direct uses native 1-10 scale
+    assert s.fsrs.difficulty == 0.75  # normalised 0-1, same units as the AnkiConnect path
     assert s.fsrs.stability == 30.0
     assert s.fsrs.retrievability is None  # Computed by application layer
 

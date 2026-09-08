@@ -44,6 +44,7 @@ class DependencyGraph:
     nodes: dict[str, CardNode] = field(default_factory=dict)
     related: dict[str, list[str]] = field(default_factory=dict)  # id → [related ids]
     unresolved_refs: dict[str, list[str]] = field(default_factory=dict)  # id → [unresolved refs]
+    skipped_files: list[tuple[str, str]] = field(default_factory=list)  # (path, error) not parsed
     _graph: nx.DiGraph = field(default_factory=nx.DiGraph, repr=False)
 
     @property

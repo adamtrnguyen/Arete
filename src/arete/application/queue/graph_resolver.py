@@ -7,7 +7,7 @@ builds the full dependency graph, and provides traversal utilities.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import networkx as nx
@@ -62,6 +62,7 @@ class GraphHealthResult:
     isolated_nodes: list[IsolatedEntry]
     unresolved_refs: list[UnresolvedEntry]
     deck_filter: str | None = None
+    skipped_files: list[str] = field(default_factory=list)  # "path: error"
 
 
 @dataclass
@@ -185,7 +186,10 @@ def build_graph(vault_root: Path) -> DependencyGraph:
                         )
 
         except Exception as e:
+            # The file's cards are now absent from the graph: record it so `graph check`
+            # and queue builds can report it instead of silently working on a partial graph.
             logger.warning(f"Failed to parse {md_path}: {e}")
+            graph.skipped_files.append((str(md_path), str(e)))
             continue
 
     # Build reverse index: card_id -> basename of its file
@@ -525,6 +529,7 @@ def check_graph_health(
 
     """
     graph = build_graph(vault_root)
+    skipped = [f"{path}: {err}" for path, err in graph.skipped_files]
 
     if deck_filter:
         graph = filter_graph_by_deck(graph, deck_filter)
@@ -576,7 +581,7 @@ def check_graph_health(
         cid for cid in graph.nodes if not graph.get_prerequisites(cid) and graph.get_dependents(cid)
     ]
 
-    ok = len(cycles_raw) == 0 and len(unresolved_entries) == 0
+    ok = len(cycles_raw) == 0 and len(unresolved_entries) == 0 and not skipped
 
     return GraphHealthResult(
         ok=ok,
@@ -588,6 +593,7 @@ def check_graph_health(
         isolated_nodes=isolated_entries,
         unresolved_refs=unresolved_entries,
         deck_filter=deck_filter,
+        skipped_files=skipped,
     )
 
 

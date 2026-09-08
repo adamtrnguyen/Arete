@@ -10,7 +10,6 @@ Covers: sync_notes, ensure_deck, ensure_model, is_responsive, _invoke,
 
 import asyncio
 import json
-import os
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, mock_open, patch
 
@@ -93,12 +92,6 @@ async def test_is_responsive_failure_respx(adapter):
 # ---------------------------------------------------------------------------
 # env override
 # ---------------------------------------------------------------------------
-
-
-def test_env_host_override():
-    with patch.dict(os.environ, {"ANKI_CONNECT_HOST": "1.2.3.4"}):
-        ac = AnkiConnectAdapter()
-        assert ac.url == "http://1.2.3.4:8765"
 
 
 # ---------------------------------------------------------------------------
@@ -761,12 +754,13 @@ async def test_get_due_cards(adapter):
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_get_due_cards_error(adapter):
+async def test_get_due_cards_error_propagates(adapter):
+    """An AnkiConnect error must surface, not become an empty (and wrong) queue."""
     respx.post("http://mock-anki:8765").mock(
         return_value=Response(200, json={"result": None, "error": "Anki error"})
     )
-    nids = await adapter.get_due_cards()
-    assert nids == []
+    with pytest.raises(Exception, match="Anki error"):
+        await adapter.get_due_cards()
 
 
 # ---------------------------------------------------------------------------
