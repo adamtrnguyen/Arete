@@ -10,6 +10,7 @@ from arete.composition.factory import get_anki_bridge, get_stats_repo, get_vault
 from arete.infrastructure.adapters.anki_connect import AnkiConnectAdapter
 from arete.infrastructure.adapters.anki_direct import AnkiDirectAdapter
 from arete.infrastructure.adapters.stats import ConnectStatsRepository, DirectStatsRepository
+from arete.infrastructure.persistence.cache import ContentCache
 
 
 def _make_config(**overrides) -> MagicMock:
@@ -21,6 +22,7 @@ def _make_config(**overrides) -> MagicMock:
     config.vault_root = overrides.get("vault_root", Path("/fake/vault"))
     config.clear_cache = overrides.get("clear_cache", False)
     config.cache_db = overrides.get("cache_db", None)
+    config.force = overrides.get("force", False)
     return config
 
 
@@ -149,7 +151,19 @@ def test_get_vault_service_none_vault_root():
 
 
 def test_get_vault_service_clear_cache(tmp_path):
-    """VaultService receives ignore_cache flag from config."""
-    config = _make_config(vault_root=tmp_path, clear_cache=True)
+    """clear_cache wipes the cache; force (not clear_cache) is what makes the service ignore it.
+
+    Same flag semantics as the sync orchestrator, so `vault format` and `sync` agree.
+    """
+    db = tmp_path / "c.db"
+    seeded = ContentCache(db_path=db)
+    seeded.set_note(Path("/v/a.md"), 1, "h1", "{}")
+    assert seeded.get_hash(Path("/v/a.md"), 1) == "h1"
+
+    config = _make_config(vault_root=tmp_path, clear_cache=True, force=False, cache_db=str(db))
     vs = get_vault_service(config)
-    assert vs is not None
+    assert vs.ignore_cache is False
+    assert vs.cache.get_hash(Path("/v/a.md"), 1) is None  # wiped
+
+    config = _make_config(vault_root=tmp_path, clear_cache=False, force=True, cache_db=str(db))
+    assert get_vault_service(config).ignore_cache is True

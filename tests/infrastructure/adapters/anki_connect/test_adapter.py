@@ -1,7 +1,7 @@
 """Consolidated tests for AnkiConnectAdapter.
 
 Covers: sync_notes, ensure_deck, ensure_model, is_responsive, _invoke,
-        get_model_names, get_model_styling, get_model_templates, gui_browse,
+        get_model_styling, get_model_templates, gui_browse,
         get_card_stats, suspend_cards, get_deck_names, get_notes_in_deck,
         delete_notes, delete_decks, get_due_cards, map_nids_to_arete_ids,
         get_card_ids_for_arete_ids, create_topo_deck, WSL detection, curl bridge,
@@ -330,9 +330,7 @@ async def test_invoke_windows_curl_failure():
 @pytest.mark.asyncio
 @respx.mock
 async def test_invoke_connection_error(adapter_localhost):
-    respx.post("http://localhost:8765").mock(
-        side_effect=httpx.ConnectError("Connection refused")
-    )
+    respx.post("http://localhost:8765").mock(side_effect=httpx.ConnectError("Connection refused"))
     with pytest.raises(Exception) as excinfo:
         await adapter_localhost.get_deck_names()
     assert "Connection refused" in str(excinfo.value)
@@ -851,9 +849,7 @@ async def test_create_topo_deck_handles_plugin_error(adapter_localhost):
 @respx.mock
 async def test_get_card_ids_preserves_order(adapter_localhost):
     respx.post("http://localhost:8765").mock(
-        return_value=httpx.Response(
-            200, json={"result": [[300], [100], [200]], "error": None}
-        )
+        return_value=httpx.Response(200, json={"result": [[300], [100], [200]], "error": None})
     )
 
     result = await adapter_localhost.get_card_ids_for_arete_ids(["arete_C", "arete_A", "arete_B"])
@@ -864,9 +860,7 @@ async def test_get_card_ids_preserves_order(adapter_localhost):
 @respx.mock
 async def test_get_card_ids_deduplicates(adapter_localhost):
     respx.post("http://localhost:8765").mock(
-        return_value=httpx.Response(
-            200, json={"result": [[100, 200], [200, 300]], "error": None}
-        )
+        return_value=httpx.Response(200, json={"result": [[100, 200], [200, 300]], "error": None})
     )
 
     result = await adapter_localhost.get_card_ids_for_arete_ids(["arete_A", "arete_B"])
@@ -941,8 +935,8 @@ async def test_curl_bridge_active():
         patch("asyncio.create_subprocess_exec") as mock_exec,
     ):
         mock_platform.return_value.release = mock_uname
-        mock_which.side_effect = (
-            lambda cmd: "/mnt/c/Windows/System32/curl.exe" if cmd == "curl.exe" else None
+        mock_which.side_effect = lambda cmd: (
+            "/mnt/c/Windows/System32/curl.exe" if cmd == "curl.exe" else None
         )
 
         mock_proc = MagicMock()

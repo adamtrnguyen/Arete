@@ -25,13 +25,6 @@ class AnkiDirectAdapter(AnkiBridge):
         self.anki_base = anki_base
         self.logger = logging.getLogger(__name__)
 
-    async def get_model_names(self) -> list[str]:
-        """Return all model names from the Anki collection."""
-        with AnkiRepository(self.anki_base) as repo:
-            if repo.col:
-                return [m["name"] for m in repo.col.models.all()]
-        return []
-
     async def ensure_deck(self, deck: AnkiDeck | str) -> bool:
         # AnkiRepository creates/ensures decks on the fly during add_note
         # via 'col.decks.id(name)'.

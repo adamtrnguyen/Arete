@@ -328,15 +328,20 @@ def report(
 
             try:
                 asyncio.run(unsuspend())
+            except Exception as e:
                 typer.secho(
-                    f"Cleared {len(cleared)} report(s), unsuspended {len(to_unsuspend)} card(s).",
-                    fg="green",
+                    f"Cleared {len(cleared)} report(s), but unsuspending "
+                    f"{len(to_unsuspend)} card(s) FAILED: {e}\n"
+                    f"Those cards are still suspended. With Anki open, run: "
+                    f"arete anki unsuspend {' '.join(str(c) for c in to_unsuspend)}",
+                    fg="red",
+                    err=True,
                 )
-            except Exception:
-                typer.secho(
-                    f"Cleared {len(cleared)} report(s). Could not connect to Anki to unsuspend.",
-                    fg="yellow",
-                )
+                raise typer.Exit(code=1) from e
+            typer.secho(
+                f"Cleared {len(cleared)} report(s), unsuspended {len(to_unsuspend)} card(s).",
+                fg="green",
+            )
         else:
             typer.secho(f"Cleared {len(cleared)} report(s).", fg="green")
         return

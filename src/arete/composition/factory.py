@@ -57,7 +57,10 @@ def get_vault_service(config: AppConfig) -> VaultService:
     # Same cache as the sync pipeline (orchestrator): config.cache_db or ~/.config/arete/cache.db.
     # A second, vault-local DB would let `vault format` and the servers disagree with `sync`.
     cache = get_cache(Path(config.cache_db) if config.cache_db else None)
-    return VaultService(config.vault_root, cache, ignore_cache=config.clear_cache)
+    if config.clear_cache:
+        cache.clear()
+    # `force` = ignore the cache; `clear_cache` = wipe it. Same meaning as in orchestrator.
+    return VaultService(config.vault_root, cache, ignore_cache=config.force)
 
 
 def get_stats_repo(config: AppConfig) -> StatsRepository:

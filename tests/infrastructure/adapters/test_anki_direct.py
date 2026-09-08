@@ -283,9 +283,7 @@ async def test_sync_notes_db_failure(adapter):
 @pytest.mark.asyncio
 async def test_sync_notes_db_failure_constructor(adapter):
     """Test full failure if AnkiRepository constructor itself raises."""
-    item = WorkItem(
-        source_file=Path("f.md"), source_index=1, note=MagicMock()
-    )
+    item = WorkItem(source_file=Path("f.md"), source_index=1, note=MagicMock())
 
     with patch(
         "arete.infrastructure.adapters.anki_direct.AnkiRepository",
@@ -364,16 +362,6 @@ async def test_delete_decks(adapter, mock_repo):
 # ---------------------------------------------------------------------------
 # get_model_names
 # ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_get_model_names_returns_names(adapter, mock_repo):
-    mock_repo.col.models.all.return_value = [
-        {"name": "Basic"},
-        {"name": "Cloze"},
-    ]
-    names = await adapter.get_model_names()
-    assert names == ["Basic", "Cloze"]
 
 
 # ---------------------------------------------------------------------------
@@ -817,9 +805,7 @@ async def test_gui_browse_macos(adapter):
                 with patch("asyncio.sleep", AsyncMock()):
                     res = await adapter.gui_browse("query")
                     assert res is True
-                    mock_run.assert_called_with(
-                        ["open", "-a", "Anki"], stdout=ANY, stderr=ANY
-                    )
+                    mock_run.assert_called_with(["open", "-a", "Anki"], stdout=ANY, stderr=ANY)
 
 
 @pytest.mark.asyncio
@@ -878,7 +864,6 @@ async def test_gui_browse_polling(adapter):
 @pytest.mark.parametrize(
     "method,args,expected",
     [
-        ("get_model_names", [], []),
         ("ensure_deck", ["D"], False),
         ("get_deck_names", [], []),
         ("get_notes_in_deck", ["D"], {}),
@@ -890,7 +875,6 @@ async def test_gui_browse_polling(adapter):
         ("suspend_cards", [[1]], False),
     ],
     ids=[
-        "get_model_names",
         "ensure_deck",
         "get_deck_names",
         "get_notes_in_deck",

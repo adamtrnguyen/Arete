@@ -104,9 +104,6 @@ class AnkiConnectAdapter(AnkiBridge):
         except Exception:
             return False
 
-    async def get_model_names(self) -> list[str]:
-        return await self._invoke("modelNames")
-
     async def ensure_deck(self, deck: AnkiDeck | str) -> bool:
         name = deck.name if isinstance(deck, AnkiDeck) else deck
         if name in self._known_decks:

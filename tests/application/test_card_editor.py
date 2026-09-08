@@ -304,6 +304,19 @@ class TestEditCard:
         assert result.maturity == "mature"
         assert "Front" in result.warned
 
+    @pytest.mark.anyio
+    async def test_stats_failure_is_unknown_not_mature(self, tmp_path: Path):
+        """A bridge that errors must not turn a brand-new card into a 'mature' one."""
+        from unittest.mock import AsyncMock
+
+        f = _write_note(tmp_path)
+        bridge = AsyncMock()
+        bridge.get_card_stats.side_effect = RuntimeError("AnkiConnect timeout")
+        result = await edit_card(f, 0, {"Front": "Edited"}, bridge=bridge)
+        assert result.success
+        assert result.maturity == "unknown"
+        assert result.warned == []
+
 
 # ---------------------------------------------------------------------------
 # add_card

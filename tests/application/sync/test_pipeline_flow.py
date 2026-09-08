@@ -113,7 +113,6 @@ async def test_run_pipeline_dry_run_never_writes(mock_components, tmp_path):
     assert stats.total_generated == 1
     assert stats.total_errors == 0
     bridge.sync_notes.assert_not_called()
-    cache.set_hash.assert_not_called()
     cache.set_note.assert_not_called()
     # Vault write-back is invoked but told it is a dry run
     vault.apply_updates.assert_called_once()

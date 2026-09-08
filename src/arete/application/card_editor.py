@@ -127,7 +127,12 @@ def _get_card_nid(card: dict[str, Any]) -> int | None:
 
 
 async def _get_maturity(bridge: AnkiBridge | None, card: dict[str, Any]) -> str:
-    """Get maturity classification for a card. Defaults to mature if offline."""
+    """Get maturity classification for a card.
+
+    bridge=None (Anki offline) deliberately defaults to "mature", the conservative
+    guard. A bridge that *fails* returns "unknown": the guard has no evidence and
+    must not block edits or deletes on a brand-new card.
+    """
     nid = _get_card_nid(card)
     if nid is None:
         return "new"
@@ -142,9 +147,9 @@ async def _get_maturity(bridge: AnkiBridge | None, card: dict[str, Any]) -> str:
         # Use max interval across all card variants (front/back for cloze)
         max_interval = max(s.interval for s in stats)
         return classify_maturity(max_interval)
-    except Exception:
-        logger.warning(f"Failed to fetch stats for NID {nid}, defaulting to mature")
-        return "mature"
+    except Exception as e:
+        logger.warning(f"Failed to fetch stats for NID {nid}; maturity unknown: {e}")
+        return "unknown"
 
 
 # ---------------------------------------------------------------------------

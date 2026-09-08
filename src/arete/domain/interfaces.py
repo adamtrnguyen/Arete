@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
-from .models import AnkiCardStats, AnkiDeck, UpdateItem, WorkItem
+from .models import AnkiCardStats, UpdateItem, WorkItem
 
 
 @runtime_checkable
@@ -21,8 +21,6 @@ class ContentCache(Protocol):
         mtime: float = 0.0,
         size: int = 0,
     ) -> None: ...
-
-    def set_hash(self, md_path: Path, card_index: int, content_hash: str) -> None: ...
 
     def get_hash(self, md_path: Path, card_index: int) -> str | None: ...
 
@@ -59,19 +57,6 @@ class AnkiBridge(ABC):
 
         Note: AnkiConnect implementation additionally performs 'Self-Healing'
         by searching for duplicate content if creation fails.
-        """
-        pass
-
-    @abstractmethod
-    async def get_model_names(self) -> list[str]:
-        """Return available model types currently installed in Anki."""
-        pass
-
-    @abstractmethod
-    async def ensure_deck(self, deck: AnkiDeck | str) -> bool:
-        """Ensure the named deck exists.
-
-        Implementations should handle nested '::' hierarchies.
         """
         pass
 

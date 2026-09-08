@@ -81,15 +81,6 @@ class ContentCache:
             row = cur.fetchone()
             return (row[0], row[1]) if row else None
 
-    def set_hash(self, md_path: Path, card_index: int, content_hash: str):
-        with self._lock:
-            self._conn.execute(
-                """INSERT INTO cards (path, idx, hash) VALUES (?, ?, ?)
-                   ON CONFLICT(path, idx) DO UPDATE SET hash = excluded.hash""",
-                (str(md_path), card_index, content_hash),
-            )
-            self._conn.commit()
-
     def set_note(self, md_path: Path, card_index: int, content_hash: str, note_json: str):
         with self._lock:
             self._conn.execute(
@@ -97,23 +88,6 @@ class ContentCache:
                 (str(md_path), card_index, content_hash, note_json),
             )
             self._conn.commit()
-
-    def get_file_meta(self, md_path: Path, current_hash: str) -> dict[str, Any] | None:
-        with self._lock:
-            cur = self._conn.execute(
-                "SELECT meta_json FROM files WHERE path = ? AND hash = ?",
-                (str(md_path), current_hash),
-            )
-            row = cur.fetchone()
-            if row:
-                try:
-                    res = json.loads(row[0])
-                    self.logger.debug(f"[cache] meta hit for {md_path.name}")
-                    return res
-                except Exception as e:
-                    self.logger.warning(f"[cache] corrupt meta row for {md_path.name}: {e}")
-            self.logger.debug(f"[cache] meta miss for {md_path.name}")
-            return None
 
     def get_file_meta_by_stat(
         self, md_path: Path, mtime: float, size: int

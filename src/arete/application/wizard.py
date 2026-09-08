@@ -20,7 +20,7 @@ def run_init_wizard():
 
     # 3. Backend
     print("\nSelect Anki Backend:")
-    print("  1. auto (Try AnkiConnect, fall back to apy) [Default]")
+    print("  1. auto (Try AnkiConnect, fall back to direct) [Default]")
     print("  2. ankiconnect (Requires Anki running + AnkiConnect add-on)")
     print("  3. direct (Direct DB access, requires Anki closed)")
     choice = input("Select backend [1]: ") or "1"
@@ -41,7 +41,7 @@ vault_root = "{vault_root}"
 # Path to Anki Media folder
 anki_media_dir = "{anki_media}"
 
-# Anki Backend (auto, ankiconnect, apy)
+# Anki Backend (auto, ankiconnect, direct)
 backend = "{backend}"
 
 # Default verbosity (0=WARNING, 1=INFO, 2=DEBUG)
