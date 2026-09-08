@@ -46,7 +46,10 @@ jobs:
 
     - name: Fail if the tag disagrees with the built version
       run: |
-        BUILT=$(uv run python -c "import re,pathlib;print(re.search(r'^version\s*=\s*"([^"]+)"', pathlib.Path('pyproject.toml').read_text(), re.M).group(1))")
+        # Read it with grep, not an inline `python -c`. That regex needs double
+        # quotes, and nesting them inside the shell string is what broke the
+        # first attempt: bash died on "syntax error near unexpected token `('".
+        BUILT=$(grep -m1 -E '^version *= *"' pyproject.toml | cut -d'"' -f2)
         TAG="${GITHUB_REF_NAME#v}"
         if [ "$BUILT" != "$TAG" ]; then
           echo "::error::tag $GITHUB_REF_NAME does not match pyproject version $BUILT"
