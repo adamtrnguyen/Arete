@@ -5,6 +5,9 @@ import threading
 from pathlib import Path
 from typing import Any
 
+# Bump when the table layout changes; the cache is rebuilt from the vault on mismatch.
+SCHEMA_VERSION = 2
+
 
 class ContentCache:
     def __init__(self, db_path: Path | None = None):
@@ -25,7 +28,17 @@ class ContentCache:
         self._init_db()
 
     def _init_db(self):
+        """Create the schema. The cache is regenerable, so a schema change never migrates:
+        on a `user_version` mismatch the tables are dropped and rebuilt."""
         with self._lock:
+            (version,) = self._conn.execute("PRAGMA user_version").fetchone()
+            if version != SCHEMA_VERSION:
+                if version:
+                    self.logger.info(
+                        f"[cache] schema v{version} -> v{SCHEMA_VERSION}: rebuilding {self.db_path}"
+                    )
+                self._conn.execute("DROP TABLE IF EXISTS cards")
+                self._conn.execute("DROP TABLE IF EXISTS files")
             self._conn.execute("""
                 CREATE TABLE IF NOT EXISTS cards (
                     path TEXT,
@@ -35,29 +48,17 @@ class ContentCache:
                     PRIMARY KEY (path, idx)
                 )
             """)
-            # Schema migration for existing 'cards' table
-            try:
-                self._conn.execute("SELECT note_json FROM cards LIMIT 1")
-            except sqlite3.OperationalError:
-                self.logger.info("Adding 'note_json' column to 'cards' table...")
-                self._conn.execute("ALTER TABLE cards ADD COLUMN note_json TEXT")
-            # Ensure 'files' table has 'mtime' column (schema migration)
-            try:
-                self._conn.execute("SELECT mtime FROM files LIMIT 1")
-            except sqlite3.OperationalError:
-                self.logger.info("Upgrading cache database schema...")
-                self._conn.execute("DROP TABLE IF EXISTS files")
-                self._conn.execute("""
-                    CREATE TABLE IF NOT EXISTS files (
-                        path TEXT PRIMARY KEY,
-                        hash TEXT,
-                        mtime REAL,
-                        size INTEGER,
-                        meta_json TEXT
-                    )
-                """)
-
+            self._conn.execute("""
+                CREATE TABLE IF NOT EXISTS files (
+                    path TEXT PRIMARY KEY,
+                    hash TEXT,
+                    mtime REAL,
+                    size INTEGER,
+                    meta_json TEXT
+                )
+            """)
             self._conn.execute("CREATE INDEX IF NOT EXISTS i_cards_path ON cards (path)")
+            self._conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
             self._conn.commit()
 
     def get_hash(self, md_path: Path, card_index: int) -> str | None:

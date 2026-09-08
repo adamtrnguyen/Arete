@@ -1,15 +1,11 @@
 import asyncio
 import json
 import logging
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-try:
-    from tqdm import tqdm  # type: ignore
-except ImportError:
-    tqdm = None
+from tqdm import tqdm
 
 from arete.application.config import AppConfig
 from arete.application.sync.id_service import ensure_card_ids
@@ -40,9 +36,6 @@ async def run_pipeline(
     anki_bridge: AnkiBridge,
     cache: ContentCache,
 ) -> RunStats:
-    # Use tqdm if interactive and imported
-    use_tqdm = "tqdm" in sys.modules
-
     recorder = RunRecorder()
 
     # -------- Stage 1: filter --------
@@ -216,20 +209,18 @@ async def run_pipeline(
         for (p, meta, is_fresh) in compatible
     ]
 
-    if use_tqdm and tqdm:
-        with tqdm(total=len(producer_tasks), desc="Processing", unit="file") as pbar:
-            for coro in asyncio.as_completed(producer_tasks):
-                await coro
-                pbar.update(1)
-                pbar.set_postfix(
-                    {
-                        "gen": recorder.cards_generated,
-                        "ok": recorder.cards_synced,
-                        "err": recorder.cards_failed,
-                    }
-                )
-    else:
-        await asyncio.gather(*producer_tasks)
+    # disable=None: tqdm shows the bar only when stderr is a terminal.
+    with tqdm(total=len(producer_tasks), desc="Processing", unit="file", disable=None) as pbar:
+        for coro in asyncio.as_completed(producer_tasks):
+            await coro
+            pbar.update(1)
+            pbar.set_postfix(
+                {
+                    "gen": recorder.cards_generated,
+                    "ok": recorder.cards_synced,
+                    "err": recorder.cards_failed,
+                }
+            )
 
     # Signal consumers to stop
     for _ in range(max_sync_concurrency):

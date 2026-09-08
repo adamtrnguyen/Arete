@@ -14,14 +14,7 @@ from typing import cast
 
 from anki.collection import Collection
 from anki.models import NotetypeDict
-
-# These may not exist in mocked test environments
-try:
-    from anki.decks import DeckId
-    from anki.notes import NoteId
-except ImportError:
-    DeckId = int  # type: ignore
-    NoteId = int  # type: ignore
+from anki.notes import NoteId
 
 from arete.domain.models import AnkiNote
 
@@ -38,6 +31,7 @@ class AnkiRepository:
         self.profile_name = profile_name
         self.col: Collection | None = None
         self._collection_path: Path | None = None
+        self._saved_cwd: str | None = None
 
     def _resolve_collection_path(self) -> Path:
         """Determine the path to collection.anki2 by checking prefs21.db for the active profile."""
@@ -97,8 +91,9 @@ class AnkiRepository:
             self.col = None
 
         # Restore CWD
-        if hasattr(self, "_saved_cwd"):
+        if self._saved_cwd is not None:
             os.chdir(self._saved_cwd)
+            self._saved_cwd = None
 
     def find_notes(self, query: str) -> list[int]:
         """Return list of note IDs matching the query."""

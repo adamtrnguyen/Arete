@@ -334,18 +334,12 @@ class AnkiDirectAdapter(AnkiBridge):
                         deck = repo.col.decks.get(card.did)
                         deck_name = deck["name"] if deck else "Unknown"
 
-                        # Retrieve difficulty from FSRS memory state if available?
-                        # Anki's python library usually exposes FSRS data if v3 scheduler is on?
-                        # card.memory_state (v3) might have it.
+                        # FSRS memory state is None until the card has been reviewed under FSRS.
+                        # anki 25.9.2: Card.memory_state is Optional[FsrsMemoryState]
+                        # (protobuf: stability, difficulty). difficulty is on a 1-10 scale.
                         difficulty = None
-                        if hasattr(card, "memory_state") and card.memory_state:
-                            # FSRS memory state: stability, difficulty, etc.
-                            # But access might be opaque. check attributes.
-                            # Actually, standard Anki (recent versions) stores custom_data
-                            # or memory_state
-                            # memory_state.difficulty is 1-10 normally
-                            if hasattr(card.memory_state, "difficulty"):
-                                difficulty = card.memory_state.difficulty / FSRS_DIFFICULTY_SCALE
+                        if card.memory_state:
+                            difficulty = card.memory_state.difficulty / FSRS_DIFFICULTY_SCALE
 
                         try:
                             note = repo.col.get_note(card.nid)

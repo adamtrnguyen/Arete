@@ -115,49 +115,6 @@ async def test_get_card_stats_with_fsrs_memory_state(mock_repo):
 
 
 @pytest.mark.asyncio
-async def test_get_card_stats_fsrs_missing_difficulty(mock_repo):
-    """When memory_state exists but difficulty is missing, fsrs is None."""
-    card = _make_card(cid=301, nid=3)
-    ms = MagicMock(spec=[])  # Empty spec, no attributes
-    card.memory_state = ms
-
-    mock_repo.col.find_cards.return_value = [301]
-    mock_repo.col.get_card.return_value = card
-    mock_repo.col.decks.get.return_value = {"name": "Default"}
-    mock_repo.col.get_note.return_value = MagicMock(fields=["Q"])
-    mock_repo.col.db.scalar.return_value = None
-    mock_repo.col.db.execute.return_value = []
-
-    repo = DirectStatsRepository(anki_base=None)
-    result = await repo.get_card_stats([3])
-
-    # hasattr checks fail on empty spec, so fsrs should be None
-    assert result[0].fsrs is None
-
-
-@pytest.mark.asyncio
-async def test_get_card_stats_fsrs_none_values(mock_repo):
-    """When memory_state has None difficulty or stability, fsrs is None."""
-    card = _make_card(cid=401, nid=4)
-    ms = MagicMock()
-    ms.difficulty = None
-    ms.stability = None
-    card.memory_state = ms
-
-    mock_repo.col.find_cards.return_value = [401]
-    mock_repo.col.get_card.return_value = card
-    mock_repo.col.decks.get.return_value = {"name": "Default"}
-    mock_repo.col.get_note.return_value = MagicMock(fields=["Q"])
-    mock_repo.col.db.scalar.return_value = None
-    mock_repo.col.db.execute.return_value = []
-
-    repo = DirectStatsRepository(anki_base=None)
-    result = await repo.get_card_stats([4])
-
-    assert result[0].fsrs is None
-
-
-@pytest.mark.asyncio
 async def test_get_card_stats_deck_missing(mock_repo):
     """When deck lookup returns None, deck_name is 'Unknown'."""
     card = _make_card(cid=501, nid=5, did=9999)

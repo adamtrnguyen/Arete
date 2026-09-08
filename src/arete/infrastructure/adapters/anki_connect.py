@@ -28,6 +28,7 @@ class AnkiConnectAdapter(AnkiBridge):
         self.logger = logging.getLogger(__name__)
         self._known_decks = set()
         self._model_fields_cache = {}
+        self._source_field_ok: set[str] = set()
         # Per-run reconcile index: model -> normalized first field -> [nid, ...] (sorted).
         # Built lazily, collection-wide, the first time a card without a usable nid shows up.
         self._content_index: dict[str, dict[str, list[int]]] = {}
@@ -123,8 +124,7 @@ class AnkiConnectAdapter(AnkiBridge):
 
         This enables backwards compatibility for existing cards.
         """
-        cache_key = f"_source_field_{model_name}"
-        if hasattr(self, cache_key):
+        if model_name in self._source_field_ok:
             return True
 
         try:
@@ -139,7 +139,7 @@ class AnkiConnectAdapter(AnkiBridge):
                 )
                 self.logger.info(f"Added '_obsidian_source' field to model '{model_name}'")
 
-            setattr(self, cache_key, True)
+            self._source_field_ok.add(model_name)
             return True
         except Exception as e:
             self.logger.warning(f"Could not add _obsidian_source field to '{model_name}': {e}")
