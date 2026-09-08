@@ -8,6 +8,43 @@ from unittest.mock import patch
 import pytest
 import requests
 
+# --- Isolation: no test may touch the user's real ~/.config/arete ---
+# arete's defaults (cache.db, logs/, config.toml) all hang off Path.home(). On 2026-09-07 a
+# pytest run wiped the real cache and wrote run logs into ~/.config/arete/logs.
+
+_REAL_ARETE_CONFIG = Path.home() / ".config" / "arete"
+
+
+def _snapshot(root: Path) -> dict[str, tuple[int, int]]:
+    if not root.exists():
+        return {}
+    return {
+        str(f.relative_to(root)): (f.stat().st_size, f.stat().st_mtime_ns)
+        for f in root.rglob("*")
+        if f.is_file()
+    }
+
+
+@pytest.fixture(autouse=True)
+def _isolated_home(monkeypatch, tmp_path):
+    """Every test gets a throwaway HOME, so default cache/log/config paths land in tmp_path."""
+    home = tmp_path / "_isolated_home"
+    home.mkdir(exist_ok=True)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
+    return home
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _real_config_untouched():
+    """Fail the session if any test changed a file under the real ~/.config/arete."""
+    before = _snapshot(_REAL_ARETE_CONFIG)
+    yield
+    after = _snapshot(_REAL_ARETE_CONFIG)
+    changed = sorted(k for k in before.keys() | after.keys() if before.get(k) != after.get(k))
+    assert not changed, f"tests touched the real {_REAL_ARETE_CONFIG}: {changed[:10]}"
+
+
 # --- Auto-mark integration tests ---
 
 

@@ -20,6 +20,7 @@ def _make_config(**overrides) -> MagicMock:
     config.anki_base = overrides.get("anki_base", Path("/fake/anki"))
     config.vault_root = overrides.get("vault_root", Path("/fake/vault"))
     config.clear_cache = overrides.get("clear_cache", False)
+    config.cache_db = overrides.get("cache_db", None)
     return config
 
 
@@ -47,7 +48,9 @@ async def test_get_anki_bridge_auto_ankiconnect_responsive():
     """When backend='auto' and AnkiConnect is responsive, returns AnkiConnectAdapter."""
     config = _make_config(backend="auto")
 
-    with patch.object(AnkiConnectAdapter, "is_responsive", new_callable=AsyncMock, return_value=True):
+    with patch.object(
+        AnkiConnectAdapter, "is_responsive", new_callable=AsyncMock, return_value=True
+    ):
         bridge = await get_anki_bridge(config)
         assert isinstance(bridge, AnkiConnectAdapter)
 
@@ -126,10 +129,13 @@ def test_get_stats_repo_ankiconnect_none_url_uses_default():
 
 
 def test_get_vault_service_success(tmp_path):
-    """VaultService is created with correct vault_root and cache path."""
-    config = _make_config(vault_root=tmp_path, clear_cache=False)
+    """VaultService uses the SAME cache as the sync pipeline: config.cache_db, never a
+    vault-local .arete.db (two caches let `vault format` disagree with `sync`)."""
+    config = _make_config(vault_root=tmp_path, clear_cache=False, cache_db=str(tmp_path / "c.db"))
     vs = get_vault_service(config)
     assert vs is not None
+    assert Path(vs.cache.db_path) == tmp_path / "c.db"
+    assert not (tmp_path / ".arete.db").exists()
 
 
 def test_get_vault_service_none_vault_root():

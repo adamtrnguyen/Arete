@@ -54,7 +54,9 @@ def get_vault_service(config: AppConfig) -> VaultService:
     """Return the VaultService instance configured for the given app config."""
     if config.vault_root is None:
         raise ValueError("vault_root is required for VaultService")
-    cache = _CacheImpl(config.vault_root / ".arete.db")
+    # Same cache as the sync pipeline (orchestrator): config.cache_db or ~/.config/arete/cache.db.
+    # A second, vault-local DB would let `vault format` and the servers disagree with `sync`.
+    cache = get_cache(Path(config.cache_db) if config.cache_db else None)
     return VaultService(config.vault_root, cache, ignore_cache=config.clear_cache)
 
 
