@@ -14,8 +14,8 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 from arete.application.config import AppConfig, resolve_config
-from arete.application.factory import get_anki_bridge
-from arete.application.orchestrator import execute_sync
+from arete.composition.factory import get_anki_bridge
+from arete.composition.orchestrator import execute_sync
 from arete.domain.interfaces import AnkiBridge
 
 logger = logging.getLogger(__name__)

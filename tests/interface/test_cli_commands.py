@@ -85,7 +85,7 @@ def test_serve_daemon_command(mock_run):
 def test_anki_stats_command():
     from arete.domain.stats.models import CardStatsAggregate, FsrsMemoryState
 
-    with patch("arete.application.factory.get_stats_repo") as mock_get_repo:
+    with patch("arete.composition.factory.get_stats_repo") as mock_get_repo:
         mock_instance = MagicMock()
         stats = [
             CardStatsAggregate(
@@ -127,7 +127,7 @@ def test_anki_stats_command():
 def test_anki_stats_table():
     from arete.domain.stats.models import CardStatsAggregate, FsrsMemoryState
 
-    with patch("arete.application.factory.get_stats_repo") as mock_get_repo:
+    with patch("arete.composition.factory.get_stats_repo") as mock_get_repo:
         mock_instance = MagicMock()
         stats = [
             CardStatsAggregate(
@@ -169,7 +169,7 @@ def test_anki_stats_table():
 
 
 def test_suspend_cards():
-    with patch("arete.application.factory.AnkiConnectAdapter") as mock_cls:
+    with patch("arete.composition.factory.AnkiConnectAdapter") as mock_cls:
         mock_instance = mock_cls.return_value
         mock_instance.suspend_cards = AsyncMock(return_value=True)
         mock_instance.is_responsive = AsyncMock(return_value=True)
@@ -192,7 +192,7 @@ def test_suspend_cards():
 
 
 def test_unsuspend_cards():
-    with patch("arete.application.factory.AnkiConnectAdapter") as mock_cls:
+    with patch("arete.composition.factory.AnkiConnectAdapter") as mock_cls:
         mock_instance = mock_cls.return_value
         mock_instance.unsuspend_cards = AsyncMock(return_value=True)
         mock_instance.is_responsive = AsyncMock(return_value=True)
@@ -215,7 +215,7 @@ def test_unsuspend_cards():
 
 
 def test_model_styling():
-    with patch("arete.application.factory.AnkiConnectAdapter") as mock_cls:
+    with patch("arete.composition.factory.AnkiConnectAdapter") as mock_cls:
         mock_instance = mock_cls.return_value
         mock_instance.get_model_styling = AsyncMock(return_value="css")
         mock_instance.is_responsive = AsyncMock(return_value=True)
@@ -237,7 +237,7 @@ def test_model_styling():
 
 
 def test_model_templates():
-    with patch("arete.application.factory.AnkiConnectAdapter") as mock_cls:
+    with patch("arete.composition.factory.AnkiConnectAdapter") as mock_cls:
         mock_instance = mock_cls.return_value
         mock_instance.get_model_templates = AsyncMock(return_value={"Front": "Q"})
         mock_instance.is_responsive = AsyncMock(return_value=True)
@@ -259,7 +259,7 @@ def test_model_templates():
 
 
 def test_anki_browse():
-    with patch("arete.application.factory.AnkiConnectAdapter") as mock_cls:
+    with patch("arete.composition.factory.AnkiConnectAdapter") as mock_cls:
         mock_instance = mock_cls.return_value
         mock_instance.gui_browse = AsyncMock(return_value=True)
         mock_instance.is_responsive = AsyncMock(return_value=True)
@@ -285,7 +285,7 @@ def test_anki_browse():
 
 
 @patch("arete.interface._common.resolve_config")
-@patch("arete.application.factory.get_anki_bridge")
+@patch("arete.composition.factory.get_anki_bridge")
 @patch("arete.application.queue.service.build_dynamic_queue")
 @patch("arete.application.queue.service.build_dependency_queue")
 def test_queue_root_static_default(
@@ -323,7 +323,7 @@ def test_queue_root_static_default(
 
 
 @patch("arete.interface._common.resolve_config")
-@patch("arete.application.factory.get_anki_bridge")
+@patch("arete.composition.factory.get_anki_bridge")
 @patch("arete.application.queue.service.build_dynamic_queue")
 @patch("arete.application.queue.service.build_dependency_queue")
 def test_queue_dynamic_algo(

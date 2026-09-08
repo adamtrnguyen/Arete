@@ -73,11 +73,20 @@ name = "Domain Driven Architecture Layers"
 type = "layers"
 layers = [
     "interface",
+    "composition",
     "application",
     "infrastructure",
     "domain",
 ]
 containers = ["arete"]
+
+[[tool.importlinter.contracts]]
+name = "Interfaces reach adapters only through the composition root"
+type = "forbidden"
+source_modules = ["arete.interface"]
+forbidden_modules = ["arete.infrastructure"]
+# The chain interface -> composition -> infrastructure is the point; only DIRECT imports are forbidden.
+allow_indirect_imports = true
 
 [[tool.importlinter.contracts]]
 name = "Application level isolation"

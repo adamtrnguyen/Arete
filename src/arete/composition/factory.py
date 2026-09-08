@@ -1,7 +1,7 @@
 """Composition Root.
 
 Centralizes construction of concrete infrastructure implementations.
-This is the ONLY application-layer module allowed to import from infrastructure.
+Composition root: the only package allowed to import infrastructure adapters.
 """
 
 from __future__ import annotations

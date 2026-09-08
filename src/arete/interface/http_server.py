@@ -80,7 +80,7 @@ class SyncStatsResponse(BaseModel):
 async def trigger_sync(req: SyncRequest):
     """Trigger a sync operation."""
     from arete.application.config import resolve_config
-    from arete.application.orchestrator import execute_sync
+    from arete.composition.orchestrator import execute_sync
 
     logger.info(f"Sync requested via API: {req}")
 
@@ -131,7 +131,7 @@ class FormatResponse(BaseModel):
 async def format_vault(req: FormatRequest):
     """Format and normalize YAML in the entire vault."""
     from arete.application.config import resolve_config
-    from arete.application.factory import get_vault_service
+    from arete.composition.factory import get_vault_service
 
     logger.info(f"Format requested via API: {req}")
 
@@ -163,7 +163,7 @@ class CardsRequest(BaseModel):
 async def suspend_cards(req: CardsRequest):
     """Suspend cards by Card IDs."""
     from arete.application.config import resolve_config
-    from arete.application.factory import get_anki_bridge
+    from arete.composition.factory import get_anki_bridge
 
     try:
         overrides = {
@@ -186,7 +186,7 @@ async def suspend_cards(req: CardsRequest):
 async def unsuspend_cards(req: CardsRequest):
     """Unsuspend cards by Card IDs."""
     from arete.application.config import resolve_config
-    from arete.application.factory import get_anki_bridge
+    from arete.composition.factory import get_anki_bridge
 
     try:
         overrides = {
@@ -213,7 +213,7 @@ async def get_model_styling(
     anki_base: str | None = None,
 ):
     from arete.application.config import resolve_config
-    from arete.application.factory import get_anki_bridge
+    from arete.composition.factory import get_anki_bridge
 
     try:
         overrides = {
@@ -240,7 +240,7 @@ async def get_model_templates(
     anki_base: str | None = None,
 ):
     from arete.application.config import resolve_config
-    from arete.application.factory import get_anki_bridge
+    from arete.composition.factory import get_anki_bridge
 
     try:
         overrides = {
@@ -308,7 +308,7 @@ async def get_stats(req: StatsRequest):
 
         config = resolve_config(overrides)
 
-        from arete.application.factory import get_stats_service
+        from arete.composition.factory import get_stats_service
 
         service = get_stats_service(config)
         stats = await service.get_enriched_stats(req.nids)
@@ -329,7 +329,7 @@ class BrowseRequest(BaseModel):
 async def browse_anki(req: BrowseRequest):
     """Open the Anki browser with a query."""
     from arete.application.config import resolve_config
-    from arete.application.factory import get_anki_bridge
+    from arete.composition.factory import get_anki_bridge
 
     try:
         overrides = {
@@ -361,7 +361,7 @@ class DecksRequest(BaseModel):
 async def get_decks(req: DecksRequest):
     """Get all deck names from Anki."""
     from arete.application.config import resolve_config
-    from arete.application.factory import get_anki_bridge
+    from arete.composition.factory import get_anki_bridge
 
     try:
         overrides = {
@@ -397,8 +397,8 @@ async def build_queue(req: QueueBuildRequest):
     from pathlib import Path
 
     from arete.application.config import resolve_config
-    from arete.application.factory import get_anki_bridge
     from arete.application.queue.service import build_study_queue
+    from arete.composition.factory import get_anki_bridge
 
     try:
         overrides = {
@@ -465,7 +465,7 @@ class QueueCreateDeckRequest(BaseModel):
 async def create_queue_deck(req: QueueCreateDeckRequest):
     """Create a filtered deck in Anki with queue ordering tags."""
     from arete.application.config import resolve_config
-    from arete.application.factory import get_anki_bridge
+    from arete.composition.factory import get_anki_bridge
 
     logger.info(f"Create queue deck requested: {len(req.card_ids)} cards")
 

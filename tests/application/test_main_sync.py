@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from arete.application.config import AppConfig
-from arete.application.orchestrator import run_sync_logic
+from arete.composition.orchestrator import run_sync_logic
 
 
 @pytest.fixture
@@ -39,8 +39,8 @@ def mock_config(tmp_path):
 
 @pytest.mark.asyncio
 @patch("arete.infrastructure.adapters.anki_connect.AnkiConnectAdapter.is_responsive")
-@patch("arete.application.orchestrator.run_pipeline")
-@patch("arete.application.orchestrator.setup_logging")
+@patch("arete.composition.orchestrator.run_pipeline")
+@patch("arete.composition.orchestrator.setup_logging")
 async def test_run_sync_logic_success(
     mock_setup_logging, mock_run_pipeline, mock_is_responsive, mock_config
 ):
@@ -77,8 +77,8 @@ async def test_run_sync_logic_success(
 
 
 @pytest.mark.asyncio
-@patch("arete.application.orchestrator.run_pipeline")
-@patch("arete.application.orchestrator.setup_logging")
+@patch("arete.composition.orchestrator.run_pipeline")
+@patch("arete.composition.orchestrator.setup_logging")
 async def test_summary_output(mock_setup_logging, mock_run_pipeline, mock_config, capsys):
     """Test that summary is printed after pipeline execution."""
     mock_logger = MagicMock()
@@ -94,7 +94,7 @@ async def test_summary_output(mock_setup_logging, mock_run_pipeline, mock_config
     mock_stats.total_imported = 25
     mock_run_pipeline.return_value = mock_stats
 
-    # run_sync_logic now uses logging.getLogger("arete.application.orchestrator") for the summary log,
+    # run_sync_logic now uses logging.getLogger("arete.composition.orchestrator") for the summary log,
     # so we need to mock that specific logger.
     mock_summary_logger = MagicMock()
 

@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from arete.application.config import AppConfig
-from arete.application.orchestrator import run_sync_logic
+from arete.composition.orchestrator import run_sync_logic
 
 
 @pytest.fixture
@@ -38,8 +38,8 @@ def mock_config(tmp_path):
 
 
 @pytest.mark.asyncio
-@patch("arete.application.orchestrator.run_pipeline")
-@patch("arete.application.orchestrator.setup_logging")
+@patch("arete.composition.orchestrator.run_pipeline")
+@patch("arete.composition.orchestrator.setup_logging")
 async def test_cache_clearing(mock_setup_logging, mock_run_pipeline, mock_config):
     """Test that cache is cleared when clear_cache is True."""
     mock_logger = MagicMock()
@@ -62,8 +62,8 @@ async def test_cache_clearing(mock_setup_logging, mock_run_pipeline, mock_config
 
 
 @pytest.mark.asyncio
-@patch("arete.application.orchestrator.run_pipeline")
-@patch("arete.application.orchestrator.setup_logging")
+@patch("arete.composition.orchestrator.run_pipeline")
+@patch("arete.composition.orchestrator.setup_logging")
 async def test_vault_root_assertion(mock_setup_logging, mock_run_pipeline, mock_config):
     """Test that assertions ensure vault_root and anki_media_dir are set."""
     mock_logger = MagicMock()
@@ -85,8 +85,8 @@ async def test_vault_root_assertion(mock_setup_logging, mock_run_pipeline, mock_
 
 
 @pytest.mark.asyncio
-@patch("arete.application.orchestrator.run_pipeline")
-@patch("arete.application.orchestrator.setup_logging")
+@patch("arete.composition.orchestrator.run_pipeline")
+@patch("arete.composition.orchestrator.setup_logging")
 async def test_services_initialization(mock_setup_logging, mock_run_pipeline, mock_config):
     """Test that all services are properly initialized."""
     mock_logger = MagicMock()

@@ -2,8 +2,8 @@
 
 import pytest
 
-from arete.application.orchestrator import execute_sync
 from arete.application.queue.service import build_study_queue
+from arete.composition.orchestrator import execute_sync
 
 
 @pytest.fixture

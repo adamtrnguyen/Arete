@@ -1,4 +1,4 @@
-"""Tests for arete.application.factory — adapter selection logic."""
+"""Tests for arete.composition.factory — adapter selection logic."""
 
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from arete.application.config import AppConfig
-from arete.application.factory import get_anki_bridge, get_stats_repo, get_vault_service
+from arete.composition.factory import get_anki_bridge, get_stats_repo, get_vault_service
 from arete.infrastructure.adapters.anki_connect import AnkiConnectAdapter
 from arete.infrastructure.adapters.anki_direct import AnkiDirectAdapter
 from arete.infrastructure.adapters.stats import ConnectStatsRepository, DirectStatsRepository
@@ -129,8 +129,11 @@ def test_get_stats_repo_ankiconnect_none_url_uses_default():
 
 
 def test_get_vault_service_success(tmp_path):
-    """VaultService uses the SAME cache as the sync pipeline: config.cache_db, never a
-    vault-local .arete.db (two caches let `vault format` disagree with `sync`)."""
+    """VaultService uses the same cache as the sync pipeline.
+
+    config.cache_db, never a vault-local .arete.db: two caches let `vault format`
+    disagree with `sync`.
+    """
     config = _make_config(vault_root=tmp_path, clear_cache=False, cache_db=str(tmp_path / "c.db"))
     vs = get_vault_service(config)
     assert vs is not None

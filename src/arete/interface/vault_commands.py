@@ -97,7 +97,7 @@ def format_cmd(
 
     Normalize serialization to use stripped block scalars (|-).
     """
-    from arete.application.factory import get_vault_service
+    from arete.composition.factory import get_vault_service
 
     verbose = ctx.obj.get("verbose_bonus", 1) if ctx.obj else 1
     config = _resolve_with_overrides(

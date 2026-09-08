@@ -8,7 +8,7 @@ from arete.interface.http_server import app
 client = TestClient(app)
 
 
-@patch("arete.application.factory.get_anki_bridge")
+@patch("arete.composition.factory.get_anki_bridge")
 @pytest.mark.asyncio
 async def test_server_get_decks(mock_bridge_factory):
     mock_anki = AsyncMock()
@@ -20,7 +20,7 @@ async def test_server_get_decks(mock_bridge_factory):
     assert response.json()["decks"] == ["Deck A", "Deck B"]
 
 
-@patch("arete.application.factory.get_anki_bridge")
+@patch("arete.composition.factory.get_anki_bridge")
 @patch("arete.application.queue.service.build_simple_queue")
 @patch("arete.application.queue.service.build_graph")
 @pytest.mark.asyncio
@@ -69,7 +69,7 @@ async def test_server_build_queue(mock_build_graph, mock_build_queue, mock_bridg
     assert queue[1]["is_prereq"] is False
 
 
-@patch("arete.application.factory.get_anki_bridge")
+@patch("arete.composition.factory.get_anki_bridge")
 @pytest.mark.asyncio
 async def test_server_create_queue_deck(mock_bridge_factory):
     response = client.post("/queue/create-deck", json={"card_ids": ["arete_A"]})

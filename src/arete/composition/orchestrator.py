@@ -6,11 +6,11 @@ import sys
 from pathlib import Path
 
 from arete.application.config import AppConfig
-from arete.application.factory import get_anki_bridge, get_cache
 from arete.application.sync.parser import MarkdownParser
 from arete.application.sync.pipeline import RunStats, run_pipeline
 from arete.application.sync.vault_service import VaultService
 from arete.application.utils.logging import setup_logging
+from arete.composition.factory import get_anki_bridge, get_cache
 
 
 async def execute_sync(config: AppConfig) -> RunStats:

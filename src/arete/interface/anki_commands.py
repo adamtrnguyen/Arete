@@ -28,7 +28,7 @@ def _run_anki_bridge_action(action_fn, *, result_key: str | None = "ok", **confi
     If *result_key* is given, the output is ``{result_key: value}``; when
     ``None``, the raw value is printed as JSON.
     """
-    from arete.application.factory import get_anki_bridge
+    from arete.composition.factory import get_anki_bridge
 
     async def _run():
         config = _resolve_with_overrides(**config_kwargs)
@@ -93,7 +93,7 @@ def anki_stats(
             anki_base=anki_base,
         )
 
-        from arete.application.factory import get_stats_service
+        from arete.composition.factory import get_stats_service
 
         service = get_stats_service(config)
         return await service.get_enriched_stats(nids_list)

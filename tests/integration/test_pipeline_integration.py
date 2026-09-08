@@ -5,7 +5,7 @@ import re
 import pytest
 import requests
 
-from arete.application.orchestrator import execute_sync
+from arete.composition.orchestrator import execute_sync
 
 
 @pytest.fixture

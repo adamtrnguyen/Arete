@@ -123,7 +123,7 @@ def sync(
 
     import asyncio
 
-    from arete.application.orchestrator import SyncFailedError, run_sync_logic
+    from arete.composition.orchestrator import SyncFailedError, run_sync_logic
 
     try:
         asyncio.run(run_sync_logic(config))
@@ -212,8 +212,8 @@ def queue(
     """
     import asyncio
 
-    from arete.application.factory import get_anki_bridge
     from arete.application.queue.service import build_study_queue
+    from arete.composition.factory import get_anki_bridge
 
     config = _resolve_with_overrides(root_input=path)
     vault_root = config.root_input
@@ -315,7 +315,7 @@ def report(
         if to_unsuspend:
             import asyncio
 
-            from arete.application.factory import get_anki_bridge
+            from arete.composition.factory import get_anki_bridge
 
             config = _resolve_with_overrides()
 

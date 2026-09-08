@@ -27,7 +27,7 @@ Import rules:
 
 ## Anki Adapters
 
-Two backends, auto-selected by `application/factory.py`:
+Two backends, auto-selected by `composition/factory.py`:
 
 | Backend | When | How |
 |---------|------|-----|

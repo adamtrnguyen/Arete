@@ -4,8 +4,8 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from arete.application.config import AppConfig
-from arete.application.orchestrator import SyncFailedError, run_sync_logic
 from arete.application.sync.pipeline import RunStats
+from arete.composition.orchestrator import SyncFailedError, run_sync_logic
 
 
 @pytest.mark.asyncio
@@ -30,11 +30,11 @@ async def test_run_sync_logic_failure_exit():
     # Mock return stats with error
     mock_stats = RunStats(total_generated=0, total_imported=0, total_errors=5, errors=[])
 
-    with patch("arete.application.orchestrator.run_pipeline", new_callable=AsyncMock) as mock_run:
+    with patch("arete.composition.orchestrator.run_pipeline", new_callable=AsyncMock) as mock_run:
         mock_run.return_value = mock_stats
 
         # We also need to mock AnkiConnectAdapter / AnkiApyAdapter construction to avoid network calls
-        with patch("arete.application.factory.AnkiConnectAdapter") as mock_adapter:
+        with patch("arete.composition.factory.AnkiConnectAdapter") as mock_adapter:
             mock_instance = mock_adapter.return_value
             mock_instance.is_responsive = AsyncMock(return_value=True)
             mock_instance.close = AsyncMock()

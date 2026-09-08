@@ -48,7 +48,7 @@ async def test_suspend_unsuspend(adapter, vault_factory, sync_config, anki_url, 
 
     import requests
 
-    from arete.application.orchestrator import execute_sync
+    from arete.composition.orchestrator import execute_sync
 
     # Create a card first
     vault = vault_factory(
