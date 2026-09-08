@@ -6,6 +6,34 @@ import pytest
 from tests.e2e.runners import CliRunner, ServerRunner
 
 
+def _anki_connect_reachable() -> bool:
+    """True when something answers the AnkiConnect version call."""
+    import json
+    import os
+    import urllib.error
+    import urllib.request
+
+    url = os.getenv("ANKI_CONNECT_URL", "http://127.0.0.1:8766")
+    payload = json.dumps({"action": "version", "version": 6}).encode()
+    try:
+        req = urllib.request.Request(
+            url, data=payload, headers={"Content-Type": "application/json"}
+        )
+        with urllib.request.urlopen(req, timeout=1.0):
+            return True
+    except (urllib.error.URLError, OSError):
+        return False
+
+
+# These scenarios drive a live Anki over AnkiConnect. Without one they used to error
+# during collection; now they say plainly that they were not run. The hermetic
+# end-to-end suite is in test_local_sync.py and needs nothing.
+pytestmark = pytest.mark.skipif(
+    not _anki_connect_reachable(),
+    reason="needs a live Anki with AnkiConnect (set ANKI_CONNECT_URL, or run `just test-anki`)",
+)
+
+
 @pytest.fixture(params=["cli", "server"])
 def runner(request):
     if request.param == "cli":

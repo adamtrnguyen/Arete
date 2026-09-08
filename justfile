@@ -37,7 +37,7 @@ default:
 
 # Run backend tests
 test *args:
-    {{PYTEST}} {{TESTS}}/application {{TESTS}}/interface {{TESTS}}/infrastructure {{TESTS}}/domain {{args}}
+    {{PYTEST}} {{TESTS}}/application {{TESTS}}/interface {{TESTS}}/infrastructure {{TESTS}}/domain {{TESTS}}/e2e {{args}}
 
 # Run backend integration tests (auto-starts Docker, random port)
 test-integration *args:
