@@ -1,3 +1,4 @@
+import json
 import logging
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
@@ -92,6 +93,51 @@ async def test_run_pipeline_no_files(mock_components, tmp_path):
 
     stats = await run_pipeline(config, logger, "run", vault, parser, bridge, cache)
     assert stats.total_generated == 0
+
+
+@pytest.mark.asyncio
+async def test_run_pipeline_dry_run_never_writes(mock_components, tmp_path):
+    """--dry-run must not call the Anki bridge, mutate the cache, or persist nids.
+
+    Regression: 2026-09-07, two dry-runs created 555 Anki notes each because only the
+    nid write-back and prune stages honoured the flag.
+    """
+    logger, vault, parser, bridge, cache = mock_components
+
+    config = AppConfig.model_construct(
+        vault_root=tmp_path, queue_size=10, workers=1, prune=False, dry_run=True
+    )
+
+    stats = await run_pipeline(config, logger, "run", vault, parser, bridge, cache)
+
+    assert stats.total_generated == 1
+    assert stats.total_errors == 0
+    bridge.sync_notes.assert_not_called()
+    cache.set_hash.assert_not_called()
+    cache.set_note.assert_not_called()
+    # Vault write-back is invoked but told it is a dry run
+    vault.apply_updates.assert_called_once()
+    assert vault.apply_updates.call_args.kwargs.get("dry_run") is True
+
+
+@pytest.mark.asyncio
+async def test_run_pipeline_refreshes_hot_cache_with_nid(mock_components, tmp_path):
+    """After a real sync the cached note carries the nid Anki assigned.
+
+    Regression: set_hash only refreshed the hash column, so the cached note kept
+    nid=None and every warm run re-sent the card as new.
+    """
+    logger, vault, parser, bridge, cache = mock_components
+    note = parser.parse_file.return_value[0][0]
+    note.content_hash = "abc123"
+
+    config = AppConfig.model_construct(vault_root=tmp_path, queue_size=10, workers=1, prune=False)
+    await run_pipeline(config, logger, "run", vault, parser, bridge, cache)
+
+    cache.set_note.assert_called_once()
+    path, idx, content_hash, note_json = cache.set_note.call_args.args
+    assert (path, idx, content_hash) == (Path("/vault/test.md"), 1, "abc123")
+    assert json.loads(note_json)["nid"] == "123"
 
 
 @pytest.mark.asyncio

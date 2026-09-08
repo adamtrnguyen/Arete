@@ -776,9 +776,16 @@ class AnkiConnect:
         ankiNote = self.createNote(note)
 
         collection = self.collection()
+        # Anki >= 25: note.model() returns a fresh copy of the notetype, so the
+        # `did` set in createNote never reaches the legacy collection.addNote(),
+        # which then files the note under the notetype's stored deck (Default).
+        # Resolve the deck again and pass it explicitly.
+        deck = collection.decks.byName(note["deckName"])
+        if deck is None:
+            raise Exception("deck was not found: {}".format(note["deckName"]))
         self.startEditing()
-        nCardsAdded = collection.addNote(ankiNote)
-        if nCardsAdded < 1:
+        collection.add_note(ankiNote, deck["id"])
+        if len(ankiNote.cards()) < 1:
             raise Exception(
                 "The field values you have provided would make an empty question on all cards."
             )

@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import sys
 from dataclasses import dataclass
@@ -70,8 +71,11 @@ async def run_pipeline(
                 text = path.read_text(encoding="utf-8")
                 _, body = parse_frontmatter(text)
                 new_text = rebuild_markdown_with_frontmatter(meta, body)
-                path.write_text(new_text, encoding="utf-8")
-                logger.info(f"[id] Assigned {assigned} new IDs in {path.name}")
+                if config.dry_run:
+                    logger.info(f"[dry-run] would assign {assigned} new IDs in {path.name}")
+                else:
+                    path.write_text(new_text, encoding="utf-8")
+                    logger.info(f"[id] Assigned {assigned} new IDs in {path.name}")
                 # Re-parse so downstream stages see the updated meta
                 new_meta, _ = parse_frontmatter(new_text)
                 updated_compatible.append((path, new_meta, True))
@@ -140,16 +144,47 @@ async def run_pipeline(
                     break
 
             try:
-                async with sync_semaphore:
-                    batch_updates = await anki_bridge.sync_notes(batch)
+                if config.dry_run:
+                    # Dry run: never touch Anki. Report what WOULD happen and keep the
+                    # cache untouched so the next real run still sees these cards as pending.
+                    batch_updates = []
+                    for wi in batch:
+                        action = "update" if wi.note.nid else "create"
+                        logger.info(
+                            f"[dry-run] would {action} {wi.source_file.name} "
+                            f"#{wi.source_index} deck={wi.note.deck!r}"
+                        )
+                        batch_updates.append(
+                            UpdateItem(
+                                source_file=wi.source_file,
+                                source_index=wi.source_index,
+                                new_nid=wi.note.nid,
+                                new_cid=wi.note.cid,
+                                ok=True,
+                                note=wi.note,
+                            )
+                        )
+                else:
+                    async with sync_semaphore:
+                        batch_updates = await anki_bridge.sync_notes(batch)
 
                 async with updates_lock:
                     for u in batch_updates:
                         updates.append(u)
                         if u.ok:
                             recorder.cards_synced += 1
-                            if u.note and u.note.content_hash:
-                                cache.set_hash(u.source_file, u.source_index, u.note.content_hash)
+                            if u.note and u.note.content_hash and not config.dry_run:
+                                # Refresh the hot-cache entry WITH the nid Anki assigned,
+                                # otherwise the cached note keeps nid=None and every warm
+                                # run re-sends the card as new.
+                                u.note.nid = u.new_nid or u.note.nid
+                                u.note.cid = u.new_cid or u.note.cid
+                                cache.set_note(
+                                    u.source_file,
+                                    u.source_index,
+                                    u.note.content_hash,
+                                    json.dumps(u.note.to_dict()),
+                                )
                         else:
                             recorder.cards_failed += 1
                             recorder.add_error(

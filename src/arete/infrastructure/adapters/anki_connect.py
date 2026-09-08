@@ -28,6 +28,9 @@ class AnkiConnectAdapter(AnkiBridge):
         self.logger = logging.getLogger(__name__)
         self._known_decks = set()
         self._model_fields_cache = {}
+        # Per-run reconcile index: model -> normalized first field -> [nid, ...] (sorted).
+        # Built lazily, collection-wide, the first time a card without a usable nid shows up.
+        self._content_index: dict[str, dict[str, list[int]]] = {}
         self.use_windows_curl = False
         self._client: httpx.AsyncClient | None = None
         self._invoke_sem = asyncio.Semaphore(SYNC_CONCURRENCY)
@@ -180,6 +183,11 @@ class AnkiConnectAdapter(AnkiBridge):
                 info = await self._invoke("notesInfo", notes=[int(note.nid)])
                 if info and info[0].get("noteId"):
                     target_nid = int(note.nid)
+                else:
+                    self.logger.warning(
+                        f"[dangling-nid] {item.source_file.name} #{item.source_index}: "
+                        f"nid={note.nid} not in Anki; reconciling by ID tag / content"
+                    )
 
             if target_nid:
                 return await self._update_existing_note(item, note, html_fields, target_nid, info)
@@ -236,21 +244,31 @@ class AnkiConnectAdapter(AnkiBridge):
         existing_nid = await self._find_existing_note(note, html_fields)
 
         if existing_nid:
-            new_id = existing_nid
-            await self._invoke("updateNoteFields", note={"id": new_id, "fields": html_fields})
-        else:
-            params = {
-                "note": {
-                    "deckName": note.deck,
-                    "modelName": note.model,
-                    "fields": html_fields,
-                    "tags": note.tags,
-                    "options": {"allowDuplicate": False, "duplicateScope": "deck"},
-                }
+            # Reconcile: same treatment as a note with a valid nid -- fields, tags AND deck.
+            # A twin that landed in the wrong deck is moved, never duplicated.
+            info = await self._invoke("notesInfo", notes=[existing_nid])
+            result = await self._update_existing_note(item, note, html_fields, existing_nid, info)
+            result.new_cid = await self._fetch_cid(existing_nid)
+            await self._populate_nid_field(note, existing_nid)
+            self.logger.info(
+                f"[heal] {item.source_file} #{item.source_index} -> nid={existing_nid} "
+                f"cid={result.new_cid} deck={note.deck!r}"
+            )
+            return result
+
+        params = {
+            "note": {
+                "deckName": note.deck,
+                "modelName": note.model,
+                "fields": html_fields,
+                "tags": note.tags,
+                "options": {"allowDuplicate": False, "duplicateScope": "deck"},
             }
-            new_id = await self._invoke("addNote", **params)
-            if not new_id:
-                raise Exception("addNote returned null ID")
+        }
+        new_id = await self._invoke("addNote", **params)
+        if not new_id:
+            raise Exception("addNote returned null ID")
+        self._index_new_note(note, html_fields, int(new_id))
 
         new_cid_val = await self._fetch_cid(new_id)
         await self._populate_nid_field(note, new_id)
@@ -275,44 +293,110 @@ class AnkiConnectAdapter(AnkiBridge):
         return " ".join(text.split()).strip().lower()
 
     async def _find_existing_note(self, note: Any, html_fields: dict) -> int | None:
-        """Find an existing Anki note by comparing field values directly.
+        """Find the Anki note that already IS this card, for a card without a usable nid.
 
-        Queries all notes in the same deck+model, fetches their fields,
-        and compares the first field value after normalization.
+        Lookup order, both collection-wide:
+          1. the card's ``arete_`` ID tag (exact identity);
+          2. normalized first-field content within the same model (indexed once per run).
+        Deck is deliberately not part of either lookup: a twin that landed in the wrong
+        deck is still the same card and gets moved by the caller, not duplicated.
         """
         first_field_name = next(iter(html_fields))
         our_value = self._normalize_field(html_fields[first_field_name])
         if not our_value:
             return None
 
-        query = f'"deck:{note.deck}" "note:{note.model}"'
+        arete_id = next((t for t in note.tags if str(t).startswith("arete_")), None)
+        if arete_id:
+            nid = await self._match_by_tag(arete_id, first_field_name, our_value)
+            if nid is not None:
+                self.logger.info(f" -> Healed by arete ID {arete_id}: nid={nid}")
+                return nid
+
+        index = await self._content_index_for(note.model, first_field_name)
+        matches = index.get(our_value)
+        if matches:
+            nid = matches[0]
+            self.logger.info(f" -> Healed! matched existing note: {nid}")
+            return nid
+        return None
+
+    async def _match_by_tag(
+        self, arete_id: str, first_field_name: str, our_value: str
+    ) -> int | None:
+        """Resolve a card by its arete ID tag; content must still match (tags can be copied)."""
         try:
-            candidate_nids = await self._invoke("findNotes", query=query)
+            candidates = await self._invoke("findNotes", query=f"tag:{arete_id}")
+        except Exception as e:
+            self.logger.warning(f"Healing tag query failed: {e}")
+            return None
+        if not candidates:
+            return None
+
+        matches = [
+            int(info["noteId"])
+            for info in await self._notes_info_chunked(candidates)
+            if self._normalize_field(
+                info.get("fields", {}).get(first_field_name, {}).get("value", "")
+            )
+            == our_value
+        ]
+        if not matches:
+            self.logger.warning(
+                f"[heal] tag {arete_id} is on {len(candidates)} note(s) but none match "
+                f"content; falling back to content lookup"
+            )
+            return None
+        if len(matches) > 1:
+            self.logger.warning(
+                f"[heal] tag {arete_id} matches {len(matches)} notes; using oldest "
+                f"nid={min(matches)} (the rest are duplicates -- prune them)"
+            )
+        return min(matches)
+
+    async def _content_index_for(self, model: str, first_field_name: str) -> dict[str, list[int]]:
+        """Build (once per run, per model) normalized first field -> sorted nids."""
+        cached = self._content_index.get(model)
+        if cached is not None:
+            return cached
+
+        try:
+            candidates = await self._invoke("findNotes", query=f'"note:{model}"')
         except Exception as e:
             self.logger.warning(f"Healing query failed: {e}")
-            return None
+            return {}  # do not cache a failed build
 
-        if not candidate_nids:
-            return None
+        index: dict[str, list[int]] = {}
+        for info in await self._notes_info_chunked(candidates or []):
+            val = self._normalize_field(
+                info.get("fields", {}).get(first_field_name, {}).get("value", "")
+            )
+            if val:
+                index.setdefault(val, []).append(int(info["noteId"]))
+        for nids in index.values():
+            nids.sort()
+        self._content_index[model] = index
+        return index
 
-        # Fetch fields in chunks to avoid overwhelming AnkiConnect
-        for i in range(0, len(candidate_nids), CHUNK_SIZE):
-            chunk = candidate_nids[i : i + CHUNK_SIZE]
+    async def _notes_info_chunked(self, nids: list[int]) -> list[dict]:
+        """notesInfo in CHUNK_SIZE batches; a failed chunk is logged and skipped."""
+        infos: list[dict] = []
+        for i in range(0, len(nids), CHUNK_SIZE):
             try:
-                infos = await self._invoke("notesInfo", notes=chunk)
+                infos.extend(await self._invoke("notesInfo", notes=nids[i : i + CHUNK_SIZE]))
             except Exception as e:
                 self.logger.warning(f"Healing notesInfo failed: {e}")
-                continue
+        return infos
 
-            for info in infos:
-                anki_fields = info.get("fields", {})
-                anki_val = anki_fields.get(first_field_name, {}).get("value", "")
-                if self._normalize_field(anki_val) == our_value:
-                    nid = info["noteId"]
-                    self.logger.info(f" -> Healed! matched existing note: {nid}")
-                    return nid
-
-        return None
+    def _index_new_note(self, note: Any, html_fields: dict, nid: int) -> None:
+        """Register a just-created note so a second identical card this run heals to it."""
+        index = self._content_index.get(note.model)
+        if index is None:
+            return
+        first_field_name = next(iter(html_fields))
+        val = self._normalize_field(html_fields[first_field_name])
+        if val:
+            index.setdefault(val, []).append(nid)
 
     async def _fetch_cid(self, nid: int) -> str | None:
         """Fetch the first card ID for a note."""

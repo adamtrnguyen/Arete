@@ -82,8 +82,14 @@ async def test_healing_via_dict_comparison(adapter):
             return [100, 200, 300]
         if action == "notesInfo":
             return [
-                {"noteId": 100, "fields": {"Front": {"value": "Unrelated"}, "Back": {"value": "X"}}},
-                {"noteId": 200, "fields": {"Front": {"value": "What is a claim?"}, "Back": {"value": "Old"}}},
+                {
+                    "noteId": 100,
+                    "fields": {"Front": {"value": "Unrelated"}, "Back": {"value": "X"}},
+                },
+                {
+                    "noteId": 200,
+                    "fields": {"Front": {"value": "What is a claim?"}, "Back": {"value": "Old"}},
+                },
                 {"noteId": 300, "fields": {"Front": {"value": "Other"}, "Back": {"value": "Y"}}},
             ]
         if action == "updateNoteFields":
@@ -116,7 +122,9 @@ async def test_healing_cloze_normalization(adapter):
                 {
                     "noteId": 500,
                     "fields": {
-                        "Text": {"value": "<!-- arete markdown -->\n<p>The {{c1::sun}} rises in the {{c2::east}}.</p>"},
+                        "Text": {
+                            "value": "<!-- arete markdown -->\n<p>The {{c1::sun}} rises in the {{c2::east}}.</p>"
+                        },
                         "Back Extra": {"value": ""},
                     },
                     "cards": [501],
@@ -178,7 +186,10 @@ async def test_healing_no_match_falls_through_to_add(adapter):
         if action == "notesInfo":
             if 800 in kwargs.get("notes", []):
                 return [
-                    {"noteId": 800, "fields": {"Front": {"value": "Different card"}, "Back": {"value": "B"}}}
+                    {
+                        "noteId": 800,
+                        "fields": {"Front": {"value": "Different card"}, "Back": {"value": "B"}},
+                    }
                 ]
             if 900 in kwargs.get("notes", []):
                 return [{"noteId": 900, "cards": [901]}]
@@ -320,6 +331,145 @@ async def test_cid_fetching_on_heal(adapter):
 
 
 # ---------------------------------------------------------------------------
+# Reconcile: ID tag, collection-wide content, dangling nid, deck move
+# (regression for the 2026-09-07 duplicate storm: 6814 twins across decks)
+# ---------------------------------------------------------------------------
+
+
+def _make_tagged_item(fields, tags, deck="Right::Deck", nid=None):
+    note = AnkiNote(
+        model="Basic",
+        deck=deck,
+        fields=fields,
+        tags=tags,
+        start_line=1,
+        end_line=5,
+        source_file=Path("test.md"),
+        source_index=1,
+        nid=nid,
+    )
+    return WorkItem(note=note, source_file=Path("test.md"), source_index=1)
+
+
+@pytest.mark.asyncio
+async def test_heal_by_arete_id_tag_and_move_deck(adapter):
+    """A twin found by its arete_ tag is updated and MOVED to the vault's deck, not re-created."""
+    item = _make_tagged_item({"Front": "Q1", "Back": "A"}, tags=["arete_01ABC"])
+    calls = []
+
+    async def side_effect(action, **kwargs):
+        calls.append((action, kwargs))
+        if action == "findNotes":
+            assert kwargs["query"] == "tag:arete_01ABC"
+            return [500]
+        if action == "notesInfo":
+            return [
+                {
+                    "noteId": 500,
+                    "fields": {"Front": {"value": "Q1"}, "Back": {"value": "stale"}},
+                    "tags": ["arete_01ABC"],
+                    "cards": [501],
+                }
+            ]
+        return None
+
+    adapter._invoke.side_effect = side_effect
+    results = await adapter.sync_notes([item])
+
+    assert results[0].ok is True
+    assert results[0].new_nid == "500"
+    assert results[0].new_cid == "501"
+    actions = [a for a, _ in calls]
+    assert "addNote" not in actions
+    assert ("changeDeck", {"cards": [501], "deck": "Right::Deck"}) in calls
+
+
+@pytest.mark.asyncio
+async def test_heal_content_lookup_is_collection_wide(adapter):
+    """Content matching must not be scoped to the target deck (a twin in Default still counts)."""
+    item = _make_tagged_item({"Front": "Q2", "Back": "A"}, tags=[])
+    queries = []
+
+    async def side_effect(action, **kwargs):
+        if action == "findNotes":
+            queries.append(kwargs["query"])
+            return [600]
+        if action == "notesInfo":
+            return [
+                {
+                    "noteId": 600,
+                    "fields": {"Front": {"value": "Q2"}, "Back": {"value": "x"}},
+                    "cards": [601],
+                }
+            ]
+        return None
+
+    adapter._invoke.side_effect = side_effect
+    results = await adapter.sync_notes([item])
+
+    assert results[0].new_nid == "600"
+    assert queries == ['"note:Basic"']
+    assert all("deck:" not in q for q in queries)
+
+
+@pytest.mark.asyncio
+async def test_dangling_nid_reconciles_instead_of_creating(adapter):
+    """A nid that no longer exists in Anki falls back to reconcile, never straight to addNote."""
+    item = _make_tagged_item({"Front": "Q3", "Back": "A"}, tags=[], nid="999")
+    actions = []
+
+    async def side_effect(action, **kwargs):
+        actions.append(action)
+        if action == "notesInfo" and kwargs.get("notes") == [999]:
+            return [{}]  # AnkiConnect's answer for a missing note
+        if action == "findNotes":
+            return [700]
+        if action == "notesInfo":
+            return [
+                {
+                    "noteId": 700,
+                    "fields": {"Front": {"value": "Q3"}, "Back": {"value": "y"}},
+                    "cards": [701],
+                }
+            ]
+        return None
+
+    adapter._invoke.side_effect = side_effect
+    results = await adapter.sync_notes([item])
+
+    assert results[0].ok is True
+    assert results[0].new_nid == "700"
+    assert "addNote" not in actions
+
+
+@pytest.mark.asyncio
+async def test_content_index_built_once_per_model(adapter):
+    """Two un-nid'd cards of one model cost one collection scan, and a fresh add is indexed."""
+    a = _make_tagged_item({"Front": "New A", "Back": "1"}, tags=[])
+    b = _make_tagged_item({"Front": "New A", "Back": "2"}, tags=[])  # same front, second copy
+    find_calls = 0
+
+    async def side_effect(action, **kwargs):
+        nonlocal find_calls
+        if action == "findNotes":
+            find_calls += 1
+            return []
+        if action == "addNote":
+            return 800
+        if action == "notesInfo":
+            return [{"noteId": 800, "cards": [801]}]
+        return None
+
+    adapter._invoke.side_effect = side_effect
+    r1 = await adapter.sync_notes([a])
+    r2 = await adapter.sync_notes([b])
+
+    assert find_calls == 1
+    assert r1[0].new_nid == "800"
+    assert r2[0].new_nid == "800"  # healed to the note created moments ago
+
+
+# ---------------------------------------------------------------------------
 # Healing via respx (HTTP-level)
 # ---------------------------------------------------------------------------
 
@@ -387,13 +537,19 @@ async def test_healing_success_respx(adapter_respx):
         if action == "notesInfo":
             notes = data.get("params", {}).get("notes", [])
             if 123999 in notes:
-                return Response(200, json={"result": [
-                    {
-                        "noteId": 123999,
-                        "fields": {"Front": {"value": "Front"}, "Back": {"value": "Back"}},
-                        "cards": [999],
-                    }
-                ], "error": None})
+                return Response(
+                    200,
+                    json={
+                        "result": [
+                            {
+                                "noteId": 123999,
+                                "fields": {"Front": {"value": "Front"}, "Back": {"value": "Back"}},
+                                "cards": [999],
+                            }
+                        ],
+                        "error": None,
+                    },
+                )
             return Response(200, json={"result": [], "error": None})
         if action == "updateNoteFields":
             return Response(200, json={"result": None, "error": None})
