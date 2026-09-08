@@ -379,7 +379,7 @@ class AnkiConnectAdapter(AnkiBridge):
         return index
 
     async def _notes_info_chunked(self, nids: list[int]) -> list[dict]:
-        """notesInfo in CHUNK_SIZE batches; a failed chunk is logged and skipped."""
+        """Fetch notesInfo in CHUNK_SIZE batches; a failed chunk is logged and skipped."""
         infos: list[dict] = []
         for i in range(0, len(nids), CHUNK_SIZE):
             try:
@@ -662,7 +662,8 @@ class AnkiConnectAdapter(AnkiBridge):
                 for item in fsrs_results
                 if "cardId" in item and "difficulty" in item and item["difficulty"] is not None
             }
-        except Exception:
+        except Exception as e:
+            self.logger.warning(f"[fsrs] getFSRSStats unavailable, difficulties empty: {e}")
             return {}
 
     @staticmethod
@@ -719,7 +720,8 @@ class AnkiConnectAdapter(AnkiBridge):
             res = await self._invoke("modelTemplates", modelName=model_name)
             # AnkiConnect returns { "Card 1": { "Front": "...", "Back": "..." } }
             return res
-        except Exception:
+        except Exception as e:
+            self.logger.warning(f"[model] modelTemplates failed for '{model_name}': {e}")
             return {}
 
     async def gui_browse(self, query: str) -> bool:

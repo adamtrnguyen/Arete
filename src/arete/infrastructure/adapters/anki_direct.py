@@ -443,8 +443,8 @@ class AnkiDirectAdapter(AnkiBridge):
                     if resp.status_code == 200:
                         data = resp.json()
                         return not data.get("error")
-            except Exception:
-                pass
+            except Exception as e:
+                self.logger.debug(f"[direct] AnkiConnect probe failed (Anki closed?): {e}")
             return False
 
         # 1. ALWAYS launch/bring Anki to front first
@@ -464,8 +464,8 @@ class AnkiDirectAdapter(AnkiBridge):
                 subprocess.run(
                     ["xdg-open", uri], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
                 )
-        except Exception:
-            pass
+        except Exception as e:
+            self.logger.warning(f"[browse] could not open the Anki browser: {e}")
 
         await asyncio.sleep(BROWSE_INITIAL_DELAY)
 
@@ -563,8 +563,9 @@ class AnkiDirectAdapter(AnkiBridge):
                     if card.did == did:
                         card.due = i + 1000
                         repo.col.update_card(card)
-                except Exception:
-                    pass  # Card may not have been pulled (suspended, etc.)
+                except Exception as e:
+                    # Card may not have been pulled into the filtered deck (suspended, etc.)
+                    self.logger.debug(f"[queue] could not reorder cid={cid}: {e}")
 
             return True
 

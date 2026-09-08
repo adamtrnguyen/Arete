@@ -19,8 +19,9 @@ def unique_media_name(dest_dir: Path, src: Path) -> str:
         if cand.stat().st_size == src.stat().st_size:
             if file_md5(cand) == file_md5(src):
                 return base
-    except Exception:
-        pass
+    except Exception as e:
+        # Cannot compare -> fall through to a uniquified name (a duplicate copy, not data loss).
+        logging.getLogger(__name__).debug(f"[media] could not compare {cand} with {src}: {e}")
     stem, suf = src.stem, src.suffix
     short = file_md5(src)[:8]
     return f"{stem}_{short}{suf}"

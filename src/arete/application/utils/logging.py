@@ -127,8 +127,8 @@ def write_run_report(recorder: RunRecorder, log_dir: Path, run_id: str):
             f.write("\n".join(lines))
         # Automatic rotation: Keep last 50
         rotate_logs(log_dir, keep=50)
-    except Exception:
-        pass
+    except OSError as e:
+        logging.getLogger("arete").warning(f"[report] could not write {report_path}: {e}")
 
 
 def rotate_logs(log_dir: Path, keep: int = 50):
@@ -143,6 +143,5 @@ def rotate_logs(log_dir: Path, keep: int = 50):
             os.remove(str(f))
         for f in reports[:-keep]:
             os.remove(str(f))
-    except Exception:
-        # Silently fail if rotation has issues
-        pass
+    except OSError as e:
+        logging.getLogger("arete").debug(f"[logs] rotation skipped: {e}")

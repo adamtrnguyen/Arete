@@ -28,8 +28,11 @@ class ContentCache:
         self._init_db()
 
     def _init_db(self):
-        """Create the schema. The cache is regenerable, so a schema change never migrates:
-        on a `user_version` mismatch the tables are dropped and rebuilt."""
+        """Create the schema.
+
+        The cache is regenerable, so a schema change never migrates: on a `user_version`
+        mismatch the tables are dropped and rebuilt.
+        """
         with self._lock:
             (version,) = self._conn.execute("PRAGMA user_version").fetchone()
             if version != SCHEMA_VERSION:
@@ -107,8 +110,8 @@ class ContentCache:
                     res = json.loads(row[0])
                     self.logger.debug(f"[cache] meta hit for {md_path.name}")
                     return res
-                except Exception:
-                    pass
+                except Exception as e:
+                    self.logger.warning(f"[cache] corrupt meta row for {md_path.name}: {e}")
             self.logger.debug(f"[cache] meta miss for {md_path.name}")
             return None
 
@@ -133,8 +136,8 @@ class ContentCache:
                     res = json.loads(row[0])
                     self.logger.debug(f"[cache] stat-meta hit for {md_path.name}")
                     return res
-                except Exception:
-                    pass
+                except Exception as e:
+                    self.logger.warning(f"[cache] corrupt stat-meta row for {md_path.name}: {e}")
             return None
 
     def set_file_meta(

@@ -59,9 +59,8 @@ class ConnectStatsRepository(StatsRepository):
                                     difficulty=item.get("difficulty", 0) / 10.0,
                                     retrievability=item.get("retrievability"),
                                 )
-                except Exception:
-                    # getFSRSStats not available
-                    pass
+                except Exception as e:
+                    logger.warning(f"[fsrs] getFSRSStats unavailable, stats lack FSRS state: {e}")
 
                 # 4. Build aggregates
                 for info in infos:

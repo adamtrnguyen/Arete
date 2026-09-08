@@ -54,8 +54,8 @@ class VaultService:
                 if cached_meta:
                     cards = cached_meta.get("cards", [])
                     return (True, len(cards), None, cached_meta, False)
-            except Exception:
-                pass
+            except Exception as e:
+                self.logger.warning(f"[vault] cache miss (error) for {md_file.name}: {e}")
 
         try:
             text = md_file.read_text(encoding="utf-8", errors="strict")

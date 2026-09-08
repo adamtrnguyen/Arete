@@ -10,7 +10,6 @@ import yaml.scanner  # type: ignore
 from .common import sanitize
 from .yaml import _LiteralDumper
 
-
 # ---------- Filename normalization ----------
 
 
@@ -26,6 +25,7 @@ def normalize_filename(name: str) -> str:
     regardless of the form macOS hands back via pathlib.
     """
     return unicodedata.normalize("NFC", name)
+
 
 # ---------- Math: Normalize to \( \) and \[ \] delimiters ----------
 

@@ -100,7 +100,7 @@ exclude = ["mock_vault", "docker", "obsidian-plugin", "docs"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py311"
+target-version = "py312"
 exclude = [
     "docker/anki_data",
     "ankiconnect",
@@ -121,8 +121,12 @@ exclude = [
 # C90: mccabe complexity
 # D: pydocstyle (documentation)
 # FIX: flake8-fixme (TODO detection)
-select = ["E", "F", "I", "B", "C4", "UP", "W", "TID252", "C90", "D", "FIX"]
+select = ["E", "F", "I", "B", "C4", "UP", "W", "TID252", "C90", "D", "FIX", "S110", "S112"]
 ignore = ["D100", "D101", "D102", "D103", "D104"] # We will enable these selectively below
+
+[tool.ruff.lint.pydocstyle]
+# One convention resolves the D203/D211 and D212/D213 pairs that made the gate unpassable.
+convention = "google"
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["E501"]

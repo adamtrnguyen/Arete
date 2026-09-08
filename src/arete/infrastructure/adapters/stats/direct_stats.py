@@ -64,8 +64,8 @@ class DirectStatsRepository(StatsRepository):
                         try:
                             note = repo.col.get_note(card.nid)
                             front = note.fields[0] if note.fields else None
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            logger.debug(f"[stats] no note for cid={card.id}: {e}")
 
                         # Get answer distribution from revlog
                         answer_dist = self._get_answer_distribution(repo, cid)
@@ -144,8 +144,8 @@ class DirectStatsRepository(StatsRepository):
                             s_at_review = data.get("s")
                             d_at_review = data.get("d")
                             r_at_review = data.get("r")
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            logger.debug(f"[stats] unreadable revlog data: {e}")
 
                     entries.append(
                         ReviewEntry(
@@ -211,7 +211,8 @@ class DirectStatsRepository(StatsRepository):
             for rating, count in repo.col.db.execute(query, cid):
                 dist[rating] = count
             return dist
-        except Exception:
+        except Exception as e:
+            logger.warning(f"[stats] rating distribution query failed for cid={cid}: {e}")
             return {}
 
     def _get_last_review_time(self, repo: AnkiRepository, cid: int) -> int | None:
@@ -222,8 +223,8 @@ class DirectStatsRepository(StatsRepository):
             result = repo.col.db.scalar("SELECT MAX(id) FROM revlog WHERE cid = ?", cid)
             if result:
                 return result // 1000  # Convert ms to seconds
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"[stats] last-review query failed for cid={cid}: {e}")
         return None
 
     def _get_average_time(self, repo: AnkiRepository, cid: int) -> int:
@@ -234,6 +235,6 @@ class DirectStatsRepository(StatsRepository):
             # time limit is usually capped at 60s (60000ms) in revlog logic but here we just avg
             result = repo.col.db.scalar("SELECT AVG(time) FROM revlog WHERE cid = ?", cid)
             return int(result) if result else 0
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"[stats] avg-time query failed for cid={cid}: {e}")
         return 0

@@ -204,7 +204,11 @@ def build_graph(vault_root: Path) -> DependencyGraph:
                     # Skip same-file cards when resolving basename deps
                     if target_id == card_id:
                         continue
-                    if not ref.startswith("arete_") and own_basename and normalize_filename(ref) == own_basename:
+                    if (
+                        not ref.startswith("arete_")
+                        and own_basename
+                        and normalize_filename(ref) == own_basename
+                    ):
                         continue
                     graph.add_requires(card_id, target_id)
 
@@ -214,7 +218,11 @@ def build_graph(vault_root: Path) -> DependencyGraph:
                 for target_id in resolved:
                     if target_id == card_id:
                         continue
-                    if not ref.startswith("arete_") and own_basename and normalize_filename(ref) == own_basename:
+                    if (
+                        not ref.startswith("arete_")
+                        and own_basename
+                        and normalize_filename(ref) == own_basename
+                    ):
                         continue
                     graph.add_related(card_id, target_id)
 
@@ -477,7 +485,8 @@ def filter_graph_by_deck(graph: DependencyGraph, deck: str) -> DependencyGraph:
                             cid = card.get("id")
                             if cid and cid in graph.nodes:
                                 keep_ids.add(cid)
-        except Exception:
+        except Exception as e:
+            logger.warning(f"[deck-filter] skipping {fpath}: {e}")
             continue
 
     # Rebuild graph with only matching nodes

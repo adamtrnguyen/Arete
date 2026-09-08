@@ -265,9 +265,7 @@ class MarkdownParser:
                 # Construct per-card tag list (file base + card-level + arete ID)
                 card_tags = list(base_tags)  # Copy to avoid mutating shared list
                 card_tags.extend(
-                    t.strip()
-                    for t in to_list(card.get("tags") or [])
-                    if t and t.strip()
+                    t.strip() for t in to_list(card.get("tags") or []) if t and t.strip()
                 )
                 card_id = sanitize(card.get("id", "")).strip()
                 if card_id:
