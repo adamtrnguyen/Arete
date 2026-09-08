@@ -26,28 +26,33 @@ jobs:
     - name: Install dependencies
       run: uv sync --dev
 
-    - name: Run tests
-      run: uv run just coverage
-
-    - name: Build package
-      run: uv build
-
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
         node-version: '20'
 
-    - name: Build Obsidian Plugin
-      run: |
-        cd obsidian-plugin
-        npm ci --legacy-peer-deps
-        npm run build
+    - name: Install plugin dependencies
+      run: npm ci --legacy-peer-deps
+      working-directory: obsidian-plugin
 
-    - name: Build Anki Plugin
+    # One recipe builds every artifact, here and on a laptop, so the two cannot
+    # drift. It verifies (lint, types, import contracts, generated docs, version
+    # agreement, both test suites), stamps the pyproject version into every
+    # manifest, builds the wheel, the plugin and the Anki add-on, then runs the
+    # built wheel's console script. The plugin shells out to `arete`, so a wheel
+    # that builds without exposing that entry point is a broken release.
+    - name: Build and verify every artifact
+      run: uv run just release
+
+    - name: Fail if the tag disagrees with the built version
       run: |
-        mkdir -p release_artifacts
-        cd arete_ankiconnect && zip -r ../release_artifacts/arete_ankiconnect.zip . -x "__pycache__/*"
-        cp ../release_artifacts/arete_ankiconnect.zip ../release_artifacts/arete_ankiconnect.ankiaddon
+        BUILT=$(uv run python -c "import re,pathlib;print(re.search(r'^version\s*=\s*"([^"]+)"', pathlib.Path('pyproject.toml').read_text(), re.M).group(1))")
+        TAG="${GITHUB_REF_NAME#v}"
+        if [ "$BUILT" != "$TAG" ]; then
+          echo "::error::tag $GITHUB_REF_NAME does not match pyproject version $BUILT"
+          exit 1
+        fi
+        echo "tag $GITHUB_REF_NAME matches version $BUILT"
 
     - name: Publish to PyPI
       uses: pypa/gh-action-pypi-publish@release/v1

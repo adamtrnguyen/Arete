@@ -81,6 +81,14 @@ coverage-all *args:
 @check-docs:
     uv run python scripts/gen_architecture.py --check
 
+# Check every manifest carries the version in pyproject.toml
+@check-versions:
+    uv run python scripts/sync_versions.py --check
+
+# Write the pyproject version into every manifest (plugin, Anki add-on, package.json)
+@sync-versions:
+    uv run python scripts/sync_versions.py
+
 # --- Frontend (Obsidian Plugin) ---
 
 # Build Obsidian plugin
@@ -103,16 +111,39 @@ coverage-all *args:
 
 # Zip Anki plugin for distribution
 @build-anki:
+    rm -rf {{RELEASE}}
     mkdir -p {{RELEASE}}
     cd arete_ankiconnect && zip -r ../{{RELEASE}}/arete_ankiconnect.zip . -x "__pycache__/*"
     cp {{RELEASE}}/arete_ankiconnect.zip {{RELEASE}}/arete_ankiconnect.ankiaddon
 
-# Full release build (all artifacts)
-@release: build-python build-obsidian build-anki
+# Everything a release must satisfy, without changing a single file.
+# `just qa` runs `just fix`, which rewrites source; a release build must not.
+@verify:
+    just lint
+    just check-types
+    just check-architecture
+    just check-docs
+    just check-versions
+    just test
+    just test-obsidian
+
+# Run the built wheel in a throwaway environment and call its console script.
+# The Obsidian plugin shells out to `arete`, so a wheel that builds but does not
+# expose that entry point is a broken release every other check would pass.
+@verify-wheel:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    WHEEL=$(ls -t dist/*.whl | head -1)
+    uv run --no-project --with "$WHEEL" arete --help > /dev/null
+    echo "  wheel ok: $(basename "$WHEEL") exposes a working arete command"
+
+# Full release build: verify, stamp every manifest, build all three artifacts, run the wheel
+@release: verify sync-versions build-python build-obsidian build-anki verify-wheel
     @echo "📦 Packaging release artifacts..."
     @cp dist/* {{RELEASE}}/
     @cp {{PLUGIN}}/main.js {{PLUGIN}}/manifest.json {{PLUGIN}}/styles.css {{RELEASE}}/
     @echo "✨ Release ready in {{RELEASE}}/"
+    @ls -1 {{RELEASE}}/
 
 
 # --- QA & CI ---
@@ -127,6 +158,7 @@ coverage-all *args:
     just fix
     just check-types
     just check-architecture
+    just check-docs
     just test
     @echo "--- 🟦 Frontend QA ---"
     {{NPM}} run format
