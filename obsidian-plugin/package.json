@@ -1,6 +1,6 @@
 {
 	"name": "arete",
-	"version": "2.3.0",
+	"version": "2.4.0",
 	"description": "Sync Obsidian vault to Anki using o2a",
 	"main": "main.js",
 	"scripts": {

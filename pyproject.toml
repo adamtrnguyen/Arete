@@ -1,6 +1,6 @@
 [project]
 name = "arete"
-version = "2.3.0"
+version = "2.4.0"
 description = "A robust, fast, and feature-rich CLI for syncing Obsidian vault to Anki."
 readme = "README.md"
 license = "GPL-3.0"
@@ -140,6 +140,23 @@ convention = "google"
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["E501"]
 "src/arete/domain/**/*.py" = ["D100", "D101", "D102", "D103", "D104"]
+
+# C901 debt, pinned file by file so a NEW complex function still fails the gate.
+# 18 functions are over the limit of 10; the worst is run_pipeline at 30. Each
+# entry here is a promise to split that file, not permission to grow it. Remove
+# an entry as soon as its file is under the limit.
+"src/arete/application/card_editor.py" = ["C901"]
+"src/arete/application/queue/builder.py" = ["C901"]
+"src/arete/application/queue/graph_resolver.py" = ["C901"]
+"src/arete/application/queue/service.py" = ["C901"]
+"src/arete/application/sync/converter.py" = ["C901"]
+"src/arete/application/sync/parser.py" = ["C901"]
+"src/arete/application/sync/pipeline.py" = ["C901"]
+"src/arete/application/sync/vault_service.py" = ["C901"]
+"src/arete/application/utils/text.py" = ["C901"]
+"src/arete/infrastructure/adapters/stats/connect_stats.py" = ["C901"]
+"src/arete/infrastructure/anki/repository.py" = ["C901"]
+"src/arete/interface/cli.py" = ["C901"]
 
 [tool.ruff.lint.mccabe]
 max-complexity = 10

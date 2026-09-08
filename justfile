@@ -45,7 +45,7 @@ test-integration *args:
 
 # Run tests with coverage
 coverage:
-    {{PYTEST}} --cov=src/arete --cov-report=xml --cov-report=term-missing {{TESTS}}/application {{TESTS}}/interface {{TESTS}}/infrastructure {{TESTS}}/domain
+    {{PYTEST}} --cov=src/arete --cov-report=xml --cov-report=term-missing {{TESTS}}/application {{TESTS}}/interface {{TESTS}}/infrastructure {{TESTS}}/domain {{TESTS}}/e2e
 
 # Integration tests with coverage
 test-integration-coverage *args:

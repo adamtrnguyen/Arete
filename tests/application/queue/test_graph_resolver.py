@@ -131,17 +131,19 @@ cards:
         assert graph.nodes["c1"].title == "c1"  # Fallback to card_id
 
     def test_build_graph_resolves_nfd_filename_with_nfc_ref(self, tmp_path: Path):
-        """Regression: macOS APFS/HFS+ stores filenames in NFD; user-typed YAML
-        refs are NFC. Both render identically but compare unequal byte-wise.
-        The dep resolver must NFC-normalize both sides so refs to accented
-        filenames (e.g., 'Cramér-Rao Lower Bound') resolve correctly.
+        """The dep resolver must normalize both sides of a filename comparison.
+
+        macOS stores filenames decomposed (NFD). YAML a person types is composed
+        (NFC). The two render identically and compare unequal byte for byte, so a
+        ref to an accented filename such as 'Cramer-Rao Lower Bound' only resolves
+        when both sides are normalized first.
         """
         import unicodedata
 
         # Create the target file with an NFD-encoded filename (simulates how
         # macOS pathlib hands back filenames after the OS stores them).
         target_name_nfd = unicodedata.normalize("NFD", "Cramér-Rao Lower Bound")
-        target_md = f"""---
+        target_md = """---
 arete: true
 deck: Test
 cards:
