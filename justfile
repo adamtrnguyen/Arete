@@ -37,7 +37,7 @@ default:
 
 # Run backend tests
 test *args:
-    {{PYTEST}} {{TESTS}}/application {{TESTS}}/interface {{TESTS}}/infrastructure {{TESTS}}/domain {{TESTS}}/e2e {{args}}
+    {{PYTEST}} {{TESTS}}/application {{TESTS}}/interface {{TESTS}}/infrastructure {{TESTS}}/domain {{TESTS}}/e2e {{TESTS}}/test_docs_architecture.py {{args}}
 
 # Run backend integration tests (auto-starts Docker, random port)
 test-integration *args:
@@ -45,7 +45,7 @@ test-integration *args:
 
 # Run tests with coverage
 coverage:
-    {{PYTEST}} --cov=src/arete --cov-report=xml --cov-report=term-missing {{TESTS}}/application {{TESTS}}/interface {{TESTS}}/infrastructure {{TESTS}}/domain {{TESTS}}/e2e
+    {{PYTEST}} --cov=src/arete --cov-report=xml --cov-report=term-missing {{TESTS}}/application {{TESTS}}/interface {{TESTS}}/infrastructure {{TESTS}}/domain {{TESTS}}/e2e {{TESTS}}/test_docs_architecture.py
 
 # Integration tests with coverage
 test-integration-coverage *args:
@@ -76,6 +76,10 @@ coverage-all *args:
 # Check architectural layers and isolation
 @check-architecture:
     uv run lint-imports
+
+# Check that generated docs match the code
+@check-docs:
+    uv run python scripts/gen_architecture.py --check
 
 # --- Frontend (Obsidian Plugin) ---
 

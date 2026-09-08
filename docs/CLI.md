@@ -74,7 +74,8 @@ Arete supports dependency-aware study queues. By tagging notes with prerequisite
 
 - Queue output deck name is fixed: `Arete::Queue`.
 - With `--deck`, the queue is isolated to that deck unless `--cross-deck` is passed.
-- `--include-related` is reserved and currently not implemented.
+- `--algo` picks the ordering: `static` (default) and `simple` collect due cards
+  plus their prerequisites, `dynamic` orders by a ready frontier.
 
 ```bash
 # Build queue for a specific deck (due cards only)
