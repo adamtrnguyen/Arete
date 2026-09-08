@@ -2,12 +2,7 @@
 
 from pathlib import Path
 
-import pytest
-
-from arete.application.queue.builder import (
-    WeakPrereqCriteria,
-    build_dependency_queue,
-)
+from arete.application.queue.builder import build_simple_queue
 from arete.application.queue.graph_resolver import (
     build_graph,
     check_graph_health,
@@ -427,7 +422,7 @@ class TestFindConnectedComponents:
 class TestQueueBuilder:
     """Tests for dependency-aware queue building."""
 
-    def test_build_dependency_queue(self, tmp_path: Path):
+    def test_build_queue_pulls_in_prerequisites(self, tmp_path: Path):
         """Test full queue building flow."""
         md_content = """---
 arete: true
@@ -449,7 +444,7 @@ cards:
 """
         (tmp_path / "test.md").write_text(md_content)
 
-        result = build_dependency_queue(
+        result = build_simple_queue(
             vault_root=tmp_path,
             due_card_ids=["arete_main"],
             depth=2,
@@ -458,73 +453,8 @@ cards:
         assert "arete_prereq" in result.prereq_queue
         assert "arete_main" in result.main_queue
 
-    def test_include_related_not_implemented(self, tmp_path: Path):
-        """Test that include_related raises NotImplementedError."""
-        (tmp_path / "test.md").write_text("---\narete: true\ncards: []\n---")
-
-        with pytest.raises(NotImplementedError, match="Related card boost"):
-            build_dependency_queue(
-                vault_root=tmp_path,
-                due_card_ids=[],
-                include_related=True,
-            )
-
-    def test_weak_prereq_filtering(self, tmp_path: Path):
-        """Test filtering based on weak criteria."""
-        md_content = """---
-arete: true
-deck: Test
-cards:
-  - id: arete_main
-    model: Basic
-    fields:
-      Front: "Main"
-    deps:
-      requires: [arete_weak, arete_strong]
-  - id: arete_weak
-    model: Basic
-    fields:
-      Front: "Weak prereq"
-  - id: arete_strong
-    model: Basic
-    fields:
-      Front: "Strong prereq"
----
-"""
-        (tmp_path / "test.md").write_text(md_content)
-
-        card_stats = {
-            "arete_weak": {"stability": 5.0, "lapses": 3},
-            "arete_strong": {"stability": 100.0, "lapses": 0},
-        }
-
-        result = build_dependency_queue(
-            vault_root=tmp_path,
-            due_card_ids=["arete_main"],
-            weak_criteria=WeakPrereqCriteria(min_stability=50.0),
-            card_stats=card_stats,
-        )
-
-        assert "arete_weak" in result.prereq_queue
-        assert "arete_strong" in result.skipped_strong
-
-    def test_missing_prereqs(self, tmp_path: Path):
-        """Test handling of prerequisites not found in vault."""
-        md_content = """---
-arete: true
-cards:
-  - id: arete_main
-    deps:
-      requires: [arete_missing_1, arete_missing_2]
----
-"""
-        (tmp_path / "test.md").write_text(md_content)
-        result = build_dependency_queue(tmp_path, ["arete_main"])
-        assert "arete_missing_1" in result.missing_prereqs
-        assert "arete_missing_2" in result.missing_prereqs
-
-    def test_max_nodes_capping_with_stats(self, tmp_path: Path):
-        """Test that we cap the queue and sort by stability."""
+    def test_max_cards_caps_the_whole_queue(self, tmp_path: Path):
+        """max_cards bounds due cards + prerequisites together, deterministically."""
         md_content = """---
 arete: true
 cards:
@@ -537,47 +467,27 @@ cards:
 ---
 """
         (tmp_path / "test.md").write_text(md_content)
-        card_stats = {
-            "arete_p1": {"stability": 10.0},
-            "arete_p2": {"stability": 5.0},
-            "arete_p3": {"stability": 20.0},
-        }
-        # Cap at 2 nodes
-        result = build_dependency_queue(
-            tmp_path, ["arete_main"], max_nodes=2, card_stats=card_stats
-        )
-        assert len(result.prereq_queue) == 2
-        # p2 (5.0) and p1 (10.0) should be included as they are "weaker"
-        assert "arete_p2" in result.prereq_queue
-        assert "arete_p1" in result.prereq_queue
-        assert "arete_p3" not in result.prereq_queue
 
-    def test_is_weak_prereq_various_criteria(self):
-        """Test all branches of _is_weak_prereq."""
-        from arete.application.queue.builder import _is_weak_prereq
+        result = build_simple_queue(tmp_path, ["arete_main"], max_cards=3)
 
-        # No criteria -> always weak
-        assert _is_weak_prereq("any", None, None) is True
+        assert len(result.prereq_queue) + len(result.main_queue) == 3
+        # sorted() truncation, so the survivors do not depend on set iteration order
+        assert result.prereq_queue == ["arete_p1", "arete_p2"]
 
-        # No stats -> assume weak
-        criteria = WeakPrereqCriteria(min_stability=50.0)
-        assert _is_weak_prereq("any", criteria, None) is True
-        assert _is_weak_prereq("missing", criteria, {"other": {}}) is True
-
-        # Lapses
-        criteria = WeakPrereqCriteria(max_lapses=2)
-        assert _is_weak_prereq("c", criteria, {"c": {"lapses": 3}}) is True
-        assert _is_weak_prereq("c", criteria, {"c": {"lapses": 1}}) is False
-
-        # Reviews (reps)
-        criteria = WeakPrereqCriteria(min_reviews=5)
-        assert _is_weak_prereq("c", criteria, {"c": {"reps": 3}}) is True
-        assert _is_weak_prereq("c", criteria, {"c": {"reps": 10}}) is False
-
-        # Interval
-        criteria = WeakPrereqCriteria(max_interval=30)
-        assert _is_weak_prereq("c", criteria, {"c": {"interval": 10}}) is True
-        assert _is_weak_prereq("c", criteria, {"c": {"interval": 50}}) is False
+    def test_missing_prereqs(self, tmp_path: Path):
+        """Test handling of prerequisites not found in vault."""
+        md_content = """---
+arete: true
+cards:
+  - id: arete_main
+    deps:
+      requires: [arete_missing_1, arete_missing_2]
+---
+"""
+        (tmp_path / "test.md").write_text(md_content)
+        result = build_simple_queue(tmp_path, ["arete_main"])
+        assert "arete_missing_1" in result.missing_prereqs
+        assert "arete_missing_2" in result.missing_prereqs
 
     def test_collect_prereqs_cycles(self):
         """Test recursion protection in _collect_prereqs."""

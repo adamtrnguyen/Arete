@@ -19,7 +19,6 @@ class LogEntry:
 class RunRecorder:
     # Stats
     files_scanned: int = 0
-    files_cached_meta: int = 0
     cards_generated: int = 0
     cards_cached_content: int = 0
     cards_synced: int = 0
@@ -32,7 +31,6 @@ class RunRecorder:
 
     # Details
     errors: list[LogEntry] = field(default_factory=list)
-    warnings: list[LogEntry] = field(default_factory=list)
 
     start_time: datetime = field(default_factory=datetime.now)
 
@@ -48,9 +46,6 @@ class RunRecorder:
 
     def add_error(self, file: Path, msg: str, context: str | None = None):
         self.errors.append(LogEntry(file.name, msg, context))
-
-    def add_warning(self, file: Path, msg: str, context: str | None = None):
-        self.warnings.append(LogEntry(file.name, msg, context))
 
 
 def setup_logging(log_dir: Path, verbose: int) -> tuple[logging.Logger, Path, str]:
@@ -98,7 +93,6 @@ def write_run_report(recorder: RunRecorder, log_dir: Path, run_id: str):
         "| Metric | Count |",
         "|---|---|",
         f"| Files Scanned | {recorder.files_scanned} |",
-        f"| Files Cached (Meta) | {recorder.files_cached_meta} |",
         f"| Cards Generated | {recorder.cards_generated} |",
         f"| Cards Cached (Content) | {recorder.cards_cached_content} |",
         f"| Cards Synced | {recorder.cards_synced} |",
@@ -113,13 +107,6 @@ def write_run_report(recorder: RunRecorder, log_dir: Path, run_id: str):
         for e in recorder.errors:
             ctx = e.context or ""
             lines.append(f"| `{e.file}` | {e.message} | {ctx} |")
-        lines.append("")
-
-    if recorder.warnings:
-        lines.append("## Warnings")
-        # Collapsible check if too many? For now just list them.
-        for e in recorder.warnings:
-            lines.append(f"- **{e.file}**: {e.message}")
         lines.append("")
 
     try:

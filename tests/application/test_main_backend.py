@@ -23,7 +23,6 @@ def mock_config(tmp_path):
         apy_bin="apy",
         run_apy=False,
         keep_going=False,
-        no_move_deck=False,
         dry_run=False,
         prune=False,
         force=False,
@@ -31,9 +30,6 @@ def mock_config(tmp_path):
         workers=2,
         queue_size=100,
         verbose=1,
-        show_config=False,
-        open_logs=False,
-        open_config=False,
     )
 
 

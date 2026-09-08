@@ -252,9 +252,7 @@ class MarkdownParser:
 
                 # 5) Calculate hash check
                 # We use make_editor_note to produce the canonical content for hashing
-                content = make_editor_note(
-                    model, deck_this, base_tags, fields, nid=nid, cid=cid, markdown=True
-                )
+                content = make_editor_note(model, deck_this, base_tags, fields, nid=nid, cid=cid)
                 content_hash = hashlib.md5(content.encode("utf-8")).hexdigest()
 
                 cached_hash = cache.get_hash(md_path, idx)

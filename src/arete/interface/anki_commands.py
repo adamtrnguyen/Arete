@@ -119,7 +119,6 @@ def anki_stats(
 
 @anki_app.command("suspend")
 def suspend_cards(
-    ctx: typer.Context,
     cids: Annotated[str, typer.Option(help="Comma-separated list of Card IDs (or JSON list).")],
     backend: Annotated[str | None, typer.Option(help="Force backend")] = None,
     anki_connect_url: Annotated[str | None, typer.Option(help="AnkiConnect URL Override")] = None,
@@ -137,7 +136,6 @@ def suspend_cards(
 
 @anki_app.command("unsuspend")
 def unsuspend_cards(
-    ctx: typer.Context,
     cids: Annotated[str, typer.Option(help="Comma-separated list of Card IDs.")],
     backend: Annotated[str | None, typer.Option(help="Force backend")] = None,
     anki_connect_url: Annotated[str | None, typer.Option(help="AnkiConnect URL Override")] = None,
@@ -155,7 +153,6 @@ def unsuspend_cards(
 
 @anki_app.command("model-css")
 def model_css(
-    ctx: typer.Context,
     model: str = typer.Argument(..., help="Model Name"),
     backend: Annotated[str | None, typer.Option(help="Force backend")] = None,
     anki_connect_url: Annotated[str | None, typer.Option(help="AnkiConnect URL Override")] = None,
@@ -173,7 +170,6 @@ def model_css(
 
 @anki_app.command("model-templates")
 def model_templates(
-    ctx: typer.Context,
     model: str = typer.Argument(..., help="Model Name"),
     backend: Annotated[str | None, typer.Option(help="Force backend")] = None,
     anki_connect_url: Annotated[str | None, typer.Option(help="AnkiConnect URL Override")] = None,
@@ -191,7 +187,6 @@ def model_templates(
 
 @anki_app.command("browse")
 def anki_browse(
-    ctx: typer.Context,
     query: Annotated[str | None, typer.Option(help="Search query (e.g. 'nid:123')")] = None,
     nid: Annotated[int | None, typer.Option(help="Jump to Note ID")] = None,
     backend: Annotated[str | None, typer.Option(help="Force backend")] = None,

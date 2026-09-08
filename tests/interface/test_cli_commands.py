@@ -287,7 +287,7 @@ def test_anki_browse():
 @patch("arete.interface._common.resolve_config")
 @patch("arete.composition.factory.get_anki_bridge")
 @patch("arete.application.queue.service.build_dynamic_queue")
-@patch("arete.application.queue.service.build_dependency_queue")
+@patch("arete.application.queue.service.build_simple_queue")
 def test_queue_root_static_default(
     mock_build_static,
     mock_build_dynamic,
@@ -309,7 +309,6 @@ def test_queue_root_static_default(
     mock_build_static.return_value = QueueBuildResult(
         prereq_queue=["arete_P"],
         main_queue=["arete_A"],
-        skipped_strong=[],
         missing_prereqs=[],
         cycles=[],
     )
@@ -325,7 +324,7 @@ def test_queue_root_static_default(
 @patch("arete.interface._common.resolve_config")
 @patch("arete.composition.factory.get_anki_bridge")
 @patch("arete.application.queue.service.build_dynamic_queue")
-@patch("arete.application.queue.service.build_dependency_queue")
+@patch("arete.application.queue.service.build_simple_queue")
 def test_queue_dynamic_algo(
     mock_build_static,
     mock_build_dynamic,
@@ -347,7 +346,6 @@ def test_queue_dynamic_algo(
     mock_build_dynamic.return_value = QueueBuildResult(
         prereq_queue=["arete_P"],
         main_queue=["arete_A"],
-        skipped_strong=[],
         missing_prereqs=[],
         cycles=[],
         ordered_queue=["arete_P", "arete_A"],

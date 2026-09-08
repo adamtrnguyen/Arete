@@ -30,35 +30,6 @@ def normalize_filename(name: str) -> str:
 # ---------- Math: Normalize to \( \) and \[ \] delimiters ----------
 
 
-def convert_math_to_tex_delimiters(text: str) -> str:
-    # 1) Blocks first
-    block_dollars = re.compile(r"(?<!\\)\$\$(.*?)(?<!\\)\$\$", re.DOTALL)
-    block_brackets = re.compile(r"\\\[\s*(.*?)\s*\\\]", re.DOTALL)
-    block_bbcode = re.compile(r"\[\$\$\]\s*(.*?)\s*\[/\$\$\]", re.DOTALL)
-
-    def to_block(m: re.Match) -> str:
-        return r"\[" + m.group(1) + r"\]"
-
-    out = text
-    out = block_dollars.sub(to_block, out)
-    out = block_bbcode.sub(to_block, out)
-    out = block_brackets.sub(to_block, out)
-
-    # 2) Inline next
-    inline_dollar = re.compile(r"(?<!\\)\$(?!\$)(.*?)(?<!\\)\$", re.DOTALL)
-    inline_paren = re.compile(r"\\\(\s*(.*?)\s*\\\)", re.DOTALL)
-    inline_bbcode = re.compile(r"\[\$\]\s*(.*?)\s*\[/\$\]", re.DOTALL)
-
-    def to_inline(m: re.Match) -> str:
-        return r"\(" + m.group(1) + r"\)"
-
-    out = inline_dollar.sub(to_inline, out)
-    out = inline_bbcode.sub(to_inline, out)
-    out = inline_paren.sub(to_inline, out)
-
-    return out
-
-
 # ---------- Frontmatter helpers ----------
 
 
@@ -317,56 +288,6 @@ def apply_fixes(md_text: str) -> str:
     return rebuild_markdown_with_frontmatter(meta, body)
 
 
-def fix_mathjax_escapes(md_text: str) -> str:
-    r"""Find double-quoted strings in frontmatter that contain common MathJax.
-
-    escapes like \\in or \\mathbb and ensure they are double-escaped so
-    PyYAML can parse them. This allows migrating broken files to |- blocks.
-    """
-    bounds = _extract_frontmatter_bounds(md_text)
-    if bounds is None:
-        return md_text
-
-    original_fm, fm_start, fm_end = bounds
-    # Simple heuristic for YAML 1.2 double-quote escapes: 0 abt nr vf e " / \ L P _
-    valid_escapes = '0abtnrvfe"/\\ '
-
-    def fix_line(line: str) -> str:
-        # Match lines that look like key: "..." or - key: "..."
-        # We use a regex to find the content between the first and last quote.
-        import re
-
-        match = re.search(r'^(\s*(?:-\s*)?[^:]+:\s*)"(.*)"\s*$', line)
-        if match:
-            prefix, val = match.groups()
-            new_val = ""
-            i = 0
-            while i < len(val):
-                if val[i] == "\\":
-                    # Check if it's a valid escape sequence (like \n or \\)
-                    if i + 1 < len(val) and val[i + 1] in valid_escapes:
-                        new_val += "\\" + val[i + 1]
-                        i += 2
-                    else:
-                        # Broken escape (like \i or \{). Escape the backslash.
-                        new_val += "\\\\"
-                        i += 1
-                else:
-                    new_val += val[i]
-                    i += 1
-            return f'{prefix}"{new_val}"'
-        return line
-
-    lines = original_fm.split("\n")
-    fixed_lines = [fix_line(line) for line in lines]
-    new_fm = "\n".join(fixed_lines)
-
-    if new_fm != original_fm:
-        return md_text[:fm_start] + new_fm + md_text[fm_end:]
-
-    return md_text
-
-
 def make_editor_note(
     model: str,
     deck: str,
@@ -374,8 +295,12 @@ def make_editor_note(
     fields: dict[str, str],
     nid: str | None = None,
     cid: str | None = None,
-    markdown: bool = True,
 ) -> str:
+    """Render a card the way the Anki editor would.
+
+    IDENTITY-BEARING: the md5 of this string is a card's content_hash (parser.py),
+    so any change to the output re-syncs every card in the vault.
+    """
     lines = []
     if nid:
         lines.append(f"nid: {nid}")
@@ -384,7 +309,7 @@ def make_editor_note(
     lines += [f"model: {model}", f"deck: {deck}"]
     if tags:
         lines.append(f"tags: {' '.join(tags)}")
-    lines += [f"markdown: {'true' if markdown else 'false'}", "", "# Note", ""]
+    lines += ["markdown: true", "", "# Note", ""]
     mlow = model.lower()
     if mlow == "basic":
         f_list = ["Front", "Back"]

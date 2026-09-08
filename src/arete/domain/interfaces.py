@@ -147,11 +147,6 @@ class AnkiBridge(ABC):
         pass
 
     @abstractmethod
-    async def find_all_arete_nids(self) -> list[int]:
-        """Find all note IDs that have arete tags."""
-        pass
-
-    @abstractmethod
     async def map_nids_to_arete_ids(self, nids: list[int]) -> list[str]:
         """Convert Anki Note IDs to Arete IDs."""
         pass

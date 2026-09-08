@@ -16,13 +16,8 @@ from markdown.preprocessors import Preprocessor
 class MathProtectExtension(Extension):
     """Extension to avoid converting markdown within math blocks."""
 
-    def __init__(self, markdown_latex_mode: str = "mathjax") -> None:
-        """Initialize MathProtectExtension."""
-        super().__init__()
-        self.markdown_latex_mode: str = markdown_latex_mode
-
     def extendMarkdown(self, md: markdown.Markdown) -> None:
-        math_preprocessor = MathPreprocessor(md, self.markdown_latex_mode)
+        math_preprocessor = MathPreprocessor(md)
         math_postprocessor = MathPostprocessor(md, math_preprocessor.placeholders)
 
         md.preprocessors.register(math_preprocessor, "math_block_processor", 25)
@@ -30,20 +25,17 @@ class MathProtectExtension(Extension):
 
 
 class MathPreprocessor(Preprocessor):
-    def __init__(self, md: markdown.Markdown, markdown_latex_mode: str) -> None:
+    def __init__(self, md: markdown.Markdown) -> None:
         """Initialize MathPreprocessor."""
         super().__init__(md)
         self.counter: int = 0
         self.placeholders: dict[str, str] = {}
 
-        # Apply latex translation based on specified latex mode
-        if markdown_latex_mode == "latex":
-            self.fmt_display: str = "[$$]{math}[/$$]"
-            self.fmt_inline: str = "[$]{math}[/$]"
-        else:
-            # Default to MathJax style
-            self.fmt_display = r"\[{math}\]"
-            self.fmt_inline = r"\({math}\)"
+        # MathJax delimiters. Anki renders these; the old "[$]...[/$]" (apy/LaTeX)
+        # alternative was never selectable -- markdown_to_anki_html has one caller
+        # and it never passed a mode.
+        self.fmt_display: str = r"\[{math}\]"
+        self.fmt_inline: str = r"\({math}\)"
 
     def run(self, lines: list[str]) -> list[str]:
         # Reset per conversion. The markdown instance is reused globally.
@@ -236,7 +228,7 @@ class MathPostprocessor(Postprocessor):
 _md_instance: markdown.Markdown | None = None
 
 
-def markdown_to_anki_html(text: str, latex_mode: str = "mathjax") -> str:
+def markdown_to_anki_html(text: str) -> str:
     """Convert markdown text to Anki-compatible HTML.
 
     Includes special handling for MathJax protection.
@@ -247,7 +239,7 @@ def markdown_to_anki_html(text: str, latex_mode: str = "mathjax") -> str:
             extensions=[
                 "fenced_code",
                 "tables",
-                MathProtectExtension(latex_mode),
+                MathProtectExtension(),
             ]
         )
     else:

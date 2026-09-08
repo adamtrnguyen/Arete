@@ -4,8 +4,6 @@ from unittest.mock import patch
 import pytest
 
 from arete.application.queue.builder import (
-    WeakPrereqCriteria,
-    _is_weak_prereq,
     _weakness_score,
     build_dynamic_queue,
     build_simple_queue,
@@ -262,60 +260,14 @@ def test_build_dynamic_queue_diamond_dependency(mock_build_graph, diamond_graph)
 # ---------------------------------------------------------------------------
 
 
-def test_is_weak_prereq_missing_card_stats():
-    """When card_stats is None, all cards are considered weak."""
-    criteria = WeakPrereqCriteria(min_stability=5.0)
-    assert _is_weak_prereq("card_1", criteria, card_stats=None) is True
-
-
-def test_is_weak_prereq_card_not_in_stats():
-    """When the specific card is absent from card_stats, it is weak."""
-    criteria = WeakPrereqCriteria(min_stability=5.0)
-    stats = {"other_card": {"stability": 100.0}}
-    assert _is_weak_prereq("card_1", criteria, card_stats=stats) is True
-
-
 # ---------------------------------------------------------------------------
 # _is_weak_prereq: all criteria None -> True (all weak)
 # ---------------------------------------------------------------------------
 
 
-def test_is_weak_prereq_all_criteria_none():
-    """When criteria has no thresholds set, all prereqs are weak (no filtering)."""
-    criteria = WeakPrereqCriteria()  # All fields None
-    stats = {"card_1": {"stability": 100.0, "lapses": 0, "reps": 50, "interval": 365}}
-    # None of the criteria branches fire, so function returns False (card is strong)
-    assert _is_weak_prereq("card_1", criteria, stats) is False
-
-
-def test_is_weak_prereq_no_criteria_object():
-    """When criteria is None entirely, all prereqs are considered weak."""
-    stats = {"card_1": {"stability": 100.0}}
-    assert _is_weak_prereq("card_1", None, stats) is True
-
-
 # ---------------------------------------------------------------------------
 # _is_weak_prereq: each criterion independently
 # ---------------------------------------------------------------------------
-
-
-@pytest.mark.parametrize(
-    "criteria_kwargs,card_stats,expected",
-    [
-        pytest.param({"min_stability": 10.0}, {"stability": 5.0}, True, id="stability_below"),
-        pytest.param({"min_stability": 10.0}, {"stability": 20.0}, False, id="stability_above"),
-        pytest.param({"max_lapses": 3}, {"lapses": 5}, True, id="lapses_above"),
-        pytest.param({"max_lapses": 3}, {"lapses": 2}, False, id="lapses_below"),
-        pytest.param({"min_reviews": 10}, {"reps": 3}, True, id="reps_below"),
-        pytest.param({"min_reviews": 10}, {"reps": 15}, False, id="reps_above"),
-        pytest.param({"max_interval": 30}, {"interval": 10}, True, id="interval_below"),
-        pytest.param({"max_interval": 30}, {"interval": 60}, False, id="interval_above"),
-    ],
-)
-def test_is_weak_prereq_threshold(criteria_kwargs, card_stats, expected):
-    """Each criterion independently determines weak vs strong."""
-    criteria = WeakPrereqCriteria(**criteria_kwargs)
-    assert _is_weak_prereq("card_1", criteria, {"card_1": card_stats}) is expected
 
 
 # ---------------------------------------------------------------------------
@@ -333,7 +285,7 @@ def test_is_weak_prereq_threshold(criteria_kwargs, card_stats, expected):
 )
 def test_weakness_score_no_stats(card_stats):
     """Missing or absent card stats produce 0.0 weakness score."""
-    assert _weakness_score("card_1", None, card_stats) == 0.0
+    assert _weakness_score("card_1", card_stats) == 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -344,7 +296,7 @@ def test_weakness_score_no_stats(card_stats):
 def test_weakness_score_zero_stability():
     """Zero stability should give maximum stability-based weakness."""
     stats = {"card_1": {"stability": 0.0}}
-    score = _weakness_score("card_1", None, stats)
+    score = _weakness_score("card_1", stats)
     # 1/(1+0) = 1.0, plus reps < 10 gives (10-0)*0.05 = 0.0 (no reps key)
     assert score == pytest.approx(1.0)
 
@@ -352,7 +304,7 @@ def test_weakness_score_zero_stability():
 def test_weakness_score_very_high_stability():
     """Very high stability approaches zero weakness from stability."""
     stats = {"card_1": {"stability": 1_000_000.0}}
-    score = _weakness_score("card_1", None, stats)
+    score = _weakness_score("card_1", stats)
     # 1/(1+1_000_000) ~ 0.000001
     assert score < 0.001
 
@@ -361,15 +313,15 @@ def test_weakness_score_high_lapses():
     """High lapse count produces proportionally higher weakness."""
     stats_high = {"card_1": {"lapses": 100}}
     stats_low = {"card_1": {"lapses": 1}}
-    score_high = _weakness_score("card_1", None, stats_high)
-    score_low = _weakness_score("card_1", None, stats_low)
+    score_high = _weakness_score("card_1", stats_high)
+    score_low = _weakness_score("card_1", stats_low)
     assert score_high > score_low
 
 
 def test_weakness_score_zero_reps():
     """Zero reps gives the maximum reps-based weakness component."""
     stats = {"card_1": {"reps": 0}}
-    score = _weakness_score("card_1", None, stats)
+    score = _weakness_score("card_1", stats)
     # (10 - 0) * 0.05 = 0.5
     assert score == pytest.approx(0.5)
 
@@ -377,7 +329,7 @@ def test_weakness_score_zero_reps():
 def test_weakness_score_many_reps():
     """Reps >= 10 contribute zero reps-based weakness."""
     stats = {"card_1": {"reps": 50}}
-    score = _weakness_score("card_1", None, stats)
+    score = _weakness_score("card_1", stats)
     # reps >= 10 -> no reps contribution
     assert score == pytest.approx(0.0)
 
@@ -385,27 +337,15 @@ def test_weakness_score_many_reps():
 def test_weakness_score_zero_interval():
     """Zero interval gives maximum interval-based weakness."""
     stats = {"card_1": {"interval": 0}}
-    score = _weakness_score("card_1", None, stats)
+    score = _weakness_score("card_1", stats)
     # 1/(1+0) = 1.0
     assert score == pytest.approx(1.0)
-
-
-def test_weakness_score_with_criteria_bonus():
-    """Criteria thresholds add bonus weakness when violated."""
-    criteria = WeakPrereqCriteria(min_stability=10.0, max_lapses=2)
-    stats = {"card_1": {"stability": 1.0, "lapses": 5}}
-    score = _weakness_score("card_1", criteria, stats)
-
-    # stability: 1/(1+1) = 0.5, below threshold -> +1.0 => 1.5
-    # lapses: 5 * 0.15 = 0.75, above threshold -> +0.75 => 1.5
-    # total: 1.5 + 1.5 = 3.0
-    assert score == pytest.approx(3.0)
 
 
 def test_weakness_score_all_extreme_stats():
     """Card with all extreme weak stats produces a high aggregate score."""
     stats = {"card_1": {"stability": 0.0, "lapses": 50, "reps": 0, "interval": 0}}
-    score = _weakness_score("card_1", None, stats)
+    score = _weakness_score("card_1", stats)
 
     # stability: 1/(1+0) = 1.0
     # lapses: 50 * 0.15 = 7.5

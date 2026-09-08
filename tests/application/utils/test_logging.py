@@ -40,7 +40,6 @@ def test_write_run_report(tmp_path):
     recorder = RunRecorder()
     recorder.files_scanned = 5
     recorder.add_error(Path("bad.md"), "Syntax Error", "Line 1")
-    recorder.add_warning(Path("warn.md"), "Check this out")
 
     run_id = "test_run"
     write_run_report(recorder, tmp_path, run_id)
@@ -52,7 +51,7 @@ def test_write_run_report(tmp_path):
     assert "# Run Report [test_run]" in content
     assert "| Files Scanned | 5 |" in content
     assert "| `bad.md` | Syntax Error | Line 1 |" in content
-    assert "**warn.md**: Check this out" in content
+    assert "## Warnings" not in content  # the recorder no longer collects warnings
 
 
 def test_rotate_logs(tmp_path):

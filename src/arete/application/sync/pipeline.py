@@ -24,7 +24,6 @@ class RunStats:
     total_generated: int
     total_imported: int
     total_errors: int
-    errors: list[UpdateItem]
 
 
 async def run_pipeline(
@@ -50,7 +49,7 @@ async def run_pipeline(
         logger.debug(f"  - {c[0]} (fresh={c[2]})")
     if not compatible:
         logger.info("No compatible markdown files found.")
-        return RunStats(0, 0, 0, [])
+        return RunStats(0, 0, 0)
 
     # -------- Stage 1.5: ensure all cards have Arete IDs --------
     ids_total = 0
@@ -246,13 +245,11 @@ async def run_pipeline(
     total_generated = len(updates)
     total_imported = sum(1 for u in updates if u.ok)
     total_errors = len(recorder.errors)
-    error_items = [u for u in updates if not u.ok]
 
     return RunStats(
         total_generated=total_generated,
         total_imported=total_imported,
         total_errors=total_errors,
-        errors=error_items,
     )
 
 

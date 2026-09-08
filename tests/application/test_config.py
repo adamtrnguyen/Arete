@@ -21,7 +21,7 @@ def test_config_file_override(mock_home, mock_vault):
     # Write a config file
     config_dir = mock_home / ".config/arete"
     config_dir.mkdir(parents=True)
-    (config_dir / "config.toml").write_text("verbose = 2\nrun = true", encoding="utf-8")
+    (config_dir / "config.toml").write_text("verbose = 2\nkeep_going = true", encoding="utf-8")
 
     overrides = {
         "root_input": str(mock_vault),
@@ -31,7 +31,7 @@ def test_config_file_override(mock_home, mock_vault):
 
     cfg = resolve_config(overrides, config_file=config_dir / "config.toml")
     assert cfg.verbose == 2  # From config
-    assert cfg.sync_enabled is True  # From config file
+    assert cfg.keep_going is True  # From config file
 
 
 def test_config_default_cwd_when_no_path(mock_home):

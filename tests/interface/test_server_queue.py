@@ -48,7 +48,6 @@ async def test_server_build_queue(mock_build_graph, mock_build_queue, mock_bridg
     mock_build_queue.return_value = QueueBuildResult(
         prereq_queue=["arete_P"],
         main_queue=["arete_A", "arete_B"],
-        skipped_strong=[],
         missing_prereqs=[],
         cycles=[],
     )

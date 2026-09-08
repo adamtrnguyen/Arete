@@ -169,13 +169,6 @@ def queue(
     include_new: Annotated[
         bool, typer.Option("--include-new", help="Include new (unreviewed) cards.")
     ] = False,
-    include_related: Annotated[
-        bool,
-        typer.Option(
-            "--include-related",
-            help="Reserved for future related-card boost. Currently not implemented.",
-        ),
-    ] = False,
     dry_run: Annotated[
         bool, typer.Option("--dry-run", help="Show plan without creating decks.")
     ] = False,
@@ -223,13 +216,6 @@ def queue(
         typer.secho("No vault root configured. Pass a path or set O2A_ROOT_INPUT.", fg="red")
         raise typer.Exit(1)
 
-    if include_related:
-        typer.secho(
-            "--include-related is not implemented yet. Re-run without this flag.",
-            fg="yellow",
-        )
-        raise typer.Exit(2)
-
     async def run():
         anki = await get_anki_bridge(config)
         try:
@@ -239,7 +225,6 @@ def queue(
                 deck=deck,
                 depth=depth,
                 include_new=include_new,
-                include_related=include_related,
                 cross_deck=cross_deck,
                 algo=algo,
                 dry_run=dry_run,

@@ -28,7 +28,7 @@ async def test_run_sync_logic_failure_exit():
     config.anki_media_dir = Path("/tmp/m")
 
     # Mock return stats with error
-    mock_stats = RunStats(total_generated=0, total_imported=0, total_errors=5, errors=[])
+    mock_stats = RunStats(total_generated=0, total_imported=0, total_errors=5)
 
     with patch("arete.composition.orchestrator.run_pipeline", new_callable=AsyncMock) as mock_run:
         mock_run.return_value = mock_stats

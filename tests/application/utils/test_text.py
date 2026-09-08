@@ -7,8 +7,6 @@ import yaml.scanner
 
 from arete.application.utils.text import (
     apply_fixes,
-    convert_math_to_tex_delimiters,
-    fix_mathjax_escapes,
     make_editor_note,
     parse_frontmatter,
     rebuild_markdown_with_frontmatter,
@@ -17,29 +15,6 @@ from arete.application.utils.text import (
 )
 
 # ---------- Math Conversion Tests ----------
-
-
-@pytest.mark.parametrize(
-    "text,expected",
-    [
-        pytest.param(
-            "Let $x=1$ and $y=2$.", r"Let \(x=1\) and \(y=2\).", id="inline_dollar"
-        ),
-        pytest.param("$$abc$$", r"\[abc\]", id="block_simple"),
-        pytest.param(
-            "BLOCK:\n$$\ncontent\n$$", "BLOCK:\n" r"\[" "content" r"\]", id="block_multiline"
-        ),
-        pytest.param(
-            "The value is $x$ which is $$x^2$$.",
-            r"The value is \(x\) which is \[x^2\].",
-            id="combined",
-        ),
-        pytest.param(r"Cost is \$50.", r"Cost is \$50.", id="escaped_dollars"),
-        pytest.param("Code: `x = $y$`", r"Code: `x = \(y\)`", id="code_block"),
-    ],
-)
-def test_math_conversion(text, expected):
-    assert convert_math_to_tex_delimiters(text) == expected
 
 
 # ---------- Frontmatter Parsing Tests ----------
@@ -175,12 +150,6 @@ def test_apply_fixes_preserves_body():
 
 
 # ---------- Other Utils ----------
-
-
-def test_fix_mathjax_escapes():
-    raw = '---\nkey: "Some \\in set"\n---\n'
-    fixed = fix_mathjax_escapes(raw)
-    assert 'key: "Some \\\\in set"' in fixed
 
 
 def test_rebuild_markdown_roundtrip():

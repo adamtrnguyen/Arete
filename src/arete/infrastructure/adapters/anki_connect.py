@@ -489,14 +489,6 @@ class AnkiConnectAdapter(AnkiBridge):
         # "nothing due" during an AnkiConnect outage. Let the caller fail loudly.
         return await self._invoke("findNotes", query=query)
 
-    async def find_all_arete_nids(self) -> list[int]:
-        """Find all note IDs that have arete tags."""
-        try:
-            return await self._invoke("findNotes", query="tag:arete_*")
-        except Exception as e:
-            self.logger.error(f"Failed to find arete nids: {e}")
-            return []
-
     async def map_nids_to_arete_ids(self, nids: list[int]) -> list[str]:
         """Convert NIDs to Arete IDs via tags."""
         if not nids:

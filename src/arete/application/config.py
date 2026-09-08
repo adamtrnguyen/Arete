@@ -44,10 +44,7 @@ class AppConfig(BaseSettings):
     default_deck: str = "Default"
 
     # Flags
-    # Renamed from run_apy for clarity
-    sync_enabled: bool = Field(default=False, alias="run")
     keep_going: bool = False
-    no_move_deck: bool = False
     dry_run: bool = False
     prune: bool = False
     force: bool = False
@@ -57,11 +54,6 @@ class AppConfig(BaseSettings):
     workers: int = Field(default_factory=lambda: max(1, cpu_count() // 2))
     queue_size: int = 4096
     verbose: int = 1
-
-    # Internal UI Flags (usually CLI only)
-    show_config: bool = False
-    open_logs: bool = False
-    open_config: bool = False
 
     @classmethod
     def settings_customise_sources(

@@ -30,19 +30,15 @@ def mock_config(tmp_path):
         log_dir=tmp_path,
         run_apy=False,
         keep_going=True,
-        no_move_deck=False,
         dry_run=False,
         workers=1,
         queue_size=10,
         verbose=1,
-        show_config=False,
         prune=True,
         force=True,
         clear_cache=False,
         backend="auto",
         anki_connect_url="http://localhost:8765",
-        open_logs=False,
-        open_config=False,
     )
 
 

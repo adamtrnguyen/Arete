@@ -17,19 +17,6 @@ from arete.domain.graph import DependencyGraph
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class WeakPrereqCriteria:
-    """Criteria for determining if a prerequisite is "weak" and needs review.
-
-    All thresholds are optional. If not set, that criterion is not checked.
-    """
-
-    min_stability: float | None = None  # FSRS stability threshold
-    max_lapses: int | None = None  # Maximum lapse count
-    min_reviews: int | None = None  # Minimum total reviews
-    max_interval: int | None = None  # Maximum interval in days
-
-
 def build_simple_queue(
     vault_root: Path,
     due_card_ids: list[str],
@@ -58,23 +45,26 @@ def build_simple_queue(
     all_prereqs: set[str] = set()
     missing_prereqs: list[str] = []
 
-    for card_id in due_card_ids:
-        prereqs = _collect_prereqs(graph, card_id, depth, set())
-        for prereq_id in prereqs:
-            if prereq_id in graph.nodes:
-                all_prereqs.add(prereq_id)
-        # Track unresolved refs
+    def _note_missing(card_id: str) -> None:
         for ref in graph.unresolved_refs.get(card_id, []):
             if ref not in missing_prereqs:
                 missing_prereqs.append(ref)
 
+    for card_id in due_card_ids:
+        _note_missing(card_id)
+        for prereq_id in _collect_prereqs(graph, card_id, depth, set()):
+            if prereq_id in graph.nodes:
+                all_prereqs.add(prereq_id)
+                _note_missing(prereq_id)
+
     # Remove due cards from prereqs (they'll be in main queue)
     all_prereqs -= set(due_card_ids)
 
-    # Limit size
-    prereq_list = list(all_prereqs)
+    # Limit size. max_cards bounds the whole queue; sorted() so that which prereqs
+    # survive the cap does not depend on set iteration order.
+    prereq_list = sorted(all_prereqs)
     if len(prereq_list) + len(due_card_ids) > max_cards:
-        prereq_list = prereq_list[: max_cards - len(due_card_ids)]
+        prereq_list = prereq_list[: max(0, max_cards - len(due_card_ids))]
 
     # Topological sort both queues
     prereq_queue = topological_sort(graph, prereq_list)
@@ -86,7 +76,6 @@ def build_simple_queue(
     return QueueBuildResult(
         prereq_queue=prereq_queue,
         main_queue=main_queue,
-        skipped_strong=[],
         missing_prereqs=missing_prereqs,
         cycles=cycles,
     )
@@ -96,131 +85,34 @@ def build_simple_queue(
 class QueueBuildResult:
     """Result of queue building operation."""
 
-    prereq_queue: list[str]  # Weak prereqs to study first (topo sorted)
+    prereq_queue: list[str]  # Prerequisites to study first (topo sorted)
     main_queue: list[str]  # Original due cards (topo sorted)
-    skipped_strong: list[str]  # Strong prereqs that were filtered out
     missing_prereqs: list[str]  # Referenced prereqs not found in graph
     cycles: list[list[str]]  # Co-requisite groups detected
     ordered_queue: list[str] | None = None  # Optional full ordering for advanced algorithms
-
-
-def build_dependency_queue(
-    vault_root: Path,
-    due_card_ids: list[str],
-    depth: int = DEFAULT_PREREQ_DEPTH,
-    max_nodes: int = DEFAULT_MAX_QUEUE_SIZE,
-    include_related: bool = False,
-    weak_criteria: WeakPrereqCriteria | None = None,
-    card_stats: dict[str, dict] | None = None,
-) -> QueueBuildResult:
-    """Build a study queue that includes weak prerequisites before due cards.
-
-    Args:
-        vault_root: Path to the Obsidian vault
-        due_card_ids: List of Arete IDs for cards due today
-        depth: Maximum prerequisite hops to traverse (default: 2)
-        max_nodes: Maximum total cards in queue (default: 50)
-        include_related: Whether to include related cards (NOT IMPLEMENTED)
-        weak_criteria: Criteria for filtering weak prerequisites
-        card_stats: Optional dict of card_id -> stats for weakness filtering
-
-    Returns:
-        QueueBuildResult with ordered queues and diagnostics
-
-    """
-    if include_related:
-        raise NotImplementedError(
-            "Related card boost not yet implemented. "
-            "Set include_related=False to use requires-only mode."
-        )
-
-    # Build graph from vault
-    graph = build_graph(vault_root)
-
-    # Collect all prerequisites up to depth
-    all_prereqs: set[str] = set()
-
-    # Collect unresolved refs from the graph (tracked during build_graph)
-    missing_prereqs: list[str] = []
-    for due_id in due_card_ids:
-        for ref in graph.unresolved_refs.get(due_id, []):
-            if ref not in missing_prereqs:
-                missing_prereqs.append(ref)
-
-    for due_id in due_card_ids:
-        prereqs = _collect_prereqs(graph, due_id, depth, set())
-        for prereq_id in prereqs:
-            if prereq_id in graph.nodes:
-                all_prereqs.add(prereq_id)
-                # Also collect any unresolved refs from prereqs
-                for ref in graph.unresolved_refs.get(prereq_id, []):
-                    if ref not in missing_prereqs:
-                        missing_prereqs.append(ref)
-
-    # Remove the due cards themselves from prereqs
-    all_prereqs -= set(due_card_ids)
-
-    # Filter for weak prerequisites
-    weak_prereqs: list[str] = []
-    strong_prereqs: list[str] = []
-
-    for prereq_id in all_prereqs:
-        if _is_weak_prereq(prereq_id, weak_criteria, card_stats):
-            weak_prereqs.append(prereq_id)
-        else:
-            strong_prereqs.append(prereq_id)
-
-    # Cap at max_nodes (prioritize weakest if we have stats)
-    if len(weak_prereqs) > max_nodes:
-        if card_stats:
-            # Sort by weakness (lower stability = weaker)
-            weak_prereqs.sort(key=lambda x: card_stats.get(x, {}).get("stability", float("inf")))
-        weak_prereqs = weak_prereqs[:max_nodes]
-
-    # Topologically sort both queues
-    prereq_queue = topological_sort(graph, weak_prereqs)
-    main_queue = topological_sort(graph, due_card_ids)
-
-    # Detect cycles in the combined set
-    from arete.application.queue.graph_resolver import detect_cycles
-
-    cycles = detect_cycles(graph)
-
-    return QueueBuildResult(
-        prereq_queue=prereq_queue,
-        main_queue=main_queue,
-        skipped_strong=strong_prereqs,
-        missing_prereqs=missing_prereqs,
-        cycles=cycles,
-    )
 
 
 def build_dynamic_queue(
     vault_root: Path,
     due_card_ids: list[str],
     depth: int = DEFAULT_PREREQ_DEPTH,
-    max_nodes: int = DEFAULT_MAX_QUEUE_SIZE,
-    include_related: bool = False,
-    weak_criteria: WeakPrereqCriteria | None = None,
+    max_cards: int = DEFAULT_MAX_QUEUE_SIZE,
     card_stats: dict[str, dict] | None = None,
 ) -> QueueBuildResult:
     """Build a queue using a dynamic ready-frontier ordering heuristic.
 
-    This is an MVP dynamic strategy layered on top of dependency_queue:
-    - Reuse dependency discovery + weak filtering
+    Layered on top of build_simple_queue:
+    - Reuse dependency discovery
     - Order candidates by a ready-frontier policy that prioritizes:
       1) Cards that unlock more due descendants
-      2) Weaker cards (when stats are available)
+      2) Weaker cards -- only when the caller supplies card_stats
       3) Deterministic lexical tie-breaks
     """
-    base = build_dependency_queue(
+    base = build_simple_queue(
         vault_root=vault_root,
         due_card_ids=due_card_ids,
         depth=depth,
-        max_nodes=max_nodes,
-        include_related=include_related,
-        weak_criteria=weak_criteria,
-        card_stats=card_stats,
+        max_cards=max_cards,
     )
 
     graph = build_graph(vault_root)
@@ -233,7 +125,6 @@ def build_dynamic_queue(
         graph=graph,
         candidate_ids=candidates,
         due_set=due_set,
-        weak_criteria=weak_criteria,
         card_stats=card_stats,
     )
 
@@ -243,7 +134,6 @@ def build_dynamic_queue(
     return QueueBuildResult(
         prereq_queue=prereq_queue,
         main_queue=main_queue,
-        skipped_strong=base.skipped_strong,
         missing_prereqs=base.missing_prereqs,
         cycles=base.cycles,
         ordered_queue=ordered,
@@ -274,7 +164,6 @@ def _dynamic_frontier_order(
     graph: DependencyGraph,
     candidate_ids: list[str],
     due_set: set[str],
-    weak_criteria: WeakPrereqCriteria | None,
     card_stats: dict[str, dict] | None,
 ) -> list[str]:
     """Produce a deterministic frontier-based order for candidate cards."""
@@ -337,7 +226,7 @@ def _dynamic_frontier_order(
 
     def score(card_id: str) -> float:
         unlock_score = float(len(due_reach[card_id]))
-        weak_score = _weakness_score(card_id, weak_criteria, card_stats)
+        weak_score = _weakness_score(card_id, card_stats)
         prereq_bonus = 0.5 if (card_id not in due_set and unlock_score > 0) else 0.0
         due_bonus = 0.25 if card_id in due_set else 0.0
         return (2.0 * unlock_score) + weak_score + prereq_bonus + due_bonus
@@ -355,53 +244,12 @@ def _dynamic_frontier_order(
     return ordered
 
 
-def _is_weak_prereq(
-    card_id: str,
-    criteria: WeakPrereqCriteria | None,
-    card_stats: dict[str, dict] | None,
-) -> bool:
-    """Determine if a prerequisite card is "weak" based on criteria.
+def _weakness_score(card_id: str, card_stats: dict[str, dict] | None) -> float:
+    """Score card weakness for dynamic frontier prioritization.
 
-    If no criteria or stats are provided, all prereqs are considered weak.
+    Returns 0.0 when the caller supplies no stats, which is what every interface
+    currently does -- the dynamic order is then purely structural.
     """
-    if criteria is None:
-        return True  # No filtering, include all
-
-    if card_stats is None or card_id not in card_stats:
-        return True  # No stats, assume weak
-
-    stats = card_stats[card_id]
-
-    # Check each criterion
-    if criteria.min_stability is not None:
-        stability = stats.get("stability")
-        if stability is not None and stability < criteria.min_stability:
-            return True
-
-    if criteria.max_lapses is not None:
-        lapses = stats.get("lapses", 0)
-        if lapses > criteria.max_lapses:
-            return True
-
-    if criteria.min_reviews is not None:
-        reviews = stats.get("reps", 0)
-        if reviews < criteria.min_reviews:
-            return True
-
-    if criteria.max_interval is not None:
-        interval = stats.get("interval", 0)
-        if interval < criteria.max_interval:
-            return True
-
-    return False  # Card is strong, skip it
-
-
-def _weakness_score(
-    card_id: str,
-    criteria: WeakPrereqCriteria | None,
-    card_stats: dict[str, dict] | None,
-) -> float:
-    """Score card weakness for dynamic frontier prioritization."""
     if not card_stats:
         return 0.0
 
@@ -413,31 +261,20 @@ def _weakness_score(
 
     stability = stats.get("stability")
     if isinstance(stability, (int, float)):
-        s = max(float(stability), 0.0)
-        score += 1.0 / (1.0 + s)
-        if criteria and criteria.min_stability is not None and s < criteria.min_stability:
-            score += 1.0
+        score += 1.0 / (1.0 + max(float(stability), 0.0))
 
     lapses = stats.get("lapses")
     if isinstance(lapses, (int, float)):
-        lapse_val = max(float(lapses), 0.0)
-        score += lapse_val * 0.15
-        if criteria and criteria.max_lapses is not None and lapse_val > criteria.max_lapses:
-            score += 0.75
+        score += max(float(lapses), 0.0) * 0.15
 
     reps = stats.get("reps")
     if isinstance(reps, (int, float)):
         r = max(float(reps), 0.0)
         if r < 10.0:
             score += (10.0 - r) * 0.05
-        if criteria and criteria.min_reviews is not None and r < criteria.min_reviews:
-            score += 0.5
 
     interval = stats.get("interval")
     if isinstance(interval, (int, float)):
-        i = max(float(interval), 0.0)
-        score += 1.0 / (1.0 + i)
-        if criteria and criteria.max_interval is not None and i < criteria.max_interval:
-            score += 0.5
+        score += 1.0 / (1.0 + max(float(interval), 0.0))
 
     return score

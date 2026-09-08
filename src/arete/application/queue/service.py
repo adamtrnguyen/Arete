@@ -16,7 +16,6 @@ from typing import Literal
 
 from arete.application.queue.builder import (
     QueueBuildResult,
-    build_dependency_queue,
     build_dynamic_queue,
     build_simple_queue,
 )
@@ -98,7 +97,6 @@ async def build_study_queue(  # noqa: PLR0913
     depth: int = 2,
     max_cards: int = 50,
     include_new: bool = False,
-    include_related: bool = False,
     cross_deck: bool = False,
     algo: QueueAlgo = "static",
     dry_run: bool = False,
@@ -122,7 +120,6 @@ async def build_study_queue(  # noqa: PLR0913
         depth: Prerequisite search depth
         max_cards: Maximum cards in queue
         include_new: Include new (unreviewed) cards
-        include_related: Include related cards (not yet implemented)
         cross_deck: Pull prerequisites from other decks
         algo: Queue algorithm ("static", "dynamic", or "simple")
         dry_run: If True, skip deck creation
@@ -157,26 +154,21 @@ async def build_study_queue(  # noqa: PLR0913
     effective_depth = depth if (not deck or cross_deck) else 0
 
     # -- Step 4: Build the queue --
-    if algo == "simple":
-        build_result = build_simple_queue(
+    if algo == "dynamic":
+        build_result = build_dynamic_queue(
             vault_root=vault_root,
             due_card_ids=valid_ids,
             depth=effective_depth,
             max_cards=max_cards,
         )
-    elif algo == "dynamic":
-        build_result = build_dynamic_queue(
-            vault_root=vault_root,
-            due_card_ids=valid_ids,
-            depth=effective_depth,
-            include_related=include_related,
-        )
     else:
-        build_result = build_dependency_queue(
+        # "static" and "simple" were two names for the same traversal: the weak/strong
+        # split that separated them was never configured, so it never split anything.
+        build_result = build_simple_queue(
             vault_root=vault_root,
             due_card_ids=valid_ids,
             depth=effective_depth,
-            include_related=include_related,
+            max_cards=max_cards,
         )
 
     result.build_result = build_result
