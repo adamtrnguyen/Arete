@@ -38,8 +38,24 @@ def make_anki_base(base: Path) -> Path:
     conn.close()
 
     # Creating the Collection builds the standard tables and the stock note types.
-    Collection(str(col_dir / "collection.anki2")).close()
+    col = Collection(str(col_dir / "collection.anki2"))
+    _add_basic_with_extra(col)
+    col.close()
     return base
+
+
+def _add_basic_with_extra(col: Collection) -> None:
+    """Stock Anki ships Basic and Cloze but not "Basic with Extra", which real vaults use."""
+    if col.models.by_name("Basic with Extra"):
+        return
+    model = col.models.new("Basic with Extra")
+    for field in ("Front", "Back", "Back Extra"):
+        col.models.add_field(model, col.models.new_field(field))
+    template = col.models.new_template("Card 1")
+    template["qfmt"] = "{{Front}}"
+    template["afmt"] = "{{FrontSide}}\n\n<hr id=answer>\n\n{{Back}}<br>{{Back Extra}}"
+    col.models.add_template(model, template)
+    col.models.add(model)
 
 
 def open_collection(base: Path) -> Collection:
