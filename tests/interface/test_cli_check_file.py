@@ -20,8 +20,16 @@ runner = CliRunner()
     "content,exit_code,expected_output",
     [
         # Valid files
-        ("---\ndeck: Default\ncards:\n  - Front: A\n    Back: B\n---\nContent", 0, "Valid arete file"),
-        ("---\narete: true\ndeck: Default\ncards: [{Front: Q}]\n---\nContent", 0, "Valid arete file"),
+        (
+            "---\ndeck: Default\ncards:\n  - Front: A\n    Back: B\n---\nContent",
+            0,
+            "Valid arete file",
+        ),
+        (
+            "---\narete: true\ndeck: Default\ncards: [{Front: Q}]\n---\nContent",
+            0,
+            "Valid arete file",
+        ),
         ("# Just Markdown", 0, "Valid arete file"),
         # YAML syntax errors
         ("---\ndeck: D\n  bad_indent: v\n---\n", 1, "Indentation Error"),

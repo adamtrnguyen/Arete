@@ -1,4 +1,5 @@
 import { ItemView, WorkspaceLeaf, MarkdownView, Menu, setIcon, Notice, parseYaml } from 'obsidian';
+import { difficultyOutOfTen } from '@/domain/stats';
 import { EditorView, lineNumbers, keymap } from '@codemirror/view';
 import { EditorState, Annotation } from '@codemirror/state';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
@@ -303,17 +304,17 @@ export class CardYamlEditorView extends ItemView {
 
 				if (algo === 'fsrs' && stats.difficulty !== undefined) {
 					if (stats.difficulty !== null) {
-						// difficulty is already 1-10 scale from backend
+						// difficulty is stored 0..1; scale only to display it
 						let diffCls = 'arete-stat-badge';
-						if (stats.difficulty > 8) diffCls += ' mod-warning';
-						else if (stats.difficulty > 5) diffCls += ' mod-orange';
+						if (stats.difficulty > 0.8) diffCls += ' mod-warning';
+						else if (stats.difficulty > 0.5) diffCls += ' mod-orange';
 						else diffCls += ' mod-success';
 
 						statsContainer.createDiv({
 							cls: diffCls,
-							text: `D: ${stats.difficulty.toFixed(1)}`,
+							text: `D: ${difficultyOutOfTen(stats.difficulty).toFixed(1)}`,
 							attr: {
-								title: `FSRS Difficulty: ${stats.difficulty.toFixed(1)}/10`,
+								title: `FSRS Difficulty: ${difficultyOutOfTen(stats.difficulty).toFixed(1)}/10`,
 							},
 						});
 					} else {

@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-empty-function */
 import { EventEmitter } from 'events';
 
 // 1. Mock child_process and fs globally

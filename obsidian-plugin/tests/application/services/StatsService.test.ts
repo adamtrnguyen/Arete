@@ -44,8 +44,8 @@ describe('StatsService', () => {
 					frontmatter: {
 						deck: 'YAML Deck', // Should override Anki
 						cards: [
-							{ nid: '101', front: 'C1 Card 1' },
-							{ nid: '102', front: 'C1 Card 2' },
+							{ anki: { nid: '101' }, front: 'C1 Card 1' },
+							{ anki: { nid: '102' }, front: 'C1 Card 2' },
 						],
 					},
 				};
@@ -54,7 +54,7 @@ describe('StatsService', () => {
 				return {
 					frontmatter: {
 						// No deck in YAML
-						cards: [{ nid: '201', front: 'C2 Card 1' }],
+						cards: [{ anki: { nid: '201' }, front: 'C2 Card 1' }],
 					},
 				};
 			}
@@ -136,7 +136,7 @@ describe('StatsService', () => {
 		const file = { path: 'test.md', basename: 'Test' } as TFile;
 		(app.vault.getMarkdownFiles as jest.Mock).mockReturnValue([file]);
 		(app.metadataCache.getFileCache as jest.Mock).mockReturnValue({
-			frontmatter: { cards: [{ nid: '101' }] },
+			frontmatter: { cards: [{ anki: { nid: '101' } }] },
 		});
 
 		service.fetchAnkiCardStats = jest.fn().mockResolvedValue([
@@ -160,7 +160,7 @@ describe('StatsService', () => {
 		const file = { path: 'test.md', basename: 'Test' } as TFile;
 		(app.vault.getMarkdownFiles as jest.Mock).mockReturnValue([file]);
 		(app.metadataCache.getFileCache as jest.Mock).mockReturnValue({
-			frontmatter: { cards: [{ nid: '101', front: 'Q' }] },
+			frontmatter: { cards: [{ anki: { nid: '101' }, front: 'Q' }] },
 		});
 
 		// Two cards for same note, different difficulties
@@ -308,7 +308,7 @@ describe('StatsService', () => {
 		const file = { path: 'test.md', basename: 'Test' } as TFile;
 		(app.vault.getMarkdownFiles as jest.Mock).mockReturnValue([file]);
 		(app.metadataCache.getFileCache as jest.Mock).mockReturnValue({
-			frontmatter: { cards: [{ nid: '101' }] },
+			frontmatter: { cards: [{ anki: { nid: '101' } }] },
 		});
 
 		service.fetchAnkiCardStats = jest.fn().mockResolvedValue([
@@ -325,7 +325,7 @@ describe('StatsService', () => {
 		const file = { path: 'test.md', basename: 'Test' } as TFile;
 		(app.vault.getMarkdownFiles as jest.Mock).mockReturnValue([file]);
 		(app.metadataCache.getFileCache as jest.Mock).mockReturnValue({
-			frontmatter: { cards: [{ nid: '101' }] },
+			frontmatter: { cards: [{ anki: { nid: '101' } }] },
 		});
 
 		service.fetchAnkiCardStats = jest.fn().mockResolvedValue([

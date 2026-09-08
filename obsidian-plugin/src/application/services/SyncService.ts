@@ -124,7 +124,6 @@ export class SyncService {
 			const line = `[${timestamp}] ${msg}\n`;
 			console.log(msg);
 			try {
-				// eslint-disable-next-line @typescript-eslint/no-var-requires
 				const fs = require('fs');
 				fs.appendFileSync(logPath, line);
 			} catch (e) {

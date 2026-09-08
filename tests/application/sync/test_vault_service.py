@@ -360,8 +360,7 @@ class TestFormatVault:
         # Write a file with formatting that will differ after round-trip
         # (e.g., YAML key ordering or block scalar style may change)
         original = (
-            "---\narete: true\ndeck: D\ncards:\n  - Front: Q\n"
-            '    Back: "multi\\nline"\n---\nBody'
+            '---\narete: true\ndeck: D\ncards:\n  - Front: Q\n    Back: "multi\\nline"\n---\nBody'
         )
         md = temp_vault / "format_me.md"
         md.write_text(original, encoding="utf-8")

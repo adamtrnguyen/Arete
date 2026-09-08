@@ -6,6 +6,7 @@
 
 import { App, Modal, setIcon } from 'obsidian';
 import type { AnkiCardStats } from '@/domain/stats';
+import { difficultyOutOfTen } from '@/domain/stats';
 
 export class CardStatsModal extends Modal {
 	card: AnkiCardStats;
@@ -47,12 +48,13 @@ export class CardStatsModal extends Modal {
 		rightPanel.style.padding = '1rem';
 
 		// --- Section 1: Memory State ---
-		// Note: difficulty comes from backend already in 1-10 scale
+		// difficulty is stored 0..1; difficultyOutOfTen renders it the way Anki shows it
 		this.renderSection(leftPanel, 'Memory State', [
 			{
 				label: 'Difficulty (1-10)',
-				value: c.difficulty != null ? c.difficulty.toFixed(1) : '-',
-				color: c.difficulty != null && c.difficulty > 7 ? 'var(--color-orange)' : undefined,
+				value: c.difficulty != null ? difficultyOutOfTen(c.difficulty).toFixed(1) : '-',
+				color:
+					c.difficulty != null && c.difficulty > 0.7 ? 'var(--color-orange)' : undefined,
 			},
 			{
 				label: 'Stability',

@@ -1,4 +1,5 @@
 import type { AnkiCardStats } from '@/domain/stats';
+import { difficultyOutOfTen } from '@/domain/stats';
 
 export interface CardGutterVisuals {
 	barColor: string;
@@ -34,10 +35,10 @@ export class CardVisualsService {
 			shadowColor = 'var(--text-muted)';
 		} else if (stats) {
 			// Health-coded colors
-			if (stats.lapses > 5 || (stats.difficulty && stats.difficulty > 8)) {
+			if (stats.lapses > 5 || (stats.difficulty && stats.difficulty > 0.8)) {
 				barColor = 'var(--color-red)';
 				shadowColor = 'var(--color-red)';
-			} else if (stats.difficulty && stats.difficulty > 5) {
+			} else if (stats.difficulty && stats.difficulty > 0.5) {
 				barColor = 'var(--color-orange)';
 				shadowColor = 'var(--color-orange)';
 			} else {
@@ -52,11 +53,13 @@ export class CardVisualsService {
 					stats.difficulty !== null &&
 					stats.difficulty > 0
 				) {
-					diffText = stats.difficulty.toFixed(1);
-					if (stats.difficulty > 9) diffColor = 'var(--color-red)';
-					else if (stats.difficulty > 5) diffColor = 'var(--color-orange)';
+					diffText = difficultyOutOfTen(stats.difficulty).toFixed(1);
+					if (stats.difficulty > 0.9) diffColor = 'var(--color-red)';
+					else if (stats.difficulty > 0.5) diffColor = 'var(--color-orange)';
 					else diffColor = 'var(--color-green)';
-					tooltipLines.push(`Difficulty: ${stats.difficulty.toFixed(1)}/10`);
+					tooltipLines.push(
+						`Difficulty: ${difficultyOutOfTen(stats.difficulty).toFixed(1)}/10`,
+					);
 				} else {
 					diffText = 'D:?';
 				}

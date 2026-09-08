@@ -1,4 +1,5 @@
 import { CardParserService } from '@/application/services/CardParserService';
+import { card, noteYaml } from '../../factories';
 
 // Mock Obsidian's parseYaml since it's not available in Node/Jest environment
 jest.mock('obsidian', () => ({
@@ -17,27 +18,22 @@ jest.mock('obsidian', () => ({
 }));
 
 describe('CardParserService', () => {
-	const musclesYaml = `---
-aliases: null
-arete: true
-cards:
-  - model: Basic
-    Front: |-
-      ![[Foot Muscles.png]] What is #1?
-    Back: |-
-      1. Peroneus Longus ![[Foot Muscles Legend.png]]
-    nid: 1762277751241
-    cid: 1762277751241
-  - model: Basic
-    Front: |-
-      ![[Foot Muscles.png]] What is #2?
-    Back: |-
-      2. Peroneus Brevis ![[Foot Muscles Legend.png]]
-    nid: '1762277751465'
-    cid: '1762277751465'
----
-# Muscles of the Foot
-`;
+	const musclesYaml = noteYaml({
+		deck: 'Anatomy',
+		cards: [
+			card({
+				Front: '![[Foot Muscles.png]] What is #1?',
+				Back: '1. Peroneus Longus',
+				nid: 1762277751241,
+			}),
+			card({
+				Front: '![[Foot Muscles.png]] What is #2?',
+				Back: '2. Peroneus Brevis',
+				nid: 1762277751465,
+			}),
+		],
+		body: '# Muscles of the Foot',
+	});
 
 	it('should parse 13-digit NIDs correctly (unquoted)', () => {
 		const result = CardParserService.parseCards(musclesYaml);
@@ -52,22 +48,22 @@ cards:
 	});
 
 	it('should identify line ranges correctly', () => {
+		const lines = musclesYaml.split('\n');
 		const result = CardParserService.parseCards(musclesYaml);
-		// Card 1 starts at index line 4 (0-indexed) where "- model: Basic" is
-		// --- (0)
-		// aliases (1)
-		// arete (2)
-		// cards: (3)
-		// - model: Basic (4)
-		expect(result.ranges[0].startLine).toBe(4);
 
-		// Card 1 ends where "cid: 1762277751241" is (line 10)
-		expect(result.ranges[0].endLine).toBe(10);
+		// Derived from the fixture, not hard-coded, so a change to the shared
+		// factory cannot silently move these and break the test.
+		expect(lines[result.ranges[0].startLine].trim().startsWith('- ')).toBe(true);
+		expect(lines[result.ranges[0].endLine]).toContain('1762277751241');
+		expect(result.ranges[0].endLine).toBeLessThan(result.ranges[1].startLine);
+		expect(lines[result.ranges[1].startLine].trim().startsWith('- ')).toBe(true);
 	});
 
 	it('should find frontmatter end line', () => {
+		const lines = musclesYaml.split('\n');
 		const result = CardParserService.parseCards(musclesYaml);
-		expect(result.frontmatterEndLine).toBe(18);
+		expect(result.frontmatterEndLine).not.toBeNull();
+		expect(lines[result.frontmatterEndLine!]).toBe('---');
 	});
 
 	it('should handle missing nid/cid gracefully', () => {

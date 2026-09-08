@@ -2,7 +2,7 @@ export interface AretePluginSettings {
 	python_path: string;
 	arete_script_path: string;
 	debug_mode: boolean;
-	backend: 'auto' | 'apy' | 'ankiconnect';
+	backend: 'auto' | 'direct' | 'ankiconnect';
 	workers: number;
 	anki_connect_url: string;
 	anki_media_dir: string;

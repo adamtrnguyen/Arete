@@ -9,7 +9,7 @@ export interface AnkiCardStats {
 	noteId: number;
 	lapses: number;
 	ease: number; // Factor (SM-2)
-	difficulty?: number; // FSRS Difficulty (0-1 approx, scaled)
+	difficulty?: number; // FSRS difficulty, normalized 0..1 (see difficultyOutOfTen)
 	deckName: string;
 	interval: number;
 	due: number; // Epoch
@@ -91,4 +91,16 @@ export interface StatsNode {
 export interface StatsCache {
 	concepts: Record<string, ConceptStats>; // Keyed by filePath
 	lastFetched: number;
+}
+
+/**
+ * FSRS difficulty for display.
+ *
+ * The backend normalizes Anki's native 1..10 difficulty to 0..1, which is what
+ * `AnkiCardStats.difficulty` and `settings.stats_difficulty_threshold` both hold.
+ * Anki users read it out of ten, so every view scales it here and nowhere else.
+ * Thresholds stay on the stored 0..1 scale.
+ */
+export function difficultyOutOfTen(difficulty: number): number {
+	return difficulty * 10;
 }

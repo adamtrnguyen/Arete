@@ -77,8 +77,8 @@ describe('AreteSettingTab Interaction Tests', () => {
 		const setting = findSettingByName('Backend');
 		expect(setting).toBeDefined();
 
-		await setting.mockDropdown._onChange('apy');
-		expect(plugin.settings.backend).toBe('apy');
+		await setting.mockDropdown._onChange('direct');
+		expect(plugin.settings.backend).toBe('direct');
 		expect(plugin.saveSettings).toHaveBeenCalled();
 	});
 

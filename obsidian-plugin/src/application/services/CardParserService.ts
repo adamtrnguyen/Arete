@@ -93,7 +93,12 @@ export class CardParserService {
 					try {
 						// Attempt precise extraction with parseYaml
 						// We normalize the block to be a valid single-mapping YAML
-						const cleanBlock = block.replace(/^\s*-/, ' ');
+						// Replace the list dash with a space of the SAME width, so every
+						// key keeps its column. Collapsing "  - " to " " left `model` at
+						// indent 1 and its siblings at 4, and parseYaml then returned a
+						// partial object with no `anki` key instead of throwing, so the
+						// card silently lost its note id and showed no stats.
+						const cleanBlock = block.replace(/^(\s*)-/, '$1 ');
 						const data = parseYaml(cleanBlock);
 						if (data && typeof data === 'object') {
 							// Safely access V2/nesting
@@ -126,11 +131,20 @@ export class CardParserService {
 							}
 						}
 					} catch (e) {
-						// Fallback to regex if parseYaml fails
-						const nidMatch = block.match(/['"]?nid['"]?\s*:\s*['"]?(\d+)/);
-						if (nidMatch) nid = parseInt(nidMatch[1]);
-						const cidMatch = block.match(/['"]?cid['"]?\s*:\s*['"]?(\d+)/);
-						if (cidMatch) cid = parseInt(cidMatch[1]);
+						// parseYaml threw; the regex below is the fallback.
+					}
+
+					if (nid === null || cid === null) {
+						// Also reached when parseYaml returns an object without `anki`,
+						// which it does for any block it cannot fully understand.
+						if (nid === null) {
+							const m = block.match(/['"]?nid['"]?\s*:\s*['"]?(\d+)/);
+							if (m) nid = parseInt(m[1]);
+						}
+						if (cid === null) {
+							const m = block.match(/['"]?cid['"]?\s*:\s*['"]?(\d+)/);
+							if (m) cid = parseInt(m[1]);
+						}
 					}
 
 					ranges.push({

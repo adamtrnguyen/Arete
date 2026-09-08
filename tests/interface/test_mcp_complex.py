@@ -30,7 +30,9 @@ async def test_get_stats_success(mcp_server):
     with (
         patch("arete.interface.mcp_server.resolve_config"),
         patch("arete.interface.mcp_server.get_anki_bridge", new_callable=AsyncMock),
-        patch("arete.application.stats.learning_insights_service.LearningInsightsService") as MockService,
+        patch(
+            "arete.application.stats.learning_insights_service.LearningInsightsService"
+        ) as MockService,
     ):
         mock_service_instance = MockService.return_value
         mock_insights = LearningStats(total_cards=100)
@@ -96,8 +98,6 @@ async def test_sync_file_with_force(mcp_server):
         mock_stats.total_errors = 0
         mock_exec.return_value = mock_stats
 
-        result = await mcp_server.call_tool(
-            "sync_file", {"file_path": "f.md", "force": True}
-        )
+        result = await mcp_server.call_tool("sync_file", {"file_path": "f.md", "force": True})
         data = json.loads(_text(result))
         assert data["success"] is True

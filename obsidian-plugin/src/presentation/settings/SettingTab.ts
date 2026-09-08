@@ -227,10 +227,10 @@ export class AreteSettingTab extends PluginSettingTab {
 			.addDropdown((dropdown) =>
 				dropdown
 					.addOption('auto', 'Auto (Recommended)')
-					.addOption('apy', 'Apy (Direct DB, Faster)')
+					.addOption('direct', 'Direct (Anki database, requires Anki closed)')
 					.addOption('ankiconnect', 'AnkiConnect (Requires Anki running)')
 					.setValue(this.plugin.settings.backend)
-					.onChange(async (value: 'auto' | 'apy' | 'ankiconnect') => {
+					.onChange(async (value: 'auto' | 'direct' | 'ankiconnect') => {
 						this.plugin.settings.backend = value;
 						await this.plugin.saveSettings();
 					}),

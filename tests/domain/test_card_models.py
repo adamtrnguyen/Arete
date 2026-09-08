@@ -130,30 +130,36 @@ class TestBasicCard:
         assert card.markdown is False
 
     def test_anki_block(self):
-        card = BasicCard.model_validate({
-            "Front": "Q?",
-            "Back": "A.",
-            "anki": {"nid": "123", "cid": "456"},
-        })
+        card = BasicCard.model_validate(
+            {
+                "Front": "Q?",
+                "Back": "A.",
+                "anki": {"nid": "123", "cid": "456"},
+            }
+        )
         assert card.anki is not None
         assert card.anki.nid == "123"
         assert card.anki.cid == "456"
 
     def test_deps_block(self):
-        card = BasicCard.model_validate({
-            "Front": "Q?",
-            "Back": "A.",
-            "deps": {"requires": ["dep1"], "related": ["rel1"]},
-        })
+        card = BasicCard.model_validate(
+            {
+                "Front": "Q?",
+                "Back": "A.",
+                "deps": {"requires": ["dep1"], "related": ["rel1"]},
+            }
+        )
         assert card.deps is not None
         assert card.deps.requires == ["dep1"]
 
     def test_extra_fields_allowed(self):
-        card = BasicCard.model_validate({
-            "Front": "Q?",
-            "Back": "A.",
-            "custom_field": "value",
-        })
+        card = BasicCard.model_validate(
+            {
+                "Front": "Q?",
+                "Back": "A.",
+                "custom_field": "value",
+            }
+        )
         assert card.model_extra is not None
         assert card.model_extra.get("custom_field") == "value"
 
@@ -178,24 +184,30 @@ class TestClozeCard:
             ClozeCard(Text="")
 
     def test_back_extra_alias_back_extra(self):
-        card = ClozeCard.model_validate({
-            "Text": "{{c1::X}}",
-            "Back Extra": "Some extra info",
-        })
+        card = ClozeCard.model_validate(
+            {
+                "Text": "{{c1::X}}",
+                "Back Extra": "Some extra info",
+            }
+        )
         assert card.Back_Extra == "Some extra info"
 
     def test_back_extra_alias_extra(self):
-        card = ClozeCard.model_validate({
-            "Text": "{{c1::X}}",
-            "Extra": "Some extra info",
-        })
+        card = ClozeCard.model_validate(
+            {
+                "Text": "{{c1::X}}",
+                "Extra": "Some extra info",
+            }
+        )
         assert card.Back_Extra == "Some extra info"
 
     def test_back_extra_alias_lower(self):
-        card = ClozeCard.model_validate({
-            "text": "{{c1::X}}",
-            "extra": "Some extra",
-        })
+        card = ClozeCard.model_validate(
+            {
+                "text": "{{c1::X}}",
+                "extra": "Some extra",
+            }
+        )
         assert card.Back_Extra == "Some extra"
 
     def test_back_extra_none_by_default(self):
@@ -210,23 +222,27 @@ class TestClozeCard:
 
 class TestCustomCard:
     def test_valid(self):
-        card = CustomCard.model_validate({
-            "model": "Vocabulary",
-            "Term": "hello",
-            "Definition": "a greeting",
-        })
+        card = CustomCard.model_validate(
+            {
+                "model": "Vocabulary",
+                "Term": "hello",
+                "Definition": "a greeting",
+            }
+        )
         assert card.model == "Vocabulary"
         assert card.content_fields == {"Term": "hello", "Definition": "a greeting"}
 
     def test_reserved_fields_excluded_from_content(self):
-        card = CustomCard.model_validate({
-            "model": "Vocabulary",
-            "Term": "hello",
-            "id": "arete_abc",
-            "deck": "Test",
-            "tags": ["tag"],
-            "markdown": True,
-        })
+        card = CustomCard.model_validate(
+            {
+                "model": "Vocabulary",
+                "Term": "hello",
+                "id": "arete_abc",
+                "deck": "Test",
+                "tags": ["tag"],
+                "markdown": True,
+            }
+        )
         content = card.content_fields
         assert "Term" in content
         assert "id" not in content
@@ -239,11 +255,13 @@ class TestCustomCard:
         assert card.content_fields == {}
 
     def test_dunder_fields_excluded_from_content(self):
-        card = CustomCard.model_validate({
-            "model": "Custom",
-            "__line__": 42,
-            "Field1": "value",
-        })
+        card = CustomCard.model_validate(
+            {
+                "model": "Custom",
+                "__line__": 42,
+                "Field1": "value",
+            }
+        )
         assert "__line__" not in card.content_fields
         assert "Field1" in card.content_fields
 
@@ -292,11 +310,13 @@ class TestAreteFileMetadata:
         assert meta.tags == ["a", "b"]
 
     def test_extra_fields_allowed(self):
-        meta = AreteFileMetadata.model_validate({
-            "deck": "Test",
-            "cards": [{"Front": "Q", "Back": "A"}],
-            "custom_meta": "value",
-        })
+        meta = AreteFileMetadata.model_validate(
+            {
+                "deck": "Test",
+                "cards": [{"Front": "Q", "Back": "A"}],
+                "custom_meta": "value",
+            }
+        )
         assert meta.model_extra is not None
         assert meta.model_extra.get("custom_meta") == "value"
 
@@ -356,13 +376,15 @@ class TestParseCard:
 
 class TestParseFileMetadata:
     def test_valid(self):
-        meta = parse_file_metadata({
-            "arete": True,
-            "deck": "AI::Deep Learning",
-            "model": "Basic",
-            "tags": ["dl", "research"],
-            "cards": [{"Front": "Q?", "Back": "A."}],
-        })
+        meta = parse_file_metadata(
+            {
+                "arete": True,
+                "deck": "AI::Deep Learning",
+                "model": "Basic",
+                "tags": ["dl", "research"],
+                "cards": [{"Front": "Q?", "Back": "A."}],
+            }
+        )
         assert meta.deck == "AI::Deep Learning"
         assert meta.tags == ["dl", "research"]
 
@@ -396,16 +418,18 @@ class TestEdgeCases:
         assert card.Text == "42"
 
     def test_basic_card_with_all_optional(self):
-        card = BasicCard.model_validate({
-            "Front": "Q?",
-            "Back": "A.",
-            "id": "arete_test123",
-            "deck": "Test::Sub",
-            "tags": ["t1"],
-            "anki": {"nid": "n1", "cid": "c1"},
-            "deps": {"requires": ["dep1"], "related": []},
-            "markdown": False,
-        })
+        card = BasicCard.model_validate(
+            {
+                "Front": "Q?",
+                "Back": "A.",
+                "id": "arete_test123",
+                "deck": "Test::Sub",
+                "tags": ["t1"],
+                "anki": {"nid": "n1", "cid": "c1"},
+                "deps": {"requires": ["dep1"], "related": []},
+                "markdown": False,
+            }
+        )
         assert card.id == "arete_test123"
         assert card.deck == "Test::Sub"
         assert card.anki is not None
@@ -413,4 +437,3 @@ class TestEdgeCases:
         assert card.deps is not None
         assert card.deps.requires == ["dep1"]
         assert card.markdown is False
-

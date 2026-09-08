@@ -6,7 +6,7 @@ describe('CardVisualsService', () => {
 		cardId: 101,
 		noteId: 123,
 		deckName: 'Default',
-		difficulty: 3,
+		difficulty: 0.3, // stored 0..1, shown as 3.0/10
 		lapses: 0,
 		ease: 250,
 		reps: 10,
@@ -19,7 +19,7 @@ describe('CardVisualsService', () => {
 		cardId: 102,
 		noteId: 456,
 		deckName: 'Default',
-		difficulty: 9.5,
+		difficulty: 0.95, // stored 0..1, shown as 9.5/10
 		lapses: 10,
 		ease: 130,
 		reps: 50,

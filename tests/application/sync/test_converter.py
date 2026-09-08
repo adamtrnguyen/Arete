@@ -73,7 +73,9 @@ def test_mixed_inline_and_display_math():
 
     assert r"\(a+b\)" in html
     assert r"\[c+d\]" in html
-    assert "$" not in html.replace(r"\(", "").replace(r"\)", "").replace(r"\[", "").replace(r"\]", "")
+    assert "$" not in html.replace(r"\(", "").replace(r"\)", "").replace(r"\[", "").replace(
+        r"\]", ""
+    )
 
 
 @pytest.mark.parametrize(

@@ -1,6 +1,6 @@
 import { ItemView, WorkspaceLeaf, setIcon, Notice, MarkdownView, TFile } from 'obsidian';
 import AretePlugin from '@/main';
-import { ConceptStats, StatsNode } from '@/domain/stats';
+import { ConceptStats, StatsNode, difficultyOutOfTen } from '@/domain/stats';
 import { CardStatsModal } from '@/presentation/modals/CardStatsModal';
 import { BrokenReference } from '@application/services/LinkCheckerService';
 
@@ -257,9 +257,9 @@ export class DashboardView extends ItemView {
 		diffSpan.style.whiteSpace = 'nowrap';
 		diffSpan.style.textAlign = 'right';
 		if (node.difficulty != null) {
-			// difficulty is already 1-10 scale from backend
-			diffSpan.textContent = `${node.difficulty.toFixed(1)} D`;
-			if (node.difficulty > 6) diffSpan.style.color = 'var(--color-orange)';
+			// difficulty is stored 0..1; scale only to display it
+			diffSpan.textContent = `${difficultyOutOfTen(node.difficulty).toFixed(1)} D`;
+			if (node.difficulty > 0.6) diffSpan.style.color = 'var(--color-orange)';
 		} else {
 			diffSpan.textContent = '-';
 		}
@@ -475,9 +475,9 @@ export class DashboardView extends ItemView {
 						dSpan.style.width = '50px';
 						dSpan.style.textAlign = 'right';
 						if (card.difficulty) {
-							// difficulty is already 1-10 scale from backend
-							dSpan.textContent = card.difficulty.toFixed(1);
-							if (card.difficulty > 7) dSpan.style.color = 'var(--color-orange)';
+							// difficulty is stored 0..1; scale only to display it
+							dSpan.textContent = difficultyOutOfTen(card.difficulty).toFixed(1);
+							if (card.difficulty > 0.7) dSpan.style.color = 'var(--color-orange)';
 						} else {
 							dSpan.textContent = '-';
 						}
@@ -585,7 +585,7 @@ export class DashboardView extends ItemView {
 			cellDiff.textContent = leech.ease
 				? `${(leech.ease / 10).toFixed(0)}% Ease`
 				: leech.difficulty != null
-					? `${leech.difficulty.toFixed(1)} Diff`
+					? `${difficultyOutOfTen(leech.difficulty).toFixed(1)} Diff`
 					: '-';
 
 			// Lapses

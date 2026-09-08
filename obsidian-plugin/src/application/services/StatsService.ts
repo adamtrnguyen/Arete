@@ -417,13 +417,13 @@ export class StatsService {
 
 			if (Array.isArray(data)) {
 				// Map snake_case (Python) to camelCase (TS)
-				// Note: difficulty is already 1-10 scale from backend
+				// difficulty arrives normalized 0..1; views scale it with difficultyOutOfTen
 				return data.map((d: any) => ({
 					cardId: d.card_id,
 					noteId: d.note_id,
 					lapses: d.lapses,
 					ease: d.ease,
-					difficulty: d.difficulty, // 1-10 scale from backend
+					difficulty: d.difficulty, // 0..1
 					deckName: d.deck_name,
 					interval: d.interval,
 					due: d.due,

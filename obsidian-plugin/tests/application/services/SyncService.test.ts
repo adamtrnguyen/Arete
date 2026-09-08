@@ -69,7 +69,7 @@ describe('SyncService', () => {
 	test('runSync with all flags and custom settings', async () => {
 		service.settings.anki_connect_url = 'http://anki:8765';
 		service.settings.anki_media_dir = '/anki/media';
-		service.settings.backend = 'apy';
+		service.settings.backend = 'direct';
 		const mockChild = createMockChildProcess();
 		(spawn as jest.Mock).mockReturnValue(mockChild);
 
@@ -83,7 +83,7 @@ describe('SyncService', () => {
 				'--prune',
 				'--force',
 				'--backend',
-				'apy',
+				'direct',
 				'--anki-connect-url',
 				'http://anki:8765',
 				'--anki-media-dir',

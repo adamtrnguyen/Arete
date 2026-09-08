@@ -7,7 +7,7 @@
 
 import { ItemView, WorkspaceLeaf, setIcon, TFile, Component } from 'obsidian';
 import * as d3 from 'd3';
-// eslint-disable-next-line @typescript-eslint/no-var-requires
+
 const ForceGraph3D = require('3d-force-graph');
 import type AretePlugin from '@/main';
 import { DependencyResolver } from '@/application/services/DependencyResolver';
