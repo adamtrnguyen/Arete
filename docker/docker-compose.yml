@@ -7,7 +7,7 @@ services:
       - PUID=1000
       - PGID=1000
       - ANKI_LANG=en
-      - ANKI_VERSION=24.11
+      - ANKI_VERSION=26.8.1
       - QT_QUICK_BACKEND=software
       - ANKI_NOHIGHDPI=1
       - ANKICONNECT_BIND_ADDRESS=0.0.0.0
