@@ -91,7 +91,7 @@ def _anki_container(tmp_path_factory):
     arete_plugin = (project_root / "arete_ankiconnect").resolve()
 
     container = client.containers.run(
-        "ghcr.io/adanato/arete/anki-custom:latest",
+        "ghcr.io/adamtrnguyen/arete/anki-custom:latest",
         platform="linux/amd64",
         detach=True,
         name=f"arete-integration-{port}",

@@ -1,7 +1,7 @@
 services:
   anki:
     platform: linux/amd64
-    image: ghcr.io/adanato/arete/anki-custom:latest
+    image: ghcr.io/adamtrnguyen/arete/anki-custom:latest
     container_name: anki-test
     environment:
       - PUID=1000
