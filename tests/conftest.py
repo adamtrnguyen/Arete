@@ -1,4 +1,3 @@
-import os
 import shutil
 import subprocess
 import sys
@@ -13,6 +12,27 @@ import requests
 # pytest run wiped the real cache and wrote run logs into ~/.config/arete/logs.
 
 _REAL_ARETE_CONFIG = Path.home() / ".config" / "arete"
+
+# --- Isolation: no test may touch the user's real Anki collection ---
+# detect_anki_paths() in application/utils/common.py builds the collection path from
+# Path.home(), so the _isolated_home fixture below already redirects it. This is the
+# belt to that fixture's braces: if a test ever resolves the real path anyway, the
+# session fails loudly instead of writing notes into a live deck.
+#
+# It has happened. On 2026-03-03 and 2026-03-05 an integration run wrote four fixture
+# notes ("Hello Integration"/"World", "Healing Candidate"/"Same Back") into a real
+# collection under a deck named IntegrationTest. The dates come from the arete ULIDs
+# those notes carried. Nothing caught it for six months.
+
+_REAL_ANKI_BASE = Path.home() / "Library/Application Support/Anki2"  # macOS
+if not _REAL_ANKI_BASE.exists():  # pragma: no cover - platform dependent
+    for _candidate in (
+        Path.home() / ".local/share/Anki2",  # Linux
+        Path.home() / "AppData/Roaming/Anki2",  # Windows
+    ):
+        if _candidate.exists():
+            _REAL_ANKI_BASE = _candidate
+            break
 
 
 def _snapshot(root: Path) -> dict[str, tuple[int, int]]:
@@ -45,6 +65,39 @@ def _real_config_untouched():
     assert not changed, f"tests touched the real {_REAL_ARETE_CONFIG}: {changed[:10]}"
 
 
+def _collection_fingerprint(base: Path) -> dict[str, tuple[int, int]]:
+    """Size and mtime of every collection.anki2 under an Anki base folder.
+
+    Only the collection files. Media, add-ons and prefs move for reasons that have
+    nothing to do with a test run, and watching them gives false failures.
+    """
+    if not base.exists():
+        return {}
+    return {
+        str(f.relative_to(base)): (f.stat().st_size, f.stat().st_mtime_ns)
+        for f in base.glob("*/collection.anki2")
+    }
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _real_collection_untouched():
+    """Fail the session if any test wrote to a real Anki collection.
+
+    Anki must be closed for this to read cleanly. A running Anki checkpoints its
+    write-ahead log on its own schedule, so the mtime moves without any test
+    touching it. That case reports a false positive, and the message says so.
+    """
+    before = _collection_fingerprint(_REAL_ANKI_BASE)
+    yield
+    after = _collection_fingerprint(_REAL_ANKI_BASE)
+    changed = sorted(k for k in before.keys() | after.keys() if before.get(k) != after.get(k))
+    assert not changed, (
+        f"tests touched a real Anki collection under {_REAL_ANKI_BASE}: {changed[:5]}. "
+        "If Anki was open during this run, its own checkpoint may explain it. "
+        "Close Anki and run again before you trust this failure."
+    )
+
+
 # --- Auto-mark integration tests ---
 
 
@@ -58,21 +111,13 @@ def pytest_collection_modifyitems(items):
 # --- Global Config ---
 
 
-@pytest.fixture(scope="session")
-def anki_url():
-    """Return the URL for AnkiConnect.
-
-    Default to 8766 (Anki 24+ default/Docker default).
-    """
-    return os.getenv("ANKI_CONNECT_URL", "http://127.0.0.1:8766")
-
-
-@pytest.fixture(scope="session")
-def anki_media_dir():
-    """Return the path to the Docker bind-mount media dir on the host."""
-    p = Path("docker/anki_data/.local/share/Anki2/User 1/collection.media").resolve()
-    p.mkdir(parents=True, exist_ok=True)
-    return p
+# `anki_url` and `anki_media_dir` live in tests/integration/conftest.py, which is the
+# only place that needs them. That version reads the port off a throwaway container on
+# a random free port. The copies that used to sit here hardcoded 8766 and a bind-mount
+# under docker/anki_data, both left over from the fixed-port compose setup, and both
+# shadowed for every test under tests/integration/. Do not add them back here: a
+# session-scoped default that points at a real port is exactly how a test run reaches
+# a live collection.
 
 
 @pytest.fixture

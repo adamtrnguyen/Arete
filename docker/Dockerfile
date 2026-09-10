@@ -23,9 +23,12 @@ ENV VIRTUAL_ENV=/opt/anki-venv
 RUN python3 -m venv $VIRTUAL_ENV
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
-# Install Anki 24.11 into the venv
+# Install Anki into the venv.
+# Keep this pin equal to the Anki the maintainer runs on the desktop. A container two
+# years behind tests an API the real client dropped. Checked on PyPI 2026-09-10:
+# 26.8.1 is the newest non-beta, and it matches the desktop build.
 RUN pip install --upgrade pip && \
-    pip install anki==24.11 aqt==24.11 PyQt6 PyQt6-WebEngine
+    pip install anki==26.8.1 aqt==26.8.1 PyQt6 PyQt6-WebEngine
 
 # Hijack the launcher!
 # The original image uses this binary to check for updates and wait for Enter.
