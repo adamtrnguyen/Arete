@@ -37,12 +37,16 @@ Integration/e2e tests use a headless Anki 24.11 container via OrbStack.
 
 | Context | Port |
 |---------|------|
-| Docker (tests) | `http://127.0.0.1:8766` |
+| Integration container | random, assigned per session |
 | Local Anki (production) | `http://127.0.0.1:8765` |
 
-Override with `ANKI_CONNECT_URL` env var.
+`tests/integration/conftest.py` picks a free port for the container it starts. Set
+`ANKI_CONNECT_URL` to skip Docker and use an existing instance. 🛑 Never point it at a
+collection you study from.
 
 ## Known Issues
 
-- `test_parser_adds_obsidian_source` is a known failing test (pre-existing)
-- Agent/MCP tests require optional deps — skip with `--ignore=tests/application/test_agent.py --ignore=tests/interface/test_mcp_*`
+None recorded. The two that used to sit here were both stale, checked 2026-09-10:
+`test_parser_adds_obsidian_source` passes, and `tests/application/test_agent.py` does
+not exist, because the `agent` extra was removed. `tests/interface` runs 98 tests with
+no optional dependency.
