@@ -78,39 +78,36 @@ just qa               # full quality gate
 
 ## Testing with Docker (OrbStack)
 
-Integration and e2e tests require a running Anki instance. On macOS, this runs in Docker via **OrbStack**.
-
-### Starting Dockerized Anki
+`tests/integration` needs a running Anki. The suite manages that itself.
 
 ```bash
-just mac-docker-up    # starts OrbStack → Docker daemon → Anki container
-just wait-for-anki    # polls until AnkiConnect responds (up to 30s)
-```
-
-This starts a headless Anki 24.11 container with AnkiConnect exposed on **port 8766** (mapped from container's 8765).
-
-### Running Integration Tests
-
-```bash
-just mac-docker-up
-just wait-for-anki
 just test-integration
 ```
 
-### Stopping
+`tests/integration/conftest.py` starts one container for the session, on a **random
+free port**, with a fresh collection under `tmp_path`. It tears the container down
+after. Start OrbStack first. With Docker unreachable the suite skips rather than
+falling back to a local Anki.
 
-```bash
-just docker-down
-```
+The image is `ghcr.io/adamtrnguyen/arete/anki-custom:latest`, built from
+`docker/Dockerfile`. Nothing pulls or builds it for you: a missing image errors.
 
-### Port Convention
+`tests/e2e` needs no container. It drives the direct backend against a real
+collection in `tmp_path`.
 
-| Context | Port | URL |
-|---------|------|-----|
-| Docker (integration tests) | 8766 | `http://127.0.0.1:8766` |
-| Local Anki (production) | 8765 | `http://127.0.0.1:8765` |
+### Pointing tests at a real Anki
 
-Override with `ANKI_CONNECT_URL` env var.
+Set `ANKI_CONNECT_URL`, and the conftest skips Docker entirely and uses that
+instance. 🛑 Never point it at a collection you study from. `tests/conftest.py`
+carries a session guard that fails the run if a real `collection.anki2` moves, but it
+fires after the write, not before.
+
+### Port convention
+
+| Context | Port |
+|---|---|
+| Integration container | random, assigned per session |
+| Local Anki | 8765 |
 
 ### Test Categories
 
@@ -120,8 +117,8 @@ Override with `ANKI_CONNECT_URL` env var.
 | `tests/application/` | No | Use case / service tests |
 | `tests/infrastructure/` | No | Adapter unit tests (mocked) |
 | `tests/interface/` | No | CLI + MCP server tests (mocked) |
-| `tests/integration/` | **Yes** | Full sync/bridge tests against real Anki |
-| `tests/e2e/` | **Yes** | End-to-end scenario tests |
+| `tests/integration/` | **container** | Full sync and bridge tests over AnkiConnect |
+| `tests/e2e/` | No | Whole-sync scenarios against a collection in `tmp_path` |
 
 ## CLI Commands
 
@@ -221,46 +218,45 @@ Same DDD layer structure as the Python backend: `domain/`, `infrastructure/`, `a
 - Jest for tests, ESLint 10 (flat config `eslint.config.mjs`) + Prettier for lint/format
 - Dependencies: CodeMirror 6 (YAML editor), D3 + three.js (3D force graph), Mustache (templates)
 
-## TODO
+## Open work
 
-- [ ] ~~Explore Claude Agent SDK (`claude-agent-sdk`) for programmatic card quality reviews~~ — **deprioritized**: AI features were removed to keep sync simple and deterministic (the `agent` optional-dependency extra no longer exists).
+No dates and no version narrative here. The history, with what was verified and when,
+lives in `docs/history/`.
 
-### Known issues & follow-ups (2.3.0 deps refresh, 2026-06-29; revised for 2.4.0)
+**Backend**
 
-All **pre-existing**: these shipped in 2.1.0 too but were hidden because CI died at
-the install step (`uv sync --extra agent`, an extra that no longer exists) before
-reaching them. Fixing the pipeline (`--extra agent` → `--dev`) made them visible.
-**None of these block the 2.3.0 release**, which is published and is the BRAT `latest`.
+- [ ] `arete vault check` does not detect a duplicate Arete id. A run against a real
+      978-note vault found three.
+- [ ] Reconcile-by-Arete-id lives in the AnkiConnect adapter only. The direct backend
+      creates a second copy when a vault carries a note id Anki never issued. A strict
+      xfail at `tests/e2e/test_local_sync.py:119` records it and fails the day it is fixed.
+- [ ] The three surfaces duplicate their wiring. `http_server` resolves config 11 times
+      and builds a bridge 8 times inline. Five Anki admin verbs are called only from
+      `interface/`, with no use-case between.
 
-**Likely real bugs — investigate first:**
+**Windows only** — macOS and Ubuntu pass, so these need a Windows runner.
 
-- [ ] **Plugin Jest failures** (`obsidian-plugin/tests/application/services/StatsService.test.ts`, `CardParserService.test.ts` — 7 tests). Fail on pristine `main`. Determine stale-test vs. a real bug in the shipped plugin's stats-aggregation / card-parsing logic.
-- [ ] **Windows path & encoding bugs** (3 Python tests, Windows-only; macOS + Ubuntu pass):
-  - `test_common.py::test_to_list_path` and `test_models.py::TestAnkiNote::test_to_dict_converts_path` — emit OS separators (`\vault\note.md`) instead of POSIX (`/vault/note.md`); vault paths should be POSIX for cross-platform portability.
-  - `test_graph_resolver.py::...resolves_nfd_filename_with_nfc_ref` — `UnicodeDecodeError: 'utf-8' codec can't decode byte 0xe9` reading an accented (NFD) filename on Windows. Likely a real bug for Windows users with accented filenames.
-- [x] **FIXED in 2.4.0. anki 25 sync round-trip.** Covered two ways: the hermetic e2e suite exercises the direct backend against a real collection, and a full vault sync (3574 cards) ran against live Anki 25.09 with AnkiConnect.
-- [ ] ~~anki 25 sync round-trip~~ The 24.4.1 → 25.9.2 bump was validated by static API audit + unit tests (which mock `AnkiBridge`) but **not** a full Obsidian→Anki round-trip — integration tests are currently dark (below). FSRS-6 changed scheduling internals; confirm a real round-trip once integration can run.
+- [ ] `test_common.py::test_to_list_path` and
+      `test_models.py::TestAnkiNote::test_to_dict_converts_path` emit OS separators
+      where a vault path should stay POSIX.
+- [ ] `test_graph_resolver.py::...resolves_nfd_filename_with_nfc_ref` raises
+      `UnicodeDecodeError` reading an NFD filename.
 
-**Test / CI infrastructure:**
+**Release plumbing**
 
-- [x] **PARTLY FIXED in 2.4.0.** `tests/e2e/test_local_sync.py` and `test_corpus_sync.py` run the whole sync against a real Anki collection in `tmp_path`, with no container. The Docker-bound suites below are still dark.
-- [ ] **Integration suites can't run anywhere.** `docker/docker-compose*.yml` pin `image: ghcr.io/adanato/arete/anki-custom:latest`, which was never published (`manifest unknown` in CI; base image also has no arm64 manifest locally). Either publish the image built from `docker/Dockerfile` to GHCR, or add a `build:` stanza so compose builds it locally. Until fixed, `tests/integration` + `tests/e2e` provide zero coverage.
-- [x] **FIXED in 2.4.0. Ruff lint gate can never pass.** `[tool.ruff.lint]` selects mutually-exclusive docstring rules (`D203`+`D211`, `D212`+`D213`) — pick one of each pair. Plus ~22 pre-existing `C901` complexity violations (max-complexity 10) in `builder.py`, `cli.py`, `pipeline.py`, `graph_resolver.py`, etc. — refactor or ignore. Also `target-version = "py311"` should be `"py312"` to match `requires-python`.
-- [ ] **PyPI trusted publishing is not configured.** `release.yml`'s publish step fails `invalid-publisher`; it's deliberately `continue-on-error` so it can't block the GitHub/BRAT release. Configure a PyPI trusted publisher for `adamtrnguyen/Arete` + `release.yml`, or drop the PyPI step (PyPI has been stale since 2.0.1; the plugin ships via the GitHub release, not pip).
+- [ ] `arete_ankiconnect/manifest.json` reads 2.2.1. Everything else reads 2.4.0. A
+      pre-tool hook blocks editing ankiconnect files.
+- [ ] PyPI trusted publishing is unconfigured. `release.yml:53` runs the publish step
+      under `continue-on-error: true`, so it cannot block a release. Configure a
+      trusted publisher, or drop the step.
+- [ ] Delete the dangling `v2.2.1` tag on origin: `git push origin :v2.2.1`.
+- [ ] Bump the GitHub Actions versions (Dependabot PR #48).
 
-**Opened by the 2.4.0 audit (see CHANGELOG.md and /tmp/arete-progress.md):**
+**Two ways to run the integration container, and only one is wired**
 
-- [ ] **The plugin reads FSRS difficulty as 1-10; the backend sends 0.0-1.0.** Every threshold in the plugin (`CardVisualsService` >5/>8/>9, `CardStatsModal` >7, `DashboardView`) therefore never fires, and the value renders as "0.5" under a "/10" label. Fix in the plugin at the `StatsService` parse boundary.
-- [ ] **The plugin still offers backend `apy`,** which `AppConfig` rejects (`domain/settings.ts:5`, `SettingTab.ts:230`).
-- [ ] **Reconcile-by-Arete-id is in the AnkiConnect adapter only.** The direct backend still creates a second copy when a vault carries a note id Anki never issued. A strict xfail in `tests/e2e/test_local_sync.py` records this and fails the day it is fixed.
-- [ ] **The three surfaces duplicate their wiring.** `http_server` resolves config 11 times and builds a bridge 8 times inline; five Anki admin verbs are called only from `interface/` with no use-case between.
-- [ ] `arete vault check` does not detect a duplicate Arete id. Run against a real 978-note vault the new invariant test found three.
-
-**Housekeeping:**
-
-- [ ] Delete the dangling `v2.2.1` tag on origin (a tag was pushed but its release run failed, so no release exists): `git push origin :v2.2.1`.
-- [ ] Bump GitHub Actions versions (Dependabot PR #48). Node 20 actions are being force-run on Node 24: `actions/checkout@v4`→v6, `astral-sh/setup-uv@v5`→v7, `actions/setup-node@v4`→v6, etc.
-- [ ] `arete_ankiconnect/manifest.json` is still 2.2.1 while everything else is 2.4.0 (a pre-tool hook blocks editing ankiconnect files) — align it if a consistent bump is wanted.
+- [ ] `just test-anki` and `just mac-test-anki` start a compose container on a fixed
+      port, then run pytest. The conftest ignores it and starts its own, so you get two
+      containers. Either delete those recipes, or set `ANKI_CONNECT_URL` inside them.
 
 ## Key Conventions
 
