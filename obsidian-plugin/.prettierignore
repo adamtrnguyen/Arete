@@ -1,0 +1,11 @@
+# Files another tool owns. Prettier rewrites them, the owning tool rewrites them back,
+# and every `just qa` leaves a dirty tree that hides the real change.
+
+# npm writes this in its own format. ~8000 lines churn on each npm install.
+package-lock.json
+# npm rewrites the indentation on each install.
+package.json
+
+# Build output. esbuild emits these minified on one line.
+main.js
+styles.css

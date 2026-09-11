@@ -49,9 +49,7 @@ def sync_json(path: Path, version: str, check: bool) -> str | None:
         return None
     if not check:
         # Rewrite only the version line, so indentation and key order survive.
-        updated = re.sub(
-            r'("version"\s*:\s*)"[^"]*"', rf'\g<1>"{version}"', text, count=1
-        )
+        updated = re.sub(r'("version"\s*:\s*)"[^"]*"', rf'\g<1>"{version}"', text, count=1)
         if json.loads(updated).get("version") != version:
             raise SystemExit(f"{path}: could not rewrite the version safely")
         path.write_text(updated, encoding="utf-8")

@@ -11,6 +11,10 @@ TESTS      := "tests"
 PLUGIN     := "obsidian-plugin"
 RELEASE    := "release_artifacts"
 
+# Every suite that needs no container. `test` and `coverage` both read this, so the
+# two cannot drift apart. They did: `coverage` was missing test_factories.py.
+UNIT       := TESTS/"application " + TESTS/"interface " + TESTS/"infrastructure " + TESTS/"domain " + TESTS/"e2e " + TESTS/"test_docs_architecture.py " + TESTS/"test_factories.py"
+
 # Default: List all available tasks
 default:
     @just --list
@@ -37,7 +41,7 @@ default:
 
 # Run backend tests
 test *args:
-    {{PYTEST}} {{TESTS}}/application {{TESTS}}/interface {{TESTS}}/infrastructure {{TESTS}}/domain {{TESTS}}/e2e {{TESTS}}/test_docs_architecture.py {{TESTS}}/test_factories.py {{args}}
+    {{PYTEST}} {{UNIT}} {{args}}
 
 # Run backend integration tests (auto-starts Docker, random port)
 test-integration *args:
@@ -45,7 +49,7 @@ test-integration *args:
 
 # Run tests with coverage
 coverage:
-    {{PYTEST}} --cov=src/arete --cov-report=xml --cov-report=term-missing {{TESTS}}/application {{TESTS}}/interface {{TESTS}}/infrastructure {{TESTS}}/domain {{TESTS}}/e2e {{TESTS}}/test_docs_architecture.py
+    {{PYTEST}} --cov=src/arete --cov-report=xml --cov-report=term-missing {{UNIT}}
 
 # Integration tests with coverage
 test-integration-coverage *args:
@@ -167,25 +171,16 @@ coverage-all *args:
     just build-obsidian
     @echo "✅ All QA checks passed!"
 
-# Integration tests with full Docker lifecycle (start -> test -> stop)
-test-anki *args:
-    #!/usr/bin/env bash
-    set -e
-    cleanup() { just docker-down; }
-    trap cleanup EXIT
-    just docker-up
-    just wait-for-anki
-    {{PYTEST}} {{TESTS}}/integration {{args}}
-
-# Integration tests with Docker lifecycle for Mac/OrbStack
-mac-test-anki *args:
-    #!/usr/bin/env bash
-    set -e
-    cleanup() { just docker-down; }
-    trap cleanup EXIT
-    just mac-docker-up
-    just wait-for-anki
-    {{PYTEST}} {{TESTS}}/integration {{args}}
+# `test-anki` and `mac-test-anki` used to sit here. Both started a compose container
+# on a fixed port, then ran pytest. Neither set ANKI_CONNECT_URL, so the integration
+# conftest ignored that container and started a second one on a random port. Two
+# containers, one wasted.
+#
+# Locally, run `just test-integration` on its own. The conftest manages its own
+# container and tears it down after.
+#
+# CI still uses docker-up / wait-for-anki / docker-down below, and that path is
+# correct because ci.yml exports ANKI_CONNECT_URL first.
 
 # --- System ---
 

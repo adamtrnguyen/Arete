@@ -19,19 +19,19 @@ paths:
 ## Running Tests
 
 - Unit tests: `just test` (no Anki needed, mock `AnkiBridge`)
-- Integration tests: `just mac-docker-up && just wait-for-anki && just test-integration`
+- Integration tests: `just test-integration`. The session starts its own container.
 - Match test directory to source directory (e.g., `tests/domain/` for `src/arete/domain/`)
 - Use `pytest` fixtures from `tests/conftest.py`
 
 ## Docker (OrbStack)
 
-Integration/e2e tests use a headless Anki 24.11 container via OrbStack.
+`tests/integration` uses a headless Anki container. Start OrbStack, then run
+`just test-integration`. The session starts the container on a random free port and
+stops it after. `tests/e2e` needs no container.
 
-| Command | What |
-|---------|------|
-| `just mac-docker-up` | Start OrbStack + Anki container |
-| `just wait-for-anki` | Poll until AnkiConnect responds |
-| `just docker-down` | Stop container |
+The `docker-up`, `wait-for-anki` and `docker-down` recipes exist for CI, which exports
+`ANKI_CONNECT_URL` first so the conftest reuses the compose container. Do not run them
+by hand: without that variable you get two containers.
 
 ### Port Convention
 

@@ -5,7 +5,13 @@
 Arete is a one-way sync tool: Obsidian → Anki. Obsidian is the source of truth. It parses YAML frontmatter from markdown files, syncs cards to Anki, and builds dependency-aware study queues.
 
 **Source:** `/Users/adam/Research/ObsidianSuite/arete`
-**Vault:** `/Users/adam/Library/CloudStorage/OneDrive-Personal/Obsidian Vault`
+**Vault:** `/Users/adam/Obsidian Vault`
+
+> [!warning] A second vault copy exists and is stale
+> `~/Library/CloudStorage/OneDrive-Personal/Obsidian Vault` is also a git repo. Its
+> `.git` last moved 2026-08-29, against 2026-09-10 for the live one. The
+> `arete_ankiconnect` config still names the OneDrive path as `vault_root`. Edit the
+> live vault, and check that setting before you trust a sync.
 
 ## Architecture
 
@@ -252,11 +258,6 @@ lives in `docs/history/`.
 - [ ] Delete the dangling `v2.2.1` tag on origin: `git push origin :v2.2.1`.
 - [ ] Bump the GitHub Actions versions (Dependabot PR #48).
 
-**Two ways to run the integration container, and only one is wired**
-
-- [ ] `just test-anki` and `just mac-test-anki` start a compose container on a fixed
-      port, then run pytest. The conftest ignores it and starts its own, so you get two
-      containers. Either delete those recipes, or set `ANKI_CONNECT_URL` inside them.
 
 ## Key Conventions
 
