@@ -5,5 +5,5 @@
     "webBindPort": 8765,
     "webCorsOriginList": ["*"],
     "ignoreOriginList": [],
-    "vault_root": "/Users/adam/Library/CloudStorage/OneDrive-Personal/Obsidian Vault"
+    "vault_root": "/Users/adam/Obsidian Vault"
 }
