@@ -1,109 +1,84 @@
 # Contributing to arete
 
-We follow a structured, iterative development process. Our goal is to make small, atomic changes and verify them completely before moving to the next task.
+One maintainer. Commit to `main` and push. No branch, no pull request.
 
-## 🚀 Development Lifecycle
+If you are an outside contributor, fork the repo and open a pull request. The rest of
+this file applies to you too.
 
-1.  **Pick a Task**: Focus on a single issue or feature at a time.
-2.  **Atomic Implementation**: Make the smallest necessary change to achieve the goal.
-3.  **Verify Immediately**: Run tests and linters *before* committing.
-4.  **Merge & Iterate**: Keep branches short-lived.
+## The one gate
 
-## 🌿 Branching Strategy
-
-We follow a standard Feature Branch Workflow:
-
--   **`main`**: Production-ready code. Always stable.
--   **`feat/name`**: New features (e.g., `feat/anki-connect-url`).
--   **`fix/issue`**: Bug fixes (e.g., `fix/windows-path-bug`).
--   **`chore/task`**: Maintenance (e.g., `chore/ci-pipeline`).
-
-**Rule**: Never push directly to `main`. Open a Pull Request for *every* change.
-
-## 🛠 Setup
-
-We use `uv` for Python dependency management and `just` for task automation. For the Obsidian plugin, we use `npm`.
-
-### 1. Install Dependencies
 ```bash
-# Python & CLI
+just qa
+```
+
+It runs, in order:
+
+| Step | Command |
+|---|---|
+| Python autofix | `just fix` |
+| Types | `just check-types` |
+| Import contracts | `just check-architecture` |
+| Docs references | `just check-docs` |
+| Python tests | `just test` |
+| Plugin format | `npm run format` |
+| Plugin tests | `just test-obsidian` |
+| Plugin lint | `just lint-obsidian` |
+| Plugin build | `just build-obsidian` |
+
+**If `just qa` passes, push.**
+
+`just qa` does not run `tests/integration`. Those need Docker. Run them when you touch
+the sync path, the bridge, or anything the container exercises:
+
+```bash
+just test-integration
+```
+
+## Setup
+
+```bash
 uv sync
 uv run pre-commit install
-
-# Obsidian Plugin
-cd obsidian-plugin
-npm install
-cd ..
+cd obsidian-plugin && npm install
 ```
 
-## ✅ Verification (The "Gold Standard")
+## Individual commands
 
-Before submitting any code, you must ensure the entire project is healthy. We have a single command for this:
+| Task | Command |
+|---|---|
+| Lint and format Python | `just lint` |
+| Autofix Python | `just fix` |
+| Type check | `just check-types` |
+| Python unit tests | `just test` |
+| Integration tests | `just test-integration` |
+| Build the plugin | `npm run build` |
+| Plugin tests | `npm test` |
+| Plugin lint | `npm run lint` |
 
-```bash
-just check
-```
-This command runs:
-- Python Formatting (`ruff format`)
-- Python Linting (`ruff check`)
-- Python Tests (`pytest`)
-- TypeScript Linting (`npm run lint`)
-- TypeScript Tests (`npm test`)
+## Testing
 
-**If `just check` passes, your code is ready.**
+Every fix gets a test that fails without it.
 
-## ⚡ Workflow Commands
+| Suite | Location | Scope |
+|---|---|---|
+| Python unit | `tests/`, mirroring `src/arete/` | One function or class. External systems mocked. |
+| Python e2e | `tests/e2e/` | A whole sync against a collection in `tmp_path`. No container. |
+| Python integration | `tests/integration/` | The bridge over AnkiConnect, against a container. |
+| Plugin | `obsidian-plugin/tests/` | UI logic, settings parsing, command invocation. |
 
-### Python / CLI
-| Task | Command | Description |
-| :--- | :--- | :--- |
-| **Lint & Format** | `just lint` | Run Ruff to check and format code. |
-| **Fix Issues** | `just fix` | Auto-fix Python linting errors. |
-| **Type Check** | `just check-types` | Run static type checking. |
-| **Unit Tests** | `just test` | Run fast unit tests. |
-| **Integration** | `just test-integration`| Run E2E tests (requires Docker). |
+The plugin mocks Obsidian's API at `obsidian-plugin/tests/obsidian-mock.ts`, wired
+through `moduleNameMapper` in `jest.config.js`.
 
-## 🧪 Testing Strategy
+> [!warning] Never point a test at a collection you study from
+> `tests/conftest.py` gives every test a throwaway `HOME`, and a session guard fails
+> the run if a real `collection.anki2` moves. Setting `ANKI_CONNECT_URL` bypasses the
+> container and defeats the first of those. The guard fires after the write, not
+> before.
 
-Every feature or fix **must** be accompanied by tests.
+## Architecture
 
-### 1. Python Unit Tests (`tests/`)
-- **Location**: Mirror the `src/arete` structure (e.g., `src/arete/core/pipeline.py` -> `tests/core/test_pipeline.py`).
-- **Scope**: Test individual functions and classes. Mock external dependencies (like Anki).
-- **Tool**: `pytest`.
+- **One-way sync.** Obsidian is the source of truth. We push to Anki and never pull back.
+- **The plugin wraps the CLI.** Keep logic in the CLI, where a test can reach it. The
+  plugin handles the interface and the process.
 
-### 2. Python Integration Tests (`tests/integration/`)
-- **Location**: `tests/integration/`.
-- **Scope**: End-to-end flows against a real Anki instance (dockerized).
-- **Rule**: Only add here if you need to verify actual Anki communication. Use specialized markers if needed.
-
-### 3. Plugin Tests (`obsidian-plugin/tests/`)
-- **Location**: `obsidian-plugin/tests/`.
-- **Scope**: Test UI logic, settings parsing, and command invocation.
-- **Mocking**: We use a `k` mock for Obsidian's API (App, Notice, FileSystem).
-
-### 4. Definition of Done
-Your task is done when:
-- [ ] You have added a test case that replicates the bug (for fixes) or verifies the feature.
-- [ ] `just test` passes (Unit).
-- [ ] `just check` passes (Full Suite).
-- [ ] You have verified the UX manually (for Plugin changes).
-
-### Obsidian Plugin
-| Task | Command | Description |
-| :--- | :--- | :--- |
-| **Build** | `npm run build` | Compile TypeScript to `main.js`. |
-| **Test** | `npm test` | Run Jest unit tests. |
-| **Lint** | `npm run lint` | Run ESLint. |
-
-### Documentation
-| Task | Command | Description |
-| :--- | :--- | :--- |
-| **Deploy** | `just deploy-docs` | Build and deploy MkDocs to GitHub Pages. |
-
-## 🏗 Architecture & Design
-
-- **One-Way Sync**: Obsidian is the source of truth. We push to Anki, we do not pull back.
-- **Plugin vs CLI**: The Plugin wraps the CLI. Keep complex logic in the CLI (`arete.main`) where it can be tested easily. The Plugin should primarily handle UI and process orchestration.
-
-Please review [ARCHITECTURE.md](./ARCHITECTURE.md) for deeper system design details.
+See [ARCHITECTURE.md](./ARCHITECTURE.md) for the system design.

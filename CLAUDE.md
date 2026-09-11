@@ -260,6 +260,9 @@ lives in `docs/history/`.
 
 ## Key Conventions
 
+- **Git**: one maintainer. Commit to `main` and push. No branch, no pull request.
+  Run `just qa` first. Add `just test-integration` when the change touches the sync
+  path or the bridge.
 - **Python**: 3.12+, managed with `uv`, async throughout
 - **TypeScript**: 6.x, esbuild bundler, Jest tests
 - Card IDs: `arete_` prefix + 26-char ULID, auto-generated on first sync
