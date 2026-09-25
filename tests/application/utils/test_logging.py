@@ -47,3 +47,14 @@ def test_rotate_logs(tmp_path):
     # Check count
     logs = list(tmp_path.glob("run_*.log"))
     assert len(logs) == 2
+
+
+def test_setup_logging_rotates_old_run_logs(tmp_path):
+    """rotate_logs used to be defined and tested but never called, so logs grew forever."""
+    for i in range(60):
+        (tmp_path / f"run_old_{i:02d}.log").write_text(str(i))
+    logger, _, _ = setup_logging(tmp_path, verbose=0)
+    for handler in logger.handlers:
+        handler.close()
+    # the 50 newest old logs survive, plus the one this run just opened
+    assert len(list(tmp_path.glob("run_*.log"))) == 51

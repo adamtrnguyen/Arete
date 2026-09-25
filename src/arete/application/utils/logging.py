@@ -49,8 +49,11 @@ class RunRecorder:
 
 
 def setup_logging(log_dir: Path, verbose: int) -> tuple[logging.Logger, Path, str]:
-    """Return (logger, log_path, run_id)."""
+    """Return (logger, log_path, run_id). Prunes old run logs first (see `rotate_logs`)."""
     log_dir.mkdir(parents=True, exist_ok=True)
+    # Was defined and tested but never called, so every run added a file forever
+    # (2,104 logs / 295 MB found on 2026-09-25).
+    rotate_logs(log_dir)
     run_id = f"{datetime.now().strftime('%Y%m%d-%H%M%S')}_{os.getpid()}"
     main_log_path = log_dir / f"run_{run_id}.log"
 

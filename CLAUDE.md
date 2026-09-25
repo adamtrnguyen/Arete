@@ -235,17 +235,10 @@ lives in `docs/history/`.
 - [ ] Reconcile-by-Arete-id lives in the AnkiConnect adapter only. The direct backend
       creates a second copy when a vault carries a note id Anki never issued. A strict
       xfail at `tests/e2e/test_local_sync.py:119` records it and fails the day it is fixed.
-- [ ] The three surfaces duplicate their wiring. `http_server` resolves config 11 times
-      and builds a bridge 8 times inline. Five Anki admin verbs are called only from
+- [ ] The three surfaces duplicate their wiring: `http_server` resolves config and builds
+      a bridge inline in each route (`grep -c 'resolve_config(\|get_anki_bridge('
+      src/arete/interface/http_server.py`). Five Anki admin verbs are called only from
       `interface/`, with no use-case between.
-
-**Windows only** — macOS and Ubuntu pass, so these need a Windows runner.
-
-- [ ] `test_common.py::test_to_list_path` and
-      `test_models.py::TestAnkiNote::test_to_dict_converts_path` emit OS separators
-      where a vault path should stay POSIX.
-- [ ] `test_graph_resolver.py::...resolves_nfd_filename_with_nfc_ref` raises
-      `UnicodeDecodeError` reading an NFD filename.
 
 **Release plumbing**
 
