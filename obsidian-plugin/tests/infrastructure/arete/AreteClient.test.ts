@@ -199,6 +199,18 @@ describe('AreteClient', () => {
 			await expect(promise).rejects.toThrow('CLI Error (1): Critical Error');
 		});
 
+		test('rejects spawn errors with the configured project path', async () => {
+			settings.project_root = '/missing/project';
+			const child = createMockChildProcess();
+			(spawn as jest.Mock).mockReturnValue(child);
+			const promise = client.modelStyling('Basic');
+			child.emit('error', new Error('spawn python3 ENOENT'));
+			child.emit('close', -2);
+			await expect(promise).rejects.toThrow(
+				'Could not start Arete (python3, project: /missing/project): spawn python3 ENOENT',
+			);
+		});
+
 		test('cli failure handling in JSON fallback parsing', async () => {
 			const mockChild = createMockChildProcess();
 			(spawn as jest.Mock).mockReturnValue(mockChild);
@@ -245,7 +257,7 @@ describe('AreteClient', () => {
 			await promise;
 			expect(spawn).toHaveBeenCalledWith(
 				'python3',
-				expect.arrayContaining(['models-templates', 'Basic']),
+				expect.arrayContaining(['model-templates', 'Basic']),
 				expect.any(Object),
 			);
 		});
@@ -285,6 +297,11 @@ describe('AreteClient', () => {
 
 			const css = await promise;
 			expect(css).toBe('body { color: blue; }');
+			expect(spawn).toHaveBeenCalledWith(
+				expect.any(String),
+				expect.arrayContaining(['model-css', 'Basic']),
+				expect.any(Object),
+			);
 		});
 	});
 

@@ -105,6 +105,8 @@ if (typeof document === 'undefined') {
 export const createMockElement = (tag?: string, opts?: any): any => {
 	const el: any = {
 		tag,
+		style: {},
+		scrollHeight: 100,
 		addClass: jest.fn().mockReturnThis(),
 		removeClass: jest.fn().mockReturnThis(),
 		empty: jest.fn().mockReturnThis(),
@@ -203,7 +205,28 @@ export const createMockSetting = (): any => {
 (global as any).mockCreateMockSetting = createMockSetting;
 
 jest.mock('obsidian', () => {
+	class Component {
+		private children: Component[] = [];
+		private callbacks: Array<() => void> = [];
+		addChild<T extends Component>(child: T): T {
+			this.children.push(child);
+			return child;
+		}
+		removeChild<T extends Component>(child: T): T {
+			this.children = this.children.filter((c) => c !== child);
+			child.unload();
+			return child;
+		}
+		register(callback: () => void) {
+			this.callbacks.push(callback);
+		}
+		unload() {
+			this.children.splice(0).forEach((c) => c.unload());
+			this.callbacks.splice(0).forEach((cb) => cb());
+		}
+	}
 	return {
+		Component,
 		App: jest.fn().mockImplementation(() => ({
 			vault: {
 				adapter: { getBasePath: jest.fn() },
@@ -301,9 +324,10 @@ jest.mock('obsidian', () => {
 		MarkdownView: class {},
 		Editor: class {},
 		TFile: class {},
-		ItemView: class {
+		ItemView: class extends Component {
 			contentEl = (global as any).mockCreateMockElement('div');
 			constructor(leaf: any) {
+				super();
 				/* no-op */
 			}
 		},

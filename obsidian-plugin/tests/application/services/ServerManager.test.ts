@@ -163,7 +163,7 @@ describe('ServerManager', () => {
 
 			expect(spawn).toHaveBeenCalledWith(
 				'python3',
-				expect.arrayContaining(['-m', 'arete', 'server']),
+				expect.arrayContaining(['-m', 'arete', 'serve', 'daemon']),
 				expect.any(Object),
 			);
 			const spawnCall = (spawn as jest.Mock).mock.calls[0];
@@ -186,7 +186,7 @@ describe('ServerManager', () => {
 
 			expect(spawn).toHaveBeenCalledWith(
 				'/usr/bin/python3',
-				expect.arrayContaining(['-m', 'arete', 'server']),
+				expect.arrayContaining(['-m', 'arete', 'serve', 'daemon']),
 				expect.any(Object),
 			);
 			// Cleanup

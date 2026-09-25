@@ -75,10 +75,12 @@ export class AreteClient {
 				const modelName = decodeURIComponent(parts[3]);
 				const action = parts[4].split('?')[0]; // remove query params
 				if (action === 'styling') {
-					args.push('models-styling');
+					// Must match the registered CLI command `arete anki model-css`.
+					args.push('model-css');
 					args.push(modelName);
 				} else if (action === 'templates') {
-					args.push('models-templates');
+					// Must match the registered CLI command `arete anki model-templates`.
+					args.push('model-templates');
 					args.push(modelName);
 				}
 			}
@@ -109,6 +111,13 @@ export class AreteClient {
 
 			console.log(`[Arete] Spawning: ${resolved.cmd} ${finalArgs.join(' ')}`);
 			const child = spawn(resolved.cmd, finalArgs, { cwd: resolved.cwd, env: resolved.env });
+			child.once('error', (error) => {
+				reject(
+					new Error(
+						`Could not start Arete (${resolved.cmd}, project: ${resolved.cwd}): ${error.message}`,
+					),
+				);
+			});
 
 			let stdout = '';
 			let stderr = '';

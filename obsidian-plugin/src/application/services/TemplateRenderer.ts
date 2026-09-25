@@ -1,6 +1,6 @@
 import Mustache from 'mustache';
 import { AreteClient } from '@/infrastructure/arete/AreteClient';
-import { App, MarkdownRenderer } from 'obsidian';
+import { App, Component, MarkdownRenderer } from 'obsidian';
 
 interface ModelData {
 	css: string;
@@ -10,6 +10,8 @@ interface ModelData {
 export class TemplateRenderer {
 	private repo: AreteClient;
 	private cache: Map<string, ModelData> = new Map();
+	private pendingModels = new Map<string, Promise<void>>();
+	private static modelLoadQueue: Promise<void> = Promise.resolve();
 	private app: App;
 	private mode: 'obsidian' | 'anki' = 'obsidian';
 
@@ -22,6 +24,10 @@ export class TemplateRenderer {
 		this.mode = mode;
 	}
 
+	private static usesUnsupportedConstruct(tmpl: string): boolean {
+		return /\{\{\s*(?:cloze|type|text):/.test(tmpl);
+	}
+
 	async preloadModel(modelName: string): Promise<void> {
 		console.log(`[Arete] Preloading model: ${modelName}`);
 		if (this.cache.has(modelName)) {
@@ -29,23 +35,30 @@ export class TemplateRenderer {
 			return;
 		}
 
-		try {
-			const [css, templates] = await Promise.all([
-				this.repo.modelStyling(modelName),
-				this.repo.modelTemplates(modelName),
-			]);
-			this.cache.set(modelName, { css, templates });
-			console.log(`[Arete] Model ${modelName} cached successfully.`);
-		} catch (e) {
-			console.warn(`Failed to load model data for ${modelName}`, e);
-			// Don't throw, just let render fail gracefully
-		}
+		const pending = this.pendingModels.get(modelName);
+		if (pending) return pending;
+
+		// Each CLI request can open the same Anki collection. Serialize across
+		// models and renderer instances, and share concurrent requests per model.
+		const load = TemplateRenderer.modelLoadQueue.then(async () => {
+			try {
+				const css = await this.repo.modelStyling(modelName);
+				const templates = await this.repo.modelTemplates(modelName);
+				this.cache.set(modelName, { css, templates });
+			} finally {
+				this.pendingModels.delete(modelName);
+			}
+		});
+		this.pendingModels.set(modelName, load);
+		TemplateRenderer.modelLoadQueue = load.catch((): void => undefined);
+		return load;
 	}
 
 	async render(
 		modelName: string,
 		templateType: 'Front' | 'Back',
 		fields: Record<string, string>,
+		opts: { sourcePath: string; component: Component },
 	): Promise<{ html: string; css: string } | null> {
 		console.log(`[Arete] Render request for ${modelName} (${templateType})`);
 		if (!this.cache.has(modelName)) {
@@ -77,6 +90,20 @@ export class TemplateRenderer {
 			return null;
 		}
 
+		// Mustache cannot evaluate Anki's field-prefixed constructs
+		// ({{cloze:Text}}, {{type:Back}}, {{text:Front}}). Rendering them would
+		// silently blank the card, so refuse and let the caller fall back.
+		if (
+			TemplateRenderer.usesUnsupportedConstruct(template) ||
+			(cardTemplates['Front'] &&
+				TemplateRenderer.usesUnsupportedConstruct(cardTemplates['Front']))
+		) {
+			console.warn(
+				`[Arete] Model '${modelName}' uses cloze/type/text constructs Mustache cannot render.`,
+			);
+			return null;
+		}
+
 		// Create a view with case-insensitive fallback and useful variants
 		const view: Record<string, string> = {};
 
@@ -98,7 +125,13 @@ export class TemplateRenderer {
 
 				try {
 					// Use MarkdownRenderer to render the field value (handles MD + LaTeX)
-					await MarkdownRenderer.render(this.app, val, dummy, '', null as any);
+					await MarkdownRenderer.render(
+						this.app,
+						val,
+						dummy,
+						opts.sourcePath,
+						opts.component,
+					);
 					renderedFields[key] = dummy.innerHTML;
 				} finally {
 					document.body.removeChild(dummy); // Cleanup

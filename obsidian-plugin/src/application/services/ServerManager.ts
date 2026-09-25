@@ -113,11 +113,14 @@ export class ServerManager {
 		const resolved = resolvePythonCommand(this.settings, vaultPath);
 		const args = [...resolved.args];
 
+		// Must match the registered CLI command `arete serve daemon`. There is no
+		// top-level `server` command; `--reload` is a `daemon` option, so it must
+		// follow the subcommand rather than precede it.
+		args.push('serve', 'daemon', '--port', (this.settings.server_port || 8777).toString());
+
 		if (this.settings.server_reload) {
 			args.push('--reload');
 		}
-
-		args.push('server', '--port', (this.settings.server_port || 8777).toString());
 
 		console.log(`[Arete] Spawning server: ${resolved.cmd} ${args.join(' ')}`);
 

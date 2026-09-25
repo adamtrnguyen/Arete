@@ -1,6 +1,6 @@
 import { TemplateRenderer } from '@/application/services/TemplateRenderer';
 import { AreteClient } from '@/infrastructure/arete/AreteClient';
-import { App, MarkdownRenderer } from 'obsidian';
+import { App, Component, MarkdownRenderer } from 'obsidian';
 import { DEFAULT_SETTINGS } from '@/domain/settings';
 
 jest.mock('@/infrastructure/arete/AreteClient');
@@ -9,13 +9,15 @@ describe('TemplateRenderer', () => {
 	let renderer: TemplateRenderer;
 	let mockApp: App;
 	let mockRepo: jest.Mocked<AreteClient>;
+	let opts: { sourcePath: string; component: Component };
 
 	beforeEach(() => {
+		jest.clearAllMocks();
+		opts = { sourcePath: 'Cards/Example.md', component: {} as Component };
 		mockApp = new (jest.requireMock('obsidian').App)() as App;
 		mockRepo = new AreteClient(DEFAULT_SETTINGS) as jest.Mocked<AreteClient>;
 
 		// Setup default mocks for repo
-		(AreteClient as jest.Mock).mockImplementation(() => mockRepo);
 		mockRepo.modelStyling.mockResolvedValue('.card { color: black; }');
 		// Return a nested structure as expected now
 		mockRepo.modelTemplates.mockResolvedValue({
@@ -36,9 +38,15 @@ describe('TemplateRenderer', () => {
 			el.innerHTML = `<b>${val.replace(/\*\*/g, '')}</b>`; // Simple mock transform
 		});
 
-		const result = await renderer.render('Basic', 'Front', { Front: '**Bold Text**' });
+		const result = await renderer.render('Basic', 'Front', { Front: '**Bold Text**' }, opts);
 
-		expect(MarkdownRenderer.render).toHaveBeenCalled();
+		expect(MarkdownRenderer.render).toHaveBeenCalledWith(
+			mockApp,
+			'**Bold Text**',
+			expect.anything(),
+			opts.sourcePath,
+			opts.component,
+		);
 		expect(result?.html).toContain('<b>Bold Text</b>');
 	});
 
@@ -46,7 +54,7 @@ describe('TemplateRenderer', () => {
 		renderer.setMode('anki');
 		(MarkdownRenderer.render as jest.Mock).mockClear();
 
-		const result = await renderer.render('Basic', 'Front', { Front: '**Bold Text**' });
+		const result = await renderer.render('Basic', 'Front', { Front: '**Bold Text**' }, opts);
 
 		expect(MarkdownRenderer.render).not.toHaveBeenCalled();
 		// Assuming the template just renders the field
@@ -61,7 +69,7 @@ describe('TemplateRenderer', () => {
 			el.innerHTML = '<p>Paragraph</p>';
 		});
 
-		const result = await renderer.render('Basic', 'Front', { Front: 'Text' });
+		const result = await renderer.render('Basic', 'Front', { Front: 'Text' }, opts);
 
 		// If escaped: &lt;p&gt;Paragraph&lt;/p&gt;
 		// If unescaped: <p>Paragraph</p>
@@ -69,34 +77,83 @@ describe('TemplateRenderer', () => {
 		expect(result?.html).not.toContain('&lt;p&gt;');
 	});
 
-	it('should handle missing model data gracefully', async () => {
+	it('surfaces a model-load failure so the UI can explain the fallback', async () => {
 		mockRepo.modelStyling.mockRejectedValue(new Error('Failed'));
-		await renderer.preloadModel('NonExistent');
-		const result = await renderer.render('NonExistent', 'Front', {});
-		expect(result).toBeNull();
+		await expect(renderer.render('NonExistent', 'Front', {}, opts)).rejects.toThrow('Failed');
 	});
 
 	it('should handle missing template types', async () => {
 		mockRepo.modelTemplates.mockResolvedValue({
 			'Card 1': { Front: '{{Front}}', Back: '' } as any,
 		});
-		const result = await renderer.render('Basic', 'Back', { Front: 'text' });
+		const result = await renderer.render('Basic', 'Back', { Front: 'text' }, opts);
 		expect(result).toBeNull();
 	});
 
 	it('should render FrontSide in Back template', async () => {
 		renderer.setMode('anki');
-		const result = await renderer.render('Basic', 'Back', {
-			Front: 'FrontVal',
-			Back: 'BackVal',
-		});
+		const result = await renderer.render(
+			'Basic',
+			'Back',
+			{
+				Front: 'FrontVal',
+				Back: 'BackVal',
+			},
+			opts,
+		);
 		expect(result?.html).toContain('FrontVal'); // FrontSide rendered
 		expect(result?.html).toContain('BackVal');
 	});
 
 	it('should return null if no templates found in model', async () => {
 		mockRepo.modelTemplates.mockResolvedValue({});
-		const result = await renderer.render('Empty', 'Front', {});
+		const result = await renderer.render('Empty', 'Front', {}, opts);
 		expect(result).toBeNull();
+	});
+
+	it('shares pending loads and never overlaps model reads, including different renderers', async () => {
+		let active = 0;
+		let maxActive = 0;
+		const read = async () => {
+			active++;
+			maxActive = Math.max(maxActive, active);
+			await new Promise((resolve) => setTimeout(resolve, 1));
+			active--;
+		};
+		mockRepo.modelStyling.mockImplementation(async () => {
+			await read();
+			return '';
+		});
+		mockRepo.modelTemplates.mockImplementation(async () => {
+			await read();
+			return {};
+		});
+		const other = new TemplateRenderer(mockApp, mockRepo);
+		await Promise.all([
+			renderer.preloadModel('Basic'),
+			renderer.preloadModel('Basic'),
+			renderer.preloadModel('Cloze'),
+			other.preloadModel('Other'),
+		]);
+		expect(maxActive).toBe(1);
+		expect(mockRepo.modelStyling).toHaveBeenCalledTimes(3);
+		expect(mockRepo.modelTemplates).toHaveBeenCalledTimes(3);
+	});
+
+	it('retries failed loads without poisoning the queue or cache', async () => {
+		mockRepo.modelStyling.mockRejectedValueOnce(new Error('busy'));
+		await expect(renderer.preloadModel('Basic')).rejects.toThrow('busy');
+		await renderer.preloadModel('Basic');
+		await renderer.preloadModel('Basic');
+		expect(mockRepo.modelStyling).toHaveBeenCalledTimes(2);
+		expect(mockRepo.modelTemplates).toHaveBeenCalledTimes(1);
+	});
+
+	it('keeps Cloze on the field-inspector fallback', async () => {
+		mockRepo.modelTemplates.mockResolvedValue({
+			'Card 1': { Front: '{{cloze:Text}}', Back: '{{cloze:Text}}' },
+		});
+		expect(await renderer.render('Cloze', 'Front', { Text: '{{c1::x}}' }, opts)).toBeNull();
+		expect(MarkdownRenderer.render).not.toHaveBeenCalled();
 	});
 });

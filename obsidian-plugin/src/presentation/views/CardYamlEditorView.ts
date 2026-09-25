@@ -1,4 +1,13 @@
-import { ItemView, WorkspaceLeaf, MarkdownView, Menu, setIcon, Notice, parseYaml } from 'obsidian';
+import {
+	Component,
+	ItemView,
+	WorkspaceLeaf,
+	MarkdownView,
+	Menu,
+	setIcon,
+	Notice,
+	parseYaml,
+} from 'obsidian';
 import { difficultyOutOfTen } from '@/domain/stats';
 import { EditorView, lineNumbers, keymap } from '@codemirror/view';
 import { EditorState, Annotation } from '@codemirror/state';
@@ -8,6 +17,7 @@ import type AretePlugin from '@/main';
 import { CardStatsModal } from '@/presentation/modals/CardStatsModal';
 import { DependencyField } from '@/presentation/components/DependencyField';
 import { CardRenderer } from '@/presentation/renderers/CardRenderer';
+import { renderCardPreviewFrame } from '@/presentation/renderers/CardPreviewFrame';
 
 export const YAML_EDITOR_VIEW_TYPE = 'arete-yaml-editor';
 
@@ -43,7 +53,34 @@ export class CardYamlEditorView extends ItemView {
 	private currentFilePath: string | null = null;
 	private isUpdatingFromMain = false;
 	private viewMode: ViewMode = ViewMode.Fields; // Default to Fields as requested "Card Edit Mode"
+	private previewSide: 'Front' | 'Back' = 'Front';
+	private fileModel = 'Basic';
+	private previewRevision = 0;
+	private previewComponent: Component | null = null;
 	private syncDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+	/**
+	 * Keys that describe a card rather than fill it. Everything else is an Anki
+	 * field and gets handed to the template renderer.
+	 */
+	private static readonly RESERVED_CARD_KEYS = new Set([
+		'id',
+		'ID',
+		'model',
+		'Model',
+		'deck',
+		'Deck',
+		'tags',
+		'Tags',
+		'anki',
+		'Anki',
+		'deps',
+		'Deps',
+		'markdown',
+		'cid',
+		'nid',
+		'__line__',
+	]);
 
 	constructor(leaf: WorkspaceLeaf, plugin: AretePlugin) {
 		super(leaf);
@@ -118,6 +155,7 @@ export class CardYamlEditorView extends ItemView {
 	}
 
 	async onClose() {
+		this.clearPreview();
 		if (this.editorView) {
 			this.editorView.destroy();
 			this.editorView = null;
@@ -131,6 +169,7 @@ export class CardYamlEditorView extends ItemView {
 		const activeFile = this.app.workspace.getActiveFile();
 		if (!activeFile) {
 			this.cards = [];
+			this.fileModel = 'Basic';
 			this.currentFilePath = null;
 			return;
 		}
@@ -142,6 +181,7 @@ export class CardYamlEditorView extends ItemView {
 		}
 
 		const cache = this.app.metadataCache.getFileCache(activeFile);
+		this.fileModel = cache?.frontmatter?.model || 'Basic';
 		if (cache?.frontmatter?.cards && Array.isArray(cache.frontmatter.cards)) {
 			this.cards = cache.frontmatter.cards.map((c: any) => this.normalizeCard(c));
 		} else {
@@ -479,6 +519,7 @@ export class CardYamlEditorView extends ItemView {
 	}
 
 	private setViewMode(mode: ViewMode) {
+		if (mode !== ViewMode.Preview) this.clearPreview();
 		this.viewMode = mode;
 		this.renderToolbar();
 
@@ -505,7 +546,7 @@ export class CardYamlEditorView extends ItemView {
 		const card = this.cards[this.currentCardIndex];
 		if (!card) return;
 
-		const modelName = card.model || 'Basic';
+		const modelName = this.getCardModel(card);
 		this.fieldEditorContainer.createDiv({
 			cls: 'arete-field-model-badge',
 			text: modelName,
@@ -575,21 +616,94 @@ export class CardYamlEditorView extends ItemView {
 		new DependencyField(container, this.app, initialValues, onChange);
 	}
 
+	private getCardModel(card: CardData): string {
+		return card.model || this.fileModel;
+	}
+
+	private clearPreview() {
+		this.previewRevision++;
+		if (this.previewComponent) this.removeChild(this.previewComponent);
+		this.previewComponent = null;
+		this.previewContainer?.empty();
+	}
+
 	private async renderPreview() {
 		if (!this.previewContainer) return;
-		this.previewContainer.empty();
-
+		this.clearPreview();
+		const revision = this.previewRevision;
 		const card = this.cards[this.currentCardIndex];
 		if (!card) return;
 
-		// Use shared renderer for consistency
-		await CardRenderer.render(
-			this.app,
-			this.previewContainer,
-			card,
-			this.currentFilePath || '',
-			this,
-		);
+		const modelName = this.getCardModel(card);
+		const sourcePath = this.currentFilePath || '';
+		const component = this.addChild(new Component());
+		this.previewComponent = component;
+		let rendered: { html: string; css: string } | null = null;
+		let failure = '';
+		try {
+			rendered = await this.plugin.templateRenderer.render(
+				modelName,
+				this.previewSide,
+				this.extractCardFields(card),
+				{ sourcePath, component },
+			);
+		} catch (error) {
+			console.error('[Arete] Preview failed', error);
+			failure =
+				error instanceof Error ? error.message.split('\n')[0].slice(0, 300) : String(error);
+		}
+		// A slower model fetch must not overwrite a newer card/side selection.
+		if (revision !== this.previewRevision) {
+			component.unload();
+			return;
+		}
+		if (!rendered) {
+			this.previewContainer.createDiv({
+				cls: 'arete-preview-message',
+				text: failure
+					? `Could not load card preview: ${failure}`
+					: 'Template preview unavailable; showing fields.',
+			});
+			const fallback = this.previewContainer.createDiv();
+			await CardRenderer.render(this.app, fallback, card, sourcePath, component);
+			if (revision !== this.previewRevision) component.unload();
+			return;
+		}
+
+		this.renderPreviewToggle(modelName);
+		renderCardPreviewFrame(this.app, this.previewContainer, rendered, sourcePath, component);
+	}
+
+	private renderPreviewToggle(modelName: string) {
+		if (!this.previewContainer) return;
+
+		const bar = this.previewContainer.createDiv({ cls: 'arete-preview-toggle' });
+		bar.createSpan({ cls: 'arete-preview-model', text: modelName });
+
+		const group = bar.createDiv({ cls: 'arete-preview-side-group' });
+		(['Front', 'Back'] as const).forEach((side) => {
+			const btn = group.createDiv({
+				cls: 'arete-preview-side-btn' + (this.previewSide === side ? ' is-active' : ''),
+				text: side,
+			});
+			btn.addEventListener('click', () => {
+				if (this.previewSide === side) return;
+				this.previewSide = side;
+				this.renderPreview();
+			});
+		});
+	}
+
+	/** Card keys minus structural keys, cast to the string map the renderer wants. */
+	private extractCardFields(card: CardData): Record<string, string> {
+		const fields: Record<string, string> = {};
+		for (const [key, value] of Object.entries(card)) {
+			if (CardYamlEditorView.RESERVED_CARD_KEYS.has(key)) continue;
+			if (value === null || value === undefined) continue;
+			if (typeof value === 'object') continue;
+			fields[key] = String(value);
+		}
+		return fields;
 	}
 
 	private createEditor() {
