@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 
@@ -17,6 +18,7 @@ from arete.application.config import AppConfig
 from arete.application.sync.parser import MarkdownParser
 from arete.application.sync.pipeline import run_pipeline
 from arete.application.sync.vault_service import VaultService
+from arete.domain.interfaces import AnkiBridge
 from arete.domain.models import UpdateItem
 from arete.infrastructure.persistence.cache import ContentCache
 
@@ -96,7 +98,7 @@ def edit(path: Path, card_id: str) -> None:
 
 
 def sync(root: Path, anki: FakeAnki, cache: ContentCache, **overrides) -> None:
-    fields = {
+    fields: dict[str, Any] = {
         "root_input": root,
         "vault_root": root,
         "anki_media_dir": root / "media",
@@ -110,7 +112,7 @@ def sync(root: Path, anki: FakeAnki, cache: ContentCache, **overrides) -> None:
     config = AppConfig.model_construct(**fields)
     vault = VaultService(root, cache, ignore_cache=False)
     parser = MarkdownParser(root, root / "media", ignore_cache=False, logger=LOG)
-    asyncio.run(run_pipeline(config, LOG, "run", vault, parser, anki, cache))
+    asyncio.run(run_pipeline(config, LOG, "run", vault, parser, cast(AnkiBridge, anki), cache))
 
 
 @pytest.fixture

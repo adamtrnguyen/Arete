@@ -4,7 +4,7 @@ import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from mcp.types import CallToolResult
+from mcp.types import CallToolResult, TextContent
 
 from arete.application.card_reader import find_concept_file
 from arete.interface.mcp_server import create_server
@@ -18,7 +18,9 @@ def mcp_server():
 
 def _text(result: CallToolResult) -> str:
     """Extract text from an MCPServer call_tool result."""
-    return result.content[0].text
+    content = result.content[0]
+    assert isinstance(content, TextContent), f"expected text content, got {content.type}"
+    return content.text
 
 
 # ------------------------------------------------------------------
