@@ -9,8 +9,39 @@
   through the Markdown renderer so MathJax works — with a Front/Back toggle. The
   card is drawn inside a sandboxed iframe, so the model CSS cannot leak into the
   rest of the UI, and card images and links resolve against the vault.
+- **Cloze and type-in cards preview too.** `{{cloze:Text}}` shows the active
+  deletion hidden on the front and revealed on the back; `{{type:Field}}` shows an
+  answer box. Math inside a deletion still renders.
+- **`obsidian://arete?vault=…&file=…&card=<id or position>`** opens a note at one
+  card in the card editor, so an agent in a terminal can show you the card it wrote.
+- **The card editor follows edits made outside Obsidian.** It reloaded before
+  Obsidian re-parsed the file, so an agent's edit appeared one edit late.
+- **`arete graph export`** and `POST /graph` return the resolved dependency graph.
+  The plugin's graph views now draw that instead of resolving references
+  themselves, so they get every resolver fix below.
 
 ### Fixed
+
+- **Sync could lose notes and review history.** Prune deleted notes created in the
+  same run, deleted the notes of cards that failed validation, and ran while files
+  could not be read. A failed or dry-run sync marked cards as sent. The id
+  write-back matched cards by position, not id.
+- **Card rendering:** `$n$1` leaked a math placeholder; stray backticks, `>` in
+  callout math and `<` in math broke cards; a `---` inside a field split the
+  frontmatter.
+- **Dependency graph and queue:** a cycle anywhere scrambled the study order;
+  prerequisites were collected depth-first; a deck filter matched name prefixes;
+  a note name shared by two files resolved to one at random; scalar and numeric
+  refs were dropped; duplicate card ids overwrote each other silently.
+- **Stats:** difficulty fell back to the wrong scale; review intervals mixed
+  seconds and days; "Gain" divided by a learning step (x288); card tag edits and
+  an empty card `deck:` were ignored; an unchanged vault re-sent every card.
+- **Obsidian plugin views:** the global graph never drew (no stylesheet; its "Fit"
+  button only re-rendered); hidden graph views re-rendered every 100 ms; the local
+  graph showed another note's graph for unsynced cards; the due badge read day
+  numbers as timestamps ("20721d ago"); dependency chips were unstyled.
+- **MCP servers hid failure reasons** after the mcp 2.x migration: a tool error
+  now says why it failed.
 
 - **The plugin asked the CLI for model data under the wrong command names.** It
   sent `models-styling` / `models-templates`; the CLI registers `model-css` /
