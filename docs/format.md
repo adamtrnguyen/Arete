@@ -1,0 +1,1 @@
+--8<-- "skills/arete/references/FORMAT.md"

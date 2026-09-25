@@ -1,54 +1,64 @@
-# Welcome to Arete
+# Arete
 
-**Arete** is a robust, fast, and feature-rich tool designed to synchronize your [Obsidian](https://obsidian.md/) vault to [Anki](https://apps.ankiweb.net/).
+**One-way sync from an Obsidian vault to Anki.** You write cards in a note's
+frontmatter; `arete` pushes them to Anki. Obsidian is the source of truth: nothing is
+written back except the ids Arete assigns.
 
-[![CI](https://github.com/adamtrnguyen/Arete/actions/workflows/ci.yml/badge.svg)](https://github.com/adamtrnguyen/Arete/actions/workflows/ci.yml)
-[![Coverage](coverage.svg)](coverage.svg)
-[![PyPI](https://img.shields.io/pypi/v/arete)](https://pypi.org/project/arete/)
-[![License](https://img.shields.io/github/license/adamtrnguyen/Arete)](https://github.com/adamtrnguyen/Arete/blob/main/LICENSE)
-
-It adheres to a strict **One-Way Sync** philosophy: **Obsidian is the Source of Truth**.
-
-> [!NOTE] 
-> **Arete v2.0**: This version introduces advanced features like Topological Study Queues and FSRS-based difficulty analysis.
-
----
-
-## Key Features
-
-- ⚡ **Near-Instant Sync**: SQL-based caching ensures only changed files are re-processed.
-- 📐 **Topological Sort**: Automatically creates Anki decks that respect prerequisite relationships.
-- 🧬 **FSRS Support**: Analyzes difficulty and retention using modern scheduling data.
-- 🧹 **Prune Mode**: Automatically deletes Anki cards that no longer exist in your vault.
-- 🩹 **Self-Healing**: Detects and fixes lost IDs or duplicate cards without manual intervention.
-- 📸 **Media Sync**: Seamlessly syncs images and attachments.
-- 💻 **Cross-Platform**: First-class support for macOS, Linux, and Windows (WSL).
-
-## Documentation
-
-- **[CLI Guide](CLI.md)**: Command-line usage, configuration, and syntax.
-- **[Obsidian Plugin](PLUGIN.md)**: How to use the companion Obsidian plugin.
-- **[Architecture](ARCHITECTURE.md)**: Deep dive into the project internals.
-- **[Troubleshooting](TROUBLESHOOTING.md)**: Solutions for common networking and sync issues.
-- **[Contributing](CONTRIBUTING.md)**: Guide for developers wanting to help out.
-
-## Installation
+## 1. Install
 
 ```bash
-git clone https://github.com/adamtrnguyen/Arete
-cd Arete
-uv sync
+uv tool install git+https://github.com/adamtrnguyen/Arete
+arete init          # pick the vault and the Anki profile
 ```
 
-## Basic Usage
+From the [latest release](https://github.com/adamtrnguyen/Arete/releases/latest):
 
-1.  **Initialize** your vault config:
-    ```bash
-    uv run arete init
-    ```
+| File | Goes to |
+|---|---|
+| `main.js`, `manifest.json`, `styles.css` | `<vault>/.obsidian/plugins/arete/` (Obsidian plugin) |
+| `arete_ankiconnect.ankiaddon` | Anki → Tools → Add-ons → Install from file |
 
-2.  **Sync** your notes:
-    ```bash
-    uv run arete sync
-    ```
+## 2. Write a card
 
+Add this to the top of any note:
+
+```yaml
+---
+arete: true
+deck: "Biology::Anatomy"
+cards:
+  - Front: What are the three layers of the skin?
+    Back: |-
+      Epidermis, dermis, hypodermis.
+  - model: Cloze
+    Text: |-
+      The {{c1::epidermis}} is the outermost layer of skin.
+---
+```
+
+Leave out `id:` and `anki:`. Arete writes both on the first sync.
+
+- [Card schema](cards.md): every key, note types, deck and tag rules.
+- [Writing cards](format.md): line breaks, math, cloze, dependencies.
+
+## 3. Sync
+
+```bash
+arete sync --dry-run    # show what would change
+arete sync
+```
+
+## 4. Study in prerequisite order
+
+List what a card needs first under `deps.requires`, then:
+
+```bash
+arete queue --deck "Biology" --dry-run
+arete queue --deck "Biology"      # fills the Arete::Queue filtered deck
+```
+
+## More
+
+- `arete <command> --help` for every flag; [CLI reference](CLI.md).
+- [Obsidian plugin](PLUGIN.md), [Troubleshooting](TROUBLESHOOTING.md).
+- Source and issues: [GitHub](https://github.com/adamtrnguyen/Arete).

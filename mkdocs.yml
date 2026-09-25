@@ -1,65 +1,32 @@
 site_name: Arete
-site_description: "Pro-grade synchronization from Obsidian to Anki with topological study queues and FSRS analytics."
-site_author: "Adam Nguyen"
+site_description: "One-way sync from an Obsidian vault to Anki."
 site_url: "https://adamtrnguyen.github.io/Arete/"
-
-repo_name: "adamtrnguyen/Arete"
 repo_url: "https://github.com/adamtrnguyen/Arete"
 
 theme:
   name: material
   features:
-    - navigation.instant
-    - navigation.tracking
-    - navigation.sections
-    - navigation.expand
     - content.code.copy
-  palette:
-    # Light mode
-    - media: "(prefers-color-scheme: light)"
-      scheme: default
-      primary: teal
-      accent: purple
-      toggle:
-        icon: material/brightness-7
-        name: Switch to dark mode
-    # Dark mode
-    - media: "(prefers-color-scheme: dark)"
-      scheme: slate
-      primary: teal
-      accent: lime
-      toggle:
-        icon: material/brightness-4
-        name: Switch to light mode
 
+# Only user-facing pages are published. Developer docs and history stay in the repo.
 nav:
-  - Home: index.md
-  - User Guide:
-    - CLI Usage: CLI.md
-    - Obsidian Plugin: PLUGIN.md
-    - Anki Plugin: ANKI_PLUGIN.md
-    - Troubleshooting: TROUBLESHOOTING.md
-  - Developer Reference:
-    - Contributing: CONTRIBUTING.md
-    - Architecture: ARCHITECTURE.md
-    - Publishing: publishing.md
-  - History:
-    - Duplicate storm (2026-09-08): history/2026-09-08-duplicate-storm.md
-    - Known issues 2.3.0 (2026-06-29): history/2026-06-29-known-issues-2.3.0.md
-    - v3.0.0 agentic plan, abandoned (2026-01-19): history/2026-01-19-v3.0.0-agentic-plan.md
-    - v2.1.0 plan (2026-01-19): history/2026-01-19-v2.1.0-plan.md
-    - v2.1.0 debt analysis (2026-01-19): history/2026-01-19-v2.1.0-debt-analysis.md
-    - Dependency graph walkthrough (2026-01-18): history/2026-01-18-dependency-graph-walkthrough.md
-    - v2.0.0 plan (2026-01-16): history/2026-01-16-v2.0.0-plan.md
+  - Start: index.md
+  - Card schema: cards.md
+  - Writing cards: format.md
+  - CLI: CLI.md
+  - Obsidian plugin: PLUGIN.md
+  - Troubleshooting: TROUBLESHOOTING.md
+
+exclude_docs: |
+  ARCHITECTURE.md
+  CONTRIBUTING.md
+  ANKI_PLUGIN.md
+  publishing.md
+  history/
 
 markdown_extensions:
   - admonition
-  - pymdownx.details
-  - pymdownx.superfences
-  - pymdownx.highlight:
-      anchor_linenums: true
-      line_spans: __span
-      pygments_lang_class: true
-  - pymdownx.inlinehilite
-  - pymdownx.snippets
   - tables
+  - pymdownx.superfences
+  - pymdownx.snippets:
+      check_paths: true

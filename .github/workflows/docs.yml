@@ -7,7 +7,7 @@ on:
     paths:
       - "docs/**"
       - "mkdocs.yml"
-      - "README.md"
+      - "skills/arete/references/**"
   workflow_dispatch:
 
 permissions:
