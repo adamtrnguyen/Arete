@@ -32,7 +32,7 @@ dependencies = [
     "anki==25.9.2",
     "python-ulid>=3.0.0",
     "networkx>=3.0",
-    "mcp[cli]>=1.0.0",
+    "mcp[cli]>=1.26,<2",
 ]
 
 [project.urls]
