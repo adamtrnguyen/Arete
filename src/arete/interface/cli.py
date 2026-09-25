@@ -468,5 +468,14 @@ def graph_check(
             for entry in result.skipped_files:
                 typer.echo(f"  {entry}")
 
-        if result.cycles or result.unresolved_refs or result.skipped_files:
+        if result.duplicate_ids:
+            typer.secho(
+                f"\nArete ids used by more than one card (only the first is synced/queued): "
+                f"{len(result.duplicate_ids)}",
+                fg="red",
+            )
+            for dup in result.duplicate_ids:
+                typer.echo(f"  {dup.card_id}: {', '.join(Path(f).name for f in dup.files)}")
+
+        if not result.ok:
             raise typer.Exit(1)

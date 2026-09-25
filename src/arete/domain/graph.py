@@ -45,6 +45,7 @@ class DependencyGraph:
     related: dict[str, list[str]] = field(default_factory=dict)  # id → [related ids]
     unresolved_refs: dict[str, list[str]] = field(default_factory=dict)  # id → [unresolved refs]
     skipped_files: list[tuple[str, str]] = field(default_factory=list)  # (path, error) not parsed
+    duplicate_ids: dict[str, list[str]] = field(default_factory=dict)  # id -> files using it
     _graph: nx.DiGraph = field(default_factory=nx.DiGraph, repr=False)
 
     @property

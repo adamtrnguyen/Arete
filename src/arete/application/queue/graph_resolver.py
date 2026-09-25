@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 import networkx as nx
 
@@ -50,6 +51,14 @@ class UnresolvedEntry:
 
 
 @dataclass
+class DuplicateIdEntry:
+    """An Arete id used by more than one card: only the first one is in the graph."""
+
+    card_id: str
+    files: list[str]
+
+
+@dataclass
 class GraphHealthResult:
     """Structured result of a graph health check."""
 
@@ -63,6 +72,7 @@ class GraphHealthResult:
     unresolved_refs: list[UnresolvedEntry]
     deck_filter: str | None = None
     skipped_files: list[str] = field(default_factory=list)  # "path: error"
+    duplicate_ids: list[DuplicateIdEntry] = field(default_factory=list)
 
 
 @dataclass
@@ -115,8 +125,12 @@ def build_graph(vault_root: Path) -> DependencyGraph:
     """
     graph = DependencyGraph()
 
-    # First pass: collect all cards and build file index
-    file_index: dict[str, list[str]] = {}  # basename -> list of card IDs
+    # First pass: collect all cards and index them BY FILE. A basename can name more
+    # than one file (math/Intro.md, bio/Intro.md), so it maps to files, not cards (G5).
+    file_cards: dict[str, list[str]] = {}  # file path -> card ids
+    by_basename: dict[str, list[str]] = {}  # NFC basename -> file paths
+    by_relpath: dict[str, str] = {}  # NFC vault-relative path without .md -> file path
+    card_file: dict[str, str] = {}  # card id -> file path
     pending_deps: list[tuple[str, list[str], list[str]]] = []  # (card_id, requires, related)
 
     for md_path in iter_markdown_files(vault_root):
@@ -134,11 +148,13 @@ def build_graph(vault_root: Path) -> DependencyGraph:
             if not isinstance(cards, list):
                 continue
 
-            # Get file basename for index. Normalize to NFC so user-typed
-            # YAML refs (NFC) match macOS filesystem basenames (NFD).
-            basename = normalize_filename(md_path.stem)  # "algebra.md" -> "algebra"
-            if basename not in file_index:
-                file_index[basename] = []
+            # Normalize to NFC so user-typed YAML refs (NFC) match macOS filesystem
+            # basenames (NFD).
+            fkey = str(md_path)
+            file_cards.setdefault(fkey, [])
+            by_basename.setdefault(normalize_filename(md_path.stem), []).append(fkey)
+            rel = md_path.relative_to(vault_root).with_suffix("").as_posix()
+            by_relpath[normalize_filename(rel)] = fkey
 
             for card in cards:
                 if not isinstance(card, dict):
@@ -166,24 +182,24 @@ def build_graph(vault_root: Path) -> DependencyGraph:
                     file_path=str(md_path),
                     line_number=line_number,
                 )
+                if card_id in graph.nodes:
+                    # G7: the second card used to overwrite the first silently.
+                    first = graph.nodes[card_id].file_path
+                    files = graph.duplicate_ids.setdefault(card_id, [first])
+                    files.append(str(md_path))
+                    logger.warning(f"Duplicate Arete id {card_id} in {files}")
+                    continue
                 graph.add_node(node)
-
-                # Add to file index
-                file_index[basename].append(card_id)
+                file_cards[fkey].append(card_id)
+                card_file[card_id] = fkey
 
                 # Collect deps for second pass
                 deps = card.get("deps", {})
                 if isinstance(deps, dict):
-                    requires = deps.get("requires", [])
-                    related = deps.get("related", [])
+                    requires = _as_refs(deps.get("requires"), card_id, graph)
+                    related = _as_refs(deps.get("related"), card_id, graph)
                     if requires or related:
-                        pending_deps.append(
-                            (
-                                card_id,
-                                requires if isinstance(requires, list) else [],
-                                related if isinstance(related, list) else [],
-                            )
-                        )
+                        pending_deps.append((card_id, requires, related))
 
         except Exception as e:
             # The file's cards are now absent from the graph: record it so `graph check`
@@ -192,78 +208,93 @@ def build_graph(vault_root: Path) -> DependencyGraph:
             graph.skipped_files.append((str(md_path), str(e)))
             continue
 
-    # Build reverse index: card_id -> basename of its file
-    card_to_basename: dict[str, str] = {}
-    for basename, card_ids_in_file in file_index.items():
-        for cid in card_ids_in_file:
-            card_to_basename[cid] = basename
+    index = _FileIndex(file_cards, by_basename, by_relpath, vault_root)
 
     # Second pass: resolve references and add edges
     for card_id, requires, related in pending_deps:
-        own_basename = card_to_basename.get(card_id)
-        for ref in requires:
-            if isinstance(ref, str):
-                resolved = _resolve_reference(ref, card_id, file_index, graph)
-                for target_id in resolved:
-                    # Skip same-file cards when resolving basename deps
-                    if target_id == card_id:
-                        continue
-                    if (
-                        not ref.startswith("arete_")
-                        and own_basename
-                        and normalize_filename(ref) == own_basename
+        own_file = card_file.get(card_id)
+        for refs, add_edge in ((requires, graph.add_requires), (related, graph.add_related)):
+            for ref in refs:
+                for target_id in _resolve_reference(ref, card_id, index, graph):
+                    # A note-level ref never points at the card's own file. Compared by
+                    # FILE, not basename: bio/Intro requiring math/Intro is a real edge (G5).
+                    if target_id == card_id or (
+                        not ref.startswith("arete_") and card_file.get(target_id) == own_file
                     ):
                         continue
-                    graph.add_requires(card_id, target_id)
-
-        for ref in related:
-            if isinstance(ref, str):
-                resolved = _resolve_reference(ref, card_id, file_index, graph)
-                for target_id in resolved:
-                    if target_id == card_id:
-                        continue
-                    if (
-                        not ref.startswith("arete_")
-                        and own_basename
-                        and normalize_filename(ref) == own_basename
-                    ):
-                        continue
-                    graph.add_related(card_id, target_id)
+                    add_edge(card_id, target_id)
 
     return graph
+
+
+@dataclass
+class _FileIndex:
+    file_cards: dict[str, list[str]]
+    by_basename: dict[str, list[str]]
+    by_relpath: dict[str, str]
+    vault_root: Path
+
+
+def _as_refs(value: Any, card_id: str, graph: DependencyGraph) -> list[str]:
+    """Normalize a `requires`/`related` value to a list of string refs (G6).
+
+    `requires: Algebra` (a scalar) and `[2024]` (YAML reads it as an int) used to be
+    dropped without a word. Anything that cannot be a reference is reported.
+    """
+    if value is None:
+        return []
+    items = value if isinstance(value, list) else [value]
+    refs: list[str] = []
+    for item in items:
+        if isinstance(item, (str, int, float)) and not isinstance(item, bool):
+            refs.append(str(item))
+        elif item is not None:
+            graph.add_unresolved(card_id, f"malformed ref: {item!r}")
+    return refs
 
 
 def _resolve_reference(
     ref: str,
     card_id: str,
-    file_index: dict[str, list[str]],
+    index: _FileIndex,
     graph: DependencyGraph,
 ) -> list[str]:
     """Resolve a dependency reference to card ID(s).
 
-    - arete_XXX: Direct card ID (returns single-element list if exists)
-    - basename: All cards in that file (returns list of all card IDs)
+    - arete_XXX: that card.
+    - basename: all cards in the ONE file with that name. When several files share it,
+      nothing is guessed: the ref is reported as ambiguous (G5).
+    - folder/basename: all cards in the file at that vault-relative path, which is how to
+      pick one of several namesakes.
 
     Tracks unresolved references in the graph.
     """
     if ref.startswith("arete_"):
-        # Direct card ID lookup
         if ref in graph.nodes:
             return [ref]
-        else:
-            logger.warning(f"Dependency reference '{ref}' not found in graph")
-            graph.add_unresolved(card_id, ref)
-            return []
+        logger.warning(f"Dependency reference '{ref}' not found in graph")
+        graph.add_unresolved(card_id, ref)
+        return []
+
+    ref_normalized = normalize_filename(ref)
+    if "/" in ref_normalized:
+        path = index.by_relpath.get(ref_normalized.strip("/"))
+        files = [path] if path else []
     else:
-        # Note basename -> all cards in that file. Normalize to match
-        # the NFC-normalized keys in file_index.
-        ref_normalized = normalize_filename(ref)
-        if ref_normalized in file_index:
-            return file_index[ref_normalized]
-        else:
-            logger.warning(f"Dependency reference '{ref}' - no file with basename '{ref}' found")
-            graph.add_unresolved(card_id, ref)
-            return []
+        files = index.by_basename.get(ref_normalized, [])
+
+    if len(files) == 1:
+        return index.file_cards[files[0]]
+    if len(files) > 1:
+        rels = sorted(Path(f).relative_to(index.vault_root).as_posix() for f in files)
+        logger.warning(f"Dependency reference '{ref}' is ambiguous: {rels}")
+        graph.add_unresolved(
+            card_id, f"{ref} (ambiguous: {', '.join(rels)}; use a folder/name ref)"
+        )
+        return []
+    logger.warning(f"Dependency reference '{ref}' - no file with basename '{ref}' found")
+    graph.add_unresolved(card_id, ref)
+    return []
 
 
 def detect_cycles(graph: DependencyGraph) -> list[list[str]]:
@@ -506,7 +537,12 @@ def check_graph_health(
         cid for cid in graph.nodes if not graph.get_prerequisites(cid) and graph.get_dependents(cid)
     ]
 
-    ok = len(cycles_raw) == 0 and len(unresolved_entries) == 0 and not skipped
+    duplicates = [
+        DuplicateIdEntry(card_id=cid, files=files)
+        for cid, files in sorted(full.duplicate_ids.items())
+        if cid in scope or not deck_filter
+    ]
+    ok = len(cycles_raw) == 0 and len(unresolved_entries) == 0 and not skipped and not duplicates
 
     return GraphHealthResult(
         ok=ok,
@@ -519,6 +555,7 @@ def check_graph_health(
         unresolved_refs=unresolved_entries,
         deck_filter=deck_filter,
         skipped_files=skipped,
+        duplicate_ids=duplicates,
     )
 
 

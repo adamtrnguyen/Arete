@@ -1,5 +1,6 @@
 """Tests for graph resolver and queue builder."""
 
+import pathlib
 from pathlib import Path
 
 import pytest
@@ -689,3 +690,66 @@ class TestDeckFilter:
         """G8: M1 requires P1 (deck Prob); filtered to Math, M1 was reported isolated."""
         health = check_graph_health(_deck_vault(tmp_path), deck_filter="Math")
         assert "arete_M1" not in [e.card_id for e in health.isolated_nodes]
+
+
+class TestSilentGraphProblemsAreReported:
+    """G5-G7 (2026-09-25): references and ids that vanished without a word."""
+
+    @staticmethod
+    def _note(root, rel, cards):
+        path = root / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        body = "".join(f"  - id: {cid}\n    Front: q\n{deps}" for cid, deps in cards)
+        path.write_text(f"---\narete: true\ndeck: D\ncards:\n{body}---\n")
+
+    def test_same_basename_in_two_folders_is_reported_not_merged(self, tmp_path):
+        """G5a: `Intro` resolved to math/Intro AND bio/Intro."""
+        self._note(tmp_path, "math/Intro.md", [("arete_M1", "")])
+        self._note(tmp_path, "bio/Intro.md", [("arete_B1", "")])
+        self._note(tmp_path, "Calc.md", [("arete_C", "    deps:\n      requires: [Intro]\n")])
+        graph = build_graph(tmp_path)
+        assert graph.get_prerequisites("arete_C") == []
+        assert any("ambiguous" in r for r in graph.unresolved_refs["arete_C"])
+
+    def test_a_path_qualified_ref_picks_one_file(self, tmp_path):
+        """G5: `math/Intro` is how to say which Intro."""
+        self._note(tmp_path, "math/Intro.md", [("arete_M1", "")])
+        self._note(tmp_path, "bio/Intro.md", [("arete_B1", "")])
+        self._note(tmp_path, "Calc.md", [("arete_C", "    deps:\n      requires: [math/Intro]\n")])
+        assert build_graph(tmp_path).get_prerequisites("arete_C") == ["arete_M1"]
+
+    def test_a_cross_folder_namesake_is_not_skipped_as_self(self, tmp_path):
+        """G5b: bio/Intro requiring math/Intro was dropped as a same-file reference."""
+        self._note(tmp_path, "math/Intro.md", [("arete_M1", "")])
+        self._note(
+            tmp_path, "bio/Intro.md", [("arete_B1", "    deps:\n      requires: [math/Intro]\n")]
+        )
+        assert build_graph(tmp_path).get_prerequisites("arete_B1") == ["arete_M1"]
+
+    def test_scalar_and_non_string_refs_are_resolved_or_reported(self, tmp_path):
+        """G6: `requires: Algebra` (not a list) and `[2024]` vanished silently."""
+        self._note(tmp_path, "Algebra.md", [("arete_A", "")])
+        self._note(tmp_path, "2024.md", [("arete_Y", "")])
+        self._note(
+            tmp_path,
+            "X.md",
+            [
+                ("arete_X1", "    deps:\n      requires: Algebra\n"),
+                ("arete_X2", "    deps:\n      requires: [2024]\n"),
+            ],
+        )
+        graph = build_graph(tmp_path)
+        assert graph.get_prerequisites("arete_X1") == ["arete_A"]
+        assert graph.get_prerequisites("arete_X2") == ["arete_Y"]
+
+    def test_a_duplicate_card_id_is_reported_and_fails_the_check(self, tmp_path):
+        """G7: the second file silently overwrote the first; health said ok."""
+        self._note(tmp_path, "a.md", [("arete_DUP", "")])
+        self._note(tmp_path, "b.md", [("arete_DUP", "")])
+        health = check_graph_health(tmp_path)
+        assert not health.ok
+        assert [d.card_id for d in health.duplicate_ids] == ["arete_DUP"]
+        assert sorted(pathlib.Path(f).name for f in health.duplicate_ids[0].files) == [
+            "a.md",
+            "b.md",
+        ]
