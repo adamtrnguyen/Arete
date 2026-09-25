@@ -296,3 +296,32 @@ async def test_prune_deletes_each_orphan_once_and_spares_default(
         assert not (orphans & left)
     finally:
         col.close()
+
+
+@pytest.mark.asyncio
+async def test_a_note_claimed_from_two_files_is_left_alone(
+    single_card_vault: Path, anki_base: Path, make_config, monkeypatch
+):
+    """B copied A's anki: block; syncing B overwrote A's note with B's card."""
+    from arete.application.utils.text import parse_frontmatter
+
+    await execute_sync(make_config(single_card_vault))
+    meta, _ = parse_frontmatter((single_card_vault / "Transformer.md").read_text("utf-8"))
+    nid = meta["cards"][0]["anki"]["nid"]
+    (single_card_vault / "Copy.md").write_text(
+        "---\narete: true\ndeck: Other\ncards:\n- Front: A different question\n"
+        f"  Back: B\n  anki:\n    nid: '{nid}'\n---\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("builtins.input", lambda _prompt="": "yes")
+
+    stats = await execute_sync(make_config(single_card_vault, prune=True))
+
+    assert stats.total_errors >= 2, "both claimants are reported"
+    col = open_collection(anki_base)
+    try:
+        note = col.get_note(int(nid))
+        assert "core components of a Transformer block" in note["Front"], "not overwritten"
+        assert col.find_notes("") == [int(nid)], "nothing created, nothing pruned"
+    finally:
+        col.close()

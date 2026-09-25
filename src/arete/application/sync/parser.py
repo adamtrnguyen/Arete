@@ -25,6 +25,8 @@ class MarkdownParser:
         self.ignore_cache = ignore_cache
         self.default_deck = default_deck
         self.logger = logger or logging.getLogger(__name__)
+        # nid -> the cards in other files that claim it too; set by the pipeline.
+        self.contested_nids: dict[str, list[str]] = {}
 
     @staticmethod
     def _extract_raw_nid(card: dict[str, Any]) -> str | None:
@@ -234,6 +236,18 @@ class MarkdownParser:
                 # NEW: Track as valid inventory for Prune Mode
                 # We must record the deck even if NID is missing (to protect the deck from deletion)
                 inventory.append({"nid": nid, "deck": deck_this})
+
+                if nid and nid in self.contested_nids:
+                    # Cards in two files claim one note: sending either would overwrite
+                    # the other's. The note stays in the inventory, so prune keeps it.
+                    others = ", ".join(self.contested_nids[nid])
+                    self.logger.error(
+                        f"[conflict] {md_path.name} card#{idx}: anki.nid {nid} is claimed by "
+                        f"{others}. Not syncing these cards; keep the anki: block only on the "
+                        "card that owns the note."
+                    )
+                    skipped_indices.append(idx)
+                    continue
 
                 # 4) Add Obsidian source location for linking back
                 try:

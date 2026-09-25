@@ -80,6 +80,23 @@ async def run_pipeline(
     if ids_total > 0:
         logger.info(f"[id] Assigned {ids_total} new Arete IDs across vault")
 
+    failed_files: set[Path] = set()  # a card here did not reach Anki; do not mark it synced
+
+    # -------- Stage 1.6: one Anki note claimed by cards in different files --------
+    claims: dict[str, list[tuple[Path, int]]] = {}
+    for path, meta, _fresh in compatible:
+        for idx, card in enumerate(meta.get("cards") or [], start=1):
+            if isinstance(card, dict) and (nid := parser._extract_raw_nid(card)):
+                claims.setdefault(nid, []).append((path, idx))
+    contested = {nid: c for nid, c in claims.items() if len({p for p, _ in c}) > 1}
+    parser.contested_nids = {
+        nid: [f"{p.name} card#{i}" for p, i in c] for nid, c in contested.items()
+    }
+    for nid, c in contested.items():
+        for p, i in c:
+            failed_files.add(p)
+            recorder.add_error(p, f"anki.nid {nid} is claimed by cards in several files", f"#{i}")
+
     # -------- Stage 2: build media index --------
     assert config.vault_root is not None  # Guaranteed by resolve_config
     name_index = build_filename_index(config.vault_root, logger)
@@ -89,7 +106,6 @@ async def run_pipeline(
     updates: list[UpdateItem] = []
     updates_lock = asyncio.Lock()
     unparsed_files: list[Path] = []
-    failed_files: set[Path] = set()  # a card here did not reach Anki; do not mark it synced
 
     # How many batches may be in flight. A backend that cannot take overlapping
     # calls serializes them itself, so this does not depend on which one we got.
