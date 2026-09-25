@@ -116,20 +116,3 @@ prune = false
 
 > [!IMPORTANT]
 > **WSL Media Sync**: If you are using WSL, ensure your Anki media directory is a regular Windows path that `arete` can resolve (e.g., `/mnt/c/Users/.../collection.media`).
-
-## Deprecated Commands
-
-The following commands still work but are hidden from `--help` and print a deprecation warning:
-
-| Old Command | New Command |
-| :--- | :--- |
-| `arete check-file` | `arete vault check` |
-| `arete fix-file` | `arete vault fix` |
-| `arete format` | `arete vault format` |
-| `arete server` | `arete serve daemon` |
-| `arete mcp-server` | `arete serve mcp` |
-| `arete anki queue` | `arete queue` |
-| `arete anki cards-suspend` | `arete anki suspend` |
-| `arete anki cards-unsuspend` | `arete anki unsuspend` |
-| `arete anki models-styling` | `arete anki model-css` |
-| `arete anki models-templates` | `arete anki model-templates` |

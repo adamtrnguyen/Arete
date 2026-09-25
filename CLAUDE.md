@@ -9,9 +9,8 @@ Arete is a one-way sync tool: Obsidian → Anki. Obsidian is the source of truth
 
 > [!warning] A second vault copy exists and is stale
 > `~/Library/CloudStorage/OneDrive-Personal/Obsidian Vault` is also a git repo. Its
-> `.git` last moved 2026-08-29, against 2026-09-10 for the live one. The
-> `arete_ankiconnect` config still names the OneDrive path as `vault_root`. Edit the
-> live vault, and check that setting before you trust a sync.
+> `.git` last moved 2026-08-29, against 2026-09-10 for the live one. Edit the live
+> vault (`~/Obsidian Vault`, which is also `arete_ankiconnect`'s `vault_root`).
 
 ## Architecture
 

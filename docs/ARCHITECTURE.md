@@ -86,7 +86,7 @@ src/arete/
 | `composition` | 2 | 161 | application, infrastructure, domain |
 | `application` | 23 | 4179 | domain (ports only) |
 | `infrastructure` | 7 | 2143 | domain |
-| `domain` | 7 | 821 | nothing in arete |
+| `domain` | 7 | 817 | nothing in arete |
 
 The import rules in the last column are enforced by `just check-architecture`
 (import-linter), not by convention.
@@ -165,9 +165,8 @@ The system is designed to be **Stateless** regarding logic. The state lives in O
 
 ## Convenience Features
 
--   **`debug_anki.py`**: A specialized diagnostic tool to verify connectivity between the CLI and Anki (handles WSL/Networking edge cases).
 -   **Self-Healing**: Automatic recovery from "Duplicate" errors by adopting existing NIDs, making it robust against manual edits in Anki.
--   **Integrated Logs**: Use `arete --open-logs` to quickly access detailed execution logs for debugging.
+-   **Integrated Logs**: Use `arete logs` to open detailed execution logs for debugging.
 
 ## Logging & Reporting
 
