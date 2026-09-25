@@ -1,5 +1,8 @@
 # Dependency Graph Feature — Walkthrough
 
+> [!note] Record, not current guidance
+> **Outcome:** Describes the plugin as built on 2026-01-18. Since then files moved (`application/graph_resolver.py` is now `application/queue/graph_resolver.py`) and `DependencyEditorView` / `CardSearchModal` were removed in 7a7ec27. Links below point at the original layout.
+
 Branch: `feature/dependency-graph`
 
 ## What Was Built

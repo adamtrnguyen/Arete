@@ -43,13 +43,14 @@ nav:
     - Contributing: CONTRIBUTING.md
     - Architecture: ARCHITECTURE.md
     - Publishing: publishing.md
-    - Plans:
-      - v2.0.0 Plan: plans/v2_0_0.md
-      - v2.1.0 Plan: plans/v2_1_0.md
-      - v2.1.0 Analysis: plans/v2_1_0_analysis.md
-      - v3.0.0 Plan (Agentic): plans/v3_0_0.md
-  - Internal Walkthroughs:
-    - Dependency Graph: walkthroughs/dependency-graph.md
+  - History:
+    - Duplicate storm (2026-09-08): history/2026-09-08-duplicate-storm.md
+    - Known issues 2.3.0 (2026-06-29): history/2026-06-29-known-issues-2.3.0.md
+    - v3.0.0 agentic plan, abandoned (2026-01-19): history/2026-01-19-v3.0.0-agentic-plan.md
+    - v2.1.0 plan (2026-01-19): history/2026-01-19-v2.1.0-plan.md
+    - v2.1.0 debt analysis (2026-01-19): history/2026-01-19-v2.1.0-debt-analysis.md
+    - Dependency graph walkthrough (2026-01-18): history/2026-01-18-dependency-graph-walkthrough.md
+    - v2.0.0 plan (2026-01-16): history/2026-01-16-v2.0.0-plan.md
 
 markdown_extensions:
   - admonition
