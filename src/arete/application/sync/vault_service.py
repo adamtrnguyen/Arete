@@ -11,6 +11,9 @@ from arete.application.utils.text import parse_frontmatter, rebuild_markdown_wit
 from arete.domain.interfaces import ContentCache
 from arete.domain.models import UpdateItem
 
+# _quick_check_file reasons for an Arete file whose cards (and nids) could not be read.
+UNREADABLE_REASONS = ("read_error", "no_or_bad_yaml", "no_deck")
+
 
 class VaultService:
     def __init__(self, root: Path, cache: ContentCache, ignore_cache: bool = False):
@@ -19,6 +22,9 @@ class VaultService:
         self.cache = cache
         self.ignore_cache = ignore_cache
         self.logger = logging.getLogger(__name__)
+        # Arete files the last scan could not read. Their note ids are unknowable, so
+        # nothing in Anki can be proven orphaned while this is non-empty (see prune).
+        self.unreadable: list[tuple[Path, str]] = []
 
     def scan_for_compatible_files(self) -> Iterable[tuple[Path, dict[str, Any], bool]]:
         """Iterate over all markdown files in the vault, check them for validity.
@@ -28,14 +34,36 @@ class VaultService:
                  is_fresh=True means we just parsed it (cache was cold/dirty).
                  is_fresh=False means we loaded meta from stat-cache (cache was warm).
         """
+        self.unreadable = []
         for p in iter_markdown_files(self.root):
             ok, _, reason, meta, is_fresh = self._quick_check_file(p)
+            if not ok and reason and reason.startswith(UNREADABLE_REASONS):
+                self.unreadable.append((p, reason))
             if ok and meta:
                 cards_count = len(meta.get("cards", []))
                 self.logger.debug(f"[vault] Accepted {p.name} cards={cards_count} fresh={is_fresh}")
                 yield p, meta, is_fresh
             else:
                 self.logger.debug(f"[vault] Skipped {p.name}: {reason}")
+
+    def _card_position(self, cards: list[Any], u: UpdateItem) -> int | None:
+        """Where to write this card's nid/cid: found by its Arete id, not its position.
+
+        A card inserted or moved while a sync ran shifts every index after it, and writing
+        by position then stamped one card's nid onto another card.
+        """
+        arete_id = u.note.arete_id if u.note else None
+        if arete_id:
+            for i, c in enumerate(cards):
+                if isinstance(c, dict) and sanitize(c.get("id", "")).strip() == arete_id:
+                    return i
+            self.logger.warning(
+                f"[write] {u.source_file.name}: card {arete_id} moved or vanished during "
+                f"sync; not writing nid {u.new_nid} (the next sync reconciles it)"
+            )
+            return None
+        i = u.source_index - 1  # a card without an id: position is all there is
+        return i if 0 <= i < len(cards) else None
 
     def _quick_check_file(
         self, md_file: Path
@@ -145,8 +173,8 @@ class VaultService:
                 cards = meta.get("cards", [])
                 changed = False
                 for u in ups:
-                    i = u.source_index - 1
-                    if 0 <= i < len(cards):
+                    i = self._card_position(cards, u)
+                    if i is not None:
                         card_data = cards[i]
                         # V2 format: write nid/cid into anki block
                         anki_block = card_data.get("anki", {})

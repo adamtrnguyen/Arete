@@ -283,21 +283,23 @@ class MarkdownParser:
                     content_hash=content_hash,
                     source_file=md_path,
                     source_index=idx,
+                    arete_id=card_id or None,
                 )
                 notes.append(note_obj)
-
-                # OPTIMIZATION: Save Deep Cache
-                # We save the fully rendered object so next time we can skip everything
-                try:
-                    if not self.ignore_cache:
-                        note_json = json.dumps(note_obj.to_dict())
-                        cache.set_note(md_path, idx, content_hash, note_json)
-                except Exception as e_cache:
-                    self.logger.warning(f"Failed to save deep cache for {md_path}: {e_cache}")
+                # The content cache is written by the pipeline AFTER Anki accepts the note.
+                # Writing it here marked a card as synced before the sync ran, so a failed
+                # sync or a --dry-run left the card permanently skipped.
 
             except Exception as e:
                 self.logger.error(f"[error] {md_path} card#{idx}: {e}")
                 skipped_indices.append(idx)
+
+        # A skipped card (empty field, bad model, render error) still owns its Anki note:
+        # the user is mid-edit, not deleting it. Protect its nid from --prune.
+        for idx in skipped_indices:
+            skipped = cards[idx - 1]
+            if isinstance(skipped, dict) and (nid := self._extract_raw_nid(skipped)):
+                inventory.append({"nid": nid, "deck": None})
 
         self.logger.debug(
             f"[parser] Finished {md_path.name}. notes={len(notes)}, "

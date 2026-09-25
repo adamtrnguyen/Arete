@@ -88,6 +88,7 @@ async def run_pipeline(
     work_q: asyncio.Queue[WorkItem | None] = asyncio.Queue(maxsize=max(1, config.queue_size))
     updates: list[UpdateItem] = []
     updates_lock = asyncio.Lock()
+    unparsed_files: list[Path] = []
 
     # How many batches may be in flight. A backend that cannot take overlapping
     # calls serializes them itself, so this does not depend on which one we got.
@@ -111,6 +112,7 @@ async def run_pipeline(
         except Exception as e:
             logger.error(f"[producer-error] {md_file}: {e}")
             recorder.add_error(md_file, str(e))
+            unparsed_files.append(md_file)  # its nids never reached the prune inventory
 
     async def consumer():
         while True:
@@ -164,6 +166,12 @@ async def run_pipeline(
                         updates.append(u)
                         if u.ok:
                             recorder.cards_synced += 1
+                            # A note created this run is in the vault now: protect it from
+                            # --prune, which otherwise saw its fresh nid as an orphan.
+                            if u.new_nid:
+                                recorder.add_inventory(
+                                    [{"nid": u.new_nid, "deck": u.note.deck if u.note else None}]
+                                )
                             if u.note and u.note.content_hash and not config.dry_run:
                                 # Refresh the hot-cache entry WITH the nid Anki assigned,
                                 # otherwise the cached note keeps nid=None and every warm
@@ -239,7 +247,15 @@ async def run_pipeline(
 
     # -------- Stage 5: Prune Orphans (Destructive) --------
     if config.prune:
-        await _prune_orphans(config, recorder, anki_bridge, logger)
+        blockers = [f"{p.name} ({why})" for p, why in vault_service.unreadable]
+        blockers += [f"{p.name} (parse crashed)" for p in unparsed_files]
+        if blockers:
+            logger.warning(
+                "[prune] REFUSED: these Arete files could not be read, so their notes cannot "
+                f"be told apart from orphans. Fix them and prune again: {', '.join(blockers)}"
+            )
+        else:
+            await _prune_orphans(config, recorder, anki_bridge, logger)
 
     total_generated = len(updates)
     total_imported = sum(1 for u in updates if u.ok)

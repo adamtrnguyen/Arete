@@ -35,6 +35,7 @@ class AnkiNote:
         nid: Existing Note ID from Obsidian frontmatter (if any).
         cid: Existing Card ID from Obsidian frontmatter (if any).
         content_hash: MD5 hash of the fields/tags for cache-aware syncing.
+        arete_id: The card's `id:` in the vault; how write-back finds the card again.
 
     """
 
@@ -52,6 +53,7 @@ class AnkiNote:
     cid: str | None = None
 
     content_hash: str | None = None
+    arete_id: str | None = None
 
     def to_dict(self) -> dict:
         from dataclasses import asdict
