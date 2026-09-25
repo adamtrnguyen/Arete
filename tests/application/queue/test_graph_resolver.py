@@ -154,7 +154,7 @@ cards:
       Back: "A lower bound on variance of an unbiased estimator."
 ---
 """
-        (tmp_path / f"{target_name_nfd}.md").write_text(target_md)
+        (tmp_path / f"{target_name_nfd}.md").write_text(target_md, encoding="utf-8")
 
         # Create the dependent file with an NFC-encoded ref (how the YAML
         # loader hands back user-typed accented strings).
@@ -172,7 +172,7 @@ cards:
       requires: ["{ref_nfc}"]
 ---
 """
-        (tmp_path / "UMVUE.md").write_text(dependent_md)
+        (tmp_path / "UMVUE.md").write_text(dependent_md, encoding="utf-8")
 
         # Sanity check the test setup actually exercises the bug — the two
         # forms must be byte-distinct, otherwise the test is vacuous.

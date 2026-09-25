@@ -105,7 +105,7 @@ class TestAnkiNote:
     def test_to_dict_converts_path(self, basic_note: AnkiNote):
         d = basic_note.to_dict()
         assert isinstance(d["source_file"], str)
-        assert d["source_file"] == "/vault/note.md"
+        assert d["source_file"] == str(Path("/vault/note.md"))
         assert d["model"] == "Basic"
         assert d["tags"] == ["math", "arithmetic"]
 

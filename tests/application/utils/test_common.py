@@ -55,7 +55,7 @@ def test_to_list_empty_string():
 
 def test_to_list_path():
     """Path objects are stringified."""
-    assert to_list(Path("/foo/bar")) == ["/foo/bar"]
+    assert to_list(Path("/foo/bar")) == [str(Path("/foo/bar"))]
 
 
 # ---------- sanitize edge cases ----------
