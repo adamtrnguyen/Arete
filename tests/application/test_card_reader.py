@@ -3,7 +3,6 @@
 from pathlib import Path
 
 from arete.application.card_reader import (
-    CardEntry,
     ConceptCardsResult,
     FileCardsResult,
     _extract_card_entry,
@@ -85,41 +84,6 @@ class TestExtractCardEntry:
         assert "model" not in entry
         assert "deps" not in entry
         assert entry["deck"] == "Deck"
-
-
-# ---------------------------------------------------------------------------
-# CardEntry.to_dict
-# ---------------------------------------------------------------------------
-
-
-class TestCardEntryToDict:
-    def test_full_card(self):
-        ce = CardEntry(
-            index=1,
-            arete_id="arete_001",
-            model="Basic",
-            deck="TestDeck",
-            front="Q?",
-            back="A.",
-            text=None,
-            back_extra="Extra",
-            deps={"requires": ["arete_002"]},
-        )
-        d = ce.to_dict()
-        assert d["index"] == 1
-        assert d["arete_id"] == "arete_001"
-        assert d["model"] == "Basic"
-        assert d["deck"] == "TestDeck"
-        assert d["Front"] == "Q?"
-        assert d["Back"] == "A."
-        assert "Text" not in d
-        assert d["Back Extra"] == "Extra"
-        assert d["deps"] == {"requires": ["arete_002"]}
-
-    def test_minimal_card(self):
-        ce = CardEntry(index=0, deck="Deck")
-        d = ce.to_dict()
-        assert d == {"index": 0, "deck": "Deck"}
 
 
 # ---------------------------------------------------------------------------

@@ -17,42 +17,6 @@ from arete.application.utils.text import normalize_filename, parse_frontmatter
 
 
 @dataclass
-class CardEntry:
-    """Summary of a single card extracted from frontmatter."""
-
-    index: int
-    arete_id: str | None = None
-    model: str | None = None
-    deck: str = ""
-    front: str | None = None
-    back: str | None = None
-    text: str | None = None
-    back_extra: str | None = None
-    deps: dict[str, Any] | None = None
-
-    def to_dict(self) -> dict[str, Any]:
-        """Serialize to the dict format expected by MCP/JSON responses."""
-        d: dict[str, Any] = {"index": self.index}
-        if self.arete_id:
-            d["arete_id"] = self.arete_id
-        if self.model:
-            d["model"] = self.model
-        d["deck"] = self.deck
-        for attr, key in [
-            ("front", "Front"),
-            ("back", "Back"),
-            ("text", "Text"),
-            ("back_extra", "Back Extra"),
-        ]:
-            val = getattr(self, attr)
-            if val:
-                d[key] = val
-        if self.deps:
-            d["deps"] = self.deps
-        return d
-
-
-@dataclass
 class ConceptCardsResult:
     """Result of reading cards for a concept from the vault."""
 
