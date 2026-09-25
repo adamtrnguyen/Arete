@@ -5,7 +5,6 @@ import * as path from 'path';
 describe('resolvePythonCommand', () => {
 	const baseSettings: any = {
 		python_path: 'python3',
-		arete_script_path: '',
 		project_root: '',
 	};
 
@@ -31,18 +30,6 @@ describe('resolvePythonCommand', () => {
 		expect(result.cmd).toBe('uv');
 		expect(result.args[0]).toBe('run');
 		expect(result.args[1]).toBe('python');
-		expect(result.args).toContain('-m');
-		expect(result.args).toContain('arete');
-	});
-
-	test('.py script path sets PYTHONPATH and adds -m arete', () => {
-		const settings = {
-			...baseSettings,
-			arete_script_path: '/home/user/arete/src/arete/main.py',
-		};
-		const result = resolvePythonCommand(settings);
-		// PYTHONPATH should be the grandparent of the script
-		expect(result.env['PYTHONPATH']).toContain('/home/user/arete/src');
 		expect(result.args).toContain('-m');
 		expect(result.args).toContain('arete');
 	});

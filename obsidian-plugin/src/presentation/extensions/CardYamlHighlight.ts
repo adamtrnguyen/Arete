@@ -27,7 +27,6 @@ const ROLE: Record<string, Role> = {
 	model: 'meta',
 	deck: 'meta',
 	tags: 'meta',
-	markdown: 'meta',
 };
 
 // `  - Front: …`, `  Back Extra: …`, `"Back Extra": …`

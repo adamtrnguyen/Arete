@@ -58,17 +58,7 @@ export class LinkCheckerService {
 			const cards = cache.frontmatter.cards;
 			cards.forEach((card: any, idx: number) => {
 				if (!card) return; // Skip null cards
-				// Fields to check: Front, Back, Text, Extra
-				const fields = [
-					card.Front,
-					card.front,
-					card.Back,
-					card.back,
-					card.Text,
-					card.text,
-					card.Extra,
-					card.extra,
-				];
+				const fields = [card.Front, card.Back, card.Text, card['Back Extra']];
 
 				fields.forEach((content) => {
 					if (typeof content === 'string') {

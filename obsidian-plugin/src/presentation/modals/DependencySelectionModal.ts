@@ -131,7 +131,7 @@ export class DependencySelectionModal extends Modal {
 			.map((c: any) => {
 				if (!c.id) return null;
 				// Clean up Front text for label (remove markdown for readability)
-				const rawFront = c.Front || c.front || 'Untitled Card';
+				const rawFront = c.Front || c.Text || 'Untitled Card';
 				// Simple strip of images/links for list view
 				const label = rawFront.replace(/!\[\[.*?\]\]/g, '[Image]').substring(0, 60);
 

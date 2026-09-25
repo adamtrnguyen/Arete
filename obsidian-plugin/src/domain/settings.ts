@@ -1,6 +1,5 @@
 export interface AretePluginSettings {
 	python_path: string;
-	arete_script_path: string;
 	debug_mode: boolean;
 	backend: 'auto' | 'direct' | 'ankiconnect';
 	workers: number;
@@ -35,7 +34,6 @@ export interface AretePluginSettings {
 
 export const DEFAULT_SETTINGS: AretePluginSettings = {
 	python_path: 'python3',
-	arete_script_path: '',
 	debug_mode: false,
 	backend: 'auto',
 	workers: 4,

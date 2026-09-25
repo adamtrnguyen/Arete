@@ -87,14 +87,7 @@ describe('AreteClient', () => {
 			expect(result).toBe(true);
 			expect(spawn).toHaveBeenCalledWith(
 				'python3',
-				expect.arrayContaining([
-					'-m',
-					'arete',
-					'anki',
-					'suspend',
-					'--cids',
-					'[1,2,3]',
-				]),
+				expect.arrayContaining(['-m', 'arete', 'anki', 'suspend', '--cids', '[1,2,3]']),
 				expect.any(Object),
 			);
 		});
@@ -224,25 +217,6 @@ describe('AreteClient', () => {
 			const result = await promise;
 			// Should return the raw output since JSON parsing failed
 			expect(result).toEqual({ output: 'some logs { invalid json } more logs' });
-		});
-
-		test('cli invocation with .py script path', async () => {
-			settings.arete_script_path = '/path/to/main.py';
-			const mockChild = createMockChildProcess();
-			(spawn as jest.Mock).mockReturnValue(mockChild);
-
-			const promise = client.invokeCLI('/anki/stats', { nids: [100] });
-			mockChild.stdout.emit('data', '{}');
-			mockChild.emit('close', 0);
-
-			await promise;
-			expect(spawn).toHaveBeenCalledWith(
-				'python3',
-				expect.arrayContaining(['-m', 'arete']),
-				expect.objectContaining({
-					env: expect.objectContaining({ PYTHONPATH: '/path' }),
-				}),
-			);
 		});
 
 		test('cli endpoint mapping for model templates', async () => {

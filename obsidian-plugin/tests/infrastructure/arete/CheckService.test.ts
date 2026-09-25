@@ -15,7 +15,6 @@ describe('CheckService', () => {
 		plugin = {
 			settings: {
 				python_path: 'python3',
-				arete_script_path: '',
 				project_root: '/mock/project',
 			},
 		};
@@ -96,20 +95,6 @@ describe('CheckService', () => {
 		await promise;
 
 		expect(Notice).toHaveBeenCalledWith('❌ Fix failed (check console)');
-	});
-
-	test('runFix with .py script path', async () => {
-		service.settings.arete_script_path = '/path/to/o2a/main.py';
-		const mockChild = createMockChildProcess();
-		(spawn as jest.Mock).mockReturnValue(mockChild);
-
-		const promise = service.runFix('test.md');
-		mockChild.emit('close', 0);
-		await promise;
-
-		const spawnCall = (spawn as jest.Mock).mock.calls[0];
-		const env = spawnCall[2].env;
-		expect(env.PYTHONPATH).toContain('/path/to');
 	});
 
 	test('testConfig calls exec (success)', async () => {

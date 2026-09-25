@@ -13,7 +13,6 @@ describe('AretePlugin Lifecycle and Commands', () => {
 		// Initialize settings to prevent undefined access during onload
 		plugin.settings = {
 			python_path: 'python3',
-			arete_script_path: '',
 			debug_mode: false,
 			backend: 'auto',
 			workers: 4,

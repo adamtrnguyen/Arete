@@ -113,19 +113,6 @@ export class AreteSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
-			.setName('Arete Script Path')
-			.setDesc('Absolute path to arete/main.py. Leave empty for global binary.')
-			.addText((text) =>
-				text
-					.setPlaceholder('/path/to/arete/main.py')
-					.setValue(this.plugin.settings.arete_script_path)
-					.onChange(async (value) => {
-						this.plugin.settings.arete_script_path = value;
-						await this.plugin.saveSettings();
-					}),
-			);
-
-		new Setting(containerEl)
 			.setName('Project Root')
 			.setDesc(
 				'Absolute path to the Arete project root (containing pyproject.toml). Required for "uv run".',

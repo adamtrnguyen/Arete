@@ -126,7 +126,6 @@ export class TemplateRenderer {
 			: undefined;
 		fields = { ...fields, ...derived };
 
-		// Create a view with case-insensitive fallback and useful variants
 		const view: Record<string, string> = {};
 
 		// Render markdown for all fields first if in Obsidian mode
@@ -165,13 +164,6 @@ export class TemplateRenderer {
 		}
 
 		Object.assign(view, renderedFields);
-		Object.keys(renderedFields).forEach((key) => {
-			const val = renderedFields[key];
-			const lower = key.toLowerCase();
-			const capital = lower.charAt(0).toUpperCase() + lower.slice(1);
-			if (!(lower in view)) view[lower] = val;
-			if (!(capital in view)) view[capital] = val;
-		});
 
 		console.log('[Arete] Template Render View:', view);
 		console.log(`[Arete] Template raw (${templateType}):`, template);

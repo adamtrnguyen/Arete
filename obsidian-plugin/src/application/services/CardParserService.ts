@@ -101,7 +101,6 @@ export class CardParserService {
 						const cleanBlock = block.replace(/^(\s*)-/, '$1 ');
 						const data = parseYaml(cleanBlock);
 						if (data && typeof data === 'object') {
-							// Safely access V2/nesting
 							// Check if 'anki' property exists and is an object (not null/array)
 							let ankiBlock: any = {};
 							if (

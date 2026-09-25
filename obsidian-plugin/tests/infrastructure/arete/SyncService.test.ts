@@ -20,7 +20,6 @@ describe('SyncService', () => {
 
 		settings = {
 			python_path: 'python3',
-			arete_script_path: '',
 			debug_mode: false,
 			backend: 'auto',
 			workers: 4,
@@ -91,25 +90,6 @@ describe('SyncService', () => {
 			]),
 			expect.any(Object),
 		);
-	});
-
-	test('runSync with .py script path', async () => {
-		service.settings.arete_script_path = '/path/to/o2a/main.py';
-		const mockChild = createMockChildProcess();
-		(spawn as jest.Mock).mockReturnValue(mockChild);
-
-		const syncPromise = service.runSync(false, null, false, updateStatusBar);
-		mockChild.emit('close', 0);
-		await syncPromise;
-
-		expect(spawn).toHaveBeenCalledWith(
-			'python3',
-			expect.arrayContaining(['-m', 'arete', 'sync', '--workers', '4', '/mock/vault/path']),
-			expect.any(Object),
-		);
-		const spawnCall = (spawn as jest.Mock).mock.calls[0];
-		const env = spawnCall[2].env;
-		expect(env.PYTHONPATH).toContain('/path/to');
 	});
 
 	describe('runSyncServer', () => {

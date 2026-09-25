@@ -14,9 +14,6 @@ export class AreteClient implements GraphSource, AnkiModelSource, CardStatsSourc
 		this.url = `http://127.0.0.1:${settings.server_port || 8777}`;
 	}
 
-	// NOTE: This class previously called AnkiConnect directly.
-	// It is now REFRACTORED to act as a client for the Arete Server OR CLI.
-
 	async invoke(endpoint: string, body: any = {}): Promise<any> {
 		if (this.settings.execution_mode === 'cli') {
 			return this.invokeCLI(endpoint, body);

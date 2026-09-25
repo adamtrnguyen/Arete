@@ -81,8 +81,8 @@ export class StatsService {
 								nidMap.set(nid, {
 									file,
 									index,
-									front: card.front || card.Front || 'Unknown',
-									back: card.back || card.Back || '',
+									front: card.Front || card.Text || 'Unknown',
+									back: card.Back || card['Back Extra'] || '',
 								});
 							}
 						}

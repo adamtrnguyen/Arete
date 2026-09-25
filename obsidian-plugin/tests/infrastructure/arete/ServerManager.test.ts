@@ -152,29 +152,6 @@ describe('ServerManager', () => {
 	});
 
 	describe('spawnServer logic', () => {
-		test('handles .py script path', async () => {
-			settings.arete_script_path = '/path/to/main.py';
-			const mockChild = createMockChildProcess();
-			(spawn as jest.Mock).mockReturnValue(mockChild);
-
-			(requestUrl as jest.Mock).mockResolvedValue({ status: 500 });
-			const startPromise = service.start();
-			await jest.advanceTimersByTimeAsync(100); // Allow first checkHealth to resolve
-
-			expect(spawn).toHaveBeenCalledWith(
-				'python3',
-				expect.arrayContaining(['-m', 'arete', 'serve', 'daemon']),
-				expect.any(Object),
-			);
-			const spawnCall = (spawn as jest.Mock).mock.calls[0];
-			const env = spawnCall[2].env;
-			expect(env.PYTHONPATH).toContain('/path');
-			// Cleanup
-			(requestUrl as jest.Mock).mockResolvedValue({ status: 200 });
-			await jest.advanceTimersByTimeAsync(1500);
-			await startPromise;
-		});
-
 		test('injects -m arete if missing from python_path', async () => {
 			settings.python_path = '/usr/bin/python3';
 			const mockChild = createMockChildProcess();

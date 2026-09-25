@@ -252,7 +252,7 @@ export class CardYamlEditorView extends ItemView {
 				item.addClass('is-active');
 			}
 
-			const frontText = card['front'] || card['Front'] || '';
+			const frontText = card['Front'] || card['Text'] || '';
 			if (frontText) {
 				item.setAttribute(
 					'title',
@@ -801,16 +801,7 @@ export class CardYamlEditorView extends ItemView {
 				}
 
 				// Use |- block scalar for safer string handling (quotes, etc.)
-				const isContentField = [
-					'front',
-					'back',
-					'text',
-					'extra',
-					'Front',
-					'Back',
-					'Text',
-					'Extra',
-				].includes(key);
+				const isContentField = ['Front', 'Back', 'Text', 'Back Extra'].includes(key);
 
 				if (typeof value === 'string') {
 					// Check for special characters that often need quoting or indicate math/LaTeX

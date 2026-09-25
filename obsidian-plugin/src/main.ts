@@ -606,7 +606,11 @@ export default class AretePlugin extends Plugin {
 
 	async loadSettings() {
 		const data = await this.loadData();
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, data);
+		// Keep only current settings, so keys from removed features are not saved back.
+		const known = Object.fromEntries(
+			Object.entries(data ?? {}).filter(([k]) => k in DEFAULT_SETTINGS),
+		);
+		this.settings = Object.assign({}, DEFAULT_SETTINGS, known);
 		this.statsCache = data?.statsCache;
 		const home = os.homedir();
 		if (this.settings.project_root.startsWith('~')) {

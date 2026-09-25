@@ -13,7 +13,6 @@ describe('AreteSettingTab Interaction Tests', () => {
 		app = new App();
 		plugin = new AretePlugin(app, { dir: 'test-plugin-dir' } as any);
 		plugin.settings = {
-			arete_script_path: '/old/path',
 			python_path: 'python',
 			debug_mode: false,
 			backend: 'auto',
@@ -49,16 +48,6 @@ describe('AreteSettingTab Interaction Tests', () => {
 
 		await setting.mockText._onChange('new-python');
 		expect(plugin.settings.python_path).toBe('new-python');
-		expect(plugin.saveSettings).toHaveBeenCalled();
-	});
-
-	test('Arete Script Path setting updates correctly', async () => {
-		settingTab.display();
-		const setting = findSettingByName('Arete Script Path');
-		expect(setting).toBeDefined();
-
-		await setting.mockText._onChange('/new/script/path.py');
-		expect(plugin.settings.arete_script_path).toBe('/new/script/path.py');
 		expect(plugin.saveSettings).toHaveBeenCalled();
 	});
 

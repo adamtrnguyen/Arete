@@ -17,7 +17,7 @@ export class CardRenderer {
 
 		for (const [key, value] of Object.entries(card)) {
 			// Exclude structural/system fields from rendering
-			if (['id', 'ID', 'model', 'Model', 'anki', 'deps'].includes(key)) {
+			if (['id', 'model', 'anki', 'deps'].includes(key)) {
 				continue;
 			}
 
