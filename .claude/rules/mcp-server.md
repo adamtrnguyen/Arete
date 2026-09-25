@@ -5,7 +5,7 @@ paths:
 
 # MCP Server Rules
 
-FastMCP-based server exposing Arete tools to AI agents. Entry point: `uv run arete serve mcp` (stdio transport).
+MCPServer-based (mcp 2.x; formerly FastMCP) server exposing Arete tools to AI agents. Entry point: `uv run arete serve mcp` (stdio transport).
 
 ## Available Tools
 

@@ -8,10 +8,11 @@ from __future__ import annotations
 
 import json
 import logging
+from importlib.metadata import version
 from pathlib import Path
 from typing import Any
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 
 from arete.application.config import AppConfig, resolve_config
 from arete.application.queue.service import QueueAlgo
@@ -22,9 +23,9 @@ from arete.domain.interfaces import AnkiBridge
 logger = logging.getLogger(__name__)
 
 
-def create_server() -> FastMCP:  # noqa: C901
+def create_server() -> MCPServer:  # noqa: C901
     """Create and configure the Arete MCP server with all tools."""
-    mcp = FastMCP(name="arete")
+    mcp = MCPServer("arete", version=version("arete"))
 
     _state: dict[str, Any] = {}
 

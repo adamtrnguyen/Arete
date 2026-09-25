@@ -24,7 +24,7 @@ interface → application → infrastructure → domain
 - `src/arete/domain/` — Models, interfaces (`AnkiBridge` ABC), constants
 - `src/arete/infrastructure/` — Adapters (AnkiConnect HTTP, AnkiDirect file-based, stats)
 - `src/arete/application/` — Use cases (sync, queue builder, graph resolver, config, stats)
-- `src/arete/interface/` — CLI (Typer), MCP server (FastMCP), HTTP server
+- `src/arete/interface/` — CLI (Typer), MCP server (MCPServer, mcp 2.x), HTTP server
 
 Import rules:
 - Domain imports nothing from other layers
@@ -157,7 +157,7 @@ uv run arete serve mcp
 
 ## MCP Server
 
-FastMCP-based server exposing Arete tools to AI agents (Claude, Gemini, etc.).
+MCPServer-based (mcp 2.x; formerly FastMCP) server exposing Arete tools to AI agents (Claude, Gemini, etc.).
 
 **Entry point:** `uv run arete serve mcp` (stdio transport)
 

@@ -1,9 +1,10 @@
-"""Unit tests for the Arete MCP server (FastMCP-based)."""
+"""Unit tests for the Arete MCP server (MCPServer-based)."""
 
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from mcp.types import CallToolResult
 
 from arete.application.card_reader import find_concept_file
 from arete.interface.mcp_server import create_server
@@ -15,9 +16,9 @@ def mcp_server():
     return create_server()
 
 
-def _text(result: tuple) -> str:
-    """Extract text from FastMCP call_tool result (tuple of (list[TextContent], dict))."""
-    return result[0][0].text
+def _text(result: CallToolResult) -> str:
+    """Extract text from an MCPServer call_tool result."""
+    return result.content[0].text
 
 
 # ------------------------------------------------------------------
