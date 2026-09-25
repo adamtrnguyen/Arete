@@ -617,16 +617,12 @@ async def test_sync_notes_calls_ensure_model(adapter):
             Response(
                 200, json={"result": [{"noteId": 123, "cards": [456]}], "error": None}
             ),  # notesInfo
-            Response(
-                200, json={"result": ["Front", "Back", "nid"], "error": None}
-            ),  # modelFieldNames
-            Response(200, json={"result": None, "error": None}),  # updateNoteFields
         ]
     )
 
     results = await adapter.sync_notes([item])
     assert results[0].ok is True
-    assert len(respx.calls) == 7
+    assert len(respx.calls) == 5
     assert "addNote" in respx.calls[3].request.content.decode()
     assert results[0].new_cid == "456"
 
@@ -654,47 +650,12 @@ async def test_get_deck_names(adapter):
 @pytest.mark.asyncio
 @respx.mock
 async def test_get_notes_in_deck(adapter):
+    """Every note in the deck, keyed by its note id; no field is read."""
     respx.post("http://mock-anki:8765").mock(
-        side_effect=[
-            Response(200, json={"result": [10, 11], "error": None}),  # findNotes
-            Response(
-                200,
-                json={
-                    "result": [
-                        {"noteId": 10, "fields": {"nid": {"value": "obs-1"}}},
-                        {"noteId": 11, "fields": {}},
-                    ],
-                    "error": None,
-                },
-            ),  # notesInfo
-        ]
+        return_value=Response(200, json={"result": [10, 11], "error": None})
     )
 
-    preview = await adapter.get_notes_in_deck("Math")
-    assert preview["obs-1"] == 10
-    assert 11 not in preview.values()
-
-
-@pytest.mark.asyncio
-@respx.mock
-async def test_get_notes_in_deck_html_strip(adapter):
-    """Verify that <p>123</p> is stripped to 123 for NID."""
-    respx.post("http://mock-anki:8765").mock(
-        side_effect=[
-            Response(200, json={"result": [100], "error": None}),
-            Response(
-                200,
-                json={
-                    "result": [{"noteId": 100, "fields": {"nid": {"value": "<p> 999 </p>"}}}],
-                    "error": None,
-                },
-            ),
-        ]
-    )
-
-    mapping = await adapter.get_notes_in_deck("test_deck")
-    assert "999" in mapping
-    assert mapping["999"] == 100
+    assert await adapter.get_notes_in_deck("Math") == {"10": 10, "11": 11}
 
 
 @pytest.mark.asyncio

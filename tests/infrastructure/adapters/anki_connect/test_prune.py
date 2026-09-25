@@ -46,8 +46,7 @@ async def test_prune_methods(adapter):
 
     # 2. get_notes_in_deck
     preview = await adapter.get_notes_in_deck("Math")
-    assert preview["obs-1"] == 10
-    assert 11 not in preview.values()
+    assert preview == {"10": 10, "11": 11}
 
     # 3. delete_notes
     assert await adapter.delete_notes([10, 11])

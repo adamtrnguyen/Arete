@@ -30,7 +30,7 @@ card_st = st.fixed_dictionaries(
     },
     optional={
         "id": st.from_regex(r"arete_[A-Z0-9]{26}", fullmatch=True),
-        "model": st.sampled_from(["O2A_Basic", "O2A_Cloze"]),
+        "model": st.sampled_from(["Basic", "Cloze"]),
         "deck": st.text(
             alphabet=st.characters(blacklist_categories=("Cs", "Cc", "Zl", "Zp")),
             min_size=1,

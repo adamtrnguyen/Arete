@@ -26,7 +26,6 @@ class AnkiConnectAdapter(AnkiBridge):
         """Initialize with AnkiConnect URL, auto-detecting WSL bridge if needed."""
         self.logger = logging.getLogger(__name__)
         self._known_decks = set()
-        self._model_fields_cache = {}
         self._source_field_ok: set[str] = set()
         # Per-run reconcile index: model -> normalized first field -> [nid, ...] (sorted).
         # Built lazily, collection-wide, the first time a card without a usable nid shows up.
@@ -230,7 +229,6 @@ class AnkiConnectAdapter(AnkiBridge):
             info = await self._invoke("notesInfo", notes=[existing_nid])
             result = await self._update_existing_note(item, note, html_fields, existing_nid, info)
             result.new_cid = await self._fetch_cid(existing_nid)
-            await self._populate_nid_field(note, existing_nid)
             self.logger.info(
                 f"[heal] {item.source_file} #{item.source_index} -> nid={existing_nid} "
                 f"cid={result.new_cid} deck={note.deck!r}"
@@ -252,7 +250,6 @@ class AnkiConnectAdapter(AnkiBridge):
         self._index_new_note(note, html_fields, int(new_id))
 
         new_cid_val = await self._fetch_cid(new_id)
-        await self._populate_nid_field(note, new_id)
 
         self.logger.info(
             f"[create] {item.source_file} #{item.source_index} -> nid={new_id} cid={new_cid_val}"
@@ -389,21 +386,6 @@ class AnkiConnectAdapter(AnkiBridge):
             self.logger.warning(f"Failed to fetch CID for nid={nid}: {e_cid}")
         return None
 
-    async def _populate_nid_field(self, note: Any, nid: int) -> None:
-        """Populate the 'nid' field on the Anki note if the model has one."""
-        try:
-            if note.model not in self._model_fields_cache:
-                self._model_fields_cache[note.model] = await self._invoke(
-                    "modelFieldNames", modelName=note.model
-                )
-            if "nid" in self._model_fields_cache[note.model]:
-                await self._invoke(
-                    "updateNoteFields",
-                    note={"id": nid, "fields": {"nid": str(nid)}},
-                )
-        except Exception as e_field:
-            self.logger.warning(f"Failed to populate 'nid' field: {e_field}")
-
     async def _invoke(self, action: str, **params) -> Any:
         payload = {"action": action, "version": 6, "params": params}
         max_retries = 2
@@ -505,36 +487,9 @@ class AnkiConnectAdapter(AnkiBridge):
         return arete_ids
 
     async def get_notes_in_deck(self, deck_name: str) -> dict[str, int]:
-        # 1. Find notes in deck
-        query = f'"deck:{deck_name}"'
-        nids = await self._invoke("findNotes", query=query)
-        if not nids:
-            return {}
-
-        # 2. Get note info to extract 'nid' field
-        info = await self._invoke("notesInfo", notes=nids)
-        result = {}
-        for note in info:
-            note_id = note.get("noteId")
-            fields = note.get("fields", {})
-            nid_val = None
-            if "nid" in fields:
-                nid_val = fields["nid"]["value"]
-                # Strip HTML
-                if nid_val.startswith("<p>") and nid_val.endswith("</p>"):
-                    nid_val = nid_val[3:-4].strip()
-
-            if nid_val:
-                result[nid_val] = note_id
-            else:
-                self.logger.debug(
-                    f"[anki] Note {note_id} has no valid NID. raw_field={fields.get('nid')}"
-                )
-
-        self.logger.debug(
-            f"[anki] get_notes_in_deck found {len(result)} notes with NIDs in {deck_name}"
-        )
-        return result
+        """Every note in the deck, keyed by its note id as a string (as the direct backend)."""
+        nids = await self._invoke("findNotes", query=f'"deck:{deck_name}"')
+        return {str(nid): nid for nid in nids or []}
 
     async def delete_notes(self, nids: list[int]) -> bool:
         self.logger.info(f"Deleting notes: {nids}")

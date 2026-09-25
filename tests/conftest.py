@@ -146,27 +146,8 @@ def test_deck(anki_url):
 
 @pytest.fixture
 def setup_anki(anki_url, test_deck):
-    """Ensure O2A_Basic model exists with expected fields."""
-    # Create it (ignore error if exists)
-    requests.post(
-        anki_url,
-        json={
-            "action": "createModel",
-            "version": 6,
-            "params": {
-                "modelName": "O2A_Basic",
-                "inOrderFields": ["Front", "Back", "nid"],
-                "css": "",
-                "cardTemplates": [
-                    {
-                        "Name": "Card 1",
-                        "Front": "{{Front}}",
-                        "Back": "{{FrontSide}}\n\n<hr id=answer>\n\n{{Back}}<div style='display:none'>{{nid}}</div>",
-                    }
-                ],
-            },
-        },
-    )
+    """A clean test deck. The Basic and Cloze note types ship with Anki."""
+    return test_deck
 
 
 @pytest.fixture

@@ -29,18 +29,6 @@ def init_direct_collection(base_path: Path):
     # Initialize collection (creates standard tables)
     col = Collection(str(col_path))
 
-    # Setup O2A_Basic model
-    if not col.models.by_name("O2A_Basic"):
-        m = col.models.new("O2A_Basic")
-        col.models.add_field(m, col.models.new_field("Front"))
-        col.models.add_field(m, col.models.new_field("Back"))
-        col.models.add_field(m, col.models.new_field("nid"))
-        t = col.models.new_template("Card 1")
-        t["qfmt"] = "{{Front}}"
-        t["afmt"] = "{{FrontSide}}\n\n<hr id=answer>\n\n{{Back}}"
-        col.models.add_template(m, t)
-        col.models.add(m)
-
     col.close()
 
 
@@ -66,7 +54,7 @@ async def test_bridge_sync_add_new(bridge_runner):
     await bridge_runner.delete_deck(deck)
 
     note = AnkiNote(
-        model="O2A_Basic",
+        model="Basic",
         deck=deck,
         fields={"Front": "Hello Symmetry", "Back": "World"},
         tags=["bridge-test"],
@@ -100,7 +88,7 @@ async def test_bridge_sync_update_existing(bridge_runner):
 
     # 1. Create
     initial_note = AnkiNote(
-        model="O2A_Basic",
+        model="Basic",
         deck=deck,
         fields={"Front": "Update Me", "Back": "Initial"},
         tags=["initial"],
@@ -116,7 +104,7 @@ async def test_bridge_sync_update_existing(bridge_runner):
 
     # 2. Update
     updated_note = AnkiNote(
-        model="O2A_Basic",
+        model="Basic",
         deck=deck,
         fields={"Front": "Update Me", "Back": "Updated Content"},
         tags=["updated"],
@@ -144,7 +132,7 @@ async def test_bridge_get_notes_in_deck(bridge_runner):
     await bridge_runner.delete_deck(deck)
 
     n1 = AnkiNote(
-        model="O2A_Basic",
+        model="Basic",
         deck=deck,
         fields={"Front": "A"},
         tags=[],
@@ -154,7 +142,7 @@ async def test_bridge_get_notes_in_deck(bridge_runner):
         end_line=1,
     )
     n2 = AnkiNote(
-        model="O2A_Basic",
+        model="Basic",
         deck=deck,
         fields={"Front": "B"},
         tags=[],
@@ -185,7 +173,7 @@ async def test_bridge_delete_notes(bridge_runner):
     await bridge_runner.delete_deck(deck)
 
     n1 = AnkiNote(
-        model="O2A_Basic",
+        model="Basic",
         deck=deck,
         fields={"Front": "A"},
         tags=[],
