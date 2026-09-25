@@ -88,3 +88,44 @@ describe('CardYamlEditorView preview', () => {
 		);
 	});
 });
+
+describe('CardYamlEditorView live reload', () => {
+	// An agent edits the file on disk; the view must show that edit, not the one before.
+	let view: any;
+	let app: App;
+	const note = { path: 'FlashAttention.md', stat: { mtime: 1000 } };
+	beforeEach(() => {
+		jest.clearAllMocks();
+		app = new (jest.requireMock('obsidian').App)();
+		view = new CardYamlEditorView({} as any, {} as any);
+		view.app = app;
+		view.syncFromMain = jest.fn();
+		(app.workspace.getActiveFile as jest.Mock).mockReturnValue(note);
+	});
+
+	it('reloads when the active file has been re-parsed', () => {
+		view.onFileParsed(note);
+		expect(view.syncFromMain).toHaveBeenCalledTimes(1);
+	});
+
+	it('ignores other files', () => {
+		view.onFileParsed({ path: 'Other.md', stat: { mtime: 1000 } });
+		expect(view.syncFromMain).not.toHaveBeenCalled();
+	});
+
+	it('skips only the echo of its own write, whatever the parse delay', async () => {
+		(app.fileManager.processFrontMatter as jest.Mock).mockImplementation(async () => {
+			note.stat.mtime = 2000; // the view's own write
+		});
+		view.editorView = { state: { doc: { toString: () => 'Front: q\nBack: a' } } };
+		view.viewMode = 'source';
+		view.parseYamlToCard = jest.fn().mockReturnValue({ Front: 'q', Back: 'a' });
+		await view.syncToMain();
+		view.onFileParsed(note); // re-parse of that write, arriving after any timer
+		expect(view.syncFromMain).not.toHaveBeenCalled();
+
+		note.stat.mtime = 3000; // then an agent edits the file
+		view.onFileParsed(note);
+		expect(view.syncFromMain).toHaveBeenCalledTimes(1);
+	});
+});

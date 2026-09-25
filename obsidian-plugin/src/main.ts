@@ -12,6 +12,7 @@ import * as path from 'path';
 import * as os from 'os';
 
 import { AretePluginSettings, DEFAULT_SETTINGS } from '@domain/settings';
+import { resolveCardIndex } from '@domain/cardRef';
 
 import { CardYamlEditorView, YAML_EDITOR_VIEW_TYPE } from '@presentation/views/CardYamlEditorView';
 import { DashboardView, DASHBOARD_VIEW_TYPE } from '@presentation/views/DashboardView';
@@ -250,6 +251,12 @@ export default class AretePlugin extends Plugin {
 		// 4. Settings
 		this.addSettingTab(new AreteSettingTab(this.app, this));
 
+		// obsidian://arete?vault=<vault>&file=<path>&card=<arete id | 1-based position>
+		// lets a terminal agent put the card it just wrote in front of the user.
+		this.registerObsidianProtocolHandler('arete', (params) => {
+			void this.showCard(params.file, params.card);
+		});
+
 		// 5. YAML Editor command (no ribbon icon — context-dependent)
 		this.addCommand({
 			id: 'open-yaml-editor',
@@ -292,24 +299,6 @@ export default class AretePlugin extends Plugin {
 
 					const cache = this.statsService.getCache();
 					const conceptStats = cache.concepts[file.path];
-
-					// DEBUG: Log first 10 cards and the requested NID
-					if (nid) {
-						console.log(
-							`[Arete Debug] Looking up NID: ${nid} (type: ${typeof nid}) for file: ${file.name}`,
-						);
-						if (conceptStats?.cardStats) {
-							const keys = Object.keys(conceptStats.cardStats);
-							if (!conceptStats.cardStats[nid]) {
-								console.warn(
-									`[Arete Debug] KEY NOT FOUND. Available keys sample: ${keys.slice(0, 5).join(', ')}`,
-								);
-								console.warn(
-									`[Arete Debug] Type of search key: ${typeof nid}, Type of first available key: ${typeof keys[0]}`,
-								);
-							}
-						}
-					}
 
 					if (!conceptStats || !conceptStats.cardStats) return null;
 
@@ -404,8 +393,8 @@ export default class AretePlugin extends Plugin {
 			workspace.revealLeaf(leaf);
 			if (focusCardIndex !== undefined) {
 				const view = leaf.view as CardYamlEditorView;
-				if (view?.focusCard) {
-					view.focusCard(focusCardIndex);
+				if (view?.showCardIndex) {
+					await view.showCardIndex(focusCardIndex);
 				}
 			}
 		}
@@ -420,6 +409,41 @@ export default class AretePlugin extends Plugin {
 				view.focusCard(cardIndex);
 			}
 		}
+	}
+
+	/** Open a note and show one card in the Card Editor (see the obsidian://arete handler). */
+	async showCard(filePath?: string, card?: string): Promise<void> {
+		const path = filePath && !filePath.endsWith('.md') ? `${filePath}.md` : filePath;
+		const file = path ? this.app.vault.getFileByPath(path) : null;
+		if (!file) {
+			new Notice(`Arete: no note at ${filePath}`);
+			return;
+		}
+		await this.app.workspace.getLeaf(false).openFile(file);
+		await this.waitForParse(file);
+		const cards = this.app.metadataCache.getFileCache(file)?.frontmatter?.cards;
+		const index = resolveCardIndex(Array.isArray(cards) ? cards : [], card);
+		if (index === null) {
+			new Notice(`Arete: ${file.basename} has no card ${card ?? ''}`.trim());
+			return;
+		}
+		await this.activateYamlEditorView(index);
+	}
+
+	/** A note written a moment ago may not be parsed yet; wait for it, briefly. */
+	private waitForParse(file: TFile, timeoutMs = 2000): Promise<void> {
+		if (this.app.metadataCache.getFileCache(file)?.frontmatter) return Promise.resolve();
+		return new Promise((resolve) => {
+			const done = () => {
+				this.app.metadataCache.offref(ref);
+				clearTimeout(timer);
+				resolve();
+			};
+			const ref = this.app.metadataCache.on('changed', (changed) => {
+				if (changed.path === file.path) done();
+			});
+			const timer = setTimeout(done, timeoutMs);
+		});
 	}
 
 	async activateLocalGraphView(cardId?: string) {

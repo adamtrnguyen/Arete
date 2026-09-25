@@ -7,6 +7,7 @@ import {
 	setIcon,
 	Notice,
 	parseYaml,
+	TFile,
 } from 'obsidian';
 import { difficultyOutOfTen } from '@/domain/stats';
 import { EditorView, lineNumbers, keymap } from '@codemirror/view';
@@ -65,6 +66,7 @@ export class CardYamlEditorView extends ItemView {
 
 	private currentFilePath: string | null = null;
 	private isUpdatingFromMain = false;
+	private ownWriteMtime: number | null = null;
 	private viewMode: ViewMode = ViewMode.Fields; // Default to Fields as requested "Card Edit Mode"
 	private previewSide: 'Front' | 'Back' = 'Front';
 	private fileModel = 'Basic';
@@ -154,14 +156,7 @@ export class CardYamlEditorView extends ItemView {
 			}),
 		);
 
-		this.registerEvent(
-			this.app.vault.on('modify', (file) => {
-				const activeFile = this.app.workspace.getActiveFile();
-				if (activeFile && activeFile.path === file.path && !this.isUpdatingFromMain) {
-					this.syncFromMain();
-				}
-			}),
-		);
+		this.registerEvent(this.app.metadataCache.on('changed', (file) => this.onFileParsed(file)));
 
 		// Keyboard navigation on index
 		this.indexContainer?.addEventListener('keydown', (e) => this.handleKeyNavigation(e));
@@ -885,11 +880,22 @@ export class CardYamlEditorView extends ItemView {
 					frontmatter.cards[this.currentCardIndex] = updatedCard;
 				}
 			});
+			this.ownWriteMtime = activeFile.stat?.mtime ?? null;
 		} finally {
-			setTimeout(() => {
-				this.isUpdatingFromMain = false;
-			}, 100);
+			this.isUpdatingFromMain = false;
 		}
+	}
+
+	/**
+	 * Reload after the active file is re-parsed. `vault.on('modify')` fires before the
+	 * metadata cache updates, so an external (agent) edit used to show one edit late.
+	 * Skips only the echo of this view's own write, identified by its mtime.
+	 */
+	onFileParsed(file: TFile) {
+		const activeFile = this.app.workspace.getActiveFile();
+		if (!activeFile || activeFile.path !== file.path) return;
+		if (this.isUpdatingFromMain || file.stat?.mtime === this.ownWriteMtime) return;
+		this.syncFromMain();
 	}
 
 	private async syncFromMain() {
@@ -990,6 +996,12 @@ export class CardYamlEditorView extends ItemView {
 		this.currentCardIndex = index;
 		this.refreshActiveView();
 		this.plugin.highlightCardLines(index);
+	}
+
+	/** Jump to a card after loading the active file; a file switch resets the position. */
+	async showCardIndex(cardIndex: number) {
+		await this.loadCards();
+		this.focusCard(cardIndex);
 	}
 
 	focusCard(cardIndex: number) {

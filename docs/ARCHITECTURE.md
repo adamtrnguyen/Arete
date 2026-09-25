@@ -81,7 +81,7 @@ src/arete/
 
 | Layer | Modules | Lines | May import |
 |---|---|---|---|
-| `interface` | 7 | 1763 | application, composition |
+| `interface` | 7 | 1796 | application, composition |
 | `composition` | 2 | 161 | application, infrastructure, domain |
 | `application` | 23 | 4336 | domain (ports only) |
 | `infrastructure` | 7 | 2150 | domain |

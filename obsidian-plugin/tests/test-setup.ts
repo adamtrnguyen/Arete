@@ -293,6 +293,9 @@ jest.mock('obsidian', () => {
 			registerEditorExtension() {
 				/* no-op */
 			}
+			registerObsidianProtocolHandler() {
+				/* no-op */
+			}
 		},
 		PluginSettingTab: class {
 			app: any;

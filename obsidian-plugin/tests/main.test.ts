@@ -61,3 +61,41 @@ describe('AretePlugin Composition', () => {
 		expect(plugin.checkService.checkVaultIntegrity).toHaveBeenCalled();
 	});
 });
+
+describe('AretePlugin.showCard (obsidian://arete)', () => {
+	let plugin: AretePlugin;
+	let app: App;
+	const file = { path: 'FlashAttention.md', basename: 'FlashAttention' };
+	const openFile = jest.fn();
+
+	beforeEach(() => {
+		jest.clearAllMocks();
+		app = new App();
+		plugin = new AretePlugin(app, { dir: 'test-plugin-dir' } as any);
+		(app.vault as any).getFileByPath = jest.fn((p: string) => (p === file.path ? file : null));
+		(app.workspace as any).getLeaf = jest.fn().mockReturnValue({ openFile });
+		(app.metadataCache.getFileCache as jest.Mock).mockReturnValue({
+			frontmatter: { cards: [{ Front: 'drafted' }, { id: 'arete_B', Front: 'synced' }] },
+		});
+		plugin.activateYamlEditorView = jest.fn().mockResolvedValue(undefined);
+	});
+
+	test('opens the note and shows the card named by id, with or without .md', async () => {
+		await plugin.showCard('FlashAttention', 'arete_B');
+		expect(openFile).toHaveBeenCalledWith(file);
+		expect(plugin.activateYamlEditorView).toHaveBeenCalledWith(1);
+	});
+
+	test('accepts a 1-based position for a card with no id yet', async () => {
+		await plugin.showCard('FlashAttention.md', '1');
+		expect(plugin.activateYamlEditorView).toHaveBeenCalledWith(0);
+	});
+
+	test('says so when the note or card does not exist', async () => {
+		await plugin.showCard('Missing.md', '1');
+		await plugin.showCard('FlashAttention.md', '9');
+		expect(Notice).toHaveBeenCalledWith('Arete: no note at Missing.md');
+		expect(Notice).toHaveBeenCalledWith('Arete: FlashAttention has no card 9');
+		expect(plugin.activateYamlEditorView).not.toHaveBeenCalled();
+	});
+});
