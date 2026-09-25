@@ -1,5 +1,0 @@
-
-> arete@1.4.0 build
-> tsc -noEmit -skipLibCheck && node esbuild.config.mjs production
-
-sh: tsc: command not found

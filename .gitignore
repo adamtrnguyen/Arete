@@ -75,3 +75,7 @@ _bmad-output/
 .complexipy_cache/
 .grimp_cache/
 CLAUDE.local.md
+
+# Obsidian plugin: per-user settings and local build output
+obsidian-plugin/data.json
+obsidian-plugin/build_log.txt
