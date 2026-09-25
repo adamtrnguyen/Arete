@@ -53,8 +53,6 @@ test_init.media/
 site/
 
 # BMAD Framework
-_bmad/
-_bmad-output/
 # Claude Code — track shared config, ignore local/ephemeral
 .claude/settings.local.json
 .claude/commands/
