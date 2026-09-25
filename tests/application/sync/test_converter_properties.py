@@ -12,10 +12,17 @@ safe_text = st.text(
 )
 
 
-@given(text=safe_text)
+# Whitespace-only input is an empty field, and Python-Markdown drops the control
+# characters it uses as placeholders (\x02, \x03), so those legitimately give "".
+visible_text = st.text(
+    alphabet=st.characters(blacklist_categories=("Cs", "Cc")), min_size=1, max_size=200
+).filter(str.strip)
+
+
+@given(text=visible_text)
 @settings(max_examples=50)
 def test_html_output_not_empty(text):
-    """markdown_to_anki_html(text) never returns empty for non-empty input."""
+    """markdown_to_anki_html(text) never returns empty for input with visible text."""
     result = markdown_to_anki_html(text)
     assert len(result) > 0
 
