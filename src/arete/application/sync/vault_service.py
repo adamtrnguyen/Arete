@@ -87,12 +87,12 @@ class VaultService:
 
         try:
             text = md_file.read_text(encoding="utf-8", errors="strict")
-            file_hash = hashlib.md5(text.encode("utf-8")).hexdigest()
         except Exception as e:
             return (False, 0, f"read_error:{e}", None, True)
 
-        # Only parse files that look like Arete notes; the first 2KB holds the frontmatter.
-        if "arete:" not in text[:2048]:
+        # Only parse files that could be Arete notes; the parse below decides. The marker
+        # can sit after a long cards block, so the whole text is searched, not a prefix.
+        if "arete:" not in text:
             return (False, 0, "not_arete_file", None, True)
 
         meta, _body = parse_frontmatter(text)
@@ -117,11 +117,32 @@ class VaultService:
                     f"[vault] {md_file.name}: no deck, but accepted for normalization (--force)"
                 )
 
-        # Save to cache
-        if self.cache:
-            self.cache.set_file_meta(md_file, file_hash, meta, mtime=mtime, size=size)
-
+        # The stat cache is written by record_synced, after the file's cards reached Anki.
+        # Writing it here let a dry run, or a run where a card failed, hide the edit from
+        # every later sync.
         return (True, len(cards), None, meta, True)
+
+    def record_synced(self, paths: Iterable[Path]) -> None:
+        """Mark files as synced in the stat cache, so the next run can skip them.
+
+        Call only for files whose every card reached Anki, and never on a dry run.
+        Reads the file as it is now, after any nid/cid write-back.
+        """
+        if not self.cache:
+            return
+        for md_path in paths:
+            try:
+                text = md_path.read_text(encoding="utf-8")
+                meta, _ = parse_frontmatter(text)
+                if not meta or "__yaml_error__" in meta:
+                    continue
+                st = md_path.stat()
+                file_hash = hashlib.md5(text.encode("utf-8")).hexdigest()
+                self.cache.set_file_meta(
+                    md_path, file_hash, meta, mtime=st.st_mtime, size=st.st_size
+                )
+            except Exception as e:
+                self.logger.warning(f"[cache] could not record {md_path.name} as synced: {e}")
 
     def format_vault(self, dry_run: bool = False) -> int:
         """Scan and re-serialize all compatible files to normalize YAML.
@@ -144,14 +165,6 @@ class VaultService:
                     else:
                         md_path.write_text(new_text, encoding="utf-8")
                         self.logger.debug(f"[format] {md_path.name}: normalized YAML")
-
-                        # Update cache
-                        if self.cache:
-                            new_hash = hashlib.md5(new_text.encode("utf-8")).hexdigest()
-                            st = md_path.stat()
-                            self.cache.set_file_meta(
-                                md_path, new_hash, meta, mtime=st.st_mtime, size=st.st_size
-                            )
             except Exception as e:
                 self.logger.error(f"[error] formatting {md_path.name}: {e}")
 
@@ -206,18 +219,5 @@ class VaultService:
                             self.logger.debug(
                                 f"[write] {md_path}: persisted nid/cid into frontmatter"
                             )
-
-                        # Fix for Hot Sync: Update cache immediately since we changed mtime!
-                        if self.cache:
-                            try:
-                                new_hash = hashlib.md5(new_text.encode("utf-8")).hexdigest()
-                                st = md_path.stat()
-                                self.cache.set_file_meta(
-                                    md_path, new_hash, meta, mtime=st.st_mtime, size=st.st_size
-                                )
-                            except Exception as e:
-                                self.logger.warning(
-                                    f"Failed to update cache after write for {md_path}: {e}"
-                                )
             except Exception as e:
                 self.logger.error(f"[error] write-updates {md_path}: {e}")

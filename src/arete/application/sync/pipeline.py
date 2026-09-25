@@ -89,6 +89,7 @@ async def run_pipeline(
     updates: list[UpdateItem] = []
     updates_lock = asyncio.Lock()
     unparsed_files: list[Path] = []
+    failed_files: set[Path] = set()  # a card here did not reach Anki; do not mark it synced
 
     # How many batches may be in flight. A backend that cannot take overlapping
     # calls serializes them itself, so this does not depend on which one we got.
@@ -113,6 +114,7 @@ async def run_pipeline(
             logger.error(f"[producer-error] {md_file}: {e}")
             recorder.add_error(md_file, str(e))
             unparsed_files.append(md_file)  # its nids never reached the prune inventory
+            failed_files.add(md_file)
 
     async def consumer():
         while True:
@@ -186,12 +188,14 @@ async def run_pipeline(
                                 )
                         else:
                             recorder.cards_failed += 1
+                            failed_files.add(u.source_file)
                             recorder.add_error(
                                 u.source_file, f"Sync fail: {u.error}", f"#{u.source_index}"
                             )
             except Exception as e:
                 logger.error(f"[consumer-error] {e}")
                 for wi in batch:
+                    failed_files.add(wi.source_file)
                     recorder.add_error(
                         wi.source_file, f"Consumer batch crash: {e}", f"#{wi.source_index}"
                     )
@@ -244,6 +248,13 @@ async def run_pipeline(
     if updates:
         logger.info("[pipeline] Persisting NIDs/CIDs to frontmatter...")
         vault_service.apply_updates(updates, dry_run=config.dry_run)
+
+    # A file is recorded as synced only once every card in it reached Anki, so a dry
+    # run or a failed card leaves it fresh and the next run looks at it again.
+    if not config.dry_run:
+        vault_service.record_synced(
+            p for p, _meta, is_fresh in compatible if is_fresh and p not in failed_files
+        )
 
     # -------- Stage 5: Prune Orphans (Destructive) --------
     if config.prune:

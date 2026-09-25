@@ -200,3 +200,34 @@ async def test_changing_a_card_to_cloze_converts_the_note_and_keeps_its_reviews(
         assert (card.id, card.reps, card.ivl) == (cid, 7, 30), "review history kept"
     finally:
         col.close()
+
+
+@pytest.mark.asyncio
+async def test_an_edit_survives_a_dry_run(single_card_vault: Path, anki_base: Path, make_config):
+    """A dry run recorded the edited file as synced, so the real sync skipped the edit."""
+    await execute_sync(make_config(single_card_vault))
+    md = single_card_vault / "Transformer.md"
+    md.write_text(
+        md.read_text(encoding="utf-8").replace("each in a residual", "EDITED ANSWER"),
+        encoding="utf-8",
+    )
+
+    await execute_sync(make_config(single_card_vault, dry_run=True))
+    await execute_sync(make_config(single_card_vault, dry_run=True))
+    stats = await execute_sync(make_config(single_card_vault))
+
+    assert stats.total_imported == 1
+    col = open_collection(anki_base)
+    try:
+        assert "EDITED ANSWER" in col.get_note(col.find_notes("")[0])["Back"]
+    finally:
+        col.close()
+
+
+@pytest.mark.asyncio
+async def test_a_warm_run_sends_nothing(single_card_vault: Path, anki_base: Path, make_config):
+    """After a clean sync (id write-back included) an unchanged vault sends no card."""
+    await execute_sync(make_config(single_card_vault))
+    stats = await execute_sync(make_config(single_card_vault))
+
+    assert stats.total_imported == 0

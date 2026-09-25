@@ -55,9 +55,8 @@ def test_vault_service_bypasses_cache_when_ignored(temp_vault, mock_cache):
     # Should NOT have called get_file_meta_by_stat
     mock_cache.get_file_meta_by_stat.assert_not_called()
 
-    # Since we bypassed cache and parsed successfully (mocked file has content),
-    # it should set the new meta into cache
-    mock_cache.set_file_meta.assert_called_once()
+    # Scanning never records a file as synced; record_synced does, after the sync.
+    mock_cache.set_file_meta.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -67,6 +66,18 @@ def test_vault_service_bypasses_cache_when_ignored(temp_vault, mock_cache):
 
 class TestFileHeuristicDetection:
     """Tests for the header-heuristic that decides whether to parse a file."""
+
+    def test_a_marker_after_a_long_cards_block_is_detected(self, temp_vault, mock_cache):
+        """`arete: true` may sit anywhere in the frontmatter, not only in its first 2KB."""
+        cards = "".join(f"  - Front: question {i} {'x' * 60}\n    Back: answer\n" for i in range(40))
+        md = temp_vault / "long.md"
+        md.write_text(f"---\ndeck: D\ncards:\n{cards}arete: true\n---\nBody", encoding="utf-8")
+        assert len(md.read_text()) > 2048
+        mock_cache.get_file_meta_by_stat.return_value = None
+
+        files = list(VaultService(temp_vault, mock_cache).scan_for_compatible_files())
+
+        assert [f[0].name for f in files] == ["long.md"]
 
     def test_arete_true_is_detected(self, temp_vault, mock_cache):
         """A file with ``arete: true`` in its frontmatter is accepted."""
@@ -546,8 +557,8 @@ class TestCacheBehavior:
         files = list(service.scan_for_compatible_files())
         assert len(files) == 1
 
-    def test_scan_sets_cache_on_fresh_parse(self, temp_vault, mock_cache):
-        """Scanning a file that misses cache calls set_file_meta."""
+    def test_scan_does_not_record_a_file_as_synced(self, temp_vault, mock_cache):
+        """A scan (a dry run included) must not mark a file synced before it is."""
         md = temp_vault / "test.md"
         md.write_text("---\narete: true\ncards: [{Front: f}]\ndeck: D\n---\n")
         mock_cache.get_file_meta_by_stat.return_value = None
@@ -555,4 +566,4 @@ class TestCacheBehavior:
         service = VaultService(temp_vault, mock_cache)
         files = list(service.scan_for_compatible_files())
         assert len(files) == 1
-        mock_cache.set_file_meta.assert_called_once()
+        mock_cache.set_file_meta.assert_not_called()
