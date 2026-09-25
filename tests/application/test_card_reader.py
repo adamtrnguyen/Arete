@@ -66,12 +66,6 @@ class TestExtractCardEntry:
         assert entry["Front"] == "Q?"
         assert entry["Back"] == "A."
 
-    def test_lowercase_fields(self):
-        card = {"front": "Q?", "back": "A."}
-        entry = _extract_card_entry(card, 0, "Deck")
-        assert entry["Front"] == "Q?"
-        assert entry["Back"] == "A."
-
     def test_with_deps(self):
         card = {"deps": {"requires": ["arete_002"]}}
         entry = _extract_card_entry(card, 0, "Deck")

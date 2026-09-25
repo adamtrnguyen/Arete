@@ -218,7 +218,6 @@ def _extract_frontmatter_bounds(md_text: str) -> tuple[str, int, int] | None:
     return None
 
 
-# ---------- Build apy editor-note text ----------
 def _preprocess_frontmatter_text(fm_text: str) -> str:
     """Minimal text fixes to make broken YAML parseable.
 
@@ -232,9 +231,6 @@ def _preprocess_frontmatter_text(fm_text: str) -> str:
 
     # Quote bare template tags: {{title}} → "{{title}}" (YAML flow-mapping syntax)
     fm_text = re.sub(r"(:\s*)\{\{(.*?)\}\}", r'\1"{{\2}}"', fm_text)
-
-    # Split same-line metadata: "content  nid: '123'" → separate lines
-    fm_text = re.sub(r"([^\n])\s+(nid|cid):", r"\1\n  \2:", fm_text)
 
     # Fix invalid block scalar start: `| '...` → `'...`
     fm_text = re.sub(r"(\|[-+]?)\s*(['\"])", r"\2", fm_text)
@@ -324,7 +320,5 @@ def make_editor_note(
 
     for k in f_list:
         v = fields.get(k, "")
-        if k == "Back Extra" and not v:
-            v = fields.get("Extra", "")
         lines += [f"## {k}", sanitize(v), ""]
     return "\n".join(lines)

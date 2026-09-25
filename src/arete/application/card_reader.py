@@ -82,9 +82,9 @@ def _extract_card_entry(card: dict[str, Any], index: int, card_deck: str) -> dic
         entry["model"] = card["model"]
     entry["deck"] = card_deck
 
-    # Content fields (case-insensitive first letter)
+    # Content fields
     for key in ("Front", "Back", "Text", "Back Extra"):
-        value = card.get(key) or card.get(key.lower())
+        value = card.get(key)
         if value:
             entry[key] = value
 
@@ -172,7 +172,7 @@ def list_file_cards(file_path: Path) -> FileCardsResult | str:
 
         # Content fields
         for key in ("Front", "Back", "Text", "Back Extra"):
-            value = card.get(key) or card.get(key.lower())
+            value = card.get(key)
             if value:
                 entry[key] = value
 

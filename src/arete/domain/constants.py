@@ -38,8 +38,4 @@ PRIMARY_FIELD_NAMES = {
     "Question",
     "Term",
     "Expression",
-    "front",
-    "text",
-    "question",
-    "term",
 }

@@ -281,7 +281,7 @@ def test_anki_browse():
         assert '{"ok": true}' in result.stdout
 
 
-# --- Queue (promoted to root, deprecated alias on anki) ---
+# --- Queue ---
 
 
 @patch("arete.interface._common.resolve_config")

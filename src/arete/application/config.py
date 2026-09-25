@@ -25,7 +25,6 @@ class AppConfig(BaseSettings):
         env_prefix="O2A_",
         toml_file=[
             Path.home() / ".config/arete/config.toml",
-            Path.home() / ".arete.toml",
         ],
         extra="ignore",
     )
@@ -66,20 +65,8 @@ class AppConfig(BaseSettings):
     ) -> tuple[PydanticBaseSettingsSource, ...]:
         from pydantic_settings import TomlConfigSettingsSource
 
-        # Try to load from both possible config locations
-        toml_files = [
-            Path.home() / ".config/arete/config.toml",
-            Path.home() / ".arete.toml",
-        ]
-
-        # Find the first existing file
-        toml_file = None
-        for f in toml_files:
-            if f.exists():
-                toml_file = f
-                break
-
-        if toml_file:
+        toml_file = Path.home() / ".config/arete/config.toml"
+        if toml_file.exists():
             # Priority order: CLI overrides > ENV vars > TOML config file
             return (
                 init_settings,  # CLI overrides - HIGHEST priority

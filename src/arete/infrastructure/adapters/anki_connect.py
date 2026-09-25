@@ -104,10 +104,7 @@ class AnkiConnectAdapter(AnkiBridge):
             return False
 
     async def ensure_model_has_source_field(self, model_name: str) -> bool:
-        """Ensure the note model has the _obsidian_source field.
-
-        This enables backwards compatibility for existing cards.
-        """
+        """Add the _obsidian_source field to the note model if it lacks one."""
         if model_name in self._source_field_ok:
             return True
 

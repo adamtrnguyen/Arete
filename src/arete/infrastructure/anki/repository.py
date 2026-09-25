@@ -135,9 +135,7 @@ class AnkiRepository:
         model_field_names = [f["name"] for f in model["flds"]]
 
         for f_name in model_field_names:
-            # Find matching field in note_data (case-insensitive or direct match?)
-            # apy logic: note_data.fields dictionary keys.
-            # We matched by name.
+            # Fields match by exact name.
             if f_name in note_data.fields:
                 val = note_data.fields[f_name]
                 # Value is already HTML from parser
@@ -172,9 +170,7 @@ class AnkiRepository:
         except Exception:
             return False
 
-        # Verify model matches?
-        # If model changed, we might need complex change_notetype logic.
-        # For v1.3 we assume model matches or we fail safe.
+        # A note's type is never changed here; fields are matched to the existing type.
         notetype = note.note_type()
         if notetype is None:
             return False
@@ -183,8 +179,7 @@ class AnkiRepository:
             # We can print a warning but might fail updating fields if schema differs
             print(f"Warning: Model mismatch. Existing: {current_model}, New: {note_data.model}")
 
-        # Update Deck?
-        # apy: checks if deck changed, moves cards.
+        # Move the cards if the deck changed.
         current_did = note.cards()[0].did
         target_did = self.col.decks.id(note_data.deck)
         if target_did is None:

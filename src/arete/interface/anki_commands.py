@@ -55,7 +55,7 @@ def anki_stats(
         bool, typer.Option("--json/--no-json", help="Output results as JSON.")
     ] = True,
     backend: Annotated[
-        str | None, typer.Option(help="Force backend (auto|apy|ankiconnect)")
+        str | None, typer.Option(help="Force backend (auto|ankiconnect|direct)")
     ] = None,
     anki_connect_url: Annotated[str | None, typer.Option(help="AnkiConnect URL Override")] = None,
     anki_base: Annotated[str | None, typer.Option(help="Anki Base Directory Override")] = None,

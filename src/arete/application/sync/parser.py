@@ -29,7 +29,7 @@ class MarkdownParser:
 
     @staticmethod
     def _extract_raw_nid(card: dict[str, Any]) -> str | None:
-        """Read a card's declared nid from the v2 ``anki`` block."""
+        """Read a card's declared nid from its ``anki`` block."""
         anki_block = card.get("anki") if isinstance(card.get("anki"), dict) else {}
         raw = sanitize((anki_block or {}).get("nid", "")).strip()
         return raw or None
@@ -146,9 +146,8 @@ class MarkdownParser:
 
                 # Field validation logic
                 if mlow == "basic":
-                    # Check for "Front"/"front" and "Back"/"back"
-                    f_val = card.get("Front") or card.get("front") or ""
-                    b_val = card.get("Back") or card.get("back") or ""
+                    f_val = card.get("Front") or ""
+                    b_val = card.get("Back") or ""
                     fields = {
                         "Front": sanitize(f_val),
                         "Back": sanitize(b_val),
@@ -160,15 +159,8 @@ class MarkdownParser:
                         skipped_indices.append(idx)
                         continue
                 elif mlow == "cloze":
-                    # Check for "Text"/"text" and "Back Extra"/"back extra"/"Extra"/"extra"
-                    t_val = card.get("Text") or card.get("text") or ""
-                    e_val = (
-                        card.get("Back Extra")
-                        or card.get("back extra")
-                        or card.get("Extra")
-                        or card.get("extra")
-                        or ""
-                    )
+                    t_val = card.get("Text") or ""
+                    e_val = card.get("Back Extra") or ""
                     fields = {
                         "Text": sanitize(t_val),
                         "Back Extra": sanitize(e_val),
@@ -178,15 +170,12 @@ class MarkdownParser:
                         skipped_indices.append(idx)
                         continue
                 else:
-                    # Allow 'nid' to pass through for custom models so it can be stored in Anki
                     # Arete's own keys are not Anki fields. id/deps/anki/__line__ used to be
                     # sent as fields and, being in the hash, re-synced cards whenever a line moved.
                     _exclude = {
-                        "cid",
                         "model",
                         "deck",
                         "tags",
-                        "markdown",
                         "id",
                         "deps",
                         "anki",

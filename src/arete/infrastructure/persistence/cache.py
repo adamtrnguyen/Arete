@@ -14,8 +14,6 @@ class ContentCache:
         """Initialize ContentCache."""
         if db_path is None:
             # Default to XDG-ish standard: ~/.config/arete/cache.db
-            # Fallback to old path if the cachedb already exists there?
-            # No, user asked to "make everything inside .config/arete"
             conf_dir = Path.home() / ".config/arete"
             conf_dir.mkdir(parents=True, exist_ok=True)
             db_path = conf_dir / "cache.db"

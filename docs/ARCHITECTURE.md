@@ -83,9 +83,9 @@ src/arete/
 |---|---|---|---|
 | `interface` | 7 | 1796 | application, composition |
 | `composition` | 2 | 161 | application, infrastructure, domain |
-| `application` | 23 | 4326 | domain (ports only) |
-| `infrastructure` | 7 | 2150 | domain |
-| `domain` | 6 | 621 | nothing in arete |
+| `application` | 23 | 4283 | domain (ports only) |
+| `infrastructure` | 7 | 2140 | domain |
+| `domain` | 6 | 617 | nothing in arete |
 
 The import rules in the last column are enforced by `just check-architecture`
 (import-linter), not by convention.
@@ -124,7 +124,7 @@ The application runs in 5 distinct stages, orchestrated by `application/sync/pip
 
 3.  **Async Processing (Producer/Consumer pairing)**:
     *   **Producers (`Parsing`)**: Parse Markdown, calculate content hashes, and transform media links.
-    *   **Consumers (`Syncing`)**: Multi-threaded sync to Anki (via AnkiConnect or `apy`). 
+    *   **Consumers (`Syncing`)**: Multi-threaded sync to Anki (via AnkiConnect, or the collection directly). 
     *   Caching happens here: If a card's content hash matches the cache, it's skipped.
 
 4.  **ID Write-back (`VaultService`)**:

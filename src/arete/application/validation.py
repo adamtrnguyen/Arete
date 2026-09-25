@@ -46,7 +46,7 @@ def humanize_error(msg: str) -> str:
         return f"Syntax Error: {msg}"
     if "expected <block end>, but found '?'" in msg:
         return (
-            "Indentation Error: A key (like 'nid:' or 'cid:') is likely aligned "
+            "Indentation Error: A key (like 'Back:') is likely aligned "
             "with the card's dash '-'. It must be indented further to belong to that card."
         )
     return msg
@@ -86,8 +86,8 @@ def _check_arete_flags(meta: dict, result: ValidationResult) -> None:
 
 def _check_split_cards(cards: list, result: ValidationResult) -> None:
     """Detect cards accidentally split into separate Front/Back list items."""
-    _FRONT_KEYS = ("Front", "front", "Text", "text")
-    _BACK_KEYS = ("Back", "back", "Extra", "extra")
+    _FRONT_KEYS = ("Front", "Text")
+    _BACK_KEYS = ("Back", "Back Extra")
 
     for i in range(len(cards) - 1):
         curr, nxt = cards[i], cards[i + 1]

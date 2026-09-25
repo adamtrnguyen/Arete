@@ -46,9 +46,6 @@ backend = "{backend}"
 
 # Default verbosity (0=WARNING, 1=INFO, 2=DEBUG)
 verbose = 1
-
-# Optional: Set a default input path if you always run on the same file/folder
-# path = "{vault_root}"
 """
 
     target_path = Path.home() / ".config/arete/config.toml"
@@ -65,7 +62,7 @@ verbose = 1
         with open(target_path, "w", encoding="utf-8") as f:
             f.write(config_content)
         print(f"\nConfiguration saved to {target_path}")
-        print("You can now run 'arete <path>' without specifying media/vault flags.")
+        print("You can now run 'arete sync' without specifying media/vault flags.")
     except Exception as e:
         print(f"Error writing config: {e}")
 

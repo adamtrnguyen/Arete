@@ -1,7 +1,4 @@
-"""Markdown to Anki HTML conversion logic.
-
-Extracted from apy logic to allow direct Python usage.
-"""
+"""Markdown to Anki HTML conversion logic."""
 
 from __future__ import annotations
 

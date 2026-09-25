@@ -114,12 +114,12 @@ def test_apply_fixes_template_tags():
     assert meta["title"] == "{{title}}"
 
 
-def test_apply_fixes_indentation_nid():
-    """Same-line nid gets split and associated with the card."""
-    raw = "---\ncards:\n- Front: Q\n  nid: 123\n---\n"
-    fixed = apply_fixes(raw)
-    meta, _ = parse_frontmatter(fixed)
-    assert meta["cards"][0]["nid"] == 123
+def test_apply_fixes_keeps_the_anki_block():
+    """A synced card's nid/cid stay under ``anki:``; a text fixer once dedented them."""
+    raw = "---\ncards:\n  - Front: Q\n    Back: A\n    anki:\n      nid: '1'\n      cid: '2'\n---\n"
+    meta, _ = parse_frontmatter(apply_fixes(raw))
+    anki = meta["cards"][0]["anki"]
+    assert (anki["nid"], anki["cid"]) == ("1", "2")
 
 
 def test_apply_fixes_multiline_quotes():
@@ -193,7 +193,7 @@ def test_make_editor_note_basic():
 
 
 def test_make_editor_note_cloze():
-    fields = {"Text": "cloze {{c1::test}}", "Back Extra": "extra", "Extra": "backup"}
+    fields = {"Text": "cloze {{c1::test}}", "Back Extra": "extra"}
     out = make_editor_note("Cloze", "deck", ["t1"], fields, nid="123")
 
     assert "nid: 123" in out
@@ -208,14 +208,6 @@ def test_make_editor_note_cid_only_no_nid():
     out = make_editor_note("Basic", "Default", [], {}, cid="999", nid=None)
     assert "cid: 999" in out
     assert "nid:" not in out
-
-
-def test_make_editor_note_cloze_fallback_extra():
-    """Test Cloze model fallback to 'Extra' if 'Back Extra' is missing."""
-    fields = {"Text": "cloze", "Extra": "fallback_extra"}
-    out = make_editor_note("Cloze", "deck", [], fields)
-    assert "## Back Extra" in out
-    assert "fallback_extra" in out
 
 
 def test_a_horizontal_rule_inside_a_block_scalar_does_not_end_the_frontmatter():

@@ -4,11 +4,11 @@ What Arete reads from a note's frontmatter. Style (how to write it so it renders
 
 ## File-Level Frontmatter
 
-A file is recognized by Arete when it contains `arete: true` (v2.0+) or `anki_template_version: 1` (legacy).
+A file is an Arete note when its frontmatter has `arete: true` and a non-empty `cards` list.
 
 ```yaml
 ---
-arete: true                        # Required marker (v2.0+)
+arete: true                        # Required marker
 deck: "Parent::Child"              # Anki deck, :: for nesting. Required at file or card level.
 model: "Basic"                     # Default note type. Options: Basic, Cloze, or custom model name.
 tags: [tag1, tag2]                 # Applied to all cards in file
@@ -50,7 +50,7 @@ cards:
 ## Card Schema — Custom Models
 
 Any field name not in the reserved set becomes an Anki field. At least one field required.
-Reserved keys: `cid, model, deck, tags, markdown, id, anki, deps, nid, __line__`
+Reserved keys: `model, deck, tags, id, deps, anki`
 
 ## Key Rules
 

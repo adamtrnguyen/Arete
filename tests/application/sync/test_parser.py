@@ -82,7 +82,7 @@ def test_parse_custom_no_fields(parser_fixture):
     parser, _ = parser_fixture
     meta = {
         "cards": [
-            {"model": "Custom", "cid": "123"},  # Only special fields, no content
+            {"model": "Custom", "id": "arete_X", "deps": {}},  # Only Arete keys, no content
         ]
     }
     notes, skipped, inventory = parser.parse_file(Path("test.md"), meta, MagicMock())
