@@ -19,6 +19,7 @@ def test_quick_check_valid_file(tmp_path, mock_cache):
     f = tmp_path / "valid.md"
     f.write_text(
         """---
+arete: true
 deck: Test
 cards:
   - Front: Q
@@ -43,6 +44,7 @@ def test_quick_check_no_cards(tmp_path, mock_cache):
     f = tmp_path / "empty.md"
     f.write_text(
         """---
+arete: true
 deck: Test
 cards: []
 ---
@@ -61,7 +63,7 @@ def test_quick_check_cache_hit(tmp_path, mock_cache):
     f.write_text("Dummy content on disk", encoding="utf-8")
 
     # Simulate cache hit: logic uses get_file_meta_by_stat now
-    mock_cache.get_file_meta_by_stat.return_value = {"cards": [1, 2, 3], "deck": "D"}
+    mock_cache.get_file_meta_by_stat.return_value = {"arete": True, "cards": [1, 2, 3], "deck": "D"}
 
     service = VaultService(root=tmp_path, cache=mock_cache)
     ok, count, err, meta, fresh = service._quick_check_file(f)

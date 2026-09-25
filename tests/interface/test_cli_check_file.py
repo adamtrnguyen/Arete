@@ -21,7 +21,7 @@ runner = CliRunner()
     [
         # Valid files
         (
-            "---\ndeck: Default\ncards:\n  - Front: A\n    Back: B\n---\nContent",
+            "---\narete: true\ndeck: Default\ncards:\n  - Front: A\n    Back: B\n---\nContent",
             0,
             "Valid arete file",
         ),
@@ -35,8 +35,8 @@ runner = CliRunner()
         ("---\ndeck: D\n  bad_indent: v\n---\n", 1, "Indentation Error"),
         ("---\nkey: : value\n---\n", 1, "Validation Failed"),
         # Missing cards
-        ("---\ndeck: Default\n---\n", 1, "Missing 'cards' list"),
-        ("---\nmodel: Basic\n---\n", 1, "Missing 'cards' list"),
+        ("---\narete: true\ndeck: Default\n---\n", 1, "missing 'cards' list"),
+        ("---\ndeck: D\ncards:\n  - Front: A\n    Back: B\n---\n", 1, "no 'arete: true'"),
         # Tab handling
         ("---\ndeck: Default\ncards:\n\t- Front: A\n\t  Back: B\n---\n", 1, "Tab Character Error"),
         # Duplicate keys
@@ -60,7 +60,7 @@ runner = CliRunner()
         "yaml_indent_error",
         "yaml_scanner_error",
         "missing_cards_with_deck",
-        "missing_cards_with_model",
+        "cards_without_arete",
         "tab_in_frontmatter",
         "duplicate_keys",
         "cards_not_list",
@@ -116,7 +116,7 @@ def test_check_file_json_output_failure(tmp_path):
 
 def test_check_file_json_output_success(tmp_path):
     f = tmp_path / "good.md"
-    f.write_text("---\ndeck: D\ncards: []\n---\n", encoding="utf-8")
+    f.write_text("---\narete: true\ndeck: D\ncards: [{Front: Q, Back: A}]\n---\n", encoding="utf-8")
 
     result = runner.invoke(app, ["vault", "check", str(f), "--json"])
     data = json.loads(result.stdout)
@@ -127,7 +127,7 @@ def test_check_file_json_output_success(tmp_path):
 def test_check_file_valid_card_count(tmp_path):
     f = tmp_path / "valid.md"
     f.write_text(
-        "---\ndeck: Default\ncards:\n  - Front: A\n    Back: B\n---\nContent", encoding="utf-8"
+        "---\narete: true\ndeck: Default\ncards:\n  - Front: A\n    Back: B\n---\nContent", encoding="utf-8"
     )
     result = runner.invoke(app, ["vault", "check", str(f)])
     assert result.exit_code == 0

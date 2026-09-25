@@ -100,8 +100,8 @@ class TestFileHeuristicDetection:
 
         assert len(files) == 0
 
-    def test_cards_only_without_arete_marker_is_accepted(self, temp_vault, mock_cache):
-        """A file with ``cards:`` and ``deck:`` is accepted even without ``arete: true``."""
+    def test_cards_without_arete_marker_are_skipped(self, temp_vault, mock_cache):
+        """``cards:`` and ``deck:`` without ``arete: true`` is not an Arete note."""
         md = temp_vault / "cards_only.md"
         md.write_text(
             "---\ncards:\n  - Front: Q\n    Back: A\ndeck: SomeDeck\n---\nBody",
@@ -112,7 +112,7 @@ class TestFileHeuristicDetection:
         service = VaultService(temp_vault, mock_cache)
         files = list(service.scan_for_compatible_files())
 
-        assert len(files) == 1
+        assert files == []
 
 
 # ---------------------------------------------------------------------------

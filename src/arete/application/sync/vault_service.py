@@ -29,7 +29,7 @@ class VaultService:
     def scan_for_compatible_files(self) -> Iterable[tuple[Path, dict[str, Any], bool]]:
         """Iterate over all markdown files in the vault, check them for validity.
 
-        (frontmatter, version), and yield valid files.
+        A file counts when its frontmatter has `arete: true` and a non-empty `cards` list.
         Return: (path, meta, is_fresh)
                  is_fresh=True means we just parsed it (cache was cold/dirty).
                  is_fresh=False means we loaded meta from stat-cache (cache was warm).
@@ -79,7 +79,7 @@ class VaultService:
         if self.cache and not self.ignore_cache:
             try:
                 cached_meta = self.cache.get_file_meta_by_stat(md_file, mtime, size)
-                if cached_meta:
+                if cached_meta and cached_meta.get("arete") is True:
                     cards = cached_meta.get("cards", [])
                     return (True, len(cards), None, cached_meta, False)
             except Exception as e:
@@ -91,15 +91,15 @@ class VaultService:
         except Exception as e:
             return (False, 0, f"read_error:{e}", None, True)
 
-        # Heuristic: only parse if it looks like an arete file
-        # We check the first 2KB for efficiency
-        header = text[:2048].lower()
-        if "arete:" not in header and "cards:" not in header:
+        # Only parse files that look like Arete notes; the first 2KB holds the frontmatter.
+        if "arete:" not in text[:2048]:
             return (False, 0, "not_arete_file", None, True)
 
         meta, _body = parse_frontmatter(text)
         if not meta or "__yaml_error__" in meta:
             return (False, 0, "no_or_bad_yaml", None, True)
+        if meta.get("arete") is not True:
+            return (False, 0, "not_arete_file", None, True)
 
         cards = meta.get("cards", [])
         if not isinstance(cards, list) or not cards:

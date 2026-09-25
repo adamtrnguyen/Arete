@@ -58,16 +58,16 @@ def humanize_error(msg: str) -> str:
 
 
 def _check_arete_flags(meta: dict, result: ValidationResult) -> None:
-    """Validate arete flag, cards presence, and deck/model requirements."""
-    is_explicit_arete = meta.get("arete") is True
-
-    if "cards" not in meta and not is_explicit_arete:
-        if "card" in meta and isinstance(meta["card"], list):
+    """Validate the arete flag, the cards list and the deck."""
+    if meta.get("arete") is not True:
+        if "cards" in meta or "card" in meta:
             result.ok = False
             result.errors.append(
-                {"line": 1, "message": "Found 'card' list but expected 'cards'. Possible typo?"}
+                {"line": 1, "message": "Has cards but no 'arete: true'; Arete skips this file."}
             )
-    elif is_explicit_arete and "cards" not in meta:
+        return
+
+    if "cards" not in meta:
         result.ok = False
         result.errors.append(
             {"line": 1, "message": "File marked 'arete: true' but missing 'cards' list."}
@@ -77,21 +77,11 @@ def _check_arete_flags(meta: dict, result: ValidationResult) -> None:
                 {"line": 1, "message": "Found 'card' property. Did you mean 'cards'?"}
             )
 
-    if "deck" in meta or "model" in meta or is_explicit_arete:
-        if "deck" not in meta and is_explicit_arete:
-            result.ok = False
-            result.errors.append(
-                {"line": 1, "message": "File marked 'arete: true' but missing 'deck' field."}
-            )
-        if "cards" not in meta:
-            result.ok = False
-            result.errors.append(
-                {
-                    "line": 1,
-                    "message": "Missing 'cards' list. "
-                    "You defined a deck/model but provided no cards.",
-                }
-            )
+    if "deck" not in meta:
+        result.ok = False
+        result.errors.append(
+            {"line": 1, "message": "File marked 'arete: true' but missing 'deck' field."}
+        )
 
 
 def _check_split_cards(cards: list, result: ValidationResult) -> None:
@@ -181,8 +171,6 @@ def _check_single_card(card: Any, i: int, cards: list, result: ValidationResult)
 
 def _validate_cards_list(meta: dict, result: ValidationResult) -> None:
     """Validate the 'cards' field: type, structure, and individual cards."""
-    is_explicit_arete = meta.get("arete") is True
-
     if "cards" not in meta:
         return
 
@@ -202,7 +190,7 @@ def _validate_cards_list(meta: dict, result: ValidationResult) -> None:
     cards = meta["cards"]
     result.stats["cards_found"] = len(cards)
 
-    if not cards and is_explicit_arete:
+    if not cards:
         result.ok = False
         result.errors.append(
             {"line": 1, "message": "File marked 'arete: true' but 'cards' list is empty."}
@@ -216,7 +204,7 @@ def _validate_cards_list(meta: dict, result: ValidationResult) -> None:
         _check_split_cards(cards, result)
 
     # Check for missing deck if notes are present
-    if is_explicit_arete or len(cards) > 0:
+    if cards:
         if not meta.get("deck"):
             result.ok = False
             result.errors.append(

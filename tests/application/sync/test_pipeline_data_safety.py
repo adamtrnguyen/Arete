@@ -87,7 +87,7 @@ def card(cid: str, front: str = "q", back: str = "a") -> str:
 
 
 def note_file(*cards: str, deck: str = "D") -> str:
-    return f"---\ndeck: {deck}\ncards:\n{''.join(cards)}---\n"
+    return f"---\narete: true\ndeck: {deck}\ncards:\n{''.join(cards)}---\n"
 
 
 def edit(path: Path, card_id: str) -> None:
