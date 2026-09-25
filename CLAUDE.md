@@ -242,8 +242,6 @@ lives in `docs/history/`.
 
 **Release plumbing**
 
-- [ ] `arete_ankiconnect/manifest.json` reads 2.2.1. Everything else reads 2.4.0. A
-      pre-tool hook blocks editing ankiconnect files.
 - [ ] PyPI trusted publishing is unconfigured. `release.yml:53` runs the publish step
       under `continue-on-error: true`, so it cannot block a release. Configure a
       trusted publisher, or drop the step.
