@@ -15,7 +15,7 @@ describe('LinkCheckerService', () => {
 				getCheckResult: jest.fn(),
 			},
 		};
-		service = new LinkCheckerService(app, plugin as any);
+		service = new LinkCheckerService(app, plugin.checkService);
 	});
 
 	describe('checkIntegrity', () => {

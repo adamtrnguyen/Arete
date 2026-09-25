@@ -13,11 +13,24 @@ import { EditorView, lineNumbers, keymap } from '@codemirror/view';
 import { EditorState, Annotation } from '@codemirror/state';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { yaml } from '@codemirror/lang-yaml';
-import type AretePlugin from '@/main';
 import { CardStatsModal } from '@/presentation/modals/CardStatsModal';
 import { DependencyField } from '@/presentation/components/DependencyField';
 import { CardRenderer } from '@/presentation/renderers/CardRenderer';
 import { renderCardPreviewFrame } from '@/presentation/renderers/CardPreviewFrame';
+import { AretePluginSettings } from '@/domain/settings';
+import { StatsService } from '@application/services/StatsService';
+import { TemplateRenderer } from '@application/services/TemplateRenderer';
+import { AreteClient } from '@infrastructure/arete/AreteClient';
+
+/** What this view needs from the plugin (main.ts satisfies it; no import of main). */
+export interface YamlEditorHost {
+	settings: AretePluginSettings;
+	statsService: StatsService;
+	templateRenderer: TemplateRenderer;
+	areteClient: AreteClient;
+	activateLocalGraphView(cardId?: string): Promise<void>;
+	highlightCardLines(cardIndex: number): void;
+}
 
 export const YAML_EDITOR_VIEW_TYPE = 'arete-yaml-editor';
 
@@ -39,7 +52,7 @@ enum ViewMode {
 }
 
 export class CardYamlEditorView extends ItemView {
-	plugin: AretePlugin;
+	plugin: YamlEditorHost;
 	private editorView: EditorView | null = null;
 	private indexContainer: HTMLElement | null = null;
 	private editorContainer: HTMLElement | null = null;
@@ -82,7 +95,7 @@ export class CardYamlEditorView extends ItemView {
 		'__line__',
 	]);
 
-	constructor(leaf: WorkspaceLeaf, plugin: AretePlugin) {
+	constructor(leaf: WorkspaceLeaf, plugin: YamlEditorHost) {
 		super(leaf);
 		this.plugin = plugin;
 	}

@@ -466,3 +466,23 @@ async def create_queue_deck(req: QueueCreateDeckRequest):
     except Exception as e:
         logger.error(f"Create deck failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+class GraphRequest(BaseModel):
+    vault_root: str | None = None
+
+
+@app.post("/graph")
+def get_graph(req: GraphRequest):
+    """The resolved dependency graph, for the plugin's graph views (no Anki needed)."""
+    from dataclasses import asdict
+    from pathlib import Path
+
+    from arete.application.config import resolve_config
+    from arete.application.queue.graph_resolver import export_graph
+
+    overrides = {"vault_root": req.vault_root} if req.vault_root else None
+    config = resolve_config(overrides)
+    if not config.vault_root:
+        raise HTTPException(status_code=400, detail="Vault root not configured.")
+    return asdict(export_graph(Path(config.vault_root)))

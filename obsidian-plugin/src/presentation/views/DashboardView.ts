@@ -1,15 +1,30 @@
-import { ItemView, WorkspaceLeaf, setIcon, Notice, MarkdownView, TFile } from 'obsidian';
-import AretePlugin from '@/main';
+import { App, ItemView, WorkspaceLeaf, setIcon, Notice, MarkdownView, TFile } from 'obsidian';
 import { ConceptStats, StatsNode, difficultyOutOfTen } from '@/domain/stats';
 import { CardStatsModal } from '@/presentation/modals/CardStatsModal';
-import { BrokenReference } from '@application/services/LinkCheckerService';
+import { BrokenReference, LinkCheckerService } from '@application/services/LinkCheckerService';
+import { AretePluginSettings } from '@/domain/settings';
+import { StatsService } from '@application/services/StatsService';
+import { LeechService } from '@application/services/LeechService';
+import { AreteClient } from '@infrastructure/arete/AreteClient';
+
+/** What this view needs from the plugin (main.ts satisfies it; no import of main). */
+export interface DashboardHost {
+	app: App;
+	settings: AretePluginSettings;
+	statsService: StatsService;
+	linkCheckerService: LinkCheckerService;
+	leechService: LeechService;
+	areteClient: AreteClient;
+	saveSettings(): Promise<void>;
+	saveStats(): Promise<void>;
+}
 
 export const DASHBOARD_VIEW_TYPE = 'arete-stats-view';
 
 type DashboardTab = 'overview' | 'leeches' | 'integrity' | 'queue-builder';
 
 export class DashboardView extends ItemView {
-	plugin: AretePlugin;
+	plugin: DashboardHost;
 	activeTab: DashboardTab = 'overview';
 
 	// Overview State
@@ -19,7 +34,7 @@ export class DashboardView extends ItemView {
 	brokenRefs: BrokenReference[] | null = null;
 	isScanning = false;
 
-	constructor(leaf: WorkspaceLeaf, plugin: AretePlugin) {
+	constructor(leaf: WorkspaceLeaf, plugin: DashboardHost) {
 		super(leaf);
 		this.plugin = plugin;
 		this.expandedDecks = new Set(this.plugin.settings.ui_expanded_decks || []);

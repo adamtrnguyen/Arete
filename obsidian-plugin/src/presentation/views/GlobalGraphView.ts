@@ -12,9 +12,13 @@ import { ItemView, WorkspaceLeaf, setIcon, TFile, Component } from 'obsidian';
 import * as d3 from 'd3';
 
 const ForceGraph3D = require('3d-force-graph');
-import type AretePlugin from '@/main';
 import { DependencyResolver } from '@/application/services/DependencyResolver';
 import { CardNode, GlobalGraphResult, DependencyEdge } from '@/domain/graph/types';
+
+/** What this view needs from the plugin (main.ts satisfies it; no import of main). */
+export interface GlobalGraphHost {
+	dependencyResolver: DependencyResolver;
+}
 
 export const GLOBAL_GRAPH_VIEW_TYPE = 'arete-global-graph';
 
@@ -49,7 +53,7 @@ interface GlobalLink extends d3.SimulationLinkDatum<GlobalNode> {
 }
 
 export class GlobalGraphView extends ItemView {
-	plugin: AretePlugin;
+	plugin: GlobalGraphHost;
 	private resolver: DependencyResolver;
 	private container: HTMLElement;
 	private simulation: d3.Simulation<any, any> | null = null;
@@ -72,7 +76,7 @@ export class GlobalGraphView extends ItemView {
 	private graphContainer: HTMLElement;
 	private detailPanel: HTMLElement;
 
-	constructor(leaf: WorkspaceLeaf, plugin: AretePlugin) {
+	constructor(leaf: WorkspaceLeaf, plugin: GlobalGraphHost) {
 		super(leaf);
 		this.plugin = plugin;
 		this.resolver = plugin.dependencyResolver;
@@ -120,8 +124,8 @@ export class GlobalGraphView extends ItemView {
 
 	// --- Data Loading ---
 
-	private async loadData(): Promise<void> {
-		await this.resolver.buildGraph();
+	private async loadData(force = false): Promise<void> {
+		await this.resolver.buildGraph(force);
 		this.graphData = this.resolver.getGlobalGraph();
 	}
 
@@ -135,7 +139,7 @@ export class GlobalGraphView extends ItemView {
 		setIcon(refreshBtn, 'refresh-cw');
 		refreshBtn.setAttribute('title', 'Rebuild Graph');
 		refreshBtn.addEventListener('click', async () => {
-			await this.loadData();
+			await this.loadData(true);
 			this.render();
 		});
 

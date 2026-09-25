@@ -479,3 +479,21 @@ def graph_check(
 
         if not result.ok:
             raise typer.Exit(1)
+
+
+@graph_app.command("export")
+def graph_export(
+    path: Annotated[Path | None, typer.Argument(help="Vault path override.")] = None,
+):
+    """Print the resolved dependency graph as JSON (what the Obsidian graph views draw)."""
+    from dataclasses import asdict
+
+    from arete.application.queue.graph_resolver import export_graph
+
+    config = _resolve_with_overrides(root_input=path)
+    vault_root = config.root_input
+    if vault_root is None:
+        typer.secho("No vault root configured. Pass a path or set O2A_ROOT_INPUT.", fg="red")
+        raise typer.Exit(1)
+
+    typer.echo(json.dumps(asdict(export_graph(vault_root))))

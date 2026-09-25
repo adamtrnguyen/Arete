@@ -3,7 +3,7 @@ import { App, Notice, requestUrl } from 'obsidian';
 import { spawn } from 'child_process';
 import * as fs from 'fs';
 import { createMockChildProcess } from '../../test-setup';
-import { SyncService } from '@application/services/SyncService';
+import { SyncService } from '@infrastructure/arete/SyncService';
 import { AretePluginSettings } from '@domain/settings';
 import * as path from 'path';
 

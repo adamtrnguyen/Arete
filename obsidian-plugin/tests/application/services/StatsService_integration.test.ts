@@ -36,7 +36,7 @@ describe('StatsService Integration', () => {
 
 		mockClient = new AreteClient(settings) as jest.Mocked<AreteClient>;
 		service = new StatsService(app, settings, mockClient);
-		mockClient.invoke.mockClear();
+		mockClient.getCardStats.mockClear();
 	});
 
 	test('fetchAnkiCardStats calls getFSRSStats and merges difficulty', async () => {
@@ -44,7 +44,7 @@ describe('StatsService Integration', () => {
 
 		// Mock the unified /anki/stats endpoint
 		// The backend returns snake_case
-		mockClient.invoke.mockResolvedValue([
+		mockClient.getCardStats.mockResolvedValue([
 			{
 				card_id: 1,
 				note_id: 101,
@@ -87,13 +87,13 @@ describe('StatsService Integration', () => {
 		expect(stats[1].difficulty).toBe(0.3);
 
 		// Verify client call
-		expect(mockClient.invoke).toHaveBeenCalledWith('/anki/stats', { nids });
+		expect(mockClient.getCardStats).toHaveBeenCalledWith(nids);
 	});
 
 	test('fetchAnkiCardStats handles missing FSRS data gracefully', async () => {
 		const nids = [101];
 
-		mockClient.invoke.mockResolvedValue([
+		mockClient.getCardStats.mockResolvedValue([
 			{
 				card_id: 1,
 				note_id: 101,

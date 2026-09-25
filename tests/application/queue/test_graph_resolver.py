@@ -753,3 +753,29 @@ class TestSilentGraphProblemsAreReported:
             "a.md",
             "b.md",
         ]
+
+
+def test_export_graph_is_what_the_plugin_draws(tmp_path: Path):
+    """PL1: the plugin reads this instead of resolving refs itself (it missed G5/G6)."""
+    from arete.application.queue.graph_resolver import export_graph
+
+    def note(rel: str, body: str) -> None:
+        p = tmp_path / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(f"---\narete: true\ncards:\n{body}---\n", encoding="utf-8")
+
+    note("math/Intro.md", "  - id: arete_M\n    Front: math intro\n    Back: a\n")
+    note("bio/Intro.md", "  - id: arete_B\n    Front: bio intro\n    Back: a\n")
+    note(
+        "Algebra.md",
+        "  - id: arete_A\n    Front: algebra\n    Back: a\n"
+        "    deps:\n      requires: math/Intro\n      related: [Intro]\n",
+    )
+
+    out = export_graph(tmp_path)
+    nodes = {n.id: n for n in out.nodes}
+    assert nodes["arete_A"].file == "Algebra.md"
+    assert nodes["arete_A"].title == "algebra"  # root-level Front, not the id
+    assert out.requires == [["arete_A", "arete_M"]]  # scalar folder/name ref resolves
+    assert out.related == []  # bare `Intro` names two files: reported, not guessed
+    assert any("ambiguous" in r for r in out.unresolved_refs["arete_A"])

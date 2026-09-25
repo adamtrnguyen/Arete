@@ -1,12 +1,12 @@
 import './test-setup';
 import { App, Notice } from 'obsidian';
 import AretePlugin from '@/main';
-import { SyncService } from '@application/services/SyncService';
-import { CheckService } from '@application/services/CheckService';
+import { SyncService } from '@infrastructure/arete/SyncService';
+import { CheckService } from '@infrastructure/arete/CheckService';
 
 // Mock Services
-jest.mock('@application/services/SyncService');
-jest.mock('@application/services/CheckService');
+jest.mock('@infrastructure/arete/SyncService');
+jest.mock('@infrastructure/arete/CheckService');
 
 describe('AretePlugin Composition', () => {
 	let plugin: AretePlugin;

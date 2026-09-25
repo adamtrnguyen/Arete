@@ -21,7 +21,7 @@ export interface CardNode {
 /**
  * Edge types for dependencies.
  */
-export type EdgeType = 'requires' | 'related';
+type EdgeType = 'requires' | 'related';
 
 /**
  * An edge in the dependency graph.
@@ -58,6 +58,25 @@ export interface LocalGraphResult {
 	related: CardNode[];
 	links: DependencyEdge[]; // All edges in the subgraph
 	cycles: string[][]; // Groups of co-requisite card IDs
+}
+
+/**
+ * The resolved graph as the Python side exports it (`arete graph export`, POST /graph).
+ * Edges are `[card, target]`; `requires` points at the prerequisite. `file` is vault-relative.
+ */
+export interface GraphExport {
+	nodes: Array<{ id: string; title: string; file: string; line: number }>;
+	requires: Array<[string, string]>;
+	related: Array<[string, string]>;
+	cycles: string[][];
+	unresolved_refs: Record<string, string[]>;
+	duplicate_ids: Record<string, string[]>;
+	skipped_files: string[];
+}
+
+/** Port: where the graph comes from. Reference resolution lives in Python only (PL1). */
+export interface GraphSource {
+	fetchGraph(vaultRoot: string): Promise<GraphExport>;
 }
 
 /**

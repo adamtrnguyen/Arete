@@ -2,8 +2,10 @@ import { requestUrl } from 'obsidian';
 import { spawn } from 'child_process';
 import { AretePluginSettings } from '@/domain/settings';
 import { resolvePythonCommand } from '@infrastructure/arete/PythonProcess';
+import { GraphExport, GraphSource } from '@/domain/graph/types';
+import { AnkiModelSource, CardStatsSource, CardSuspender } from '@/domain/ports';
 
-export class AreteClient {
+export class AreteClient implements GraphSource, AnkiModelSource, CardStatsSource, CardSuspender {
 	private settings: AretePluginSettings;
 	private url: string;
 
@@ -104,7 +106,11 @@ export class AreteClient {
 			args.push('--anki-connect-url', this.settings.anki_connect_url);
 		}
 
-		// Spawn Logic
+		return this.runCLI(args);
+	}
+
+	/** Run `arete <args>` and parse its JSON stdout. */
+	private runCLI(args: string[]): Promise<any> {
 		return new Promise((resolve, reject) => {
 			const resolved = resolvePythonCommand(this.settings);
 			const finalArgs = [...resolved.args, ...args];
@@ -191,6 +197,18 @@ export class AreteClient {
 		const response = await requestUrl(`${this.url}${endpoint}?${params.toString()}`);
 		if (response.status !== 200) return {};
 		return response.json || {};
+	}
+
+	/** The resolved dependency graph; resolution happens in Python only (PL1). */
+	async fetchGraph(vaultRoot: string): Promise<GraphExport> {
+		if (this.settings.execution_mode === 'cli') {
+			return this.runCLI(['graph', 'export', vaultRoot]);
+		}
+		return this.invokeServer('/graph', { vault_root: vaultRoot });
+	}
+
+	async getCardStats(nids: number[]): Promise<unknown> {
+		return this.invoke('/anki/stats', { nids });
 	}
 
 	async suspendCards(cardIds: number[]): Promise<boolean> {

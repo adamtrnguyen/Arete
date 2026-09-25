@@ -9,10 +9,16 @@ import { ItemView, WorkspaceLeaf, setIcon, TFile, Component } from 'obsidian';
 import * as d3 from 'd3';
 
 const ForceGraph3D = require('3d-force-graph');
-import type AretePlugin from '@/main';
 import { DependencyResolver } from '@/application/services/DependencyResolver';
 import { LocalGraphResult } from '@/domain/graph/types';
 import { CardRenderer } from '@/presentation/renderers/CardRenderer';
+
+/** What this view needs from the plugin (main.ts satisfies it; no import of main). */
+export interface LocalGraphHost {
+	dependencyResolver: DependencyResolver;
+	getCardContext(filePath: string): string | undefined;
+	setCardContext(filePath: string, cardId: string): void;
+}
 
 export const LOCAL_GRAPH_VIEW_TYPE = 'arete-local-graph';
 
@@ -32,7 +38,7 @@ interface GraphLink extends d3.SimulationLinkDatum<GraphNode> {
 }
 
 export class LocalGraphView extends ItemView {
-	plugin: AretePlugin;
+	plugin: LocalGraphHost;
 	private resolver: DependencyResolver;
 	private container: HTMLElement;
 	private depth = 2;
@@ -47,7 +53,7 @@ export class LocalGraphView extends ItemView {
 	private clusteringEnabled = false;
 	private graph3D: any = null; // 3d-force-graph instance
 
-	constructor(leaf: WorkspaceLeaf, plugin: AretePlugin) {
+	constructor(leaf: WorkspaceLeaf, plugin: LocalGraphHost) {
 		super(leaf);
 		this.plugin = plugin;
 		this.resolver = plugin.dependencyResolver;
@@ -128,7 +134,7 @@ export class LocalGraphView extends ItemView {
 		setIcon(refreshBtn, 'refresh-cw');
 		refreshBtn.setAttribute('title', 'Rebuild Graph');
 		refreshBtn.addEventListener('click', () => {
-			this.resolver.buildGraph().then(() => this.refresh());
+			this.resolver.buildGraph(true).then(() => this.refresh());
 		});
 
 		// Render Mode Toggle
@@ -337,7 +343,7 @@ export class LocalGraphView extends ItemView {
 			return;
 		}
 
-		// Force rebuild graph to ensure fresh data
+		// Cached; dropped on any markdown edit (main.ts) or the refresh button
 		await this.resolver.buildGraph();
 
 		// Use resolver to get structured data

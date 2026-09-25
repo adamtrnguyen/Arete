@@ -2,7 +2,7 @@ import '../../test-setup';
 import { App, Notice } from 'obsidian';
 import { spawn, exec } from 'child_process';
 import { createMockChildProcess } from '../../test-setup';
-import { CheckService } from '@application/services/CheckService';
+import { CheckService } from '@infrastructure/arete/CheckService';
 
 describe('CheckService', () => {
 	let service: CheckService;

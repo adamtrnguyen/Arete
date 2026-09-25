@@ -1,4 +1,4 @@
-import { AreteClient } from '../../infrastructure/arete/AreteClient';
+import { CardSuspender } from '@/domain/ports';
 import { StatsCache, ProblematicCard } from '@/domain/stats';
 
 export interface LeechCard extends ProblematicCard {
@@ -8,9 +8,9 @@ export interface LeechCard extends ProblematicCard {
 }
 
 export class LeechService {
-	private areteClient: AreteClient;
+	private areteClient: CardSuspender;
 
-	constructor(areteClient: AreteClient) {
+	constructor(areteClient: CardSuspender) {
 		this.areteClient = areteClient;
 	}
 

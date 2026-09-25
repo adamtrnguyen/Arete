@@ -1,6 +1,6 @@
 import { App, TFile } from 'obsidian';
 import { AretePluginSettings } from '@/domain/settings';
-import { AreteClient } from '@/infrastructure/arete/AreteClient';
+import { CardStatsSource } from '@/domain/ports';
 
 import type { AnkiCardStats, ConceptStats, StatsNode, StatsCache } from '@/domain/stats';
 
@@ -8,12 +8,12 @@ export class StatsService {
 	app: App;
 	settings: AretePluginSettings;
 	cache: StatsCache;
-	private client: AreteClient;
+	private client: CardStatsSource;
 
 	constructor(
 		app: App,
 		settings: AretePluginSettings,
-		client: AreteClient,
+		client: CardStatsSource,
 		initialCache?: StatsCache,
 	) {
 		this.app = app;
@@ -413,7 +413,7 @@ export class StatsService {
 
 	async fetchAnkiCardStats(nids: number[]): Promise<AnkiCardStats[]> {
 		try {
-			const data = await this.client.invoke('/anki/stats', { nids });
+			const data: any = await this.client.getCardStats(nids);
 
 			if (Array.isArray(data)) {
 				// Map snake_case (Python) to camelCase (TS)

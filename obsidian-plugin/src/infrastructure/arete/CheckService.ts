@@ -2,8 +2,9 @@ import { App, Notice } from 'obsidian';
 import { spawn, exec } from 'child_process';
 import { AretePluginSettings } from '@domain/settings';
 import { resolvePythonCommand } from '@infrastructure/arete/PythonProcess';
+import { FileChecker } from '@/domain/ports';
 
-export class CheckService {
+export class CheckService implements FileChecker {
 	app: App;
 	settings: AretePluginSettings;
 

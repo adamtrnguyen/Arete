@@ -272,7 +272,7 @@ describe('StatsService', () => {
 					current_retrievability: 0.85,
 				},
 			];
-			service['client'].invoke = jest.fn().mockResolvedValue(mockData);
+			client.invoke = jest.fn().mockResolvedValue(mockData);
 
 			const stats = await service.fetchAnkiCardStats([101]);
 			expect(stats[0]).toEqual(
@@ -287,13 +287,13 @@ describe('StatsService', () => {
 		});
 
 		test('handles unexpected response format', async () => {
-			service['client'].invoke = jest.fn().mockResolvedValue({ error: 'not array' });
+			client.invoke = jest.fn().mockResolvedValue({ error: 'not array' });
 			const stats = await service.fetchAnkiCardStats([101]);
 			expect(stats).toEqual([]);
 		});
 
 		test('handles client error', async () => {
-			service['client'].invoke = jest.fn().mockRejectedValue(new Error('Network error'));
+			client.invoke = jest.fn().mockRejectedValue(new Error('Network error'));
 			const stats = await service.fetchAnkiCardStats([101]);
 			expect(stats).toEqual([]);
 		});

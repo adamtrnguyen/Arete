@@ -1,11 +1,27 @@
-import { App, Notice, PluginSettingTab, requestUrl, Setting } from 'obsidian';
-import AretePlugin from '@/main';
-import { CheckResultModal } from '@presentation/modals/CheckResultModal';
+import { App, Notice, Plugin, PluginSettingTab, requestUrl, Setting } from 'obsidian';
+import { CheckResultHost, CheckResultModal } from '@presentation/modals/CheckResultModal';
+import { AretePluginSettings } from '@/domain/settings';
+import { StatsCache } from '@/domain/stats';
+import { TemplateRenderer } from '@application/services/TemplateRenderer';
+import { ServerManager } from '@infrastructure/arete/ServerManager';
+import { GraphService } from '@application/services/GraphService';
+
+/** What the settings tab needs from the plugin (main.ts satisfies it; no import of main). */
+export type SettingsHost = Plugin &
+	CheckResultHost & {
+		settings: AretePluginSettings;
+		statsCache: StatsCache;
+		templateRenderer: TemplateRenderer;
+		serverManager: ServerManager;
+		graphService: GraphService;
+		saveSettings(): Promise<void>;
+		testConfig(): Promise<void>;
+	};
 
 export class AreteSettingTab extends PluginSettingTab {
-	plugin: AretePlugin;
+	plugin: SettingsHost;
 
-	constructor(app: App, plugin: AretePlugin) {
+	constructor(app: App, plugin: SettingsHost) {
 		super(app, plugin);
 		this.plugin = plugin;
 	}

@@ -12,7 +12,7 @@
 
 import type { AnkiCardStats } from '@/domain/stats';
 
-export const TEST_DECK = 'Test::Deck';
+const TEST_DECK = 'Test::Deck';
 
 /** A card as it appears in note frontmatter. Ids nest under `anki`, as Arete writes them. */
 export interface CardFixture {
@@ -40,18 +40,6 @@ export function card(
 		built.anki = { nid: String(nid), cid: String(nid), ...(rest.anki ?? {}) };
 	}
 	return built;
-}
-
-/** The frontmatter object Obsidian's metadata cache hands a plugin for a note. */
-export function noteFrontmatter(
-	options: { deck?: string; model?: string; cards?: CardFixture[] } = {},
-): Record<string, unknown> {
-	return {
-		arete: true,
-		deck: options.deck ?? TEST_DECK,
-		model: options.model ?? 'Basic',
-		cards: options.cards ?? [card()],
-	};
 }
 
 /** The same note as text on disk, for anything that parses raw YAML. */

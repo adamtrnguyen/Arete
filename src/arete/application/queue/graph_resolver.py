@@ -647,3 +647,57 @@ def get_subgraph_for_files(
         nodes=nodes,
         external_nodes=external_nodes,
     )
+
+
+@dataclass
+class GraphExportNode:
+    """A card as the Obsidian plugin draws it; `file` is vault-relative, posix."""
+
+    id: str
+    title: str
+    file: str
+    line: int
+
+
+@dataclass
+class GraphExport:
+    """The whole resolved graph, for clients that draw it instead of resolving it.
+
+    Edges are `[card, target]`: `requires` points at the prerequisite. The Obsidian plugin
+    used to resolve references itself and drifted (G5/G6); it now reads this.
+    """
+
+    nodes: list[GraphExportNode]
+    requires: list[list[str]]
+    related: list[list[str]]
+    cycles: list[list[str]]
+    unresolved_refs: dict[str, list[str]]
+    duplicate_ids: dict[str, list[str]]
+    skipped_files: list[str]
+
+
+def export_graph(vault_root: Path) -> GraphExport:
+    """Build the vault graph and flatten it for a client."""
+    graph = build_graph(vault_root)
+
+    def rel(path: str) -> str:
+        try:
+            return Path(path).relative_to(vault_root).as_posix()
+        except ValueError:
+            return path
+
+    nodes = [
+        GraphExportNode(id=n.id, title=n.title, file=rel(n.file_path), line=n.line_number)
+        for n in graph.nodes.values()
+    ]
+    requires = [[cid, pre] for cid in graph.nodes for pre in graph.get_prerequisites(cid)]
+    related = [[cid, rel_id] for cid in graph.nodes for rel_id in graph.get_related(cid)]
+    return GraphExport(
+        nodes=nodes,
+        requires=requires,
+        related=related,
+        cycles=detect_cycles(graph),
+        unresolved_refs={cid: refs for cid, refs in graph.unresolved_refs.items() if refs},
+        duplicate_ids={cid: [rel(f) for f in files] for cid, files in graph.duplicate_ids.items()},
+        skipped_files=[f"{rel(p)}: {err}" for p, err in graph.skipped_files],
+    )

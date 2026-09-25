@@ -16,15 +16,15 @@ import { AretePluginSettings, DEFAULT_SETTINGS } from '@domain/settings';
 import { CardYamlEditorView, YAML_EDITOR_VIEW_TYPE } from '@presentation/views/CardYamlEditorView';
 import { DashboardView, DASHBOARD_VIEW_TYPE } from '@presentation/views/DashboardView';
 import { AreteSettingTab } from '@presentation/settings/SettingTab';
-import { SyncService } from '@application/services/SyncService';
-import { CheckService } from '@application/services/CheckService';
+import { SyncService } from '@infrastructure/arete/SyncService';
+import { CheckService } from '@infrastructure/arete/CheckService';
 import { TemplateRenderer } from '@application/services/TemplateRenderer';
 import { StatsService } from '@application/services/StatsService';
 import { StatsCache, ConceptStats } from '@/domain/stats';
 import { GraphService } from '@application/services/GraphService';
 import { LinkCheckerService } from '@application/services/LinkCheckerService';
 import { LeechService } from '@application/services/LeechService';
-import { ServerManager } from '@application/services/ServerManager';
+import { ServerManager } from '@infrastructure/arete/ServerManager';
 import { AreteClient } from '@infrastructure/arete/AreteClient';
 
 import { LocalGraphView, LOCAL_GRAPH_VIEW_TYPE } from '@presentation/views/LocalGraphView';
@@ -77,10 +77,14 @@ export default class AretePlugin extends Plugin {
 			this.graphService = new GraphService(this.app, this.settings);
 
 			// Initialize New Dashboard Services
-			this.linkCheckerService = new LinkCheckerService(this.app, this);
+			this.linkCheckerService = new LinkCheckerService(this.app, this.checkService);
 			this.leechService = new LeechService(this.areteClient);
 			this.serverManager = new ServerManager(this.app, this.settings);
-			this.dependencyResolver = new DependencyResolver(this.app, this.settings);
+			const vaultAdapter = this.app.vault.adapter as FileSystemAdapter;
+			this.dependencyResolver = new DependencyResolver(
+				this.areteClient,
+				vaultAdapter.getBasePath ? vaultAdapter.getBasePath() : '',
+			);
 
 			// Start Server (background) if enabled
 			this.serverManager.start(true);
@@ -318,9 +322,10 @@ export default class AretePlugin extends Plugin {
 			),
 		);
 
-		// 7. Sync on Save (Debounced)
+		// 7. Sync on Save (Debounced). Any markdown edit may change deps: drop the graph.
 		this.registerEvent(
 			this.app.vault.on('modify', (file) => {
+				if (file.path.endsWith('.md')) this.dependencyResolver?.invalidate();
 				if (!this.settings.sync_on_save) return;
 				if (!file.path.endsWith('.md')) return;
 

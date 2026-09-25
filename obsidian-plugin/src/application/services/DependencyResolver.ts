@@ -1,156 +1,58 @@
 /**
- * DependencyResolver parses vault files to build a dependency graph cache.
+ * DependencyResolver serves the graph views from the graph the Python side resolves.
  *
- * This is the Obsidian-side resolver that reads YAML frontmatter directly
- * and builds a local graph for UI rendering.
+ * It used to parse frontmatter and resolve `deps` references itself: a second
+ * implementation that missed the ambiguous-basename and scalar-ref fixes (G5/G6). Now it
+ * only loads `GraphSource` output, caches it until `invalidate()`, and walks it.
  */
 
-import { App } from 'obsidian';
-import { AretePluginSettings } from '@/domain/settings';
 import {
 	CardNode,
 	DependencyEdge,
 	DependencyGraphBuilder,
 	FileNode,
 	GlobalGraphResult,
+	GraphExport,
+	GraphSource,
 	LocalGraphResult,
 } from '@/domain/graph/types';
 
 export class DependencyResolver {
-	private app: App;
-	private settings: AretePluginSettings;
-	private graphBuilder: DependencyGraphBuilder;
-	private fileIndex: Map<string, string[]> = new Map(); // basename → card IDs
+	private graphBuilder = new DependencyGraphBuilder();
+	private cycles: string[][] = [];
+	private loaded: Promise<void> | null = null;
 
-	constructor(app: App, settings: AretePluginSettings) {
-		this.app = app;
-		this.settings = settings;
-		this.graphBuilder = new DependencyGraphBuilder();
+	constructor(
+		private source: GraphSource,
+		private vaultRoot: string,
+	) {}
+
+	/** Drop the cached graph; the next buildGraph() fetches it again. */
+	invalidate(): void {
+		this.loaded = null;
 	}
 
-	/**
-	 * Build/rebuild the graph from all vault files.
-	 * Two-pass approach:
-	 * 1. Collect all cards and build file index (basename → card IDs)
-	 * 2. Resolve dependency references using the index
-	 */
-	async buildGraph(): Promise<void> {
-		this.graphBuilder = new DependencyGraphBuilder();
-		this.fileIndex = new Map();
-		const files = this.app.vault.getMarkdownFiles();
-
-		// Pending deps to resolve in second pass
-		const pendingDeps: Array<{
-			cardId: string;
-			requires: string[];
-			related: string[];
-		}> = [];
-
-		// First pass: collect all cards
-		for (const file of files) {
-			try {
-				const cache = this.app.metadataCache.getFileCache(file);
-				const frontmatter = cache?.frontmatter;
-
-				if (!frontmatter || !frontmatter.cards) continue;
-
-				const cards = frontmatter.cards;
-				if (!Array.isArray(cards)) continue;
-
-				// Get file basename for index
-				const basename = file.basename; // "algebra.md" -> "algebra"
-				if (!this.fileIndex.has(basename)) {
-					this.fileIndex.set(basename, []);
-				}
-
-				for (const card of cards) {
-					if (typeof card !== 'object' || !card.id) continue;
-
-					// Extract title from fields
-					let title = card.id;
-					if (card.fields && typeof card.fields === 'object') {
-						title = card.fields.Front || card.id;
-					}
-
-					// Get line number if available
-					const lineNumber = card.__line__ || 1;
-
-					const node: CardNode = {
-						id: card.id,
-						title: String(title).slice(0, 100),
-						filePath: file.path,
-						lineNumber,
-					};
-
-					this.graphBuilder.addNode(node);
-
-					// Add to file index
-					this.fileIndex.get(basename)!.push(card.id);
-
-					// Collect deps for second pass
-					if (card.deps && typeof card.deps === 'object') {
-						const requires = Array.isArray(card.deps.requires)
-							? card.deps.requires
-							: [];
-						const related = Array.isArray(card.deps.related) ? card.deps.related : [];
-						if (requires.length > 0 || related.length > 0) {
-							pendingDeps.push({ cardId: card.id, requires, related });
-						}
-					}
-				}
-			} catch (e) {
-				console.warn(`[DependencyResolver] Failed to parse ${file.path}:`, e);
-			}
+	/** Load the graph once; later calls reuse it until invalidate() (or force). */
+	async buildGraph(force = false): Promise<void> {
+		if (force) this.invalidate();
+		if (!this.loaded) {
+			this.loaded = this.source.fetchGraph(this.vaultRoot).then((g) => this.load(g));
+			this.loaded.catch(() => {
+				this.loaded = null; // a failed fetch is retried
+			});
 		}
-
-		// Second pass: resolve references and add edges
-		for (const { cardId, requires, related } of pendingDeps) {
-			for (const ref of requires) {
-				if (typeof ref === 'string') {
-					const resolved = this.resolveReference(ref);
-					for (const targetId of resolved) {
-						this.graphBuilder.addRequires(cardId, targetId);
-					}
-				}
-			}
-
-			for (const ref of related) {
-				if (typeof ref === 'string') {
-					const resolved = this.resolveReference(ref);
-					for (const targetId of resolved) {
-						this.graphBuilder.addRelated(cardId, targetId);
-					}
-				}
-			}
-		}
+		return this.loaded;
 	}
 
-	/**
-	 * Resolve a dependency reference to card ID(s).
-	 * - arete_XXX: Direct card ID (returns single-element array if exists)
-	 * - basename: All cards in that file (returns array of all card IDs)
-	 */
-	private resolveReference(ref: string): string[] {
-		if (ref.startsWith('arete_')) {
-			// Direct card ID lookup
-			if (this.graphBuilder.hasNode(ref)) {
-				return [ref];
-			}
-		} else {
-			// Note basename → all cards in that file
-			// Strip wikilinks brackets if present e.g. "[[Name]]" -> "Name"
-			const normalizedRef = ref.replace(/^\[\[|\]\]$/g, '');
-
-			if (this.fileIndex.has(normalizedRef)) {
-				return this.fileIndex.get(normalizedRef)!;
-			} else {
-				console.warn(
-					`[DependencyResolver] No file with basename '${normalizedRef}' found (raw: '${ref}')`,
-				);
-				return [];
-			}
+	private load(g: GraphExport): void {
+		const builder = new DependencyGraphBuilder();
+		for (const n of g.nodes) {
+			builder.addNode({ id: n.id, title: n.title, filePath: n.file, lineNumber: n.line });
 		}
-		return [];
+		for (const [from, to] of g.requires) builder.addRequires(from, to);
+		for (const [from, to] of g.related) builder.addRelated(from, to);
+		this.graphBuilder = builder;
+		this.cycles = g.cycles;
 	}
 
 	/**
@@ -244,15 +146,12 @@ export class DependencyResolver {
 
 		// Collect all edges within the subgraph
 		const subgraphNodes = new Set([cardId, ...prereqIds, ...dependentIds, ...relatedIds]);
-		const links: any[] = [];
+		const links: DependencyEdge[] = [];
 
 		for (const sourceId of subgraphNodes) {
 			// Check requires (outbound edges from sourceId)
 			// requires map in GraphBuilder is Source -> Targets
-			const targets = this.graphBuilder.getPrerequisites(sourceId); // nomenclature is confusing, let's assume getPrerequisites returns "things sourceId depends on"
-			// Wait, I need to be sure about getPrerequisites.
-			// In DependencyResolver line 90: getPrerequisites(cardId) returns this.requires.get(cardId).
-			// In addRequires(from, to), we push to from's list. So yes, it returns outgoing edges.
+			const targets = this.graphBuilder.getPrerequisites(sourceId); // what sourceId requires
 
 			for (const targetId of targets) {
 				if (subgraphNodes.has(targetId)) {
@@ -345,39 +244,6 @@ export class DependencyResolver {
 	}
 
 	private detectCyclesForCard(cardId: string): string[][] {
-		const visited = new Set<string>();
-		const recStack = new Set<string>();
-		const cycles: string[][] = [];
-		const path: string[] = [];
-
-		const dfs = (cid: string): void => {
-			visited.add(cid);
-			recStack.add(cid);
-			path.push(cid);
-
-			for (const prereqId of this.graphBuilder.getPrerequisites(cid)) {
-				if (!this.graphBuilder.hasNode(prereqId)) continue;
-
-				if (!visited.has(prereqId)) {
-					dfs(prereqId);
-				} else if (recStack.has(prereqId)) {
-					// Found cycle
-					const cycleStart = path.indexOf(prereqId);
-					const cycle = path.slice(cycleStart);
-					if (cycle.includes(cardId)) {
-						cycles.push([...cycle]);
-					}
-				}
-			}
-
-			path.pop();
-			recStack.delete(cid);
-		};
-
-		if (this.graphBuilder.hasNode(cardId)) {
-			dfs(cardId);
-		}
-
-		return cycles;
+		return this.cycles.filter((c) => c.includes(cardId));
 	}
 }

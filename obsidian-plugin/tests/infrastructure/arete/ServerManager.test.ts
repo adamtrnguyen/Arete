@@ -1,7 +1,7 @@
 import '../../test-setup';
 import { App, Notice, requestUrl } from 'obsidian';
 import { spawn } from 'child_process';
-import { ServerManager } from '@application/services/ServerManager';
+import { ServerManager } from '@infrastructure/arete/ServerManager';
 import { createMockChildProcess } from '../../test-setup';
 
 describe('ServerManager', () => {

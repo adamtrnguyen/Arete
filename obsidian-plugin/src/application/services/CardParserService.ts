@@ -1,6 +1,6 @@
 import { parseYaml } from 'obsidian';
 
-export interface CardRange {
+interface CardRange {
 	index: number;
 	startLine: number;
 	endLine: number;

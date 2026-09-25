@@ -1,13 +1,18 @@
 import { App, Modal, Notice } from 'obsidian';
 import * as path from 'path';
-import AretePlugin from '@/main';
+
+/** What this modal needs from the plugin (main.ts satisfies it; no import of main). */
+export interface CheckResultHost {
+	runCheck(filePath: string): Promise<void>;
+	runFix(filePath: string): Promise<void>;
+}
 
 export class CheckResultModal extends Modal {
 	result: any;
-	plugin: AretePlugin;
+	plugin: CheckResultHost;
 	filePath: string;
 
-	constructor(app: App, plugin: AretePlugin, result: any, filePath: string) {
+	constructor(app: App, plugin: CheckResultHost, result: any, filePath: string) {
 		super(app);
 		this.plugin = plugin;
 		this.result = result;

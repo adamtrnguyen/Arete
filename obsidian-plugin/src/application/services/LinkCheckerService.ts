@@ -1,5 +1,5 @@
 import { App, TFile } from 'obsidian';
-import AretePlugin from '@/main';
+import { FileChecker } from '@/domain/ports';
 
 export interface BrokenReference {
 	sourceFile: TFile;
@@ -15,11 +15,11 @@ export interface BrokenReference {
 
 export class LinkCheckerService {
 	app: App;
-	plugin: AretePlugin;
+	checkService: FileChecker;
 
-	constructor(app: App, plugin: AretePlugin) {
+	constructor(app: App, checkService: FileChecker) {
 		this.app = app;
-		this.plugin = plugin;
+		this.checkService = checkService;
 	}
 
 	/**
@@ -185,7 +185,7 @@ export class LinkCheckerService {
 					fullPath = `${basePath}/${file.path}`;
 				}
 
-				const checkRes = await this.plugin.checkService.getCheckResult(fullPath);
+				const checkRes = await this.checkService.getCheckResult(fullPath);
 				if (!checkRes.ok && checkRes.errors && checkRes.errors.length > 0) {
 					// Use the first error as the summary
 					const firstErr = checkRes.errors[0];
