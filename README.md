@@ -52,10 +52,10 @@ uv run arete sync   # Your first sync
 
 ## 📚 Documentation
 
-- [**CLI Guide**](./docs/cli_guide.md): Command-line options, configuration, and syntax.
-- [**Obsidian Plugin Guide**](./docs/plugin_guide.md): How to use the GUI and Gutter features.
+- [**CLI Guide**](./docs/CLI.md): Command-line options, configuration, and syntax.
+- [**Obsidian Plugin Guide**](./docs/PLUGIN.md): How to use the GUI and Gutter features.
 - [**Architecture**](./docs/ARCHITECTURE.md): Technical deep-dive into the core logic.
-- [**Troubleshooting**](./docs/troubleshooting.md): Common fixes for WSL and networking.
+- [**Troubleshooting**](./docs/TROUBLESHOOTING.md): Common fixes for WSL and networking.
 
 ---
 
