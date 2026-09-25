@@ -216,27 +216,6 @@ class TestCycleDetection:
         assert "a" in cycles[0]
         assert "b" in cycles[0]
 
-    def test_detect_complex_cycle_for_card(self):
-        """Test cycle detection relative to a card with missing nodes in path."""
-        graph = DependencyGraph()
-        graph.add_node(CardNode("a", "A", "/a.md", 1))
-        graph.add_node(CardNode("b", "B", "/b.md", 1))
-        graph.add_node(CardNode("c", "C", "/c.md", 1))
-        graph.add_requires("a", "b")
-        graph.add_requires("b", "c")
-        graph.add_requires("c", "a")
-        graph.add_requires("a", "nonexistent")
-
-        # cycles for 'a'
-        from arete.application.queue.graph_resolver import detect_cycles_for_card
-
-        cycles = detect_cycles_for_card(graph, "a")
-        assert len(cycles) == 1
-        assert sorted(cycles[0]) == ["a", "b", "c"]
-
-        # Cycle for card not in graph
-        assert detect_cycles_for_card(graph, "missing") == []
-
 
 class TestTopologicalSort:
     """Tests for topological sorting."""

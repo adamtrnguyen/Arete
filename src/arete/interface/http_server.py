@@ -50,11 +50,6 @@ async def health_check():
     return HealthResponse(status="ok", version=VERSION, uptime_seconds=time.time() - start_time)
 
 
-@app.get("/version")
-async def get_version():
-    return {"version": VERSION}
-
-
 # Request model for sync parameters (subset of AppConfig settings)
 class SyncRequest(BaseModel):
     # If None, use defaults/config file.
@@ -116,41 +111,6 @@ async def trigger_sync(req: SyncRequest):
         )
     except Exception as e:
         logger.error(f"Sync failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e)) from e
-
-
-class FormatRequest(BaseModel):
-    vault_root: str | None = None
-    dry_run: bool | None = None
-
-
-class FormatResponse(BaseModel):
-    formatted_count: int
-    success: bool
-
-
-@app.post("/vault/format", response_model=FormatResponse)
-async def format_vault(req: FormatRequest):
-    """Format and normalize YAML in the entire vault."""
-    from arete.application.config import resolve_config
-    from arete.composition.factory import get_vault_service
-
-    logger.info(f"Format requested via API: {req}")
-
-    overrides = {
-        "vault_root": req.vault_root,
-        "dry_run": req.dry_run,
-    }
-    overrides = {k: v for k, v in overrides.items() if v is not None}
-
-    try:
-        config = resolve_config(overrides)
-        vault = get_vault_service(config)
-        count = vault.format_vault(dry_run=config.dry_run)
-
-        return FormatResponse(formatted_count=count, success=True)
-    except Exception as e:
-        logger.error(f"Format failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 

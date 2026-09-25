@@ -15,12 +15,6 @@ def test_health_check():
     assert data["version"] == VERSION
 
 
-def test_get_version():
-    response = client.get("/version")
-    assert response.status_code == 200
-    assert response.json() == {"version": VERSION}
-
-
 @patch(
     "arete.composition.orchestrator.execute_sync", new_callable=AsyncMock
 )  # Patched arete.composition.orchestrator.execute_sync

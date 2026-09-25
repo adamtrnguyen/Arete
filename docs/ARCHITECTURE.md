@@ -71,7 +71,6 @@ src/arete/
 │   ├── stats/                    
 │   │   ├── models.py              Domain models for FSRS statistics
 │   │   ├── ports.py               Ports (interfaces) for stats retrieval
-│   ├── card_models.py             Pydantic v2 models for Arete card frontmatter validation
 │   ├── constants.py               Centralized constants for the Arete application
 │   ├── graph.py                   Domain types for dependency graph
 │   ├── interfaces.py              Ports: what the application layer is allowed to ask of the outside world
@@ -82,11 +81,11 @@ src/arete/
 
 | Layer | Modules | Lines | May import |
 |---|---|---|---|
-| `interface` | 7 | 1750 | application, composition |
+| `interface` | 7 | 1710 | application, composition |
 | `composition` | 2 | 161 | application, infrastructure, domain |
-| `application` | 23 | 4179 | domain (ports only) |
+| `application` | 23 | 4161 | domain (ports only) |
 | `infrastructure` | 7 | 2143 | domain |
-| `domain` | 7 | 817 | nothing in arete |
+| `domain` | 6 | 608 | nothing in arete |
 
 The import rules in the last column are enforced by `just check-architecture`
 (import-linter), not by convention.

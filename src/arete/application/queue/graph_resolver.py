@@ -278,24 +278,6 @@ def detect_cycles(graph: DependencyGraph) -> list[list[str]]:
     return [list(scc) for scc in nx.strongly_connected_components(graph._graph) if len(scc) > 1]
 
 
-def detect_cycles_for_card(graph: DependencyGraph, card_id: str) -> list[list[str]]:
-    """Detect cycles that include a specific card.
-
-    Uses strongly connected components to find cycles containing card_id.
-    """
-    if card_id not in graph.nodes:
-        return []
-
-    if card_id not in graph._graph:
-        return []
-
-    return [
-        list(scc)
-        for scc in nx.strongly_connected_components(graph._graph)
-        if len(scc) > 1 and card_id in scc
-    ]
-
-
 def find_isolated_nodes(graph: DependencyGraph) -> list[str]:
     """Find cards with no requires AND no dependents (completely disconnected)."""
     return [
