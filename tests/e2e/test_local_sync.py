@@ -325,3 +325,36 @@ async def test_a_note_claimed_from_two_files_is_left_alone(
         assert col.find_notes("") == [int(nid)], "nothing created, nothing pruned"
     finally:
         col.close()
+
+
+@pytest.mark.asyncio
+async def test_a_conversion_that_would_delete_cards_is_refused(
+    single_card_vault: Path, anki_base: Path, make_config
+):
+    """Cloze -> Basic keeps one card; a 3-card note would lose two cards and their reviews."""
+    from arete.application.utils.text import parse_frontmatter, rebuild_markdown_with_frontmatter
+
+    md = single_card_vault / "Transformer.md"
+    meta, body = parse_frontmatter(md.read_text(encoding="utf-8"))
+    c = meta["cards"][0]
+    c["model"], c["Text"], c["Back Extra"] = "Cloze", "{{c1::a}} {{c2::b}} {{c3::c}}", ""
+    del c["Front"], c["Back"]
+    md.write_text(rebuild_markdown_with_frontmatter(meta, body), encoding="utf-8")
+    await execute_sync(make_config(single_card_vault))
+
+    meta, body = parse_frontmatter(md.read_text(encoding="utf-8"))
+    c = meta["cards"][0]
+    c["model"], c["Front"], c["Back"] = "Basic", "Q", "A"
+    del c["Text"], c["Back Extra"]
+    md.write_text(rebuild_markdown_with_frontmatter(meta, body), encoding="utf-8")
+    stats = await execute_sync(make_config(single_card_vault))
+
+    assert stats.total_errors == 1
+    col = open_collection(anki_base)
+    try:
+        [nid] = col.find_notes("")
+        note = col.get_note(nid)
+        assert note.note_type()["name"] == "Cloze"
+        assert len(note.cards()) == 3
+    finally:
+        col.close()

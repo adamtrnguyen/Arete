@@ -990,3 +990,32 @@ async def test_curl_bridge_fallback():
         adapter = AnkiConnectAdapter(url="http://localhost:8765")
 
         assert adapter.use_windows_curl is False
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_sync_refuses_a_conversion_that_would_delete_cards(adapter, sample_note):
+    """A 3-card Cloze note converted to Basic would keep one card."""
+    sample_note.nid = "999"
+    actions = []
+
+    def side_effect(request):
+        data = json.loads(request.content)
+        actions.append(data["action"])
+        result = {
+            "notesInfo": [
+                {"noteId": 999, "modelName": "Cloze", "cards": [1, 2, 3], "fields": {}}
+            ],
+            "modelTemplates": {"Card 1": {}},
+        }.get(data["action"])
+        return Response(200, json={"result": result, "error": None})
+
+    respx.post("http://mock-anki:8765").mock(side_effect=side_effect)
+
+    [res] = await adapter.sync_notes(
+        [WorkItem(note=sample_note, source_file=Path("t.md"), source_index=1)]
+    )
+
+    assert not res.ok
+    assert "would delete 2 of its 3 cards" in (res.error or "")
+    assert "changeNoteType" not in actions and "updateNoteFields" not in actions

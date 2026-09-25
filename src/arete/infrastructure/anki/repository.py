@@ -170,6 +170,14 @@ class AnkiRepository:
         new_type = self.col.models.by_name(new_model)
         if new_type is None:
             raise RuntimeError(f"Note type not found: {new_model}")
+        n_cards = len(self.col.get_note(cast(NoteId, nid)).cards())
+        keeps = n_cards if new_type["type"] == 1 else len(new_type["tmpls"])  # 1 = cloze
+        if n_cards > keeps:
+            raise RuntimeError(
+                f"Changing note {nid} from {old_type['name']} to {new_model} would delete "
+                f"{n_cards - keeps} of its {n_cards} cards and their reviews; not converting. "
+                "Split the card in the vault, or change the type in Anki's browser."
+            )
         info = self.col.models.change_notetype_info(
             old_notetype_id=old_type["id"], new_notetype_id=new_type["id"]
         )

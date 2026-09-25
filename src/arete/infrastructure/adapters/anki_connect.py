@@ -189,6 +189,15 @@ class AnkiConnectAdapter(AnkiBridge):
 
     async def _change_note_type(self, nid: int, info: dict, new_model: str) -> None:
         """Convert a note in place with the add-on's changeNoteType; reviews are kept."""
+        n_cards = len(info.get("cards") or [])
+        if new_model != "Cloze":
+            keeps = len(await self._invoke("modelTemplates", modelName=new_model) or {})
+            if n_cards > keeps:
+                raise RuntimeError(
+                    f"Changing note {nid} from {info.get('modelName')} to {new_model} would "
+                    f"delete {n_cards - keeps} of its {n_cards} cards and their reviews; not "
+                    "converting. Split the card in the vault, or change the type in Anki."
+                )
         fields = info.get("fields", {})
         old_fields = sorted(fields, key=lambda name: fields[name].get("order", 0))
         new_fields = await self._invoke("modelFieldNames", modelName=new_model)
