@@ -222,11 +222,11 @@ def isolate_config(tmp_path, monkeypatch):
     """Prevent host config from leaking into tests.
 
     - Sets HOME to tmp_path so AppConfig won't read ~/.config/arete/config.toml
-    - Clears O2A_* env vars that pydantic-settings would pick up
+    - Clears ARETE_* env vars that pydantic-settings would pick up
     """
     monkeypatch.setenv("HOME", str(tmp_path))
     for key in list(os.environ):
-        if key.startswith("O2A_"):
+        if key.startswith("ARETE_"):
             monkeypatch.delenv(key)
     # Ensure no stray config file
     (tmp_path / ".config" / "arete").mkdir(parents=True, exist_ok=True)

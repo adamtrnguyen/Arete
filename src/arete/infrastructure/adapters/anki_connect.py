@@ -36,7 +36,7 @@ class AnkiConnectAdapter(AnkiBridge):
         self._invoke_sem = asyncio.Semaphore(SYNC_CONCURRENCY)
 
         # The URL comes from config.anki_connect_url (CLI flag, config.toml, or the
-        # O2A_ANKI_CONNECT_URL env var). No second env var is read here.
+        # ARETE_ANKI_CONNECT_URL env var). No second env var is read here.
 
         # WSL Logic
         if "microsoft" in platform.uname().release.lower():

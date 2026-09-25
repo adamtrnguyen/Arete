@@ -213,7 +213,7 @@ def queue(
     config = _resolve_with_overrides(root_input=path)
     vault_root = config.root_input
     if vault_root is None:
-        typer.secho("No vault root configured. Pass a path or set O2A_ROOT_INPUT.", fg="red")
+        typer.secho("No vault root configured. Pass a path or set ARETE_ROOT_INPUT.", fg="red")
         raise typer.Exit(1)
 
     async def run():
@@ -416,7 +416,7 @@ def graph_check(
     config = _resolve_with_overrides(root_input=path)
     vault_root = config.root_input
     if vault_root is None:
-        typer.secho("No vault root configured. Pass a path or set O2A_ROOT_INPUT.", fg="red")
+        typer.secho("No vault root configured. Pass a path or set ARETE_ROOT_INPUT.", fg="red")
         raise typer.Exit(1)
 
     result = check_graph_health(vault_root)
@@ -493,7 +493,7 @@ def graph_export(
     config = _resolve_with_overrides(root_input=path)
     vault_root = config.root_input
     if vault_root is None:
-        typer.secho("No vault root configured. Pass a path or set O2A_ROOT_INPUT.", fg="red")
+        typer.secho("No vault root configured. Pass a path or set ARETE_ROOT_INPUT.", fg="red")
         raise typer.Exit(1)
 
     typer.echo(json.dumps(asdict(export_graph(vault_root))))

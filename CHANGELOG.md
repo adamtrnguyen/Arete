@@ -10,6 +10,31 @@
   deletions get a chip colored by `cN`; `$math$` is tinted. Text inside a `|-` block is
   never mistaken for a key.
 
+### Fixed
+
+- **The plugin's Check File, Fix, suspend and unsuspend failed in CLI mode** with
+  "No such command": they called commands removed in 2.4.0.
+- **`arete vault fix` moved `nid:` out of a synced card's `anki:` block.**
+- **Card stats never used the add-on's FSRS answer.** The add-on did not send
+  stability and arete required it, so difficulty came only from a fallback.
+  Update the Anki add-on to get stability.
+
+### Removed
+
+Breaking. Every note in a real vault was checked first; none relied on these.
+
+- A note must have `arete: true`. A note with `cards:` and a deck but no marker was
+  still synced.
+- Lowercase field names (`front`, `back`, `text`, `extra`) and `Extra` for Cloze. Use
+  `Front`, `Back`, `Text`, `Back Extra`.
+- Card-level `nid`, `cid` and `markdown` keys. Arete keeps ids under `anki:`.
+- `~/.arete.toml`. The config file is `~/.config/arete/config.toml`.
+- The `O2A_` environment prefix, from the project's old name. It is `ARETE_` now,
+  e.g. `ARETE_ANKI_CONNECT_URL`.
+- The plugin's "Arete Script Path" setting (the old `arete/main.py`). Use Python
+  Executable and Project Root.
+- Anki add-on fallbacks for Anki versions from before FSRS.
+
 ## 2.5.0
 
 ### Added
