@@ -21,7 +21,6 @@
     "@types/jest": "^30.0.0",
     "@types/mustache": "^4.2.6",
     "@types/node": "^24.0.0",
-    "@types/three": "^0.185.0",
     "builtin-modules": "^5.0.0",
     "dependency-cruiser": "^17.3.6",
     "esbuild": "^0.28.1",
@@ -44,8 +43,7 @@
     "@codemirror/view": "6.38.6",
     "3d-force-graph": "^1.80.0",
     "d3": "^7.9.0",
-    "mustache": "^4.2.0",
-    "three": "^0.185.0"
+    "mustache": "^4.2.0"
   },
   "overrides": {
     "@codemirror/view": "6.38.6",
