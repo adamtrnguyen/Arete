@@ -21,6 +21,18 @@
 	box-shadow: 0 0 0 2px rgba(var(--interactive-accent-rgb), 0.2);
 }
 
+.arete-dep-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	margin: 0 6px 6px 0;
+	padding: 3px 6px 3px 8px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 12px;
+	background: var(--background-secondary);
+	max-width: 100%;
+}
+
 .arete-dep-chip.is-card {
 	background: rgba(var(--interactive-accent-rgb), 0.1);
 	border-color: rgba(var(--interactive-accent-rgb), 0.3);

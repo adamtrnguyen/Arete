@@ -88,6 +88,19 @@ export class LocalGraphView extends ItemView {
 		graphDiv.style.overflow = 'hidden'; // SVG handles scroll via zoom
 		graphDiv.style.position = 'relative';
 
+		// Render when the canvas gains or changes size. Polling every 100 ms while hidden
+		// (the old retry) re-rendered forever in a background tab.
+		let lastSize = '';
+		const observer = new ResizeObserver(([entry]) => {
+			const { width, height } = entry.contentRect;
+			const size = `${Math.round(width)}x${Math.round(height)}`;
+			if (width === 0 || height === 0 || size === lastSize) return;
+			lastSize = size;
+			this.refresh();
+		});
+		observer.observe(graphDiv);
+		this.register(() => observer.disconnect());
+
 		// Initial graph build
 		// Ensure we capture initial file
 		const activeFile = this.app.workspace.getActiveFile();
@@ -322,6 +335,7 @@ export class LocalGraphView extends ItemView {
 			} else {
 				// 3. Fallback to first card
 				const firstCard = cards.find((c: any) => c.id);
+				targetCardId = null; // never fall back to another file's card
 				if (firstCard) {
 					targetCardId = firstCard.id;
 					// Update context to match default
@@ -338,18 +352,31 @@ export class LocalGraphView extends ItemView {
 		}
 
 		if (!targetCardId) {
-			console.log('[Arete Graph] No valid card ID found');
-			this.renderEmpty(canvas, 'No valid cards found.');
+			// Ids are assigned on first sync, and the graph is keyed by id.
+			this.renderEmpty(
+				canvas,
+				'These cards have no Arete IDs yet. Sync the note to add them to the graph.',
+			);
 			return;
 		}
 
-		// Cached; dropped on any markdown edit (main.ts) or the refresh button
-		await this.resolver.buildGraph();
+		// Cached; dropped on any markdown edit (main.ts) or the refresh button. An uncached
+		// build asks the Python side (~3 s), so say so instead of showing a stale message.
+		this.renderEmpty(canvas, 'Loading graph…');
+		try {
+			await this.resolver.buildGraph();
+		} catch (e) {
+			this.renderEmpty(canvas, `Could not load the graph: ${(e as Error).message}`);
+			return;
+		}
 
 		// Use resolver to get structured data
 		const localGraph = this.resolver.getLocalGraph(targetCardId, this.depth);
 		if (!localGraph) {
-			this.renderEmpty(canvas, 'Graph parsing failed or empty.');
+			this.renderEmpty(
+				canvas,
+				'This card is not in the graph yet. Sync, then press refresh.',
+			);
 			return;
 		}
 
@@ -452,10 +479,7 @@ export class LocalGraphView extends ItemView {
 		const height = container.clientHeight;
 
 		if (width === 0 || height === 0) {
-			console.warn('[Arete Graph] Container has 0 dimensions. Waiting for resize.');
-			// Retry once after a delay
-			setTimeout(() => this.refresh(), 100);
-			return;
+			return; // hidden; the ResizeObserver in onOpen renders once it has a size
 		}
 
 		const svg = d3
@@ -791,9 +815,7 @@ export class LocalGraphView extends ItemView {
 		const height = container.clientHeight;
 
 		if (width === 0 || height === 0) {
-			console.warn('[Arete Graph 3D] Container has 0 dimensions. Waiting for resize.');
-			setTimeout(() => this.refresh(), 100);
-			return;
+			return; // hidden; the ResizeObserver in onOpen renders once it has a size
 		}
 
 		// Transform links for 3d-force-graph (needs source/target as id strings)

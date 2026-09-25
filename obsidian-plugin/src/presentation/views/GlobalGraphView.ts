@@ -114,12 +114,18 @@ export class GlobalGraphView extends ItemView {
 		await this.loadData();
 		this.render();
 
-		// Resize handler
-		this.registerEvent(
-			this.app.workspace.on('resize', () => {
-				this.render();
-			}),
-		);
+		// Re-render when the canvas changes size, including when a hidden tab is first shown:
+		// a render while hidden measures 0x0 and draws nothing.
+		let lastSize = '';
+		const observer = new ResizeObserver(([entry]) => {
+			const { width, height } = entry.contentRect;
+			const size = `${Math.round(width)}x${Math.round(height)}`;
+			if (width === 0 || height === 0 || size === lastSize) return;
+			lastSize = size;
+			this.render();
+		});
+		observer.observe(this.graphContainer);
+		this.register(() => observer.disconnect());
 	}
 
 	// --- Data Loading ---
@@ -219,7 +225,8 @@ export class GlobalGraphView extends ItemView {
 		setIcon(fitBtn, 'maximize-2');
 		fitBtn.setAttribute('title', 'Fit to View');
 		fitBtn.addEventListener('click', () => {
-			this.render();
+			if (this.fitToView) this.fitToView();
+			else this.render();
 		});
 	}
 
@@ -378,7 +385,7 @@ export class GlobalGraphView extends ItemView {
 		const width = container.clientWidth;
 		const height = container.clientHeight;
 		if (width === 0 || height === 0) {
-			setTimeout(() => this.render(), 100);
+			// hidden; the ResizeObserver re-renders once it has a size
 			return;
 		}
 
@@ -431,6 +438,28 @@ export class GlobalGraphView extends ItemView {
 			);
 
 		this.simulation = sim;
+
+		// Zoom to the laid-out nodes. A few hundred files spread far past the pane, so an
+		// unfitted graph showed one corner; the old "Fit to View" button only re-rendered.
+		this.fitToView = () => {
+			const placed = (nodes as any[]).filter((n) => Number.isFinite(n.x));
+			if (placed.length === 0) return;
+			const pad = (n: any) => (n.radius || 5) + 20;
+			const minX = Math.min(...placed.map((n) => n.x - pad(n)));
+			const maxX = Math.max(...placed.map((n) => n.x + pad(n)));
+			const minY = Math.min(...placed.map((n) => n.y - pad(n)));
+			const maxY = Math.max(...placed.map((n) => n.y + pad(n)));
+			const k = Math.max(
+				0.05,
+				Math.min(6, 0.95 / Math.max((maxX - minX) / width, (maxY - minY) / height)),
+			);
+			const transform = d3.zoomIdentity
+				.translate(width / 2, height / 2)
+				.scale(k)
+				.translate(-(minX + maxX) / 2, -(minY + maxY) / 2);
+			svg.transition().duration(400).call(zoom.transform, transform);
+		};
+		sim.on('end.fit', () => this.fitToView?.());
 
 		// Clustering for card mode
 		if (!isFileMode && this.clusteringEnabled) {
@@ -707,7 +736,7 @@ export class GlobalGraphView extends ItemView {
 		const width = this.graphContainer.clientWidth;
 		const height = this.graphContainer.clientHeight;
 		if (width === 0 || height === 0) {
-			setTimeout(() => this.render(), 100);
+			// hidden; the ResizeObserver re-renders once it has a size
 			return;
 		}
 
@@ -791,7 +820,7 @@ export class GlobalGraphView extends ItemView {
 		const width = this.graphContainer.clientWidth;
 		const height = this.graphContainer.clientHeight;
 		if (width === 0 || height === 0) {
-			setTimeout(() => this.render(), 100);
+			// hidden; the ResizeObserver re-renders once it has a size
 			return;
 		}
 
@@ -1230,6 +1259,8 @@ export class GlobalGraphView extends ItemView {
 		const div = this.graphContainer.createDiv({ cls: 'arete-global-graph-empty' });
 		div.setText(msg);
 	}
+
+	private fitToView: (() => void) | null = null;
 
 	private stopSimulation(): void {
 		if (this.simulation) {

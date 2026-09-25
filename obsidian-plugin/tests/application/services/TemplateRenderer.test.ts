@@ -149,11 +149,38 @@ describe('TemplateRenderer', () => {
 		expect(mockRepo.modelTemplates).toHaveBeenCalledTimes(1);
 	});
 
-	it('keeps Cloze on the field-inspector fallback', async () => {
+	it('renders Cloze the way Anki shows card 1: hidden on the front, revealed on the back', async () => {
+		// Mustache cannot evaluate {{cloze:Text}}; the preview used to give up on every cloze card.
+		renderer.setMode('anki'); // raw fields, so the assertion sees the cloze markup itself
 		mockRepo.modelTemplates.mockResolvedValue({
-			'Card 1': { Front: '{{cloze:Text}}', Back: '{{cloze:Text}}' },
+			Cloze: {
+				Front: '{{cloze:Text}}',
+				Back: '{{cloze:Text}}<br>{{Back Extra}}',
+			},
 		});
-		expect(await renderer.render('Cloze', 'Front', { Text: '{{c1::x}}' }, opts)).toBeNull();
-		expect(MarkdownRenderer.render).not.toHaveBeenCalled();
+		const fields = {
+			Text: 'Uses {{c1::online softmax}} and {{c2::tiling}}.',
+			'Back Extra': 'E',
+		};
+
+		const front = await renderer.render('Cloze', 'Front', fields, opts);
+		expect(front?.html).toBe('Uses <span class="cloze">[...]</span> and tiling.');
+
+		const back = await renderer.render('Cloze', 'Back', fields, opts);
+		expect(back?.html).toBe('Uses <span class="cloze">online softmax</span> and tiling.<br>E');
+	});
+
+	it('shows a type-answer box on the front and the answer on the back', async () => {
+		renderer.setMode('anki');
+		mockRepo.modelTemplates.mockResolvedValue({
+			'Card 1': {
+				Front: '{{Front}}<br>{{type:Back}}',
+				Back: '{{FrontSide}}<hr id=answer>{{Back}}',
+			},
+		});
+		const front = await renderer.render('Typed', 'Front', { Front: 'Q', Back: 'A' }, opts);
+		expect(front?.html).toBe(
+			'Q<br><span class="arete-type-answer" style="display:inline-block;min-width:10em;padding:2px 8px;border:1px solid #999;border-radius:4px;color:#888">type answer</span>',
+		);
 	});
 });

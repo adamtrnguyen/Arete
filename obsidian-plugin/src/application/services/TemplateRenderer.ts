@@ -1,5 +1,6 @@
 import Mustache from 'mustache';
 import { AnkiModelSource } from '@/domain/ports';
+import { clozeOrdinals, renderCloze } from '@/domain/cloze';
 import { App, Component, MarkdownRenderer } from 'obsidian';
 
 interface ModelData {
@@ -24,8 +25,36 @@ export class TemplateRenderer {
 		this.mode = mode;
 	}
 
-	private static usesUnsupportedConstruct(tmpl: string): boolean {
-		return /\{\{\s*(?:cloze|type|text):/.test(tmpl);
+	/**
+	 * Rewrite Anki's field filters, which Mustache cannot evaluate ({{cloze:F}},
+	 * {{type:F}}, {{text:F}}), into plain variables whose values are computed here.
+	 * The values are raw field text, so they go through the markdown renderer with the
+	 * other fields and math inside a cloze still renders. Cloze shows the lowest cN.
+	 */
+	private static expandFilters(
+		tmpl: string,
+		fields: Record<string, string>,
+		side: 'Front' | 'Back',
+		derived: Record<string, string>,
+	): string {
+		return tmpl.replace(
+			/\{\{\s*(cloze|type|text):\s*([^}]+?)\s*\}\}/g,
+			(_match, kind: string, field: string) => {
+				const value = fields[field] ?? '';
+				const key = `__${kind}_${side}_${field}`.replace(/\W/g, '_');
+				if (kind === 'cloze') {
+					derived[key] = renderCloze(value, clozeOrdinals(value)[0] ?? 1, side);
+				} else if (kind === 'type') {
+					derived[key] =
+						side === 'Front'
+							? '<span class="arete-type-answer" style="display:inline-block;min-width:10em;padding:2px 8px;border:1px solid #999;border-radius:4px;color:#888">type answer</span>'
+							: value;
+				} else {
+					derived[key] = value;
+				}
+				return `{{${key}}}`;
+			},
+		);
 	}
 
 	async preloadModel(modelName: string): Promise<void> {
@@ -82,27 +111,20 @@ export class TemplateRenderer {
 
 		console.log(`[Arete] Using Card Type: ${cardTypeName}`, cardTemplates);
 
-		const template = cardTemplates[templateType]; // 'Front' or 'Back'
-		if (!template) {
+		const rawTemplate = cardTemplates[templateType]; // 'Front' or 'Back'
+		if (!rawTemplate) {
 			console.warn(
 				`[Arete] Template type '${templateType}' not found in card '${cardTypeName}'`,
 			);
 			return null;
 		}
 
-		// Mustache cannot evaluate Anki's field-prefixed constructs
-		// ({{cloze:Text}}, {{type:Back}}, {{text:Front}}). Rendering them would
-		// silently blank the card, so refuse and let the caller fall back.
-		if (
-			TemplateRenderer.usesUnsupportedConstruct(template) ||
-			(cardTemplates['Front'] &&
-				TemplateRenderer.usesUnsupportedConstruct(cardTemplates['Front']))
-		) {
-			console.warn(
-				`[Arete] Model '${modelName}' uses cloze/type/text constructs Mustache cannot render.`,
-			);
-			return null;
-		}
+		const derived: Record<string, string> = {};
+		const template = TemplateRenderer.expandFilters(rawTemplate, fields, templateType, derived);
+		const frontTemplate = cardTemplates['Front']
+			? TemplateRenderer.expandFilters(cardTemplates['Front'], fields, 'Front', derived)
+			: undefined;
+		fields = { ...fields, ...derived };
 
 		// Create a view with case-insensitive fallback and useful variants
 		const view: Record<string, string> = {};
@@ -161,11 +183,11 @@ export class TemplateRenderer {
 			return tmpl.replace(/\{\{(?!\{|#|\^|\/|&)(.+?)\}\}/g, '{{{$1}}}');
 		};
 
-		if (templateType === 'Back' && cardTemplates['Front']) {
+		if (templateType === 'Back' && frontTemplate) {
 			try {
 				// We need Front rendered content for {{FrontSide}}
 				// Also unescape the front template locally
-				const frontTmpl = makeUnescaped(cardTemplates['Front']);
+				const frontTmpl = makeUnescaped(frontTemplate);
 				const frontHtml = Mustache.render(frontTmpl, view);
 				view['FrontSide'] = frontHtml;
 			} catch (e) {

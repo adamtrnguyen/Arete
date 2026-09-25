@@ -1,0 +1,97 @@
+/* Arete Plugin - Global Graph View
+ * The view sizes its SVG/3D canvas from .arete-global-graph-canvas clientWidth/Height,
+ * so the canvas must fill the pane: without these rules it measured 0px and drew nothing.
+ */
+
+.arete-global-graph {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	padding: 0 !important;
+	overflow: hidden;
+}
+
+.arete-global-graph-toolbar {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px;
+	padding: 6px 10px;
+	border-bottom: 1px solid var(--background-modifier-border);
+	flex: 0 0 auto;
+}
+
+.arete-global-graph-search {
+	width: 180px;
+	font-size: 12px;
+}
+
+.arete-global-graph-sep {
+	color: var(--text-faint);
+	padding: 0 2px;
+}
+
+.arete-global-graph-body {
+	display: flex;
+	flex: 1 1 auto;
+	min-height: 0;
+}
+
+.arete-global-graph-canvas {
+	position: relative;
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow: hidden;
+}
+
+.arete-global-graph-canvas svg {
+	display: block;
+}
+
+.arete-global-graph-empty {
+	padding: 24px;
+	color: var(--text-muted);
+	text-align: center;
+}
+
+.arete-global-graph-detail {
+	flex: 0 0 280px;
+	overflow-y: auto;
+	padding: 10px 12px;
+	border-left: 1px solid var(--background-modifier-border);
+	font-size: 12px;
+}
+
+.arete-global-graph-detail-empty {
+	color: var(--text-faint);
+}
+
+.arete-global-graph-detail-section {
+	margin-bottom: 12px;
+}
+
+.arete-global-graph-detail-stats {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px 12px;
+	color: var(--text-muted);
+	margin: 4px 0 8px;
+}
+
+.arete-global-graph-detail-list {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	margin: 4px 0;
+}
+
+.arete-global-graph-detail-btn {
+	margin-top: 6px;
+}
+
+.arete-global-graph-file-label,
+.arete-global-graph-card-label {
+	font-size: 10px;
+	fill: var(--text-muted);
+	pointer-events: none;
+}

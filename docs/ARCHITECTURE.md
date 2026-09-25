@@ -83,7 +83,7 @@ src/arete/
 |---|---|---|---|
 | `interface` | 7 | 1796 | application, composition |
 | `composition` | 2 | 161 | application, infrastructure, domain |
-| `application` | 23 | 4336 | domain (ports only) |
+| `application` | 23 | 4338 | domain (ports only) |
 | `infrastructure` | 7 | 2150 | domain |
 | `domain` | 6 | 621 | nothing in arete |
 

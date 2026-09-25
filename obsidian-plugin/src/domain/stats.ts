@@ -104,3 +104,14 @@ export interface StatsCache {
 export function difficultyOutOfTen(difficulty: number): number {
 	return difficulty * 10;
 }
+
+/**
+ * A card's due time in epoch seconds, or null when Anki's `due` is not a timestamp.
+ * Anki overloads the field: epoch seconds only for (re)learning cards; a day number
+ * since collection creation for review cards; a queue position for new cards. Read as
+ * a timestamp, those land in 1970 ("20721d ago"). The plugin lacks the collection's
+ * creation date, so it shows no due date rather than a wrong one.
+ */
+export function dueEpochSeconds(due: number | null | undefined): number | null {
+	return due != null && due >= 1_000_000_000 ? due : null;
+}

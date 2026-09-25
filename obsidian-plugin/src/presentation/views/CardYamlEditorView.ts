@@ -9,7 +9,7 @@ import {
 	parseYaml,
 	TFile,
 } from 'obsidian';
-import { difficultyOutOfTen } from '@/domain/stats';
+import { difficultyOutOfTen, dueEpochSeconds } from '@/domain/stats';
 import { EditorView, lineNumbers, keymap } from '@codemirror/view';
 import { EditorState, Annotation } from '@codemirror/state';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
@@ -396,8 +396,9 @@ export class CardYamlEditorView extends ItemView {
 					badgeAdded = true;
 				}
 
-				if (stats.due) {
-					const dueDate = new Date(stats.due * 1000);
+				const dueEpoch = dueEpochSeconds(stats.due);
+				if (dueEpoch !== null) {
+					const dueDate = new Date(dueEpoch * 1000);
 					const now = new Date();
 					const diffDays = Math.ceil(
 						(dueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
