@@ -35,6 +35,19 @@ Breaking. Every note in a real vault was checked first; none relied on these.
   Executable and Project Root.
 - Anki add-on fallbacks for Anki versions from before FSRS.
 
+### Changed
+
+- **Prune over AnkiConnect checks every note in an Arete deck,** as the direct
+  backend always did. It used to see only notes whose type had an `nid` field
+  (the old `O2A_Basic`), so Basic and Cloze orphans were never found. A note you
+  made by hand in an Arete deck is now a prune candidate; prune still lists
+  everything and asks first.
+- **One full re-sync after upgrading.** The content hash no longer renders the
+  card in apy's editor-note format, and fields lose the unused
+  `<!-- arete markdown -->` comment, so every card is re-sent once. Fields are
+  updated in place; review history is kept. The add-on reads only the 4-part
+  `vault|path|line|id` source link, which the re-sync writes to every note.
+
 ## 2.5.0
 
 ### Added

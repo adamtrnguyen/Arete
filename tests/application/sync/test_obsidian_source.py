@@ -1,8 +1,7 @@
-import hashlib
 from unittest.mock import MagicMock
 
 from arete.application.sync.parser import MarkdownParser
-from arete.application.utils.text import make_editor_note
+from arete.application.utils.text import card_content_hash
 
 
 def test_parser_adds_obsidian_source(tmp_path):
@@ -112,30 +111,21 @@ def test_hashing_includes_obsidian_source():
     fields_without = {"Front": "Q", "Back": "A"}
     fields_with = {"Front": "Q", "Back": "A", "_obsidian_source": "v|p|1"}
 
-    note_without = make_editor_note("Basic", "Deck", [], fields_without)
-    note_with = make_editor_note("Basic", "Deck", [], fields_with)
-
-    hash_without = hashlib.md5(note_without.encode("utf-8")).hexdigest()
-    hash_with = hashlib.md5(note_with.encode("utf-8")).hexdigest()
+    hash_without = card_content_hash("Basic", "Deck", [], fields_without)
+    hash_with = card_content_hash("Basic", "Deck", [], fields_with)
 
     # Hashing MUST be different so that adding the source field triggers an update
     assert hash_without != hash_with
-    assert "## _obsidian_source" in note_with
-    assert "v|p|1" in note_with
 
 
 def test_cloze_hashing_includes_obsidian_source():
     fields_without = {"Text": "Q", "Back Extra": "A"}
     fields_with = {"Text": "Q", "Back Extra": "A", "_obsidian_source": "v|p|1"}
 
-    note_without = make_editor_note("Cloze", "Deck", [], fields_without)
-    note_with = make_editor_note("Cloze", "Deck", [], fields_with)
-
-    hash_without = hashlib.md5(note_without.encode("utf-8")).hexdigest()
-    hash_with = hashlib.md5(note_with.encode("utf-8")).hexdigest()
+    hash_without = card_content_hash("Cloze", "Deck", [], fields_without)
+    hash_with = card_content_hash("Cloze", "Deck", [], fields_with)
 
     assert hash_without != hash_with
-    assert "## _obsidian_source" in note_with
 
 
 def test_parser_uses_posix_paths_for_relative_source(tmp_path):

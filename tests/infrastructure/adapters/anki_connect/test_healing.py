@@ -122,9 +122,7 @@ async def test_healing_cloze_normalization(adapter):
                 {
                     "noteId": 500,
                     "fields": {
-                        "Text": {
-                            "value": "<!-- arete markdown -->\n<p>The {{c1::sun}} rises in the {{c2::east}}.</p>"
-                        },
+                        "Text": {"value": "<p>The {{c1::sun}} rises in the {{c2::east}}.</p>"},
                         "Back Extra": {"value": ""},
                     },
                     "cards": [501],

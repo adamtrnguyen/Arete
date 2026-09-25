@@ -1,3 +1,5 @@
+import hashlib
+import json
 import re
 import unicodedata
 from typing import Any
@@ -284,7 +286,7 @@ def apply_fixes(md_text: str) -> str:
     return rebuild_markdown_with_frontmatter(meta, body)
 
 
-def make_editor_note(
+def card_content_hash(
     model: str,
     deck: str,
     tags: list[str],
@@ -292,33 +294,16 @@ def make_editor_note(
     nid: str | None = None,
     cid: str | None = None,
 ) -> str:
-    """Render a card the way the Anki editor would.
+    """The md5 of everything Anki receives for a card, which sync compares to the cache.
 
-    IDENTITY-BEARING: the md5 of this string is a card's content_hash (parser.py),
-    so any change to the output re-syncs every card in the vault.
+    IDENTITY-BEARING: changing what goes in re-syncs every card in the vault once.
     """
-    lines = []
-    if nid:
-        lines.append(f"nid: {nid}")
-    if cid and not nid:
-        lines.append(f"cid: {cid}")
-    lines += [f"model: {model}", f"deck: {deck}"]
-    if tags:
-        lines.append(f"tags: {' '.join(tags)}")
-    lines += ["markdown: true", "", "# Note", ""]
-    mlow = model.lower()
-    if mlow == "basic":
-        f_list = ["Front", "Back"]
-    elif mlow == "cloze":
-        f_list = ["Text", "Back Extra"]
-    else:
-        f_list = sorted(fields.keys())
-
-    # Always ensure _obsidian_source is included if present
-    if "_obsidian_source" in fields and "_obsidian_source" not in f_list:
-        f_list.append("_obsidian_source")
-
-    for k in f_list:
-        v = fields.get(k, "")
-        lines += [f"## {k}", sanitize(v), ""]
-    return "\n".join(lines)
+    payload = {
+        "model": model,
+        "deck": deck,
+        "tags": tags,
+        "fields": {k: sanitize(v) for k, v in sorted(fields.items())},
+        "nid": nid,
+        "cid": None if nid else cid,
+    }
+    return hashlib.md5(json.dumps(payload, ensure_ascii=False).encode("utf-8")).hexdigest()

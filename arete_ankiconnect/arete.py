@@ -43,14 +43,12 @@ def get_obsidian_source(note) -> tuple[str, str, int, str] | None:
             if field_value:
                 # Format: vault|path|line|arete_id
                 parts = field_value.strip().split("|")
-                if len(parts) >= 3:
-                    vault = parts[0]
-                    file_path = parts[1]
+                if len(parts) == 4:
+                    vault, file_path, line, arete_id = parts
                     try:
-                        card_idx = int(parts[2])
+                        card_idx = int(line)
                     except ValueError:
                         card_idx = 1
-                    arete_id = parts[3] if len(parts) >= 4 else ""
                     return vault, file_path, card_idx, arete_id
     return None
 

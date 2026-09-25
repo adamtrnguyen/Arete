@@ -277,8 +277,4 @@ def markdown_to_anki_html(text: str) -> str:
     else:
         _md_instance.reset()
 
-    html = _md_instance.convert(text)
-    # Add arete's marker comment for consistency detection if needed
-    # but strictly speaking we don't need it if we trust our DB.
-    # We'll add it to match apy behavior for now.
-    return f"<!-- arete markdown -->\n{html}"
+    return _md_instance.convert(text)

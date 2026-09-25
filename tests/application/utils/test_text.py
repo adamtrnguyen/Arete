@@ -7,7 +7,7 @@ import yaml.scanner
 
 from arete.application.utils.text import (
     apply_fixes,
-    make_editor_note,
+    card_content_hash,
     parse_frontmatter,
     rebuild_markdown_with_frontmatter,
     scrub_internal_keys,
@@ -171,43 +171,25 @@ def test_rebuild_markdown_format():
     assert "Content" in full_text
 
 
-# ---------- make_editor_note Tests ----------
+# ---------- card_content_hash ----------
 
 
-def test_make_editor_note_basic():
-    note = make_editor_note(
-        model="Basic",
-        deck="MyDeck",
-        tags=["t1", "t2"],
-        fields={"Front": "Q", "Back": "A"},
-        nid="999",
-    )
-    assert "nid: 999" in note
-    assert "model: Basic" in note
-    assert "deck: MyDeck" in note
-    assert "tags: t1 t2" in note
-    assert "## Front" in note
-    assert "## Back" in note
-    assert "Q" in note
-    assert "A" in note
+def test_card_content_hash_changes_with_what_anki_receives():
+    base = card_content_hash("Basic", "D", ["t"], {"Front": "Q", "Back": "A"}, nid="1")
+    assert base == card_content_hash("Basic", "D", ["t"], {"Back": "A", "Front": "Q"}, nid="1")
+    for other in (
+        card_content_hash("Basic", "D", ["t"], {"Front": "Q", "Back": "B"}, nid="1"),
+        card_content_hash("Basic", "E", ["t"], {"Front": "Q", "Back": "A"}, nid="1"),
+        card_content_hash("Basic", "D", ["u"], {"Front": "Q", "Back": "A"}, nid="1"),
+        card_content_hash("Cloze", "D", ["t"], {"Front": "Q", "Back": "A"}, nid="1"),
+        card_content_hash("Basic", "D", ["t"], {"Front": "Q", "Back": "A"}, nid="2"),
+    ):
+        assert other != base
 
 
-def test_make_editor_note_cloze():
-    fields = {"Text": "cloze {{c1::test}}", "Back Extra": "extra"}
-    out = make_editor_note("Cloze", "deck", ["t1"], fields, nid="123")
-
-    assert "nid: 123" in out
-    assert "model: Cloze" in out
-    assert "## Text" in out
-    assert "cloze {{c1::test}}" in out
-    assert "## Back Extra" in out
-    assert "extra" in out
-
-
-def test_make_editor_note_cid_only_no_nid():
-    out = make_editor_note("Basic", "Default", [], {}, cid="999", nid=None)
-    assert "cid: 999" in out
-    assert "nid:" not in out
+def test_card_content_hash_ignores_cid_once_there_is_a_nid():
+    with_cid = card_content_hash("Basic", "D", [], {"Front": "Q"}, nid="1", cid="9")
+    assert with_cid == card_content_hash("Basic", "D", [], {"Front": "Q"}, nid="1")
 
 
 def test_a_horizontal_rule_inside_a_block_scalar_does_not_end_the_frontmatter():

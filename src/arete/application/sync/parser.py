@@ -1,4 +1,3 @@
-import hashlib
 import logging
 from pathlib import Path
 from typing import Any
@@ -6,7 +5,7 @@ from typing import Any
 from arete.application.sync.converter import markdown_to_anki_html
 from arete.application.utils.common import sanitize, to_list
 from arete.application.utils.media import transform_images_in_text, transform_wikilinks_to_uri
-from arete.application.utils.text import make_editor_note
+from arete.application.utils.text import card_content_hash
 from arete.domain.interfaces import ContentCache
 from arete.domain.models import AnkiNote
 
@@ -263,8 +262,7 @@ class MarkdownParser:
 
                 # 5) Calculate hash check over what Anki will receive -- the per-card tags
                 # included (C4: hashing only the file tags hid every card-level tag edit).
-                content = make_editor_note(model, deck_this, card_tags, fields, nid=nid, cid=cid)
-                content_hash = hashlib.md5(content.encode("utf-8")).hexdigest()
+                content_hash = card_content_hash(model, deck_this, card_tags, fields, nid, cid)
 
                 cached_hash = cache.get_hash(md_path, idx)
                 if not self.ignore_cache and cached_hash == content_hash:
