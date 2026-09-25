@@ -69,7 +69,9 @@ class TestFileHeuristicDetection:
 
     def test_a_marker_after_a_long_cards_block_is_detected(self, temp_vault, mock_cache):
         """`arete: true` may sit anywhere in the frontmatter, not only in its first 2KB."""
-        cards = "".join(f"  - Front: question {i} {'x' * 60}\n    Back: answer\n" for i in range(40))
+        cards = "".join(
+            f"  - Front: question {i} {'x' * 60}\n    Back: answer\n" for i in range(40)
+        )
         md = temp_vault / "long.md"
         md.write_text(f"---\ndeck: D\ncards:\n{cards}arete: true\n---\nBody", encoding="utf-8")
         assert len(md.read_text()) > 2048

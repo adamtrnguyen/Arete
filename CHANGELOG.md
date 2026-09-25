@@ -1,20 +1,52 @@
 # Changelog
 
-## Unreleased
+## 3.0.1
+
+Found by fact-checking 3.0.0. Two bugs could lose data; update before your next
+prune or dry run.
+
+### Fixed
+
+- **A dry run hid your edits from the next sync.** The vault scan marked a file as
+  synced before anything was sent, so after a dry run (or a run where one of its
+  cards failed) an edited card stayed old in Anki until the file changed again. A
+  file is now marked synced only after all its cards reach Anki, never on a dry run.
+- **Prune deleted notes the vault still owns.** A deck no vault card names was
+  deleted with its cards, even when a vault card's note had been moved there in
+  Anki. Such a deck is now kept, with a warning. `Default`'s subdecks, and notes with
+  a card under `Default`, are never touched either (only the top-level `Default` was).
+- **Prune listed a note once per parent deck** (392 listed for 175 notes). The count
+  is now of notes, and includes the notes inside orphan decks.
+- **Sync skipped a note whose `arete: true` came after its first 2 KB,** a 3.0.0
+  regression; `vault check` passed the same note.
+- **Two files claiming one Anki note overwrote each other.** Such cards are now
+  skipped with an error naming every file, and prune keeps the note.
+- **The docs site's Troubleshooting page was a 404** (a filename's case).
+- Last legacy readers: the card editor mapped `ID`/`Model`; the plugin's stats, link
+  checker and local graph, and the MCP concept reader, accepted notes without
+  `arete: true`.
 
 ### Added
 
 - **Changing a card's `model` converts its Anki note in place,** keeping its cards
   and review history. Before, a card whose model no longer matched its note (say,
   Cloze in the vault and Basic in Anki) silently stopped updating. Fields carry over
-  by name, then Front↔Text and Back↔Back Extra. Over AnkiConnect this needs the
-  add-on from this release (new `changeNoteType` action).
+  by name, then Front↔Text and Back↔Back Extra. A change that would delete cards (a
+  3-card Cloze note to Basic keeps one) is refused with an error. Over AnkiConnect
+  this needs the add-on from this release (new `changeNoteType` action). Anki treats
+  a type change as a schema change: its next AnkiWeb sync asks for a one-way upload,
+  so sync your other devices to AnkiWeb first.
 
 ### Corrected
 
-- The 3.0.0 notes said the next sync re-sends every card. It does not: unchanged
-  files are skipped before hashing. Run `arete sync --clear-cache` once to rewrite
-  every note.
+Statements in the 3.0.0 notes that were wrong, now fixed below:
+- An ordinary sync after upgrading does not re-send every card: files whose stat is
+  unchanged are skipped. `arete sync --clear-cache` (or `--force`) re-sends all.
+- Check File and Fix were broken in both plugin modes, not only CLI mode.
+- Through the bundled add-on, card difficulty was always empty, not "from a
+  fallback": its `cardsInfo` has no difficulty.
+- Prune checks every deck the vault uses and their parent decks, and shows notes as
+  a count, not a list.
 
 ## 3.0.0
 
@@ -28,12 +60,13 @@
 
 ### Fixed
 
-- **The plugin's Check File, Fix, suspend and unsuspend failed in CLI mode** with
-  "No such command": they called commands removed in 2.4.0.
+- **The plugin's Check File, Fix, suspend and unsuspend failed** with "No such
+  command": they called commands removed in 2.4.0. (Check File and Fix in both
+  plugin modes, suspend and unsuspend in CLI mode; corrected in 3.0.1.)
 - **`arete vault fix` moved `nid:` out of a synced card's `anki:` block.**
 - **Card stats never used the add-on's FSRS answer.** The add-on did not send
-  stability and arete required it, so difficulty came only from a fallback.
-  Update the Anki add-on to get stability.
+  stability and arete required it, so through the bundled add-on difficulty was
+  always empty (corrected in 3.0.1). Update the Anki add-on to get stability.
 
 ### Removed
 
@@ -53,16 +86,16 @@ Breaking. Every note in a real vault was checked first; none relied on these.
 
 ### Changed
 
-- **Prune over AnkiConnect checks every note in an Arete deck,** as the direct
-  backend always did. It used to see only notes whose type had an `nid` field
-  (the old `O2A_Basic`), so Basic and Cloze orphans were never found. A note you
-  made by hand in an Arete deck is now a prune candidate; prune still lists
-  everything and asks first.
-- **One full re-sync after upgrading.** The content hash no longer renders the
-  card in apy's editor-note format, and fields lose the unused
-  `<!-- arete markdown -->` comment, so every card is re-sent once. Fields are
-  updated in place; review history is kept. The add-on reads only the 4-part
-  `vault|path|line|id` source link, which the re-sync writes to every note.
+- **Prune over AnkiConnect checks every note in the vault's decks and their
+  parents,** as the direct backend always did. It used to see only notes whose type
+  had an `nid` field (the old `O2A_Basic`), so Basic and Cloze orphans were never
+  found. A note you made by hand in such a deck is now a prune candidate; prune
+  shows the count and asks first (unless `--force`).
+- **Run `arete sync --clear-cache` once after upgrading** (corrected in 3.0.1: an
+  ordinary sync skips unchanged files). The content hash no longer renders the card
+  in apy's editor-note format, and fields lose the unused `<!-- arete markdown -->`
+  comment. Fields are updated in place; review history is kept. The add-on reads
+  only the 4-part `vault|path|line|id` source link, which that re-sync writes.
 
 ## 2.5.0
 

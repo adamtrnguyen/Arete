@@ -1003,9 +1003,7 @@ async def test_sync_refuses_a_conversion_that_would_delete_cards(adapter, sample
         data = json.loads(request.content)
         actions.append(data["action"])
         result = {
-            "notesInfo": [
-                {"noteId": 999, "modelName": "Cloze", "cards": [1, 2, 3], "fields": {}}
-            ],
+            "notesInfo": [{"noteId": 999, "modelName": "Cloze", "cards": [1, 2, 3], "fields": {}}],
             "modelTemplates": {"Card 1": {}},
         }.get(data["action"])
         return Response(200, json={"result": result, "error": None})
