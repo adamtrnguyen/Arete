@@ -84,7 +84,15 @@ class AnkiRepository:
         except Exception as e:
             # Restore CWD if init fails
             os.chdir(self._saved_cwd)
-            raise OSError(f"Could not open Anki collection at {path}: {e}") from e
+            hint = ""
+            if "already open" in str(e):
+                # Anki holds the collection, so the direct backend cannot write it. The
+                # auto backend lands here when AnkiConnect did not answer within 2 s.
+                hint = (
+                    " Anki is running but AnkiConnect did not answer: check the arete add-on"
+                    " is enabled, or close Anki."
+                )
+            raise OSError(f"Could not open Anki collection at {path}: {e}.{hint}") from e
 
         return self
 
