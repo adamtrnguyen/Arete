@@ -50,7 +50,7 @@ async def test_get_card_stats_single_nid(repo):
                 }
             ],
             # getFSRSStats
-            [{"cardId": 101, "difficulty": 5.0, "stability": 30.0, "retrievability": 0.92}],
+            [{"cardId": 101, "difficulty": 5.0, "stability": 30.0}],
         ]
     )
 
@@ -72,7 +72,7 @@ async def test_get_card_stats_single_nid(repo):
     assert s.fsrs is not None
     assert s.fsrs.stability == 30.0
     assert s.fsrs.difficulty == 0.5  # 5.0 / 10.0
-    assert s.fsrs.retrievability == 0.92
+    assert s.fsrs.retrievability is None
 
 
 @pytest.mark.asyncio
@@ -133,8 +133,8 @@ async def test_get_card_stats_fsrs_zero_difficulty(repo):
 
 
 @pytest.mark.asyncio
-async def test_get_card_stats_fsrs_unavailable_falls_back_to_cardsinfo(repo):
-    """When getFSRSStats raises, falls back to difficulty from cardsInfo."""
+async def test_get_card_stats_fsrs_unavailable_leaves_fsrs_empty(repo):
+    """When getFSRSStats raises, cardsInfo's difficulty is not used as a stand-in."""
     repo._invoke = AsyncMock(
         side_effect=[
             [401],  # findCards
@@ -160,10 +160,26 @@ async def test_get_card_stats_fsrs_unavailable_falls_back_to_cardsinfo(repo):
 
     assert len(result) == 1
     s = result[0]
-    assert s.fsrs is not None
-    assert s.fsrs.difficulty == 0.7  # 7.0 / 10.0
-    assert s.fsrs.stability == 0  # Unknown when using fallback
+    assert s.fsrs is None
     assert s.front == "Fallback Q"
+
+
+@pytest.mark.asyncio
+async def test_get_card_stats_uses_an_answer_without_stability(repo):
+    """Add-ons before 2.5.1 sent difficulty only; that answer was discarded."""
+    repo._invoke = AsyncMock(
+        side_effect=[
+            [601],
+            [{"cardId": 601, "note": 6, "fields": {"Front": {"value": "Q"}}}],
+            [{"cardId": 601, "difficulty": 4.0, "debug": []}],
+        ]
+    )
+
+    [s] = await repo.get_card_stats([6])
+
+    assert s.fsrs is not None
+    assert s.fsrs.difficulty == 0.4
+    assert s.fsrs.stability == 0
 
 
 @pytest.mark.asyncio

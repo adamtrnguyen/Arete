@@ -23,8 +23,7 @@ logger = logging.getLogger(__name__)
 class ConnectStatsRepository(StatsRepository):
     """Fetches card statistics via AnkiConnect HTTP API.
 
-    Attempts custom getFSRSStats action if available, otherwise falls back
-    to standard cardsInfo.
+    FSRS state comes from the Arete add-on's getFSRSStats action.
     """
 
     def __init__(self, url: str = "http://127.0.0.1:8765"):
@@ -59,12 +58,15 @@ class ConnectStatsRepository(StatsRepository):
                     fsrs_results = await self._invoke("getFSRSStats", cards=card_ids)
                     if fsrs_results and isinstance(fsrs_results, list):
                         for item in fsrs_results:
-                            if all(k in item for k in ["cardId", "difficulty", "stability"]):
-                                fsrs_map[item["cardId"]] = FsrsMemoryState(
-                                    stability=item.get("stability", 0),
-                                    difficulty=item.get("difficulty", 0) / 10.0,
-                                    retrievability=item.get("retrievability"),
-                                )
+                            # The add-on never sent stability until 2.5.1, so this lookup
+                            # used to discard every answer.
+                            if item.get("difficulty") is None:
+                                continue
+                            fsrs_map[item["cardId"]] = FsrsMemoryState(
+                                stability=item.get("stability") or 0,
+                                difficulty=item["difficulty"] / FSRS_DIFFICULTY_SCALE,
+                                retrievability=None,
+                            )
                 except Exception as e:
                     logger.warning(f"[fsrs] getFSRSStats unavailable, stats lack FSRS state: {e}")
 
@@ -74,14 +76,6 @@ class ConnectStatsRepository(StatsRepository):
                     nid = info.get("note")
 
                     fsrs_state = fsrs_map.get(cid)
-
-                    # Fallback: Try difficulty from cardsInfo if FSRS not available
-                    if not fsrs_state and info.get("difficulty") is not None:
-                        fsrs_state = FsrsMemoryState(
-                            stability=0,  # Unknown
-                            difficulty=info["difficulty"] / FSRS_DIFFICULTY_SCALE,
-                            retrievability=None,
-                        )
 
                     # Extract front from fields
                     front = None

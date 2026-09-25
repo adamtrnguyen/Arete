@@ -41,11 +41,8 @@ def get_obsidian_source(note) -> tuple[str, str, int, str] | None:
         if field_name == "_obsidian_source":
             field_value = note[field_name]
             if field_value:
-                # Strip HTML tags if any (legacy sync issues)
-                clean_value = re.sub(r"<[^>]*>", "", field_value).strip()
-
                 # Format: vault|path|line|arete_id
-                parts = clean_value.split("|")
+                parts = field_value.strip().split("|")
                 if len(parts) >= 3:
                     vault = parts[0]
                     file_path = parts[1]
@@ -63,10 +60,7 @@ def open_obsidian_uri(vault: str, file_path: str, card_idx: int = 1) -> bool:
     Open Obsidian via URI scheme.
     Returns True on success, False on failure.
     """
-    # Allow config to override vault name
-    actual_vault = CONFIG.get("vault_name_override", vault) or vault
-
-    encoded_vault = quote(actual_vault)
+    encoded_vault = quote(vault)
     encoded_path = quote(file_path)
 
     # Use Advanced URI for line-level navigation (requires Advanced URI plugin in Obsidian)

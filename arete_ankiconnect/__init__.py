@@ -1997,61 +1997,20 @@ class AnkiConnect:
 
     @util.api()
     def getFSRSStats(self, cards=None):
-        if cards is None:
-            cards = []
+        """FSRS memory state per card: difficulty (1-10) and stability (days), or None."""
+        col = self.collection()
         result = []
-        try:
-            col = self.collection()
-            if not col:
-                return [{"error": "Collection is None", "cardId": -1}]
-        except Exception as e:
-            return [{"error": f"Collection access failed: {e}", "cardId": -1}]
-
-        for cid in cards:
-            item = {"cardId": cid, "difficulty": None, "debug": []}
+        for cid in cards or []:
+            item = {"cardId": int(cid), "difficulty": None, "stability": None}
             try:
-                try:
-                    cid = int(cid)
-                except:
-                    item["debug"].append(f"Invalid CID type: {type(cid)}")
-                card = None
-                try:
-                    card = col.getCard(cid)
-                except AttributeError:
-                    try:
-                        card = col.get_card(cid)
-                    except AttributeError:
-                        item["debug"].append("No get_card or getCard method")
-                except Exception as e:
-                    item["debug"].append(f"get_card exception: {e}")
-                if not card:
-                    item["debug"].append("Card not found")
-                    result.append(item)
-                    continue
-
-                found_data = False
-                if hasattr(card, "memory_state"):
-                    if card.memory_state:
-                        item["difficulty"] = card.memory_state.difficulty
-                        item["source"] = "memory_state"
-                        found_data = True
-
-                if not found_data:
-                    if hasattr(card, "data"):
-                        if card.data:
-                            try:
-                                import json
-
-                                data = json.loads(card.data)
-                                if "d" in data:
-                                    item["difficulty"] = data["d"]
-                                    item["source"] = "data_json"
-                            except Exception:
-                                pass
-
-                result.append(item)
+                state = col.get_card(int(cid)).memory_state
             except Exception as e:
-                result.append({"cardId": cid, "error": f"Outer loop error: {e}"})
+                item["error"] = str(e)
+                state = None
+            if state:
+                item["difficulty"] = state.difficulty
+                item["stability"] = state.stability
+            result.append(item)
         return result
 
 
@@ -2072,7 +2031,6 @@ if __name__ != "__main__":
         ac.initLogging()
         ac.startWebServer()
 
-        # Initialize Arete Hooks
         # Initialize Arete Hooks
         from . import arete
 
