@@ -45,6 +45,23 @@ async def test_sync_vault_success(mcp_server):
         assert data["total_imported"] == 10
 
 
+@pytest.mark.asyncio
+async def test_a_failure_reason_reaches_the_client(mcp_server):
+    """The mcp 2.x SDK forwards only ToolError text; the rest became "Error executing tool"."""
+    from mcp.server.mcpserver.exceptions import ToolError
+
+    with (
+        patch("arete.interface.mcp_server.resolve_config"),
+        patch(
+            "arete.interface.mcp_server.execute_sync",
+            new_callable=AsyncMock,
+            side_effect=ConnectionError("AnkiConnect unreachable at 127.0.0.1:8765"),
+        ),
+        pytest.raises(ToolError, match="AnkiConnect unreachable"),
+    ):
+        await mcp_server.call_tool("sync_vault", {})
+
+
 # ------------------------------------------------------------------
 # sync_file
 # ------------------------------------------------------------------

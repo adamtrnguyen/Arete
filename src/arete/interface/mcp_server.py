@@ -6,6 +6,7 @@ enabling AI agents (Claude, Gemini, etc.) to interact with Anki flashcards.
 
 from __future__ import annotations
 
+import functools
 import json
 import logging
 from importlib.metadata import version
@@ -13,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from mcp.server.mcpserver import MCPServer
+from mcp.server.mcpserver.exceptions import ToolError
 
 from arete.application.config import AppConfig, resolve_config
 from arete.application.queue.service import QueueAlgo
@@ -21,6 +23,25 @@ from arete.composition.orchestrator import execute_sync
 from arete.domain.interfaces import AnkiBridge
 
 logger = logging.getLogger(__name__)
+
+
+def _reported(fn):
+    """Give the client the reason a tool failed.
+
+    mcp 2.x forwards only ToolError text; any other exception (Anki unreachable, a bad
+    config) arrived as a bare "Error executing tool X".
+    """
+
+    @functools.wraps(fn)
+    async def wrapper(*args, **kwargs):
+        try:
+            return await fn(*args, **kwargs)
+        except ToolError:
+            raise
+        except Exception as exc:
+            raise ToolError(f"{type(exc).__name__}: {exc}") from exc
+
+    return wrapper
 
 
 def create_server() -> MCPServer:  # noqa: C901
@@ -44,6 +65,7 @@ def create_server() -> MCPServer:  # noqa: C901
     # ------------------------------------------------------------------
 
     @mcp.tool()
+    @_reported
     async def sync_vault(
         vault_path: str = "",
         force: bool = False,
@@ -80,6 +102,7 @@ def create_server() -> MCPServer:  # noqa: C901
         )
 
     @mcp.tool()
+    @_reported
     async def sync_file(
         file_path: str,
         force: bool = False,
@@ -114,6 +137,7 @@ def create_server() -> MCPServer:  # noqa: C901
         )
 
     @mcp.tool()
+    @_reported
     async def get_stats(
         lapse_threshold: int = 3,
     ) -> str:
@@ -137,6 +161,7 @@ def create_server() -> MCPServer:  # noqa: C901
     # ------------------------------------------------------------------
 
     @mcp.tool()
+    @_reported
     async def check_graph(vault_path: str = "", deck: str = "") -> str:
         """Check dependency graph health: cycles, isolated cards, unresolved refs.
 
@@ -161,6 +186,7 @@ def create_server() -> MCPServer:  # noqa: C901
         return json.dumps(asdict(result), indent=2)
 
     @mcp.tool()
+    @_reported
     async def browse_concept(concept: str, deck: str = "CS::DSA") -> str:
         """Open the Anki card browser filtered to a concept's cards.
 
@@ -180,6 +206,7 @@ def create_server() -> MCPServer:  # noqa: C901
         return "Failed to open Anki browser. Is Anki running with AnkiConnect?"
 
     @mcp.tool()
+    @_reported
     async def browse_card(arete_id: str) -> str:
         """Open a specific card in the Anki browser by its Arete ID.
 
@@ -198,6 +225,7 @@ def create_server() -> MCPServer:  # noqa: C901
         return "Failed to open Anki browser. Is Anki running with AnkiConnect?"
 
     @mcp.tool()
+    @_reported
     async def get_concept_cards(concept: str, deck: str = "") -> str:
         """Get flashcard content for a concept by reading vault markdown.
 
@@ -225,6 +253,7 @@ def create_server() -> MCPServer:  # noqa: C901
         return json.dumps(asdict(result), indent=2)
 
     @mcp.tool()
+    @_reported
     async def get_due_cards(
         deck: str = "",
         include_new: bool = False,
@@ -266,6 +295,7 @@ def create_server() -> MCPServer:  # noqa: C901
         )
 
     @mcp.tool()
+    @_reported
     async def build_study_queue(
         deck: str = "CS::DSA",
         depth: int = 2,
@@ -326,6 +356,7 @@ def create_server() -> MCPServer:  # noqa: C901
     # ------------------------------------------------------------------
 
     @mcp.tool()
+    @_reported
     async def get_note_body(file_path: str) -> str:
         """Get only the markdown body of a note, stripping YAML frontmatter.
 
@@ -342,6 +373,7 @@ def create_server() -> MCPServer:  # noqa: C901
         return _get_note_body(Path(file_path))
 
     @mcp.tool()
+    @_reported
     async def list_file_cards(file_path: str) -> str:
         """Extract all Arete cards from a markdown file as structured JSON.
 
@@ -363,6 +395,7 @@ def create_server() -> MCPServer:  # noqa: C901
         return json.dumps(asdict(result), indent=2)
 
     @mcp.tool()
+    @_reported
     async def get_dep_subgraph(file_paths: str) -> str:
         """Build a dependency subgraph for a batch of files.
 
