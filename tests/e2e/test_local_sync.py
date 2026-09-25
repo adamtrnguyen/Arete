@@ -231,3 +231,68 @@ async def test_a_warm_run_sends_nothing(single_card_vault: Path, anki_base: Path
     stats = await execute_sync(make_config(single_card_vault))
 
     assert stats.total_imported == 0
+
+
+def _add_loose_note(col, deck: str, front: str) -> int:
+    """A note made by hand in Anki: no vault card claims it."""
+    note = col.new_note(col.models.by_name("Basic"))
+    note["Front"], note["Back"] = front, "x"
+    col.add_note(note, col.decks.id(deck))
+    return note.id
+
+
+@pytest.mark.asyncio
+async def test_prune_keeps_a_claimed_note_moved_to_a_stray_deck(
+    single_card_vault: Path, anki_base: Path, make_config, monkeypatch
+):
+    """Its deck looked orphaned, and deleting the deck deleted the vault's note.
+
+    Not --force: that re-sends every card and moves this one home before prune looks.
+    """
+    monkeypatch.setattr("builtins.input", lambda _prompt="": "yes")
+    await execute_sync(make_config(single_card_vault))
+    col = open_collection(anki_base)
+    try:
+        [nid] = col.find_notes("")
+        col.set_deck([c.id for c in col.get_note(nid).cards()], col.decks.id("Stray"))
+    finally:
+        col.close()
+
+    await execute_sync(make_config(single_card_vault, prune=True))
+
+    col = open_collection(anki_base)
+    try:
+        assert col.find_notes("") == [nid], "the vault's note must survive prune"
+    finally:
+        col.close()
+
+
+@pytest.mark.asyncio
+async def test_prune_deletes_each_orphan_once_and_spares_default(
+    single_card_vault: Path, anki_base: Path, make_config
+):
+    await execute_sync(make_config(single_card_vault))
+    col = open_collection(anki_base)
+    try:
+        [claimed] = col.find_notes("")
+        orphans = {
+            _add_loose_note(col, "AI::Deep Learning::Transformers", "loose one"),
+            _add_loose_note(col, "AI", "loose two"),
+        }
+        kept = {
+            _add_loose_note(col, "Default", "in default"),
+            _add_loose_note(col, "Default::Sub", "in a default subdeck"),
+        }
+    finally:
+        col.close()
+
+    await execute_sync(make_config(single_card_vault, prune=True, force=True))
+
+    col = open_collection(anki_base)
+    try:
+        left = set(col.find_notes(""))
+        assert claimed in left
+        assert kept <= left, "Default and its subdecks are never pruned"
+        assert not (orphans & left)
+    finally:
+        col.close()

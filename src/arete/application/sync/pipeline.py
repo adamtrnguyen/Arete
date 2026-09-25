@@ -298,34 +298,52 @@ async def _prune_orphans(
 
     anki_decks = await bridge.get_deck_names()
 
+    def is_default(deck: str) -> bool:
+        return deck == "Default" or deck.startswith("Default::")
+
     protected_decks = set(valid_decks)
     for d in valid_decks:
-        deck_obj = AnkiDeck(name=d)
-        protected_decks.update(deck_obj.parents)
+        protected_decks.update(AnkiDeck(name=d).parents)
 
-    orphan_decks = []
-    for d in anki_decks:
-        if d not in protected_decks and d != "Default":
-            orphan_decks.append(d)
-
-    decks_to_scan = set(anki_decks) - {"Default"}
-    if not decks_to_scan:
+    if all(is_default(d) for d in anki_decks):
         logger.info("[prune] No non-default decks found.")
         return
 
-    orphan_note_ids = []
+    # Notes with a card anywhere under Default are never touched.
+    default_nids: set[int] = set()
+    if any(is_default(d) for d in anki_decks):
+        default_nids = set((await bridge.get_notes_in_deck("Default")).values())
 
-    for d in decks_to_scan:
+    # A deck search includes subdecks, so each deck's notes cover its whole subtree.
+    notes_by_deck = {d: await bridge.get_notes_in_deck(d) for d in anki_decks if not is_default(d)}
+
+    orphan_decks: list[str] = []
+    for d in anki_decks:
+        if d in protected_decks or is_default(d):
+            continue
+        claimed = [n for n in notes_by_deck[d] if n in valid_nids]
+        if claimed:
+            # Deleting the deck would delete notes the vault still owns (a card moved
+            # there in Anki). Keep it; the next sync with --force moves them home.
+            logger.warning(
+                f"[prune] keeping deck {d!r}: it holds {len(claimed)} note(s) the vault "
+                "still claims. Run 'arete sync --force' to move them back."
+            )
+            continue
+        orphan_decks.append(d)
+
+    in_orphan_decks: set[int] = set()
+    for d in orphan_decks:
+        in_orphan_decks.update(notes_by_deck[d].values())
+
+    orphan_note_ids: set[int] = set()
+    for d, deck_notes in notes_by_deck.items():
         if d in orphan_decks:
             continue
-
-        deck_notes = await bridge.get_notes_in_deck(d)
         for nid_str, anki_id in deck_notes.items():
-            if nid_str not in valid_nids:
-                orphan_note_ids.append(anki_id)
-                logger.debug(f"[prune] Identified orphan: nid={nid_str}, anki_id={anki_id} in {d}")
-            else:
-                logger.debug(f"[prune] Valid note confirmed: nid={nid_str} in {d}")
+            if nid_str not in valid_nids and anki_id not in default_nids:
+                orphan_note_ids.add(anki_id)
+    orphan_note_ids -= in_orphan_decks
 
     n_decks = len(orphan_decks)
     n_notes = len(orphan_note_ids)
@@ -339,12 +357,12 @@ async def _prune_orphans(
     logger.info(f"Valid NIDs found in vault: {len(valid_nids)}")
     logger.info(f"Valid Decks found in vault: {len(valid_decks)}")
     logger.warning("-" * 20)
-    logger.warning(f"Orphan Decks to DELETE: {n_decks}")
+    logger.warning(
+        f"Orphan Decks to DELETE: {n_decks} (with the {len(in_orphan_decks)} notes in them)"
+    )
     for d in orphan_decks:
         logger.warning(f"  - [DECK] {d}")
     logger.warning(f"Orphan Notes to DELETE: {n_notes}")
-    if n_notes > 0:
-        logger.warning(f"  - [NOTES] {n_notes} cards will be permanently removed.")
 
     if not config.force:
         # Use asyncio-friendly input if needed?
@@ -361,7 +379,7 @@ async def _prune_orphans(
     if n_notes > 0:
         logger.info(f"[prune] Deleting {n_notes} notes...")
         try:
-            await bridge.delete_notes(orphan_note_ids)
+            await bridge.delete_notes(sorted(orphan_note_ids))
         except Exception as e:
             logger.error(f"[prune] Failed to delete notes: {e}")
 

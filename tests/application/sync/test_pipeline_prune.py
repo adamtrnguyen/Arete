@@ -119,7 +119,9 @@ def prune_config():
 async def test_prune_orphans_aborted(prune_config):
     anki_bridge = MagicMock()
     anki_bridge.get_deck_names = AsyncMock(return_value=["Default", "Deck1"])
-    anki_bridge.get_notes_in_deck = AsyncMock(return_value={"2": 222})
+    anki_bridge.get_notes_in_deck = AsyncMock(
+        side_effect=lambda d: {} if d == "Default" else {"2": 222}
+    )
 
     recorder = MagicMock()
     recorder.inventory_nids = {"1"}  # "2" is orphan
@@ -136,7 +138,9 @@ async def test_prune_orphans_aborted(prune_config):
 async def test_prune_orphans_success_confirmed(prune_config):
     anki_bridge = MagicMock()
     anki_bridge.get_deck_names = AsyncMock(return_value=["Default", "Deck1"])
-    anki_bridge.get_notes_in_deck = AsyncMock(return_value={"2": 222})
+    anki_bridge.get_notes_in_deck = AsyncMock(
+        side_effect=lambda d: {} if d == "Default" else {"2": 222}
+    )
     anki_bridge.delete_notes = AsyncMock(return_value=True)
     anki_bridge.delete_decks = AsyncMock(return_value=True)
 
@@ -156,7 +160,9 @@ async def test_prune_orphans_dry_run(prune_config):
     prune_config.dry_run = True
     anki_bridge = MagicMock()
     anki_bridge.get_deck_names = AsyncMock(return_value=["Default", "Deck1"])
-    anki_bridge.get_notes_in_deck = AsyncMock(return_value={"2": 222})
+    anki_bridge.get_notes_in_deck = AsyncMock(
+        side_effect=lambda d: {} if d == "Default" else {"2": 222}
+    )
 
     recorder = MagicMock()
     recorder.inventory_nids = {"1"}
@@ -174,7 +180,9 @@ async def test_prune_orphans_dry_run(prune_config):
 async def test_prune_orphans_empty(prune_config):
     anki_bridge = MagicMock()
     anki_bridge.get_deck_names = AsyncMock(return_value=["Default", "Deck1"])
-    anki_bridge.get_notes_in_deck = AsyncMock(return_value={"1": 111})
+    anki_bridge.get_notes_in_deck = AsyncMock(
+        side_effect=lambda d: {} if d == "Default" else {"1": 111}
+    )
 
     recorder = MagicMock()
     recorder.inventory_nids = {"1"}
@@ -204,7 +212,9 @@ async def test_prune_orphans_skipped_root_mismatch(prune_config):
 async def test_prune_orphans_delete_error_handling(prune_config):
     anki_bridge = MagicMock()
     anki_bridge.get_deck_names = AsyncMock(return_value=["Default", "Deck1"])
-    anki_bridge.get_notes_in_deck = AsyncMock(return_value={"2": 222})
+    anki_bridge.get_notes_in_deck = AsyncMock(
+        side_effect=lambda d: {} if d == "Default" else {"2": 222}
+    )
     anki_bridge.delete_notes = AsyncMock(side_effect=Exception("API Error"))
 
     recorder = MagicMock()

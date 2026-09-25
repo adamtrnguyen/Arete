@@ -143,9 +143,7 @@ def make_config(anki_base: Path, tmp_path: Path):
             backend="direct",
             cache_db=str(tmp_path / "cache.db"),
             log_dir=tmp_path / "logs",
-            workers=2,
-            prune=False,
-            **overrides,
+            **{"workers": 2, "prune": False, **overrides},
         )
 
     return _make
