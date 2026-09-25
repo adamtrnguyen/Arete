@@ -199,8 +199,10 @@ class MetricsCalculator:
 
         latest = reviews[-1]
 
-        # If it's a new card (last_interval=0), growth is undefined/infinite
-        if latest.last_interval <= 0:
+        # Growth is only meaningful between review intervals. From a learning step
+        # (10 min -> 2 d) the ratio is 288x and says nothing about spacing, so a previous
+        # interval under a day -- new, learning or relearning -- gives no growth.
+        if latest.last_interval < 1:
             return None
 
         return latest.interval / latest.last_interval
