@@ -1,0 +1,739 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="One-way sync from an Obsidian vault to Anki.">
+      
+      
+      
+        <link rel="canonical" href="https://adamtrnguyen.github.io/Arete/cards/">
+      
+      
+        <link rel="prev" href="..">
+      
+      
+        <link rel="next" href="../format/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Card schema - Arete</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#arete-card-schema" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Arete" class="md-header__button md-logo" aria-label="Arete" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Arete
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Card schema
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/adamtrnguyen/Arete" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Arete" class="md-nav__button md-logo" aria-label="Arete" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Arete
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/adamtrnguyen/Arete" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Card schema
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Card schema
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#file-level-frontmatter" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        File-Level Frontmatter
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#card-schema-basic-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Card Schema — Basic Model
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#card-schema-cloze-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Card Schema — Cloze Model
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#card-schema-custom-models" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Card Schema — Custom Models
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#key-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Key Rules
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#complete-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Complete Example
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../format/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Writing cards
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../CLI/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../PLUGIN/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Obsidian plugin
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../TROUBLESHOOTING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#file-level-frontmatter" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        File-Level Frontmatter
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#card-schema-basic-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Card Schema — Basic Model
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#card-schema-cloze-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Card Schema — Cloze Model
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#card-schema-custom-models" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Card Schema — Custom Models
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#key-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Key Rules
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#complete-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Complete Example
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="arete-card-schema">Arete card schema</h1>
+<p>What Arete reads from a note's frontmatter. Style (how to write it so it renders) is in <code>FORMAT.md</code>.</p>
+<h2 id="file-level-frontmatter">File-Level Frontmatter</h2>
+<p>A file is an Arete note when its frontmatter has <code>arete: true</code> and a non-empty <code>cards</code> list.</p>
+<div class="highlight"><pre><span></span><code><span class="nn">---</span>
+<span class="nt">arete</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span><span class="w">                        </span><span class="c1"># Required marker</span>
+<span class="nt">deck</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Parent::Child&quot;</span><span class="w">              </span><span class="c1"># Anki deck, :: for nesting. Required at file or card level.</span>
+<span class="nt">model</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Basic&quot;</span><span class="w">                     </span><span class="c1"># Default note type. Options: Basic, Cloze, or custom model name.</span>
+<span class="nt">tags</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">tag1</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">tag2</span><span class="p p-Indicator">]</span><span class="w">                 </span><span class="c1"># Applied to all cards in file</span>
+<span class="nt">cards</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">...</span><span class="w">                            </span><span class="c1"># Required, non-empty list</span>
+<span class="nn">---</span>
+</code></pre></div>
+<h2 id="card-schema-basic-model">Card Schema — Basic Model</h2>
+<div class="highlight"><pre><span></span><code><span class="nt">cards</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">arete_01KFA531FYFDAHH1RXBXGE3ZNX</span><span class="w">   </span><span class="c1"># Auto-generated ULID on first sync if missing</span>
+<span class="w">    </span><span class="nt">Front</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Question</span><span class="nv"> </span><span class="s">text&quot;</span><span class="w">                   </span><span class="c1"># Required, non-empty</span>
+<span class="w">    </span><span class="nt">Back</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|-</span><span class="w">                                 </span><span class="c1"># Required, non-empty. Use |- for multiline.</span>
+<span class="w">      </span><span class="no">Answer text</span>
+<span class="w">      </span><span class="no">with multiple lines</span>
+<span class="w">    </span><span class="nt">deck</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Override::Deck&quot;</span><span class="w">                   </span><span class="c1"># Optional, overrides file-level deck</span>
+<span class="w">    </span><span class="nt">model</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Basic&quot;</span><span class="w">                           </span><span class="c1"># Optional, overrides file-level model</span>
+<span class="w">    </span><span class="nt">tags</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">extra-tag</span><span class="p p-Indicator">]</span><span class="w">                        </span><span class="c1"># Optional, overrides file-level tags</span>
+<span class="w">    </span><span class="nt">deps</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">requires</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">arete_ULID</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">basename</span><span class="p p-Indicator">]</span><span class="w">       </span><span class="c1"># Prerequisites (card IDs or filenames without .md)</span>
+<span class="w">      </span><span class="nt">related</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">arete_ULID</span><span class="p p-Indicator">]</span><span class="w">                  </span><span class="c1"># Related cards (informational, not traversed)</span>
+<span class="w">    </span><span class="nt">anki</span><span class="p">:</span><span class="w">                                    </span><span class="c1"># Written by Arete after sync — do not manually set</span>
+<span class="w">      </span><span class="nt">nid</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;1767401291489&quot;</span>
+<span class="w">      </span><span class="nt">cid</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;1767583698928&quot;</span>
+</code></pre></div>
+<h2 id="card-schema-cloze-model">Card Schema — Cloze Model</h2>
+<div class="highlight"><pre><span></span><code><span class="nt">cards</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">arete_01KFA531FYFDAHH1RXBXGE3ZN9</span>
+<span class="w">    </span><span class="nt">model</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Cloze</span>
+<span class="w">    </span><span class="nt">Text</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;The</span><span class="nv"> </span><span class="s">{{c1::epidermis}}</span><span class="nv"> </span><span class="s">is</span><span class="nv"> </span><span class="s">the</span><span class="nv"> </span><span class="s">{{c2::outermost}}</span><span class="nv"> </span><span class="s">layer</span><span class="nv"> </span><span class="s">of</span><span class="nv"> </span><span class="s">skin.&quot;</span><span class="w">   </span><span class="c1"># Required</span>
+<span class="w">    </span><span class="s">&quot;Back</span><span class="nv"> </span><span class="s">Extra&quot;</span><span class="p p-Indicator">:</span><span class="w"> </span><span class="s">&quot;Additional</span><span class="nv"> </span><span class="s">context&quot;</span><span class="w">                                       </span><span class="c1"># Optional</span>
+</code></pre></div>
+<h2 id="card-schema-custom-models">Card Schema — Custom Models</h2>
+<p>Any field name not in the reserved set becomes an Anki field. At least one field required.
+Reserved keys: <code>model, deck, tags, id, deps, anki</code></p>
+<h2 id="key-rules">Key Rules</h2>
+<ul>
+<li><strong>IDs</strong>: <code>arete_</code> prefix + 26-char ULID. Auto-generated on first sync. Do not fabricate.</li>
+<li><strong>anki.nid / anki.cid</strong>: Written by Arete after sync. Never manually create or modify these.</li>
+<li><strong>Deck</strong>: Must be specified at file level or card level. Use <code>::</code> for nesting.</li>
+<li><strong>Changing <code>model</code></strong> on a synced card converts its Anki note in place: same cards, review history kept. Fields carry over by name, then <code>Front</code>↔<code>Text</code> and <code>Back</code>↔<code>Back Extra</code>. Anki counts this as a schema change, so its next AnkiWeb sync may ask for a one-way full upload.</li>
+<li><strong>Multiline content</strong>: Use YAML block scalar <code>|-</code> (literal, strip trailing newline).</li>
+<li><strong>Math</strong>: <code>$...$</code> and <code>$$...$$</code> are auto-converted to <code>\(...\)</code> and <code>\[...\]</code>.</li>
+<li><strong>Images</strong>: <code>![[image.png]]</code> wikilinks and <code>![](image.png)</code> are auto-resolved and copied to Anki media.</li>
+<li><strong>No duplicate YAML keys</strong>: Arete uses a strict YAML loader that rejects duplicates.</li>
+<li><strong>No tabs in YAML</strong>: Use spaces only.</li>
+<li><strong>Deps references</strong>: an <code>arete_ULID</code> (one card), a basename like <code>algebra</code> (all cards in <code>algebra.md</code>), or <code>folder/Name</code> when several files share a basename.</li>
+</ul>
+<h2 id="complete-example">Complete Example</h2>
+<div class="highlight"><pre><span></span><code><span class="nn">---</span>
+<span class="nt">arete</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="nt">deck</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Biology::Human</span><span class="nv"> </span><span class="s">Anatomy&quot;</span>
+<span class="nt">model</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Basic</span>
+<span class="nt">tags</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">anatomy</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">high-retention</span><span class="p p-Indicator">]</span>
+<span class="nt">cards</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">arete_01KFA531FYFDAHH1RXBXGE3ZNX</span>
+<span class="w">    </span><span class="nt">Front</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">What are the three layers of the skin?</span>
+<span class="w">    </span><span class="nt">Back</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|-</span>
+<span class="w">      </span><span class="no">1. Epidermis (outer)</span>
+<span class="w">      </span><span class="no">2. Dermis (middle, contains collagen)</span>
+<span class="w">      </span><span class="no">3. Hypodermis (inner, fat layer)</span>
+<span class="w">    </span><span class="nt">deps</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">requires</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[]</span>
+<span class="w">      </span><span class="nt">related</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">arete_01KFA531FYFDAHH1RXBXGE3ZN9</span><span class="p p-Indicator">]</span>
+
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">arete_01KFA531FYFDAHH1RXBXGE3ZN9</span>
+<span class="w">    </span><span class="nt">model</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Cloze</span>
+<span class="w">    </span><span class="nt">Text</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">The {{c1::epidermis}} is the {{c2::outermost}} layer of skin.</span>
+<span class="w">    </span><span class="s">&quot;Back</span><span class="nv"> </span><span class="s">Extra&quot;</span><span class="p p-Indicator">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Contains melanocytes for pigmentation</span>
+<span class="nn">---</span>
+</code></pre></div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["content.code.copy"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
