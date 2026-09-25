@@ -14,7 +14,7 @@ import networkx as nx
 
 from arete.application.utils.fs import iter_markdown_files
 from arete.application.utils.text import normalize_filename, parse_frontmatter
-from arete.domain.graph import CardNode, DependencyGraph, LocalGraphResult
+from arete.domain.graph import CardNode, DependencyGraph
 
 # ---------------------------------------------------------------------------
 # Result dataclasses
@@ -264,75 +264,6 @@ def _resolve_reference(
             logger.warning(f"Dependency reference '{ref}' - no file with basename '{ref}' found")
             graph.add_unresolved(card_id, ref)
             return []
-
-
-def get_local_graph(
-    graph: DependencyGraph,
-    card_id: str,
-    depth: int = 2,
-    max_nodes: int = 150,
-) -> LocalGraphResult | None:
-    """Get a local subgraph centered on a specific card.
-
-    Args:
-        graph: The full dependency graph
-        card_id: Center card's Arete ID
-        depth: Maximum depth to traverse (default: 2)
-        max_nodes: Maximum nodes to include (default: 150)
-
-    Returns:
-        LocalGraphResult with prerequisites, dependents, and related cards,
-        or None if card_id not found.
-
-    """
-    if card_id not in graph.nodes:
-        return None
-
-    center = graph.nodes[card_id]
-    prereqs: set[str] = set()
-    dependents: set[str] = set()
-    related_ids: set[str] = set()
-
-    # Walk prerequisites (backward along requires edges)
-    def walk_prereqs(cid: str, current_depth: int) -> None:
-        if current_depth > depth or len(prereqs) >= max_nodes:
-            return
-        for prereq_id in graph.get_prerequisites(cid):
-            if len(prereqs) >= max_nodes:
-                break
-            if prereq_id not in prereqs and prereq_id in graph.nodes:
-                prereqs.add(prereq_id)
-                walk_prereqs(prereq_id, current_depth + 1)
-
-    # Walk dependents (forward along requires edges)
-    def walk_dependents(cid: str, current_depth: int) -> None:
-        if current_depth > depth or len(dependents) >= max_nodes:
-            return
-        for dep_id in graph.get_dependents(cid):
-            if len(dependents) >= max_nodes:
-                break
-            if dep_id not in dependents and dep_id in graph.nodes:
-                dependents.add(dep_id)
-                walk_dependents(dep_id, current_depth + 1)
-
-    walk_prereqs(card_id, 1)
-    walk_dependents(card_id, 1)
-
-    # Get related (only direct, no traversal)
-    for rel_id in graph.get_related(card_id):
-        if rel_id in graph.nodes:
-            related_ids.add(rel_id)
-
-    # Detect cycles involving the center card
-    cycles = detect_cycles_for_card(graph, card_id)
-
-    return LocalGraphResult(
-        center=center,
-        prerequisites=[graph.nodes[pid] for pid in prereqs],
-        dependents=[graph.nodes[did] for did in dependents],
-        related=[graph.nodes[rid] for rid in related_ids],
-        cycles=cycles,
-    )
 
 
 def detect_cycles(graph: DependencyGraph) -> list[list[str]]:

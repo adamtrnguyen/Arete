@@ -80,44 +80,6 @@ def setup_logging(log_dir: Path, verbose: int) -> tuple[logging.Logger, Path, st
     return logger, main_log_path, run_id
 
 
-def write_run_report(recorder: RunRecorder, log_dir: Path, run_id: str):
-    report_path = log_dir / f"report_{run_id}.md"
-    duration = datetime.now() - recorder.start_time
-
-    lines = [
-        f"# Run Report [{run_id}]",
-        f"**Date**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-        f"**Duration**: {duration}",
-        "",
-        "## Summary",
-        "| Metric | Count |",
-        "|---|---|",
-        f"| Files Scanned | {recorder.files_scanned} |",
-        f"| Cards Generated | {recorder.cards_generated} |",
-        f"| Cards Cached (Content) | {recorder.cards_cached_content} |",
-        f"| Cards Synced | {recorder.cards_synced} |",
-        f"| Cards Failed | {recorder.cards_failed} |",
-        "",
-    ]
-
-    if recorder.errors:
-        lines.append("## Errors")
-        lines.append("| File | Message | Context |")
-        lines.append("|---|---|---|")
-        for e in recorder.errors:
-            ctx = e.context or ""
-            lines.append(f"| `{e.file}` | {e.message} | {ctx} |")
-        lines.append("")
-
-    try:
-        with open(report_path, "w", encoding="utf-8") as f:
-            f.write("\n".join(lines))
-        # Automatic rotation: Keep last 50
-        rotate_logs(log_dir, keep=50)
-    except OSError as e:
-        logging.getLogger("arete").warning(f"[report] could not write {report_path}: {e}")
-
-
 def rotate_logs(log_dir: Path, keep: int = 50):
     """Keep only the latest N run logs and reports."""
     try:

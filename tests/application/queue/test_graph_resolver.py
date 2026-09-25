@@ -10,7 +10,6 @@ from arete.application.queue.graph_resolver import (
     filter_graph_by_deck,
     find_connected_components,
     find_isolated_nodes,
-    get_local_graph,
     get_subgraph_for_files,
     topological_sort,
 )
@@ -189,83 +188,6 @@ cards:
             f"basename '{target_name_nfd}'. Got unresolved: {graph.unresolved_refs}"
         )
         assert "arete_target" in graph.get_prerequisites("arete_dependent")
-
-
-class TestLocalGraph:
-    """Tests for local graph queries."""
-
-    def test_get_local_graph(self):
-        """Test local subgraph extraction."""
-        graph = DependencyGraph()
-        graph.add_node(CardNode("a", "A", "/a.md", 1))
-        graph.add_node(CardNode("b", "B", "/b.md", 1))
-        graph.add_node(CardNode("c", "C", "/c.md", 1))
-        graph.add_requires("a", "b")  # a requires b
-        graph.add_requires("b", "c")  # b requires c
-
-        result = get_local_graph(graph, "a", depth=2)
-
-        assert result is not None
-        assert result.center.id == "a"
-        assert len(result.prerequisites) == 2  # b and c
-        prereq_ids = {p.id for p in result.prerequisites}
-        assert "b" in prereq_ids
-        assert "c" in prereq_ids
-
-    def test_get_local_graph_depth_limit(self):
-        """Test that depth limit is respected."""
-        graph = DependencyGraph()
-        graph.add_node(CardNode("a", "A", "/a.md", 1))
-        graph.add_node(CardNode("b", "B", "/b.md", 1))
-        graph.add_node(CardNode("c", "C", "/c.md", 1))
-        graph.add_requires("a", "b")
-        graph.add_requires("b", "c")
-
-        result = get_local_graph(graph, "a", depth=1)
-
-        assert result is not None
-        assert len(result.prerequisites) == 1  # Only b, not c
-        assert result.prerequisites[0].id == "b"
-
-    def test_get_local_graph_not_found(self):
-        """Test handling of non-existent card."""
-        graph = DependencyGraph()
-        result = get_local_graph(graph, "nonexistent")
-        assert result is None
-
-    def test_get_local_graph_with_dependents_and_related(self):
-        """Test local graph including dependents and existing/non-existing related cards."""
-        graph = DependencyGraph()
-        graph.add_node(CardNode("a", "A", "/a.md", 1))
-        graph.add_node(CardNode("b", "B", "/b.md", 1))
-        graph.add_node(CardNode("c", "C", "/c.md", 1))
-        graph.add_requires("b", "a")  # b depends on a (a is prereq of b)
-        graph.add_requires("a", "c")  # a depends on c (c is prereq of a)
-        graph.add_related("a", "b")
-        graph.add_related("a", "nonexistent")
-
-        result = get_local_graph(graph, "a", depth=1)
-
-        assert result.center.id == "a"
-        assert len(result.dependents) == 1
-        assert result.dependents[0].id == "b"
-        assert len(result.prerequisites) == 1
-        assert result.prerequisites[0].id == "c"
-        assert len(result.related) == 1
-        assert result.related[0].id == "b"
-
-    def test_get_local_graph_limits(self):
-        """Test max_nodes limit in local graph traversal."""
-        graph = DependencyGraph()
-        graph.add_node(CardNode("center", "Center", "/c.md", 1))
-        for i in range(10):
-            node_id = f"node_{i}"
-            graph.add_node(CardNode(node_id, node_id, "/file.md", 1))
-            graph.add_requires("center", node_id)
-
-        # Test max_nodes = 5
-        result = get_local_graph(graph, "center", depth=1, max_nodes=5)
-        assert len(result.prerequisites) == 5
 
 
 class TestCycleDetection:

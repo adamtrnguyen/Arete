@@ -95,17 +95,3 @@ class DependencyGraph:
     def get_related(self, card_id: str) -> list[str]:
         """Get all related cards."""
         return self.related.get(card_id, [])
-
-
-@dataclass
-class LocalGraphResult:
-    """Result of a local graph query centered on a specific card.
-
-    Used by the UI to render the dependency visualization.
-    """
-
-    center: CardNode
-    prerequisites: list[CardNode]  # Upstream requires (depth-limited)
-    dependents: list[CardNode]  # Downstream requires (depth-limited)
-    related: list[CardNode]  # Related cards
-    cycles: list[list[str]]  # Groups of co-requisite card IDs

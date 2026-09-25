@@ -70,3 +70,7 @@ _bmad-output/
 !uv.lock
 !mkdocs.yml
 !justfile
+
+# tool caches
+.complexipy_cache/
+.grimp_cache/

@@ -7,13 +7,11 @@ from pydantic import ValidationError
 
 from arete.domain.card_models import (
     AnkiBlock,
-    AreteFileMetadata,
     BasicCard,
     ClozeCard,
     CustomCard,
     DepsBlock,
     parse_card,
-    parse_file_metadata,
 )
 
 # ===================================================================
@@ -267,66 +265,6 @@ class TestCustomCard:
 
 
 # ===================================================================
-# AreteFileMetadata
-# ===================================================================
-
-
-class TestAreteFileMetadata:
-    def test_minimal(self):
-        meta = AreteFileMetadata()
-        assert meta.arete is False
-        assert meta.deck is None
-        assert meta.model == "Basic"
-        assert meta.tags == []
-        assert meta.cards == []
-
-    def test_arete_true_with_deck(self):
-        meta = AreteFileMetadata(arete=True, deck="Test::Deck", cards=[{"Front": "Q", "Back": "A"}])
-        assert meta.arete is True
-        assert meta.deck == "Test::Deck"
-
-    def test_arete_true_without_deck_raises(self):
-        with pytest.raises(ValidationError, match="deck"):
-            AreteFileMetadata(arete=True, cards=[{"Front": "Q", "Back": "A"}])
-
-    def test_cards_without_deck_raises(self):
-        with pytest.raises(ValidationError, match="deck"):
-            AreteFileMetadata(cards=[{"Front": "Q", "Back": "A"}])
-
-    def test_tags_from_string(self):
-        meta = AreteFileMetadata(tags="single_tag")
-        assert meta.tags == ["single_tag"]
-
-    def test_tags_from_list(self):
-        meta = AreteFileMetadata(tags=["a", "b", "c"])
-        assert meta.tags == ["a", "b", "c"]
-
-    def test_tags_none_becomes_empty(self):
-        meta = AreteFileMetadata(tags=None)
-        assert meta.tags == []
-
-    def test_tags_whitespace_filtered(self):
-        meta = AreteFileMetadata(tags=["a", "", "  ", "b"])
-        assert meta.tags == ["a", "b"]
-
-    def test_extra_fields_allowed(self):
-        meta = AreteFileMetadata.model_validate(
-            {
-                "deck": "Test",
-                "cards": [{"Front": "Q", "Back": "A"}],
-                "custom_meta": "value",
-            }
-        )
-        assert meta.model_extra is not None
-        assert meta.model_extra.get("custom_meta") == "value"
-
-    def test_no_cards_no_deck_ok(self):
-        """When there are no cards and arete is false, no deck is fine."""
-        meta = AreteFileMetadata(arete=False, deck=None, cards=[])
-        assert meta.deck is None
-
-
-# ===================================================================
 # parse_card dispatch
 # ===================================================================
 
@@ -367,35 +305,6 @@ class TestParseCard:
     def test_model_field_preserved(self):
         card = parse_card({"model": "Cloze", "Text": "{{c1::X}}"})
         assert card.model == "Cloze"
-
-
-# ===================================================================
-# parse_file_metadata
-# ===================================================================
-
-
-class TestParseFileMetadata:
-    def test_valid(self):
-        meta = parse_file_metadata(
-            {
-                "arete": True,
-                "deck": "AI::Deep Learning",
-                "model": "Basic",
-                "tags": ["dl", "research"],
-                "cards": [{"Front": "Q?", "Back": "A."}],
-            }
-        )
-        assert meta.deck == "AI::Deep Learning"
-        assert meta.tags == ["dl", "research"]
-
-    def test_invalid_raises(self):
-        with pytest.raises(ValidationError):
-            parse_file_metadata({"arete": True, "cards": [{"Front": "Q"}]})
-
-    def test_empty_dict(self):
-        meta = parse_file_metadata({})
-        assert meta.arete is False
-        assert meta.cards == []
 
 
 # ===================================================================

@@ -1,11 +1,9 @@
 import logging
-from pathlib import Path
 
 from arete.application.utils.logging import (
     RunRecorder,
     rotate_logs,
     setup_logging,
-    write_run_report,
 )
 
 
@@ -34,24 +32,6 @@ def test_run_recorder_add_inventory():
 
     assert recorder.inventory_nids == {"1", "2"}
     assert recorder.inventory_decks == {"D1", "D2"}
-
-
-def test_write_run_report(tmp_path):
-    recorder = RunRecorder()
-    recorder.files_scanned = 5
-    recorder.add_error(Path("bad.md"), "Syntax Error", "Line 1")
-
-    run_id = "test_run"
-    write_run_report(recorder, tmp_path, run_id)
-
-    report_path = tmp_path / f"report_{run_id}.md"
-    assert report_path.exists()
-
-    content = report_path.read_text()
-    assert "# Run Report [test_run]" in content
-    assert "| Files Scanned | 5 |" in content
-    assert "| `bad.md` | Syntax Error | Line 1 |" in content
-    assert "## Warnings" not in content  # the recorder no longer collects warnings
 
 
 def test_rotate_logs(tmp_path):

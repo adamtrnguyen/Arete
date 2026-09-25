@@ -48,7 +48,6 @@ src/arete/
 │   │   ├── media.py               unique_media_name, build_filename_index, transform_images_in_text...
 │   │   ├── text.py                normalize_filename, parse_frontmatter, UniqueKeyLoader...
 │   │   ├── yaml.py
-│   ├── card_editor.py             Card editing service with maturity-based stability guards
 │   ├── card_reader.py             Application service for reading card data from vault markdown files
 │   ├── config.py                  AppConfig, resolve_config
 │   ├── report_service.py          Service for reading and managing card issue reports
@@ -85,9 +84,9 @@ src/arete/
 |---|---|---|---|
 | `interface` | 7 | 1750 | application, composition |
 | `composition` | 2 | 161 | application, infrastructure, domain |
-| `application` | 24 | 4669 | domain (ports only) |
+| `application` | 23 | 4179 | domain (ports only) |
 | `infrastructure` | 7 | 2143 | domain |
-| `domain` | 7 | 881 | nothing in arete |
+| `domain` | 7 | 821 | nothing in arete |
 
 The import rules in the last column are enforced by `just check-architecture`
 (import-linter), not by convention.

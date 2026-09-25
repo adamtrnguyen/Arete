@@ -2,7 +2,7 @@
 
 import pytest
 
-from arete.domain.graph import CardNode, DependencyGraph, LocalGraphResult
+from arete.domain.graph import CardNode, DependencyGraph
 
 # ---------------------------------------------------------------------------
 # CardNode
@@ -323,33 +323,3 @@ class TestDependencyGraphEdgeCount:
         g.add_related("B", "C")  # should NOT count
 
         assert g.edge_count == 2
-
-
-# ---------------------------------------------------------------------------
-# LocalGraphResult
-# ---------------------------------------------------------------------------
-
-
-class TestLocalGraphResult:
-    """LocalGraphResult is a simple data container."""
-
-    def test_local_graph_result_creation(self):
-        center = _make_node("center")
-        prereqs = [_make_node("p1")]
-        deps = [_make_node("d1")]
-        related = [_make_node("r1")]
-        cycles = [["a", "b"]]
-
-        result = LocalGraphResult(
-            center=center,
-            prerequisites=prereqs,
-            dependents=deps,
-            related=related,
-            cycles=cycles,
-        )
-
-        assert result.center.id == "center"
-        assert len(result.prerequisites) == 1
-        assert len(result.dependents) == 1
-        assert len(result.related) == 1
-        assert result.cycles == [["a", "b"]]

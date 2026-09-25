@@ -182,49 +182,6 @@ class CustomCard(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# File-level metadata
-# ---------------------------------------------------------------------------
-
-
-class AreteFileMetadata(BaseModel):
-    """Top-level frontmatter for an Arete-enabled markdown file."""
-
-    model_config = ConfigDict(extra="allow")
-
-    arete: bool = False
-    deck: str | None = None
-    model: str = "Basic"
-    tags: list[str] = Field(default_factory=list)
-    cards: list[dict[str, Any]] = Field(default_factory=list)
-
-    @field_validator("tags", mode="before")
-    @classmethod
-    def coerce_tags(cls, v: Any) -> list[str]:
-        """Coerce tags from string, list, or None."""
-        if v is None:
-            return []
-        if isinstance(v, str):
-            return [v.strip()] if v.strip() else []
-        if isinstance(v, list):
-            return [str(t).strip() for t in v if t is not None and str(t).strip()]
-        return [str(v)]
-
-    @model_validator(mode="after")
-    def validate_deck_requirements(self) -> AreteFileMetadata:
-        """If arete=True or cards are present, deck must be specified."""
-        if self.arete and not self.deck:
-            raise ValueError("File marked 'arete: true' requires a 'deck' field")
-        if self.cards and not self.deck:
-            raise ValueError("Cards are present but no 'deck' field specified")
-        return self
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-# ---------------------------------------------------------------------------
 # Dispatch
 # ---------------------------------------------------------------------------
 
@@ -250,8 +207,3 @@ def parse_card(raw: dict[str, Any], default_model: str = "Basic") -> CardModel:
         return ClozeCard.model_validate(data)
     else:
         return CustomCard.model_validate(data)
-
-
-def parse_file_metadata(raw: dict[str, Any]) -> AreteFileMetadata:
-    """Validate top-level frontmatter and return an ``AreteFileMetadata`` instance."""
-    return AreteFileMetadata.model_validate(raw)
