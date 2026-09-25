@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **Organized highlighting of the `cards:` block in Source mode.** Each card sits on its
+  own band; question keys (`Front`, `Text`) are blue with a bold value, answer keys
+  (`Back`, `Back Extra`) green, `deps` purple, and `id`/`anki`/`model` dimmed. Cloze
+  deletions get a chip colored by `cN`; `$math$` is tinted. Text inside a `|-` block is
+  never mistaken for a key.
+
 ## 2.5.0
 
 ### Added

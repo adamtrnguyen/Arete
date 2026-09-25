@@ -1,0 +1,93 @@
+/* Arete Plugin - Organized highlighting of the cards: block in Source mode
+ * (presentation/extensions/CardYamlHighlight.ts). Colors override Obsidian's generic
+ * frontmatter tokens, which nest inside these marks, hence the descendant rules.
+ */
+
+.arete-yaml-card-even {
+	background-color: rgba(var(--mono-rgb-100), 0.025);
+}
+.arete-yaml-card-odd {
+	background-color: rgba(var(--mono-rgb-100), 0.055);
+}
+.arete-yaml-card-start {
+	border-top: 1px solid var(--background-modifier-border);
+}
+
+.arete-yk,
+.arete-yk * {
+	font-weight: 600;
+}
+
+/* question: the prompt the card shows first */
+.arete-yk-q,
+.arete-yk-q * {
+	color: var(--color-blue) !important;
+}
+.arete-yv-q,
+.arete-yv-q * {
+	color: var(--text-normal) !important;
+	font-weight: 600;
+}
+
+/* answer */
+.arete-yk-a,
+.arete-yk-a * {
+	color: var(--color-green) !important;
+}
+.arete-yv-a,
+.arete-yv-a * {
+	color: var(--text-normal) !important;
+}
+
+/* prerequisites and related cards */
+.arete-yk-deps,
+.arete-yk-deps *,
+.arete-yv-deps,
+.arete-yv-deps * {
+	color: var(--color-purple) !important;
+}
+
+/* machine-written or rarely edited: id, anki nid/cid, model, deck, tags */
+.arete-yk-meta,
+.arete-yk-meta *,
+.arete-yv-meta,
+.arete-yv-meta * {
+	color: var(--text-faint) !important;
+	font-weight: normal;
+}
+
+/* any other field of a custom note type */
+.arete-yk-field,
+.arete-yk-field * {
+	color: var(--color-cyan) !important;
+}
+
+.arete-yaml-cloze {
+	border-radius: 3px;
+	padding: 0 1px;
+}
+.arete-yaml-cloze-1,
+.arete-yaml-cloze-1 * {
+	background-color: rgba(var(--color-orange-rgb), 0.18);
+	color: var(--color-orange) !important;
+}
+.arete-yaml-cloze-2,
+.arete-yaml-cloze-2 * {
+	background-color: rgba(var(--color-pink-rgb), 0.18);
+	color: var(--color-pink) !important;
+}
+.arete-yaml-cloze-3,
+.arete-yaml-cloze-3 * {
+	background-color: rgba(var(--color-cyan-rgb), 0.18);
+	color: var(--color-cyan) !important;
+}
+.arete-yaml-cloze-4,
+.arete-yaml-cloze-4 * {
+	background-color: rgba(var(--color-yellow-rgb), 0.18);
+	color: var(--color-yellow) !important;
+}
+
+.arete-yaml-math,
+.arete-yaml-math * {
+	color: var(--color-yellow) !important;
+}

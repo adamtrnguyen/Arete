@@ -23,9 +23,12 @@ jest.mock('@codemirror/view', () => ({
 	lineNumbers: jest.fn(),
 	keymap: { of: jest.fn() },
 	Decoration: {
-		line: jest.fn().mockReturnValue({}),
+		line: jest.fn().mockReturnValue({ range: jest.fn() }),
+		mark: jest.fn().mockReturnValue({ range: jest.fn() }),
 		set: jest.fn().mockReturnValue({}),
+		none: {},
 	},
+	ViewPlugin: { fromClass: jest.fn().mockReturnValue({}) },
 	GutterMarker: class {},
 	gutter: jest.fn(),
 }));

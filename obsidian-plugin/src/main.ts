@@ -31,6 +31,7 @@ import { AreteClient } from '@infrastructure/arete/AreteClient';
 import { LocalGraphView, LOCAL_GRAPH_VIEW_TYPE } from '@presentation/views/LocalGraphView';
 import { GlobalGraphView, GLOBAL_GRAPH_VIEW_TYPE } from '@presentation/views/GlobalGraphView';
 import { DependencyResolver } from '@application/services/DependencyResolver';
+import { cardYamlHighlight } from '@presentation/extensions/CardYamlHighlight';
 import {
 	createCardGutter,
 	highlightCardEffect,
@@ -266,6 +267,7 @@ export default class AretePlugin extends Plugin {
 			},
 		});
 
+		this.registerEditorExtension(cardYamlHighlight);
 		this.registerEditorExtension(
 			createCardGutter(
 				(cardIndex) => {
