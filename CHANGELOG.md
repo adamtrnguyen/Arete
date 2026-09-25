@@ -1,5 +1,25 @@
 # Changelog
 
+## 2.5.0
+
+### Added
+
+- **Card preview in the Obsidian YAML editor.** The Preview pane now renders the
+  actual Anki card — the model's own CSS and card template, with fields run
+  through the Markdown renderer so MathJax works — with a Front/Back toggle. The
+  card is drawn inside a sandboxed iframe, so the model CSS cannot leak into the
+  rest of the UI, and card images and links resolve against the vault.
+
+### Fixed
+
+- **The plugin asked the CLI for model data under the wrong command names.** It
+  sent `models-styling` / `models-templates`; the CLI registers `model-css` /
+  `model-templates`. The card preview could never fetch a model.
+- **Server mode never started.** The plugin spawned `arete server --port`, but
+  there is no `server` command — it is `arete serve daemon`. The `--reload` flag
+  was also passed before the subcommand instead of after it.
+- **The card renderer passed a null `Component` to `MarkdownRenderer`.**
+
 ## 2.4.0
 
 A correctness release. Several bugs in this list could put cards in the wrong
