@@ -91,7 +91,7 @@ describe('AreteClient', () => {
 					'-m',
 					'arete',
 					'anki',
-					'cards-suspend',
+					'suspend',
 					'--cids',
 					'[1,2,3]',
 				]),
@@ -111,7 +111,7 @@ describe('AreteClient', () => {
 			expect(result).toBe(true);
 			expect(spawn).toHaveBeenCalledWith(
 				'python3',
-				expect.arrayContaining(['cards-unsuspend', '--cids', '[4,5]']),
+				expect.arrayContaining(['unsuspend', '--cids', '[4,5]']),
 				expect.any(Object),
 			);
 		});

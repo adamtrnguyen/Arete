@@ -15,7 +15,7 @@ export class CheckService implements FileChecker {
 
 	async getCheckResult(filePath: string): Promise<any> {
 		const resolved = resolvePythonCommand(this.settings);
-		const args = [...resolved.args, 'check-file', filePath, '--json'];
+		const args = [...resolved.args, 'vault', 'check', filePath, '--json'];
 
 		return new Promise((resolve, reject) => {
 			const child = spawn(resolved.cmd, args, { env: resolved.env, cwd: resolved.cwd });
@@ -59,7 +59,7 @@ export class CheckService implements FileChecker {
 
 	async runFix(filePath: string): Promise<void> {
 		const resolved = resolvePythonCommand(this.settings);
-		const args = [...resolved.args, 'fix-file', filePath];
+		const args = [...resolved.args, 'vault', 'fix', filePath];
 
 		return new Promise((resolve) => {
 			const child = spawn(resolved.cmd, args, { env: resolved.env, cwd: resolved.cwd });

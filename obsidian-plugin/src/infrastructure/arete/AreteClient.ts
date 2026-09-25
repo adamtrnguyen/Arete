@@ -64,11 +64,11 @@ export class AreteClient implements GraphSource, AnkiModelSource, CardStatsSourc
 		const args: string[] = ['anki'];
 
 		if (endpoint === '/anki/cards/suspend') {
-			args.push('cards-suspend');
+			args.push('suspend');
 			args.push('--cids');
 			args.push(JSON.stringify(body.cids || []));
 		} else if (endpoint === '/anki/cards/unsuspend') {
-			args.push('cards-unsuspend');
+			args.push('unsuspend');
 			args.push('--cids');
 			args.push(JSON.stringify(body.cids || []));
 		} else if (endpoint.startsWith('/anki/models/')) {

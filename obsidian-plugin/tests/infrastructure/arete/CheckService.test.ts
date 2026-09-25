@@ -71,7 +71,7 @@ describe('CheckService', () => {
 
 	// runCheck() moved to main.ts (DDD refactor)
 
-	test('runFix spawns fix-file command (success)', async () => {
+	test('runFix spawns vault fix command (success)', async () => {
 		const mockChild = createMockChildProcess();
 		(spawn as jest.Mock).mockReturnValue(mockChild);
 
@@ -81,13 +81,13 @@ describe('CheckService', () => {
 
 		expect(spawn).toHaveBeenCalledWith(
 			'python3',
-			expect.arrayContaining(['fix-file', 'test.md']),
+			expect.arrayContaining(['vault', 'fix', 'test.md']),
 			expect.any(Object),
 		);
 		expect(Notice).toHaveBeenCalledWith('✨ File auto-fixed!');
 	});
 
-	test('runFix spawns fix-file command (failure)', async () => {
+	test('runFix spawns vault fix command (failure)', async () => {
 		const mockChild = createMockChildProcess();
 		(spawn as jest.Mock).mockReturnValue(mockChild);
 
