@@ -12,6 +12,10 @@ from markdown.extensions import Extension
 from markdown.postprocessors import Postprocessor
 from markdown.preprocessors import Preprocessor
 
+# A line prefix made only of blockquote markers ("> ", ">> ", "  > ").
+_QUOTE_PREFIX = re.compile(r"[ \t]*(?:>[ \t]?)+")
+_QUOTE_LINE = re.compile(r"(?m)^[ \t]*(?:>[ \t]?)+")
+
 
 class MathProtectExtension(Extension):
     """Extension to avoid converting markdown within math blocks."""
@@ -102,7 +106,11 @@ class MathPreprocessor(Preprocessor):
 
             if ch == "`":
                 run_len = self._backtick_run_length(text, i)
-                code_span_len = run_len
+                # Only a run that is closed later in the same paragraph opens a code span
+                # (CommonMark). An apostrophe-like stray backtick ("don`t") used to switch
+                # math parsing off for the rest of the field.
+                if self._has_closing_run(text, i + run_len, run_len):
+                    code_span_len = run_len
                 out.append(text[i : i + run_len])
                 i += run_len
                 continue
@@ -113,7 +121,13 @@ class MathPreprocessor(Preprocessor):
                 if i + 1 < n and text[i + 1] == "$":
                     close = self._find_display_close(text, i + 2)
                     if close != -1:
-                        placeholder = self._store_math(text[i + 2 : close], is_display=True)
+                        content = text[i + 2 : close]
+                        line_head = text[text.rfind("\n", 0, i) + 1 : i]
+                        if _QUOTE_PREFIX.fullmatch(line_head):
+                            # Inside a blockquote/callout: every continuation line carries
+                            # the `> ` marker, which is Markdown syntax, not math.
+                            content = _QUOTE_LINE.sub("", content)
+                        placeholder = self._store_math(content, is_display=True)
                         out.append(placeholder)
                         i = close + 2
                         continue
@@ -171,6 +185,21 @@ class MathPreprocessor(Preprocessor):
             j += 1
         return j - start
 
+    @classmethod
+    def _has_closing_run(cls, text: str, start: int, run_len: int) -> bool:
+        end = text.find("\n\n", start)
+        block = text[start : end if end != -1 else len(text)]
+        j = 0
+        while j < len(block):
+            if block[j] == "`":
+                run = cls._backtick_run_length(block, j)
+                if run == run_len:
+                    return True
+                j += run
+            else:
+                j += 1
+        return False
+
     @staticmethod
     def _is_escaped(text: str, idx: int) -> bool:
         backslashes = 0
@@ -193,14 +222,21 @@ class MathPreprocessor(Preprocessor):
         while j < len(text):
             if text[j] == "\n":
                 return -1
+            # No Pandoc "closer followed by a digit is prose" rule: the vault writes
+            # `$\sim$100x` and Obsidian renders it as math, so arete must too.
             if text[j] == "$" and not self._is_escaped(text, j) and not text[j - 1].isspace():
                 return j
             j += 1
         return -1
 
     def _store_math(self, content: str, is_display: bool) -> str:
-        placeholder = f"MATH-PLACEHOLDER-{self.counter}"
+        # Terminated, so a digit written right after the math cannot extend the token
+        # ("$n$1" used to become MATH-PLACEHOLDER-01 and leak onto the card).
+        placeholder = f"MATHPLACEHOLDER{self.counter}END"
         self.counter += 1
+        # The math goes into HTML verbatim, so `<`/`>` must be escaped or the browser
+        # reads "\(a<b\) and \(c>" as a tag. MathJax reads the unescaped text.
+        content = content.replace("<", "&lt;").replace(">", "&gt;")
         if is_display:
             self.placeholders[placeholder] = self.fmt_display.format(math=content)
         else:
@@ -215,14 +251,13 @@ class MathPostprocessor(Postprocessor):
         self.placeholders: dict[str, str] = placeholders
 
     def run(self, text: str) -> str:
-        # Replace complete placeholder tokens only.
-        # This avoids collisions like MATH-PLACEHOLDER-1 inside
-        # MATH-PLACEHOLDER-10.
+        # Replace complete placeholder tokens only; the END terminator keeps
+        # MATHPLACEHOLDER1END from matching inside MATHPLACEHOLDER10END.
         def restore(match: re.Match[str]) -> str:
             placeholder = match.group(0)
             return self.placeholders.get(placeholder, placeholder)
 
-        return re.sub(r"MATH-PLACEHOLDER-\d+", restore, text)
+        return re.sub(r"MATHPLACEHOLDER\d+END", restore, text)
 
 
 _md_instance: markdown.Markdown | None = None

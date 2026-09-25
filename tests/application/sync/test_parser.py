@@ -334,3 +334,27 @@ def test_parse_card_level_tags_merge_with_file_tags(parser_fixture, mock_cache):
     assert "card_tag" in tags
     assert tags.count("file_dupe") == 1
     assert any(t.startswith("arete_") for t in tags)
+
+
+def test_custom_model_does_not_send_arete_keys_as_fields(tmp_path):
+    """B1: id/deps/anki/__line__ were sent to Anki as fields for any non-Basic/Cloze model."""
+    import logging
+
+    from arete.application.sync.parser import MarkdownParser
+    from arete.application.utils.text import parse_frontmatter
+    from arete.infrastructure.persistence.cache import ContentCache
+
+    md = tmp_path / "vocab.md"
+    md.write_text(
+        "---\narete: true\ndeck: T\ncards:\n  - id: arete_01X\n    model: Basic with Extra\n"
+        "    Front: gato\n    Back: cat\n    deps:\n      requires: [Other]\n"
+        "    anki:\n      nid: '123'\n---\n"
+    )
+    meta, _ = parse_frontmatter(md.read_text())
+    parser = MarkdownParser(
+        tmp_path, tmp_path / "media", ignore_cache=True, logger=logging.getLogger("t")
+    )
+    notes, _, _ = parser.parse_file(md, meta, ContentCache(tmp_path / "c.db"))
+    leaked = {"id", "deps", "anki", "__line__"} & set(notes[0].fields)
+    assert not leaked
+    assert {"Front", "Back"} <= set(notes[0].fields)

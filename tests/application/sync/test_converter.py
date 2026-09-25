@@ -167,3 +167,45 @@ def test_multiple_display_math_blocks():
 
     assert r"\[a = 1\]" in html
     assert r"\[b = 2\]" in html
+
+
+# --- 2026-09-25 bug hunt: math that leaked or garbled on real cards ---------------------
+
+
+def test_digits_after_math_do_not_leak_the_placeholder():
+    r"""R1: `MATH-PLACEHOLDER-\d+` swallowed the digit after the math."""
+    out = markdown_to_anki_html("$n$1")
+    assert "PLACEHOLDER" not in out
+    assert r"\(n\)1" in out
+
+
+def test_math_followed_by_digits_renders_like_obsidian():
+    r"""R1, from three real cards: `($\sim$100x more params)` leaked MATH-PLACEHOLDER-0100x.
+
+    Obsidian renders this as math, so there is deliberately no Pandoc digit rule.
+    """
+    out = markdown_to_anki_html(r"($\sim$100x more params)")
+    assert "PLACEHOLDER" not in out
+    assert r"(\(\sim\)100x more params)" in out
+
+
+def test_an_unmatched_backtick_does_not_disable_math():
+    """R2: `don`t` opened a code span that never closed, and math after it was eaten."""
+    out = markdown_to_anki_html("don`t\n\nnew para $a_1*b_2$ and $c*_d$")
+    assert r"\(a_1*b_2\)" in out
+    assert "<em>" not in out
+
+
+def test_display_math_in_a_callout_drops_the_quote_markers():
+    """R3: the `> ` prefixes of a callout ended up inside the math."""
+    out = markdown_to_anki_html("> [!note]\n> $$\n> E[X] = \\sum_i x_i p_i\n> $$")
+    assert "\\[" in out
+    math = out[out.index("\\[") : out.index("\\]")]
+    assert ">" not in math
+
+
+def test_angle_brackets_in_math_are_html_escaped():
+    r"""R4: `<b\) and \(c>` was parsed by the browser as a tag and the math vanished."""
+    out = markdown_to_anki_html("$a<b$ and $c>d$")
+    assert r"\(a&lt;b\)" in out
+    assert r"\(c&gt;d\)" in out

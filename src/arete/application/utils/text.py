@@ -50,7 +50,7 @@ def parse_frontmatter(md_text: str) -> tuple[dict[str, Any], str]:
     # Find closing ---
     yaml_end_line = None
     for i, line in enumerate(lines[1:], start=1):
-        if line.strip() == "---":
+        if line.rstrip() == "---":  # column 0: an indented --- is a rule inside `Back: |`
             yaml_end_line = i
             break
 
@@ -132,7 +132,7 @@ def validate_frontmatter(md_text: str) -> dict[str, Any]:
     # Find closing ---
     yaml_end_line = None
     for i, line in enumerate(lines[1:], start=1):
-        if line.strip() == "---":
+        if line.rstrip() == "---":  # column 0: an indented --- is a rule inside `Back: |`
             yaml_end_line = i
             break
 
@@ -208,7 +208,7 @@ def _extract_frontmatter_bounds(md_text: str) -> tuple[str, int, int] | None:
     # Find closing ---
     char_pos = len(lines[0]) + 1  # +1 for newline
     for i, line in enumerate(lines[1:], start=1):
-        if line.strip() == "---":
+        if line.rstrip() == "---":  # column 0: an indented --- is a rule inside `Back: |`
             # Found closing ---
             start = len(lines[0]) + 1  # After opening ---\n
             yaml_content = "\n".join(lines[1:i])

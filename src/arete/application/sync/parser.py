@@ -178,7 +178,19 @@ class MarkdownParser:
                         continue
                 else:
                     # Allow 'nid' to pass through for custom models so it can be stored in Anki
-                    _exclude = {"cid", "model", "deck", "tags", "markdown"}
+                    # Arete's own keys are not Anki fields. id/deps/anki/__line__ used to be
+                    # sent as fields and, being in the hash, re-synced cards whenever a line moved.
+                    _exclude = {
+                        "cid",
+                        "model",
+                        "deck",
+                        "tags",
+                        "markdown",
+                        "id",
+                        "deps",
+                        "anki",
+                        "__line__",
+                    }
                     fields = {k: sanitize(v) for k, v in card.items() if k not in _exclude}
 
                     if not fields:

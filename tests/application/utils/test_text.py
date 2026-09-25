@@ -216,3 +216,11 @@ def test_make_editor_note_cloze_fallback_extra():
     out = make_editor_note("Cloze", "deck", [], fields)
     assert "## Back Extra" in out
     assert "fallback_extra" in out
+
+
+def test_a_horizontal_rule_inside_a_block_scalar_does_not_end_the_frontmatter():
+    """R5: an indented `---` in `Back: |` closed the frontmatter and silently cut the card."""
+    text = "---\ncards:\n  - Front: Q\n    Back: |\n      part one\n      ---\n      part two\n---\nbody\n"
+    meta, body = parse_frontmatter(text)
+    assert meta["cards"][0]["Back"].rstrip("\n") == "part one\n---\npart two"
+    assert body.strip() == "body"
