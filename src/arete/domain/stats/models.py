@@ -24,6 +24,16 @@ class FsrsMemoryState:
     retrievability: float | None = None
 
 
+def revlog_interval_days(ivl: int) -> float:
+    """Anki's revlog interval in DAYS.
+
+    Positive values are days; learning and relearning steps are stored as NEGATIVE
+    SECONDS. S2 (2026-09-25): they were mixed with days, so a lapse gave an interval
+    growth of -20 and a volatility of 88200.
+    """
+    return ivl if ivl >= 0 else -ivl / 86400
+
+
 @dataclass(frozen=True)
 class ReviewEntry:
     """A single review log entry.
@@ -45,8 +55,8 @@ class ReviewEntry:
     card_id: int
     review_time: int
     rating: int  # 1..4
-    interval: int  # new interval
-    last_interval: int  # previous interval
+    interval: float  # new interval, days (see revlog_interval_days)
+    last_interval: float  # previous interval, days
     time_taken: int  # ms duration
     review_type: int
     stability: float | None = None

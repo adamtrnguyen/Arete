@@ -129,10 +129,11 @@ class MarkdownParser:
                             _, note_json = cached_note_data
                             if note_json:
                                 cached_note = AnkiNote.from_dict(json.loads(note_json))
-                                notes.append(cached_note)
-                                # Also need to track inventory for prune logic
+                                # C3 (2026-09-25): this appended the note to `notes`, so an
+                                # unchanged file re-sent every card on every warm run. The
+                                # entry is only written after Anki accepted the note, so an
+                                # unchanged file has nothing to send; prune still needs it.
                                 inventory.append({"nid": cached_note.nid, "deck": cached_note.deck})
-                                # Log as deep cache hit (maybe trace level)
                                 continue
                         except Exception as e:
                             self.logger.warning(
@@ -233,11 +234,9 @@ class MarkdownParser:
                 nid, cid = self._validate_card_ids(nid, cid, duplicate_nids, md_path, idx)
 
                 # 3) Deck
-                deck_this = (
-                    sanitize(card.get("deck", deck_frontmatter))
-                    if deck_frontmatter
-                    else sanitize(card.get("deck"))
-                )
+                # D1: `card.get("deck", file_deck)` returned "" for `deck: ''`, which then
+                # fell through to Default instead of the file's deck.
+                deck_this = sanitize(card.get("deck") or deck_frontmatter or "")
                 if not deck_this:
                     deck_this = self.default_deck
                     self.logger.debug(
@@ -262,16 +261,6 @@ class MarkdownParser:
                     # File not in vault root, skip source field
                     pass
 
-                # 5) Calculate hash check
-                # We use make_editor_note to produce the canonical content for hashing
-                content = make_editor_note(model, deck_this, base_tags, fields, nid=nid, cid=cid)
-                content_hash = hashlib.md5(content.encode("utf-8")).hexdigest()
-
-                cached_hash = cache.get_hash(md_path, idx)
-                if not self.ignore_cache and cached_hash == content_hash:
-                    self.logger.debug(f"[cache-hit] {md_path} card#{idx}: skipping")
-                    continue
-
                 # Construct per-card tag list (file base + card-level + arete ID)
                 card_tags = list(base_tags)  # Copy to avoid mutating shared list
                 card_tags.extend(
@@ -282,6 +271,16 @@ class MarkdownParser:
                     card_tags.append(card_id)  # ID already has arete_ prefix
                 # Dedupe while preserving order (file/card overlap, arete ID)
                 card_tags = list(dict.fromkeys(card_tags))
+
+                # 5) Calculate hash check over what Anki will receive -- the per-card tags
+                # included (C4: hashing only the file tags hid every card-level tag edit).
+                content = make_editor_note(model, deck_this, card_tags, fields, nid=nid, cid=cid)
+                content_hash = hashlib.md5(content.encode("utf-8")).hexdigest()
+
+                cached_hash = cache.get_hash(md_path, idx)
+                if not self.ignore_cache and cached_hash == content_hash:
+                    self.logger.debug(f"[cache-hit] {md_path} card#{idx}: skipping")
+                    continue
 
                 note_obj = AnkiNote(
                     model=model,

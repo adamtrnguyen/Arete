@@ -8,7 +8,13 @@ from typing import Any
 
 import httpx
 
-from arete.domain.stats.models import CardStatsAggregate, FsrsMemoryState, ReviewEntry
+from arete.domain.constants import FSRS_DIFFICULTY_SCALE
+from arete.domain.stats.models import (
+    CardStatsAggregate,
+    FsrsMemoryState,
+    ReviewEntry,
+    revlog_interval_days,
+)
 from arete.domain.stats.ports import StatsRepository
 
 logger = logging.getLogger(__name__)
@@ -73,7 +79,7 @@ class ConnectStatsRepository(StatsRepository):
                     if not fsrs_state and info.get("difficulty") is not None:
                         fsrs_state = FsrsMemoryState(
                             stability=0,  # Unknown
-                            difficulty=info["difficulty"] / 10.0,
+                            difficulty=info["difficulty"] / FSRS_DIFFICULTY_SCALE,
                             retrievability=None,
                         )
 
@@ -126,8 +132,8 @@ class ConnectStatsRepository(StatsRepository):
                                 card_id=cid,
                                 review_time=rev.get("id", 0) // 1000,
                                 rating=rev.get("ease", 0),
-                                interval=rev.get("ivl", 0),
-                                last_interval=rev.get("lastIvl", 0),
+                                interval=revlog_interval_days(rev.get("ivl", 0)),
+                                last_interval=revlog_interval_days(rev.get("lastIvl", 0)),
                                 time_taken=rev.get("time", 0),
                                 review_type=rev.get("type", 0),
                             )

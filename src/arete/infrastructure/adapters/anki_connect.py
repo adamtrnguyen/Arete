@@ -645,8 +645,9 @@ class AnkiConnectAdapter(AnkiBridge):
         """Build an AnkiCardStats from a single cardsInfo entry."""
         cid = info.get("cardId", 0)
         difficulty = fsrs_map.get(cid)
-        if difficulty is None:
-            difficulty = info.get("difficulty")
+        if difficulty is None and info.get("difficulty") is not None:
+            # S1: same 0-1 scale as the getFSRSStats path above (raw is Anki's 1-10).
+            difficulty = info["difficulty"] / FSRS_DIFFICULTY_SCALE
 
         front = None
         fields = info.get("fields", {})

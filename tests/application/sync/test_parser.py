@@ -152,8 +152,10 @@ def test_parse_hot_cache_hit(parser_fixture):
     # is_fresh=False
     notes, skipped, inventory = parser.parse_file(Path("test.md"), meta, mock_cache, is_fresh=False)
 
-    assert len(notes) == 1
-    assert notes[0].nid == "123"
+    # C3 (2026-09-25): an unchanged, already-synced card is not re-sent; it stays in
+    # the prune inventory so its note is protected.
+    assert notes == []
+    assert {"nid": "123", "deck": "Default"} in inventory
     assert len(skipped) == 0
 
 

@@ -6,7 +6,7 @@ Implements StatsRepository by querying the Anki collection directly.
 import logging
 from pathlib import Path
 
-from arete.domain.stats.models import CardStatsAggregate, ReviewEntry
+from arete.domain.stats.models import CardStatsAggregate, ReviewEntry, revlog_interval_days
 from arete.domain.stats.ports import StatsRepository
 from arete.infrastructure.anki.fsrs import fsrs_state_of
 from arete.infrastructure.anki.repository import AnkiRepository
@@ -144,8 +144,8 @@ class DirectStatsRepository(StatsRepository):
                             card_id=row[1],
                             review_time=row[0] // 1000,
                             rating=row[2],
-                            interval=row[3],
-                            last_interval=row[4],
+                            interval=revlog_interval_days(row[3]),
+                            last_interval=revlog_interval_days(row[4]),
                             time_taken=row[5],
                             review_type=row[6],
                             stability=s_at_review,

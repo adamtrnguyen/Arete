@@ -212,3 +212,40 @@ def test_write_back_matches_the_card_by_id_not_position(vault):
     by_id = {c["id"]: c for c in cards}
     assert str(by_id["arete_A"]["anki"]["nid"]) == "555"
     assert "anki" not in by_id["arete_NEW"]
+
+
+def test_an_unchanged_vault_sends_nothing(vault):
+    """C3: the warm stat-cache path re-sent every card on every run."""
+    root, cache, anki = vault
+    (root / "a.md").write_text(note_file(card("arete_A1"), card("arete_A2")))
+    sync(root, anki, cache)
+    first = len(anki.sent)
+    sync(root, anki, cache)
+    sync(root, anki, cache)
+    assert len(anki.sent) == first
+
+
+def test_a_card_tag_edit_reaches_anki(vault):
+    """C4: card-level tags were not in the content hash, so a tag edit was never sent."""
+    root, cache, anki = vault
+    (root / "a.md").write_text(note_file(card("arete_A1")))
+    sync(root, anki, cache)
+    text = (root / "a.md").read_text().replace("  Back: a\n", "  Back: a\n  tags: [newtag]\n", 1)
+    (root / "a.md").write_text(text)
+    before = len(anki.sent)
+    sync(root, anki, cache)
+    assert len(anki.sent) == before + 1
+
+
+def test_an_empty_card_deck_falls_back_to_the_file_deck(tmp_path):
+    """D1: `deck: ''` on a card sent it to Default instead of the file's deck."""
+    from arete.application.utils.text import parse_frontmatter
+
+    md = tmp_path / "a.md"
+    md.write_text(
+        "---\ndeck: Physics\ncards:\n- id: arete_A\n  deck: ''\n  Front: q\n  Back: a\n---\n"
+    )
+    meta, _ = parse_frontmatter(md.read_text())
+    parser = MarkdownParser(tmp_path, tmp_path / "media", ignore_cache=True, logger=LOG)
+    notes, _, _ = parser.parse_file(md, meta, ContentCache(tmp_path / "c.db"))
+    assert notes[0].deck == "Physics"
