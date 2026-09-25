@@ -81,110 +81,26 @@ just check-types      # type check
 just qa               # full quality gate
 ```
 
-## Testing with Docker (OrbStack)
+## Testing
 
-`tests/integration` needs a running Anki. The suite manages that itself.
+| Directory | Needs | What |
+|---|---|---|
+| `tests/domain`, `application`, `infrastructure`, `interface` | nothing | unit tests (`just test`) |
+| `tests/e2e` | nothing | whole syncs against a collection in `tmp_path` |
+| `tests/integration` | OrbStack running | a throwaway Anki container per session (`just test-integration`) |
 
-```bash
-just test-integration
-```
+Details (image, ports, `ANKI_CONNECT_URL`) are in `docs/CONTRIBUTING.md`.
 
-`tests/integration/conftest.py` starts one container for the session, on a **random
-free port**, with a fresh collection under `tmp_path`. It tears the container down
-after. Start OrbStack first. With Docker unreachable the suite skips rather than
-falling back to a local Anki.
+## CLI and MCP
 
-The image is `ghcr.io/adamtrnguyen/arete/anki-custom:latest`, built from
-`docker/Dockerfile`. Nothing pulls or builds it for you: a missing image errors.
-
-`tests/e2e` needs no container. It drives the direct backend against a real
-collection in `tmp_path`.
-
-### Pointing tests at a real Anki
-
-Set `ANKI_CONNECT_URL`, and the conftest skips Docker entirely and uses that
-instance. 🛑 Never point it at a collection you study from. `tests/conftest.py`
-carries a session guard that fails the run if a real `collection.anki2` moves, but it
-fires after the write, not before.
-
-### Port convention
-
-| Context | Port |
-|---|---|
-| Integration container | random, assigned per session |
-| Local Anki | 8765 |
-
-### Test Categories
-
-| Directory | Requires Anki | What |
-|-----------|--------------|------|
-| `tests/domain/` | No | Domain model tests |
-| `tests/application/` | No | Use case / service tests |
-| `tests/infrastructure/` | No | Adapter unit tests (mocked) |
-| `tests/interface/` | No | CLI + MCP server tests (mocked) |
-| `tests/integration/` | **container** | Full sync and bridge tests over AnkiConnect |
-| `tests/e2e/` | No | Whole-sync scenarios against a collection in `tmp_path` |
-
-## CLI Commands
-
-```bash
-# Sync vault to Anki
-uv run arete sync
-
-# Build study queue
-uv run arete queue --deck "Research Methodology" --include-new
-uv run arete queue --dry-run
-
-# Vault maintenance
-uv run arete vault check somefile.md
-uv run arete vault fix somefile.md
-uv run arete vault format
-
-# Anki management
-uv run arete anki stats --nids 123
-uv run arete anki browse --nid 123
-
-# Servers
-uv run arete serve daemon --port 8777
-uv run arete serve mcp
-```
+Commands: `docs/CLI.md` or `arete <cmd> --help`. Agent workflows: `skills/arete`.
+MCP server: `arete serve mcp` (stdio); its tools are the `@mcp.tool()` functions in
+`src/arete/interface/mcp_server.py`.
 
 ### CLI Safety Rules
 
 - **Never use `--force`**. Always let prune show what it will delete and prompt for confirmation.
 - **Never use `--backend direct` or `--backend ankiconnect`**. Always use `--backend auto` (the default). Manually selecting a backend risks database corruption.
-
-## MCP Server
-
-MCPServer-based (mcp 2.x; formerly FastMCP) server exposing Arete tools to AI agents (Claude, Gemini, etc.).
-
-**Entry point:** `uv run arete serve mcp` (stdio transport)
-
-### Available Tools
-
-| Tool | What it does | Needs Anki |
-|------|-------------|-----------|
-| `sync_vault` | Sync vault to Anki | Yes |
-| `sync_file` | Sync a single file | Yes |
-| `get_stats` | Learning statistics + leeches | Yes |
-| `browse_concept` | Open Anki browser for a concept | Yes |
-| `browse_card` | Open Anki browser for a specific card | Yes |
-| `get_concept_cards` | Read card content from vault markdown | No |
-| `get_due_cards` | Show due cards with Arete IDs | Yes |
-| `build_study_queue` | Build dependency-ordered filtered deck | Yes |
-
-### MCP Config (for Claude Code)
-
-```json
-{
-  "mcpServers": {
-    "arete": {
-      "command": "uv",
-      "args": ["run", "--project", "/Users/adam/Research/ObsidianSuite/arete", "arete", "serve", "mcp"]
-    }
-  }
-}
-```
 
 ## Dependency Graph & Queue Builder
 
@@ -216,6 +132,13 @@ Same DDD layer structure as the Python backend: `domain/`, `infrastructure/`, `a
 | `just test-obsidian` | Jest tests |
 | `just lint-obsidian` | ESLint |
 | `just dev-plugin` | esbuild dev watcher (hot-reload) |
+
+### Deploying a build
+
+There is no deploy step: `just build-obsidian` writes `main.js`/`styles.css` into
+`obsidian-plugin/`. Copy them and `manifest.json` into the vault's
+`.obsidian/plugins/arete/`, reload the plugin, and close any Arete views opened before
+the reload (they keep running the old code).
 
 ### Stack
 
@@ -258,7 +181,8 @@ lives in `docs/history/`.
 - **TypeScript**: 6.x, esbuild bundler, Jest tests
 - Card IDs: `arete_` prefix + 26-char ULID, auto-generated on first sync
 - `anki.nid`/`anki.cid` in YAML: written by Arete after sync, never manually set
-- Deps references: arete ULID (specific card) or basename (all cards in that file)
+- Deps references: arete ULID (one card), basename (all cards in that file), or `folder/Name`
+- Agent skills that ship with arete live in `skills/` (curated list: `skills/README.md`)
 - Ruff for Python linting + formatting (line-length 100)
 - Pyright for Python type checking
 - ESLint + Prettier for TypeScript
