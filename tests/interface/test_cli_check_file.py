@@ -127,7 +127,8 @@ def test_check_file_json_output_success(tmp_path):
 def test_check_file_valid_card_count(tmp_path):
     f = tmp_path / "valid.md"
     f.write_text(
-        "---\narete: true\ndeck: Default\ncards:\n  - Front: A\n    Back: B\n---\nContent", encoding="utf-8"
+        "---\narete: true\ndeck: Default\ncards:\n  - Front: A\n    Back: B\n---\nContent",
+        encoding="utf-8",
     )
     result = runner.invoke(app, ["vault", "check", str(f)])
     assert result.exit_code == 0
