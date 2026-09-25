@@ -250,6 +250,11 @@ def queue(
             typer.echo(f"Main queue: {result.main_count}")
             if result.missing_prereqs:
                 typer.secho(f"Missing prereqs: {result.missing_prereqs}", fg="yellow")
+            if result.dropped_prereqs:
+                typer.secho(
+                    f"Left out by the queue size limit: {len(result.dropped_prereqs)} prereqs",
+                    fg="yellow",
+                )
             if result.cycles:
                 typer.secho(f"Cycles detected: {len(result.cycles)}", fg="yellow")
 

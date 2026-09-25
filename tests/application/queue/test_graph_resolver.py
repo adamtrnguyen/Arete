@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+import pytest
+
 from arete.application.queue.builder import build_simple_queue
 from arete.application.queue.graph_resolver import (
     build_graph,
@@ -401,9 +403,8 @@ cards:
         graph.add_node(CardNode("a", "A", "/a.md", 1))
         graph.add_requires("a", "a")  # Self cycle
 
-        visited = set()
-        result = _collect_prereqs(graph, "a", depth=5, visited=visited)
-        assert "a" in result
+        # terminates, and a card is never its own prerequisite (the builder dropped it anyway)
+        assert _collect_prereqs(graph, "a", depth=5) == {}
 
 
 # ---------------------------------------------------------------------------
@@ -507,7 +508,8 @@ class TestFilterGraphByDeck:
         (tmp_path / "mixed.md").write_text(md)
 
         graph = build_graph(tmp_path)
-        filtered = filter_graph_by_deck(graph, "Special")
+        # full deck name: matching is exact-or-subdeck (G4), no longer substring
+        filtered = filter_graph_by_deck(graph, "SpecialDeck")
         assert "arete_A" in filtered.nodes
         assert "arete_B" not in filtered.nodes
 
@@ -619,3 +621,71 @@ def test_unparseable_file_is_reported_not_dropped(tmp_path: Path):
     health = check_graph_health(tmp_path)
     assert health.ok is False
     assert len(health.skipped_files) == 1 and "bad.md" in health.skipped_files[0]
+
+
+class TestCycleDoesNotScrambleTheQueue:
+    """G1 (2026-09-25): a cycle anywhere made topological_sort return set order."""
+
+    @staticmethod
+    def _graph():
+        graph = DependencyGraph()
+        for cid in ("P", "Q", "X", "Y", "Z"):
+            graph.add_node(CardNode(cid, cid, f"/{cid}.md", 1))
+        graph.add_requires("Q", "P")  # P before Q
+        graph.add_requires("X", "Y")  # X <-> Y: a cycle unrelated to P/Q
+        graph.add_requires("Y", "X")
+        graph.add_requires("Z", "Y")  # Z depends on the cycle
+        return graph
+
+    @pytest.mark.parametrize(
+        "order",
+        [["P", "Q", "X", "Y", "Z"], ["Q", "P", "Z", "Y", "X"], ["X", "Z", "Q", "Y", "P"]],
+    )
+    def test_prereqs_still_come_first(self, order):
+        result = topological_sort(self._graph(), order)
+        assert sorted(result) == ["P", "Q", "X", "Y", "Z"]
+        assert result.index("P") < result.index("Q")
+        assert result.index("X") < result.index("Z")
+        assert result.index("Y") < result.index("Z")
+
+    def test_same_input_same_output(self):
+        order = ["Q", "P", "Z", "Y", "X"]
+        assert topological_sort(self._graph(), order) == topological_sort(self._graph(), order)
+
+
+def _deck_vault(tmp_path):
+    def note(name, deck, cards):
+        body = "".join(
+            f"  - id: {cid}\n    Front: q\n    Back: a\n"
+            + (f"    deck: {card_deck}\n" if card_deck else "")
+            + (f"    deps:\n      requires: [{req}]\n" if req else "")
+            for cid, card_deck, req in cards
+        )
+        (tmp_path / f"{name}.md").write_text(f"---\narete: true\ndeck: {deck}\ncards:\n{body}---\n")
+
+    note("m", "Math", [("arete_M1", None, "arete_P1"), ("arete_M2", "History", None)])
+    note("am", "Applied Mathematics", [("arete_AM1", None, None)])
+    note("h", "History", [("arete_H1", "Math::Algebra", None)])
+    note("p", "Prob", [("arete_P1", None, None)])
+    return tmp_path
+
+
+class TestDeckFilter:
+    """G4/G8 (2026-09-25)."""
+
+    def test_deck_matches_exactly_or_as_a_subdeck(self, tmp_path):
+        """G4: substring match let "Math" keep "Applied Mathematics"."""
+        graph = filter_graph_by_deck(build_graph(_deck_vault(tmp_path)), "Math")
+        assert "arete_AM1" not in graph.nodes
+        assert "arete_H1" in graph.nodes  # card deck Math::Algebra is a Math subdeck
+
+    def test_card_deck_wins_over_file_deck_like_sync(self, tmp_path):
+        """G4: a matching file deck used to override the card's own deck."""
+        graph = filter_graph_by_deck(build_graph(_deck_vault(tmp_path)), "Math")
+        assert "arete_M2" not in graph.nodes  # file says Math, card says History
+        assert "arete_M1" in graph.nodes
+
+    def test_cross_deck_prereq_is_not_called_isolated(self, tmp_path):
+        """G8: M1 requires P1 (deck Prob); filtered to Math, M1 was reported isolated."""
+        health = check_graph_health(_deck_vault(tmp_path), deck_filter="Math")
+        assert "arete_M1" not in [e.card_id for e in health.isolated_nodes]

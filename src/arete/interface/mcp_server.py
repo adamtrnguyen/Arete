@@ -314,6 +314,7 @@ def create_server() -> MCPServer:  # noqa: C901
                 "prereq_cards": result.prereq_count,
                 "total_queued": result.total_queued,
                 "missing_prereqs": result.missing_prereqs,
+                "dropped_prereqs": result.dropped_prereqs,
                 "cycles": result.cycles,
                 "queue_order": all_ordered,
             },

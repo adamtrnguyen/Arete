@@ -319,45 +319,54 @@ def topological_sort(
         Sorted list of card IDs (prerequisites before dependents)
 
     """
-    # Filter to only requested cards that exist
-    valid_ids = {cid for cid in card_ids if cid in graph.nodes}
+    # Filter to only requested cards that exist, keeping input order (a set here made
+    # the result depend on the hash seed).
+    valid_ids = list(dict.fromkeys(cid for cid in card_ids if cid in graph.nodes))
+    valid_set = set(valid_ids)
 
     # Build a fresh subgraph with only the requested nodes and their edges
     sub = nx.DiGraph()
     sub.add_nodes_from(valid_ids)
     for card_id in valid_ids:
         for prereq in graph.get_prerequisites(card_id):
-            if prereq in valid_ids:
+            if prereq in valid_set:
                 sub.add_edge(prereq, card_id)
 
-    try:
-        # Compute depth in the FULL graph as a tiebreaker.
-        # Depth = longest path from any root to this node, which is a proxy
-        # for "how advanced is this concept" (correlates with chapter order).
-        # Among cards at the same topological level in the subgraph, lower
-        # depth (more fundamental) cards come first.
-        depth: dict[str, int] = {}
-        try:
-            for node in nx.topological_sort(graph._graph):
-                preds = list(graph._graph.predecessors(node))
-                depth[node] = (max(depth.get(p, 0) for p in preds) + 1) if preds else 0
-        except nx.NetworkXUnfeasible:
-            pass  # Full graph has cycles; skip depth, fall through to input order
+    # Depth = longest path from any root, a proxy for "how advanced is this concept"
+    # (correlates with chapter order). Computed over strongly connected components, so a
+    # cycle elsewhere in the vault no longer switches the tiebreaker off.
+    depth = _component_depths(graph._graph)
+    # Secondary tiebreaker: input order (preserves Anki scheduling among equals).
+    id_order = {cid: i for i, cid in enumerate(valid_ids)}
 
-        # Secondary tiebreaker: input order (preserves Anki scheduling among
-        # cards at same depth).
-        id_order = {cid: i for i, cid in enumerate(card_ids) if cid in valid_ids}
+    def key(n: str) -> tuple[int, int]:
+        return depth.get(n, 0), id_order[n]
 
-        return list(
-            nx.lexicographical_topological_sort(
-                sub,
-                key=lambda n: (depth.get(n, 0), id_order.get(n, float("inf"))),
-            )
-        )
-    except nx.NetworkXUnfeasible:
-        # If there are cycles, fall back to partial ordering
-        logger.warning("Cycle detected in card dependencies, using original order")
-        return list(valid_ids)
+    # G1 (2026-09-25): a cycle used to make the whole queue fall back to set order, so
+    # prerequisites unrelated to the cycle could come after their dependents. Collapse
+    # each cycle into one group instead: groups are sorted by dependency, and only the
+    # cards inside a cycle are ordered by the tiebreaker alone.
+    cond = nx.condensation(sub)
+    members = nx.get_node_attributes(cond, "members")
+    if any(len(m) > 1 for m in members.values()):
+        logger.warning("Cycle detected in card dependencies; ordering each cycle as a group")
+    ordered: list[str] = []
+    for group in nx.lexicographical_topological_sort(
+        cond, key=lambda c: min(key(n) for n in members[c])
+    ):
+        ordered.extend(sorted(members[group], key=key))
+    return ordered
+
+
+def _component_depths(g: nx.DiGraph) -> dict[str, int]:
+    """Longest-path depth of every node, with each cycle treated as a single node."""
+    cond = nx.condensation(g)
+    members = nx.get_node_attributes(cond, "members")
+    comp_depth: dict[int, int] = {}
+    for c in nx.topological_sort(cond):
+        preds = list(cond.predecessors(c))
+        comp_depth[c] = (max(comp_depth[p] for p in preds) + 1) if preds else 0
+    return {n: comp_depth[c] for c, ms in members.items() for n in ms}
 
 
 # ---------------------------------------------------------------------------
@@ -368,12 +377,13 @@ def topological_sort(
 def filter_graph_by_deck(graph: DependencyGraph, deck: str) -> DependencyGraph:
     """Filter a dependency graph to only include cards matching a deck.
 
-    Checks both file-level ``deck`` frontmatter and card-level ``deck`` overrides.
-    Edges and unresolved refs are carried over for matching nodes.
+    A card's deck is its own ``deck:`` when set, else the file's -- the rule sync uses.
+    It matches when it is ``deck`` or a subdeck of it (``deck::...``), as Anki's
+    ``deck:`` search does. Edges and unresolved refs are carried over for matching nodes.
 
     Args:
         graph: The full dependency graph.
-        deck: Deck name substring to match against.
+        deck: Deck name; its subdecks match too.
 
     Returns:
         A new DependencyGraph containing only the matching nodes.
@@ -381,27 +391,22 @@ def filter_graph_by_deck(graph: DependencyGraph, deck: str) -> DependencyGraph:
     """
     keep_ids: set[str] = set()
 
-    # Group nodes by file to avoid re-parsing
-    file_nodes: dict[str, list[str]] = {}
-    for cid, node in graph.nodes.items():
-        file_nodes.setdefault(node.file_path, []).append(cid)
-
-    for fpath, cids in file_nodes.items():
+    # Each file is parsed once; a card's deck comes from its own frontmatter entry.
+    for fpath in sorted({node.file_path for node in graph.nodes.values()}):
         try:
             text = Path(fpath).read_text(encoding="utf-8")
             meta, _ = parse_frontmatter(text)
-            file_deck = (meta or {}).get("deck", "")
-            if file_deck and deck in file_deck:
-                keep_ids.update(cids)
-            else:
-                # Check card-level deck overrides
-                for card in (meta or {}).get("cards", []):
-                    if isinstance(card, dict):
-                        card_deck = card.get("deck", "")
-                        if card_deck and deck in card_deck:
-                            cid = card.get("id")
-                            if cid and cid in graph.nodes:
-                                keep_ids.add(cid)
+            file_deck = str((meta or {}).get("deck") or "")
+            # G4 (2026-09-25): this was a substring test ("Math" kept "Applied
+            # Mathematics"), and a matching FILE deck overrode the card's own deck --
+            # the reverse of sync (parser: card deck wins).
+            for card in (meta or {}).get("cards", []):
+                if not isinstance(card, dict):
+                    continue
+                cid = card.get("id")
+                effective = str(card.get("deck") or file_deck)
+                if cid in graph.nodes and _in_deck(effective, deck):
+                    keep_ids.add(cid)
         except Exception as e:
             logger.warning(f"[deck-filter] skipping {fpath}: {e}")
             continue
@@ -426,6 +431,10 @@ def filter_graph_by_deck(graph: DependencyGraph, deck: str) -> DependencyGraph:
     return filtered
 
 
+def _in_deck(card_deck: str, deck: str) -> bool:
+    return card_deck == deck or card_deck.startswith(deck + "::")
+
+
 def check_graph_health(
     vault_root: Path,
     deck_filter: str | None = None,
@@ -434,21 +443,24 @@ def check_graph_health(
 
     Args:
         vault_root: Path to the vault root directory.
-        deck_filter: Optional deck name substring to restrict analysis to.
+        deck_filter: Optional deck (and its subdecks) to restrict the report to.
 
     Returns:
         A :class:`GraphHealthResult` with cycles, isolated nodes,
         unresolved refs, and summary counts.
 
     """
-    graph = build_graph(vault_root)
-    skipped = [f"{path}: {err}" for path, err in graph.skipped_files]
+    full = build_graph(vault_root)
+    skipped = [f"{path}: {err}" for path, err in full.skipped_files]
 
-    if deck_filter:
-        graph = filter_graph_by_deck(graph, deck_filter)
+    graph = filter_graph_by_deck(full, deck_filter) if deck_filter else full
+    scope = set(graph.nodes)
 
-    cycles_raw = detect_cycles(graph)
-    isolated_ids = find_isolated_nodes(graph)
+    # G8 (2026-09-25): analysed on the FILTERED graph, a card whose prerequisite sits in
+    # another deck lost that edge and was reported "isolated". Analyse the full graph
+    # and report only what touches the chosen deck.
+    cycles_raw = [c for c in detect_cycles(full) if scope & set(c)]
+    isolated_ids = [cid for cid in find_isolated_nodes(full) if cid in scope]
     components = find_connected_components(graph)
 
     # Enrich cycles with titles/files
@@ -458,8 +470,8 @@ def check_graph_health(
             [
                 CycleEntry(
                     card_id=cid,
-                    title=graph.nodes[cid].title if cid in graph.nodes else cid,
-                    file=graph.nodes[cid].file_path if cid in graph.nodes else "unknown",
+                    title=full.nodes[cid].title if cid in full.nodes else cid,
+                    file=full.nodes[cid].file_path if cid in full.nodes else "unknown",
                 )
                 for cid in cycle
             ]

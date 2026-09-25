@@ -7,7 +7,7 @@ Builds ordered study queues by:
 """
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from arete.application.queue.graph_resolver import build_graph, topological_sort
@@ -31,7 +31,9 @@ def build_simple_queue(
         vault_root: Path to the Obsidian vault
         due_card_ids: List of Arete IDs that are due for review
         depth: How many prerequisite levels to include
-        max_cards: Maximum cards in queue
+        max_cards: Queue size bound. Due cards are never dropped; prerequisites fill
+            the space left, nearest to a due card first, and the rest are reported in
+            `dropped_prereqs`.
 
     Returns:
         QueueBuildResult with ordered queues and diagnostics
@@ -41,8 +43,9 @@ def build_simple_queue(
 
     graph = build_graph(vault_root)
 
-    # Collect all prerequisites for due cards
-    all_prereqs: set[str] = set()
+    # Collect all prerequisites for due cards, with each one's distance to the nearest
+    # due card (the cap below keeps the nearest).
+    distance: dict[str, int] = {}
     missing_prereqs: list[str] = []
 
     def _note_missing(card_id: str) -> None:
@@ -52,19 +55,20 @@ def build_simple_queue(
 
     for card_id in due_card_ids:
         _note_missing(card_id)
-        for prereq_id in _collect_prereqs(graph, card_id, depth, set()):
+        for prereq_id, hops in _collect_prereqs(graph, card_id, depth).items():
             if prereq_id in graph.nodes:
-                all_prereqs.add(prereq_id)
+                distance[prereq_id] = min(hops, distance.get(prereq_id, hops))
                 _note_missing(prereq_id)
 
     # Remove due cards from prereqs (they'll be in main queue)
-    all_prereqs -= set(due_card_ids)
+    for due_id in due_card_ids:
+        distance.pop(due_id, None)
 
-    # Limit size. max_cards bounds the whole queue; sorted() so that which prereqs
-    # survive the cap does not depend on set iteration order.
-    prereq_list = sorted(all_prereqs)
-    if len(prereq_list) + len(due_card_ids) > max_cards:
-        prereq_list = prereq_list[: max(0, max_cards - len(due_card_ids))]
+    # G3 (2026-09-25): the cap used to keep the alphabetically-first ids and drop the
+    # rest silently. Keep the nearest (ties by id, for a stable result) and report the rest.
+    by_nearness = sorted(distance, key=lambda cid: (distance[cid], cid))
+    room = max(0, max_cards - len(due_card_ids))
+    prereq_list, dropped_prereqs = by_nearness[:room], by_nearness[room:]
 
     # Topological sort both queues
     prereq_queue = topological_sort(graph, prereq_list)
@@ -78,6 +82,7 @@ def build_simple_queue(
         main_queue=main_queue,
         missing_prereqs=missing_prereqs,
         cycles=cycles,
+        dropped_prereqs=dropped_prereqs,
     )
 
 
@@ -90,6 +95,7 @@ class QueueBuildResult:
     missing_prereqs: list[str]  # Referenced prereqs not found in graph
     cycles: list[list[str]]  # Co-requisite groups detected
     ordered_queue: list[str] | None = None  # Optional full ordering for advanced algorithms
+    dropped_prereqs: list[str] = field(default_factory=list)  # Cut by max_cards, nearest kept
 
 
 def build_dynamic_queue(
@@ -140,24 +146,27 @@ def build_dynamic_queue(
     )
 
 
-def _collect_prereqs(
-    graph: DependencyGraph,
-    card_id: str,
-    depth: int,
-    visited: set[str],
-) -> set[str]:
-    """Recursively collect prerequisites up to a given depth."""
-    if depth <= 0 or card_id in visited:
-        return set()
+def _collect_prereqs(graph: DependencyGraph, card_id: str, depth: int) -> dict[str, int]:
+    """Prerequisites within `depth` hops of `card_id`, mapped to their shortest distance.
 
-    visited.add(card_id)
-    prereqs: set[str] = set()
-
-    for prereq_id in graph.get_prerequisites(card_id):
-        prereqs.add(prereq_id)
-        prereqs.update(_collect_prereqs(graph, prereq_id, depth - 1, visited))
-
-    return prereqs
+    Breadth-first (G2, 2026-09-25): the old depth-first walk shared one visited set, so a
+    card first reached by a long path was never expanded from a shorter one, and its own
+    prerequisites inside the limit were lost.
+    """
+    distance: dict[str, int] = {card_id: 0}
+    frontier = [card_id]
+    while frontier:
+        next_frontier = []
+        for current in frontier:
+            if distance[current] >= depth:
+                continue
+            for prereq_id in graph.get_prerequisites(current):
+                if prereq_id not in distance:
+                    distance[prereq_id] = distance[current] + 1
+                    next_frontier.append(prereq_id)
+        frontier = next_frontier
+    del distance[card_id]
+    return distance
 
 
 def _dynamic_frontier_order(

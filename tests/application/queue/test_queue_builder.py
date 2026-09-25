@@ -382,3 +382,35 @@ def test_build_simple_queue_mix_existing_and_nonexistent(mock_build_graph, mock_
     assert "B" in res.prereq_queue or "B" in res.main_queue
     assert "C" in res.prereq_queue
     assert "A" in res.main_queue
+
+
+def _chain_graph(edges, nodes):
+    graph = DependencyGraph()
+    for n in nodes:
+        graph.nodes[n] = CardNode(id=n, file_path=f"{n}.md", title=n, line_number=1)
+    for dependent, prereq in edges:
+        graph.add_requires(dependent, prereq)
+    return graph
+
+
+@patch("arete.application.queue.builder.build_graph")
+def test_prereq_within_depth_is_found_by_its_shortest_path(mock_build_graph):
+    """G2: a shared `visited` set let a long path claim B, so E (3 hops via B) was lost."""
+    # D requires A and B; A -> B -> C -> E. E is 3 hops from D via D->B->C->E.
+    mock_build_graph.return_value = _chain_graph(
+        [("D", "A"), ("D", "B"), ("A", "B"), ("B", "C"), ("C", "E")], "ABCDE"
+    )
+    res = build_simple_queue(Path("."), due_card_ids=["D"], depth=3, max_cards=50)
+    assert set(res.prereq_queue) == {"A", "B", "C", "E"}
+
+
+@patch("arete.application.queue.builder.build_graph")
+def test_max_cards_keeps_the_nearest_prereqs_and_reports_what_it_dropped(mock_build_graph):
+    """G3: the cap kept alphabetically-first ids and dropped others without a word."""
+    # Due -> A -> B -> Z ; ids chosen so alphabetical order != distance order
+    mock_build_graph.return_value = _chain_graph(
+        [("Due", "Z"), ("Z", "B"), ("B", "A")], ["Due", "Z", "B", "A"]
+    )
+    res = build_simple_queue(Path("."), due_card_ids=["Due"], depth=5, max_cards=3)
+    assert set(res.prereq_queue) == {"Z", "B"}  # 1 and 2 hops away, not "A" and "B"
+    assert res.dropped_prereqs == ["A"]

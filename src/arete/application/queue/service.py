@@ -81,6 +81,10 @@ class QueueOrchestratorResult:
         return self.build_result.missing_prereqs if self.build_result else []
 
     @property
+    def dropped_prereqs(self) -> list[str]:
+        return self.build_result.dropped_prereqs if self.build_result else []
+
+    @property
     def cycles(self) -> list[list[str]]:
         return self.build_result.cycles if self.build_result else []
 
