@@ -67,7 +67,7 @@ Plugin must be reloaded (restart Anki) after code changes.
 | `just fix` | Auto-fix lint + format in one step |
 | `just check-types` | Pyright type checking |
 | `just check-architecture` | Import-linter layer enforcement |
-| `just qa` | Full QA: fix → types → architecture → test → frontend |
+| `just qa` | Full QA: fix → types → architecture → docs → test, then plugin format → test → lint → build |
 
 ### Typical Workflow
 
@@ -109,7 +109,7 @@ Cards declare prerequisites via `deps.requires` in YAML frontmatter. The queue b
 **Flow:**
 1. `get_due_cards()` — Find due (and optionally new) cards in Anki
 2. `map_nids_to_arete_ids()` — Convert Anki note IDs to arete IDs via tags
-3. `build_dependency_queue()` — Build graph from vault, walk prereq chains, topo sort
+3. `build_simple_queue()` / `build_dynamic_queue()` — Build graph from vault, walk prereq chains, topo sort
 4. `get_card_ids_for_arete_ids()` — Resolve arete IDs to Anki CIDs (order-preserving)
 5. `create_topo_deck()` — Create filtered deck with cards in topo order
 
@@ -158,6 +158,11 @@ lives in `docs/history/`.
 - [ ] Reconcile-by-Arete-id lives in the AnkiConnect adapter only. The direct backend
       creates a second copy when a vault carries a note id Anki never issued. A strict
       xfail at `tests/e2e/test_local_sync.py:119` records it and fails the day it is fixed.
+- [ ] An edit made inside Anki (deck, fields, tags) is not reverted by an ordinary sync:
+      a file whose stat is unchanged is skipped before its cards are compared with Anki.
+      Only `--force` or `--clear-cache` restores the vault's version.
+- [ ] Over AnkiConnect a note type counts as cloze only if it is named `Cloze`, so a
+      conversion to a custom cloze type is refused instead of done.
 - [ ] The three surfaces duplicate their wiring: `http_server` resolves config and builds
       a bridge inline in each route (`grep -c 'resolve_config(\|get_anki_bridge('
       src/arete/interface/http_server.py`). Five Anki admin verbs are called only from
@@ -165,7 +170,7 @@ lives in `docs/history/`.
 
 **Release plumbing**
 
-- [ ] PyPI trusted publishing is unconfigured. `release.yml:53` runs the publish step
+- [ ] PyPI trusted publishing is unconfigured. `release.yml:64` runs the publish step
       under `continue-on-error: true`, so it cannot block a release. Configure a
       trusted publisher, or drop the step.
 - [ ] Delete the dangling `v2.2.1` tag on origin: `git push origin :v2.2.1`.

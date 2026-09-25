@@ -296,7 +296,8 @@ def card_content_hash(
 ) -> str:
     """The md5 of everything Anki receives for a card, which sync compares to the cache.
 
-    IDENTITY-BEARING: changing what goes in re-syncs every card in the vault once.
+    Changing what goes in changes every hash, but an ordinary sync skips files whose
+    stat is unchanged, so old hashes only go stale; --force or --clear-cache re-sends all.
     """
     payload = {
         "model": model,

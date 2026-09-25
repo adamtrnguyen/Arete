@@ -1,7 +1,7 @@
 # Arete troubleshooting — symptom, cause, fix
 
 Found while driving the live vault on 2026-09-25. Versions matter: the fixes are in
-arete / plugin **2.5.0** and vault-mcp `f94dc61`.
+arete / plugin **2.5.0 or later** and vault-mcp `f94dc61`.
 
 ## Cards and rendering
 
