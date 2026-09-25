@@ -39,7 +39,7 @@ export class StatsService {
 		// 1. Scan Vault
 		for (const file of files) {
 			const cache = this.app.metadataCache.getFileCache(file);
-			if (cache?.frontmatter?.cards) {
+			if (cache?.frontmatter?.arete === true && cache.frontmatter.cards) {
 				const cards = cache.frontmatter.cards;
 				const yamlDeck = cache.frontmatter.deck; // Custom YAML field
 

@@ -23,7 +23,7 @@ describe('LinkCheckerService', () => {
 			const file = { path: 'test.md' } as TFile;
 			(app.vault.getMarkdownFiles as jest.Mock).mockReturnValue([file]);
 			(app.metadataCache.getFileCache as jest.Mock).mockReturnValue({
-				frontmatter: { cards: [{ Front: '![[broken]]' }] },
+				frontmatter: { arete: true, cards: [{ Front: '![[broken]]' }] },
 			});
 			(app.metadataCache.getFirstLinkpathDest as jest.Mock).mockReturnValue(null);
 
@@ -34,10 +34,21 @@ describe('LinkCheckerService', () => {
 	});
 
 	describe('getBrokenReferences', () => {
+		test('ignores cards in a note without arete: true', () => {
+			const file = { path: 'plain.md' } as TFile;
+			(app.metadataCache.getFileCache as jest.Mock).mockReturnValue({
+				frontmatter: { cards: [{ Front: '![[broken]]' }] },
+			});
+			(app.metadataCache.getFirstLinkpathDest as jest.Mock).mockReturnValue(null);
+
+			expect(service.getBrokenReferences(file)).toHaveLength(0);
+		});
+
 		test('scans YAML cards for broken embeds', () => {
 			const file = { path: 'test.md' } as TFile;
 			(app.metadataCache.getFileCache as jest.Mock).mockReturnValue({
 				frontmatter: {
+					arete: true,
 					cards: [{ Front: '![[broken-img]]', Back: 'Valid content' }],
 				},
 			});

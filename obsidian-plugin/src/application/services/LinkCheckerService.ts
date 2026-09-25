@@ -51,7 +51,7 @@ export class LinkCheckerService {
 		const broken: BrokenReference[] = [];
 
 		const hasYamlCards =
-			cache.frontmatter && cache.frontmatter.cards && Array.isArray(cache.frontmatter.cards);
+			cache.frontmatter?.arete === true && Array.isArray(cache.frontmatter.cards);
 
 		if (hasYamlCards) {
 			// 1. Deep Scan YAML Cards (User Request: "Only report inside the card list")

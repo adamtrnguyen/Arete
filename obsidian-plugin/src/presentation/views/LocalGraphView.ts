@@ -306,7 +306,7 @@ export class LocalGraphView extends ItemView {
 		console.log('[Arete Graph] Rendering for:', targetPath);
 
 		const cache = this.app.metadataCache.getFileCache(file);
-		const cards = cache?.frontmatter?.cards;
+		const cards = cache?.frontmatter?.arete === true ? cache.frontmatter.cards : undefined;
 		const filePath = targetPath; // Alias for consistent usage below
 
 		if (!cards || !Array.isArray(cards) || cards.length === 0) {

@@ -139,6 +139,12 @@ class TestGetConceptCards:
         assert isinstance(result, str)
         assert "Error parsing" in result
 
+    def test_a_note_without_the_marker_is_not_read(self, tmp_path: Path):
+        (tmp_path / "Plain.md").write_text("---\ndeck: D\ncards:\n  - Front: Q\n    Back: A\n---\n")
+        result = get_concept_cards(tmp_path, "Plain")
+        assert isinstance(result, str)
+        assert "not an Arete note" in result
+
     def test_no_cards_field(self, tmp_path: Path):
         (tmp_path / "Empty.md").write_text("---\narete: true\ndeck: Test\n---\n")
         result = get_concept_cards(tmp_path, "Empty")

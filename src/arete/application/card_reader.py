@@ -109,6 +109,8 @@ def get_concept_cards(
     meta, _ = parse_frontmatter(text)
     if not meta or "__yaml_error__" in meta:
         return f"Error parsing frontmatter in {concept_path.name}"
+    if meta.get("arete") is not True:
+        return f"{concept_path.name} is not an Arete note (missing arete: true)"
 
     cards = meta.get("cards", [])
     if not cards:

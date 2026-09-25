@@ -191,7 +191,7 @@ export class CardYamlEditorView extends ItemView {
 		const cache = this.app.metadataCache.getFileCache(activeFile);
 		this.fileModel = cache?.frontmatter?.model || 'Basic';
 		if (cache?.frontmatter?.cards && Array.isArray(cache.frontmatter.cards)) {
-			this.cards = cache.frontmatter.cards.map((c: any) => this.normalizeCard(c));
+			this.cards = cache.frontmatter.cards as CardData[];
 		} else {
 			this.cards = [];
 		}
@@ -823,28 +823,11 @@ export class CardYamlEditorView extends ItemView {
 	private parseYamlToCard(yamlStr: string): CardData {
 		try {
 			const raw = parseYaml(yamlStr) || {};
-			return this.normalizeCard(raw);
+			return raw as CardData;
 		} catch (e) {
 			console.error('[Arete] Failed to parse card YAML:', e);
 			return {};
 		}
-	}
-
-	/**
-	 * Normalizes card keys to lowercase for internal consistency.
-	 * Maps ID -> id, Model -> model, etc.
-	 */
-	private normalizeCard(card: any): CardData {
-		const normalized: CardData = { ...card };
-
-		// Map common uppercase keys to lowercase
-		if (card.ID && !card.id) normalized.id = card.ID;
-		if (card.Model && !card.model) normalized.model = card.Model;
-		// Cleanup uppercase leftover if mapped
-		if (card.ID) delete normalized['ID'];
-		if (card.Model) delete normalized['Model'];
-
-		return normalized;
 	}
 
 	private debouncedSyncToMain() {
