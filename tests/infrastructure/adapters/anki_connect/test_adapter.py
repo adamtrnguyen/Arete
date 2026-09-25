@@ -407,6 +407,67 @@ async def test_sync_notes_update_existing(adapter, sample_note):
 
 @pytest.mark.asyncio
 @respx.mock
+async def test_sync_converts_a_note_whose_type_changed(adapter, sample_note):
+    """Vault says Cloze, Anki holds Basic: convert first, then write the Cloze fields."""
+    sample_note.nid = "999"
+    sample_note.model = "Cloze"
+    sample_note.fields = {"Text": "{{c1::x}}", "Back Extra": "y"}
+    calls = []
+
+    def side_effect(request):
+        data = json.loads(request.content)
+        calls.append((data["action"], data.get("params", {})))
+        result = {
+            "notesInfo": [
+                {
+                    "noteId": 999,
+                    "modelName": "Basic",
+                    "fields": {"Back": {"order": 1}, "Front": {"order": 0}},
+                }
+            ],
+            "modelFieldNames": ["Text", "Back Extra"],
+        }.get(data["action"])
+        return Response(200, json={"result": result, "error": None})
+
+    respx.post("http://mock-anki:8765").mock(side_effect=side_effect)
+
+    [res] = await adapter.sync_notes(
+        [WorkItem(note=sample_note, source_file=Path("t.md"), source_index=1)]
+    )
+
+    assert res.ok, res.error
+    actions = [a for a, _ in calls]
+    assert actions.index("changeNoteType") < actions.index("updateNoteFields")
+    params = dict(calls)["changeNoteType"]
+    assert params == {"notes": [999], "modelName": "Cloze", "newFields": [0, 1]}
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_sync_does_not_convert_a_note_of_the_same_type(adapter, sample_note):
+    sample_note.nid = "999"
+    actions = []
+
+    def side_effect(request):
+        data = json.loads(request.content)
+        actions.append(data["action"])
+        info = [{"noteId": 999, "modelName": "Basic", "fields": {}}]
+        return Response(
+            200, json={"result": info if data["action"] == "notesInfo" else None, "error": None}
+        )
+
+    respx.post("http://mock-anki:8765").mock(side_effect=side_effect)
+
+    [res] = await adapter.sync_notes(
+        [WorkItem(note=sample_note, source_file=Path("t.md"), source_index=1)]
+    )
+
+    assert res.ok
+    assert "changeNoteType" not in actions
+
+
+@pytest.mark.asyncio
+@respx.mock
 async def test_sync_notes_update_existing_with_tags_and_move(adapter_localhost):
     """Full update path: fields, tags add/remove, deck move."""
     with (

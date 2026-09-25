@@ -153,3 +153,50 @@ async def test_a_stale_note_id_reconciles_instead_of_duplicating(
         assert len(nids) == 1, f"expected the existing card to be healed, found {len(nids)} copies"
     finally:
         col.close()
+
+
+@pytest.mark.asyncio
+async def test_changing_a_card_to_cloze_converts_the_note_and_keeps_its_reviews(
+    single_card_vault: Path, anki_base: Path, make_config
+):
+    """A card whose model changes is converted in place, not dropped or duplicated.
+
+    Updating a Basic note with Cloze fields used to match no field names, so the
+    card silently stopped updating (21 such cards in a real vault).
+    """
+    from arete.application.utils.text import parse_frontmatter, rebuild_markdown_with_frontmatter
+
+    await execute_sync(make_config(single_card_vault))
+    col = open_collection(anki_base)
+    try:
+        [nid] = col.find_notes("")
+        card = col.get_note(nid).cards()[0]
+        card.reps, card.ivl, card.type, card.queue = 7, 30, 2, 2
+        col.update_card(card)
+        cid = card.id
+    finally:
+        col.close()
+
+    md = single_card_vault / "Transformer.md"
+    meta, body = parse_frontmatter(md.read_text(encoding="utf-8"))
+    c = meta["cards"][0]
+    c["model"] = "Cloze"
+    c["Text"] = "A Transformer block has {{c1::self-attention}} and an MLP."
+    c["Back Extra"] = c.pop("Back")
+    del c["Front"]
+    md.write_text(rebuild_markdown_with_frontmatter(meta, body), encoding="utf-8")
+
+    stats = await execute_sync(make_config(single_card_vault))
+    assert stats.total_errors == 0
+
+    col = open_collection(anki_base)
+    try:
+        assert col.find_notes("") == [nid], "converted in place, not re-created"
+        note = col.get_note(nid)
+        assert note.note_type()["name"] == "Cloze"
+        assert "{{c1::self-attention}}" in note["Text"]
+        assert "residual" in note["Back Extra"]
+        card = note.cards()[0]
+        assert (card.id, card.reps, card.ivl) == (cid, 7, 30), "review history kept"
+    finally:
+        col.close()

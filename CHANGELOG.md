@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **Changing a card's `model` converts its Anki note in place,** keeping its cards
+  and review history. Before, a card whose model no longer matched its note (say,
+  Cloze in the vault and Basic in Anki) silently stopped updating. Fields carry over
+  by name, then Front↔Text and Back↔Back Extra. Over AnkiConnect this needs the
+  add-on from this release (new `changeNoteType` action).
+
+### Corrected
+
+- The 3.0.0 notes said the next sync re-sends every card. It does not: unchanged
+  files are skipped before hashing. Run `arete sync --clear-cache` once to rewrite
+  every note.
+
 ## 3.0.0
 
 ### Added

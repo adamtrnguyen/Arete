@@ -6,17 +6,21 @@ From `anki` library calls.
 
 from __future__ import annotations
 
+import logging
 import os
 import pickle
 import sqlite3
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 from anki.collection import Collection
 from anki.models import NotetypeDict
 from anki.notes import NoteId
 
 from arete.domain.models import AnkiNote
+from arete.domain.note_types import map_note_type_fields
+
+logger = logging.getLogger(__name__)
 
 
 class AnkiRepository:
@@ -160,6 +164,23 @@ class AnkiRepository:
         self.col.add_note(note, did)
         return note.id
 
+    def _change_note_type(self, nid: int, old_type: Any, new_model: str) -> None:
+        """Convert a note to another type in place; its cards and review history stay."""
+        assert self.col is not None
+        new_type = self.col.models.by_name(new_model)
+        if new_type is None:
+            raise RuntimeError(f"Note type not found: {new_model}")
+        info = self.col.models.change_notetype_info(
+            old_notetype_id=old_type["id"], new_notetype_id=new_type["id"]
+        )
+        request = info.input
+        request.note_ids.append(nid)
+        request.new_fields[:] = map_note_type_fields(
+            [f["name"] for f in old_type["flds"]], [f["name"] for f in new_type["flds"]]
+        )
+        self.col.models.change_notetype_of_notes(request)
+        logger.info(f"[anki] note {nid}: note type {old_type['name']} -> {new_model}")
+
     def update_note(self, nid: int, note_data: AnkiNote) -> bool:
         """Update an existing note."""
         if not self.col:
@@ -170,14 +191,18 @@ class AnkiRepository:
         except Exception:
             return False
 
-        # A note's type is never changed here; fields are matched to the existing type.
         notetype = note.note_type()
         if notetype is None:
             return False
-        current_model = notetype["name"]
-        if current_model != note_data.model:
-            # We can print a warning but might fail updating fields if schema differs
-            print(f"Warning: Model mismatch. Existing: {current_model}, New: {note_data.model}")
+        if notetype["name"] != note_data.model:
+            self._change_note_type(note.id, notetype, note_data.model)
+            note = self.col.get_note(note.id)
+            notetype = note.note_type()
+            if notetype is None:
+                return False
+            changed_type = True
+        else:
+            changed_type = False
 
         # Move the cards if the deck changed.
         current_did = note.cards()[0].did
@@ -190,7 +215,7 @@ class AnkiRepository:
 
         # Update Fields
         model_field_names = [f["name"] for f in notetype["flds"]]
-        changed = False
+        changed = changed_type
 
         for f_name in model_field_names:
             if f_name in note_data.fields:

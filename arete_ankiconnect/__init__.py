@@ -1996,6 +1996,28 @@ class AnkiConnect:
         return result
 
     @util.api()
+    def changeNoteType(self, notes, modelName, newFields):
+        """Convert notes of one type to modelName in place; cards and reviews are kept.
+
+        newFields: for each field of modelName, the index of the old field it takes, or -1.
+        """
+        col = self.collection()
+        new_type = col.models.by_name(modelName)
+        if new_type is None:
+            raise Exception(f"model was not found: {modelName}")
+        old_ids = {col.get_note(int(nid)).mid for nid in notes}
+        if len(old_ids) != 1:
+            raise Exception("changeNoteType takes notes of one type at a time")
+        info = col.models.change_notetype_info(
+            old_notetype_id=old_ids.pop(), new_notetype_id=new_type["id"]
+        )
+        request = info.input
+        request.note_ids.extend(int(nid) for nid in notes)
+        request.new_fields[:] = newFields
+        col.models.change_notetype_of_notes(request)
+        return True
+
+    @util.api()
     def getFSRSStats(self, cards=None):
         """FSRS memory state per card: difficulty (1-10) and stability (days), or None."""
         col = self.collection()

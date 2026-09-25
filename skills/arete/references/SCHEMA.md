@@ -57,6 +57,7 @@ Reserved keys: `model, deck, tags, id, deps, anki`
 - **IDs**: `arete_` prefix + 26-char ULID. Auto-generated on first sync. Do not fabricate.
 - **anki.nid / anki.cid**: Written by Arete after sync. Never manually create or modify these.
 - **Deck**: Must be specified at file level or card level. Use `::` for nesting.
+- **Changing `model`** on a synced card converts its Anki note in place: same cards, review history kept. Fields carry over by name, then `Front`↔`Text` and `Back`↔`Back Extra`. Anki counts this as a schema change, so its next AnkiWeb sync may ask for a one-way full upload.
 - **Multiline content**: Use YAML block scalar `|-` (literal, strip trailing newline).
 - **Math**: `$...$` and `$$...$$` are auto-converted to `\(...\)` and `\[...\]`.
 - **Images**: `![[image.png]]` wikilinks and `![](image.png)` are auto-resolved and copied to Anki media.

@@ -75,6 +75,7 @@ src/arete/
 │   ├── graph.py                   Domain types for dependency graph
 │   ├── interfaces.py              Ports: what the application layer is allowed to ask of the outside world
 │   ├── models.py                  AnkiDeck, AnkiNote, AnkiCardStats...
+│   ├── note_types.py              Field mapping for changing a note's type in place
 │
 ├── __main__.py
 ```
@@ -84,8 +85,8 @@ src/arete/
 | `interface` | 7 | 1796 | application, composition |
 | `composition` | 2 | 161 | application, infrastructure, domain |
 | `application` | 23 | 4262 | domain (ports only) |
-| `infrastructure` | 7 | 2089 | domain |
-| `domain` | 6 | 617 | nothing in arete |
+| `infrastructure` | 7 | 2130 | domain |
+| `domain` | 7 | 650 | nothing in arete |
 
 The import rules in the last column are enforced by `just check-architecture`
 (import-linter), not by convention.

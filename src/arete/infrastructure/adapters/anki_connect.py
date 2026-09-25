@@ -17,6 +17,7 @@ from arete.domain.constants import (
 )
 from arete.domain.interfaces import AnkiBridge
 from arete.domain.models import AnkiCardStats, AnkiDeck, UpdateItem, WorkItem
+from arete.domain.note_types import map_note_type_fields
 
 
 class AnkiConnectAdapter(AnkiBridge):
@@ -186,10 +187,25 @@ class AnkiConnectAdapter(AnkiBridge):
                 note=note,
             )
 
+    async def _change_note_type(self, nid: int, info: dict, new_model: str) -> None:
+        """Convert a note in place with the add-on's changeNoteType; reviews are kept."""
+        fields = info.get("fields", {})
+        old_fields = sorted(fields, key=lambda name: fields[name].get("order", 0))
+        new_fields = await self._invoke("modelFieldNames", modelName=new_model)
+        await self._invoke(
+            "changeNoteType",
+            notes=[nid],
+            modelName=new_model,
+            newFields=map_note_type_fields(old_fields, new_fields),
+        )
+        self.logger.info(f"[anki] note {nid}: note type {info.get('modelName')} -> {new_model}")
+
     async def _update_existing_note(
         self, item: WorkItem, note: Any, html_fields: dict, target_nid: int, info: Any
     ) -> UpdateItem:
-        """Update fields, tags, and deck for an existing note."""
+        """Update type, fields, tags, and deck for an existing note."""
+        if info and info[0].get("modelName") not in (None, note.model):
+            await self._change_note_type(target_nid, info[0], note.model)
         await self._invoke("updateNoteFields", note={"id": target_nid, "fields": html_fields})
 
         if info and "tags" in info[0]:
