@@ -172,6 +172,23 @@ describe('ServerManager', () => {
 			await startPromise;
 		});
 
+		test('names its vault to the server through ARETE_VAULT_ROOT', async () => {
+			(app.vault.adapter as any).getBasePath.mockReturnValue('/Users/me/My Vault');
+			const mockChild = createMockChildProcess();
+			(spawn as jest.Mock).mockReturnValue(mockChild);
+
+			(requestUrl as jest.Mock).mockResolvedValue({ status: 500 });
+			const startPromise = service.start();
+			await jest.advanceTimersByTimeAsync(100);
+
+			const options = (spawn as jest.Mock).mock.calls[0][2];
+			expect(options.env.ARETE_VAULT_ROOT).toBe('/Users/me/My Vault');
+			// Cleanup
+			(requestUrl as jest.Mock).mockResolvedValue({ status: 200 });
+			await jest.advanceTimersByTimeAsync(1500);
+			await startPromise;
+		});
+
 		test('logs stdout and stderr from server', async () => {
 			const mockChild = createMockChildProcess();
 			(spawn as jest.Mock).mockReturnValue(mockChild);

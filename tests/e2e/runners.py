@@ -1,5 +1,7 @@
+import os
 from pathlib import Path
 from typing import Protocol
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
@@ -40,7 +42,7 @@ class CliRunner:
 
         cmd = ["-v", "sync", str(vault_path), "--anki-connect-url", anki_url]
         if prune:
-            cmd.append("--prune")
+            cmd.extend(["--prune", "--yes"])
         if clear_cache:
             cmd.append("--clear-cache")
         if force:
@@ -75,12 +77,15 @@ class ServerRunner:
             "vault_root": str(vault_path),
             "anki_connect_url": anki_url,
             "prune": prune,
+            "confirm_prune": prune,
             "clear_cache": clear_cache,
             "force": force,
             # Force backend="ankiconnect" to ensure it calls out
             "backend": "ankiconnect",
         }
-        resp = self.client.post("/sync", json=payload)
+        # The server accepts only paths inside its configured vault.
+        with patch.dict(os.environ, {"ARETE_VAULT_ROOT": str(vault_path)}):
+            resp = self.client.post("/sync", json=payload)
         if resp.status_code != 200:
             raise RuntimeError(f"Server failed: {resp.text}")
 

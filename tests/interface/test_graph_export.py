@@ -27,7 +27,7 @@ def test_cli_prints_the_graph_as_json_only(tmp_path):
     assert {n["file"] for n in data["nodes"]} == {"Base.md", "Top.md"}
 
 
-def test_http_route_returns_the_same_graph(tmp_path):
-    res = TestClient(http_app).post("/graph", json={"vault_root": str(_vault(tmp_path))})
+def test_http_route_returns_the_same_graph(configured_vault):
+    res = TestClient(http_app).post("/graph", json={"vault_root": str(_vault(configured_vault))})
     assert res.status_code == 200
     assert res.json()["requires"] == [["arete_T", "arete_B"]]

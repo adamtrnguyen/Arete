@@ -67,34 +67,33 @@ async def test_mcp_tool_listing(mcp_server):
 
 
 @pytest.mark.asyncio
-async def test_sync_vault_with_all_args(mcp_server):
+async def test_sync_vault_with_all_args(mcp_server, configured_vault):
+    (configured_vault / "v").mkdir()
     with (
         patch("arete.interface.mcp_server.resolve_config"),
         patch("arete.interface.mcp_server.execute_sync", new_callable=AsyncMock) as mock_exec,
     ):
         mock_stats = MagicMock()
+        mock_stats.prune = None
         mock_stats.total_generated = 0
         mock_stats.total_imported = 0
         mock_stats.total_errors = 0
         mock_exec.return_value = mock_stats
 
         result = await mcp_server.call_tool(
-            "sync_vault", {"vault_path": "/tmp/v", "force": True, "prune": True}
+            "sync_vault", {"vault_path": str(configured_vault / "v"), "force": True, "prune": True}
         )
         data = json.loads(_text(result))
         assert data["success"] is True
 
 
 @pytest.mark.asyncio
-async def test_sync_file_with_force(mcp_server):
+async def test_sync_file_with_force(mcp_server, configured_vault):
+    (configured_vault / "f.md").write_text("x")
     with (
         patch("arete.interface.mcp_server.resolve_config"),
-        patch("arete.interface.mcp_server.Path") as mock_path,
         patch("arete.interface.mcp_server.execute_sync", new_callable=AsyncMock) as mock_exec,
     ):
-        mock_path.return_value.exists.return_value = True
-        mock_path.return_value.__str__ = lambda self: "f.md"
-
         mock_stats = MagicMock()
         mock_stats.total_generated = 0
         mock_stats.total_imported = 0

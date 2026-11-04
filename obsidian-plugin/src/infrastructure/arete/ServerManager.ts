@@ -124,9 +124,16 @@ export class ServerManager {
 
 		console.log(`[Arete] Spawning server: ${resolved.cmd} ${args.join(' ')}`);
 
+		// The server accepts only paths inside its configured vault (vault_paths.py on
+		// the backend). Name this vault, so it works without a config file too. An env
+		// var, not a flag, so an older backend still starts.
+		const env = vaultConfig.getBasePath
+			? { ...resolved.env, ARETE_VAULT_ROOT: vaultPath }
+			: resolved.env;
+
 		this.serverProcess = spawn(resolved.cmd, args, {
 			cwd: resolved.cwd,
-			env: resolved.env,
+			env,
 			stdio: ['ignore', 'pipe', 'pipe'],
 		});
 

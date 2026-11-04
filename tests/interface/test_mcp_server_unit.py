@@ -29,11 +29,12 @@ def _text(result: CallToolResult) -> str:
 
 
 @pytest.mark.asyncio
-async def test_sync_vault_success(mcp_server):
+async def test_sync_vault_success(mcp_server, configured_vault):
     with (
         patch("arete.interface.mcp_server.resolve_config"),
         patch("arete.interface.mcp_server.execute_sync", new_callable=AsyncMock) as mock_exec,
     ):
+        mock_exec.return_value.prune = None
         mock_exec.return_value.total_errors = 0
         mock_exec.return_value.total_imported = 10
         mock_exec.return_value.total_generated = 5
@@ -48,7 +49,7 @@ async def test_sync_vault_success(mcp_server):
 
 
 @pytest.mark.asyncio
-async def test_a_failure_reason_reaches_the_client(mcp_server):
+async def test_a_failure_reason_reaches_the_client(mcp_server, configured_vault):
     """The mcp 2.x SDK forwards only ToolError text; the rest became "Error executing tool"."""
     from mcp.server.mcpserver.exceptions import ToolError
 
@@ -70,15 +71,12 @@ async def test_a_failure_reason_reaches_the_client(mcp_server):
 
 
 @pytest.mark.asyncio
-async def test_sync_file_success(mcp_server):
+async def test_sync_file_success(mcp_server, configured_vault):
+    (configured_vault / "test.md").write_text("x")
     with (
         patch("arete.interface.mcp_server.resolve_config"),
         patch("arete.interface.mcp_server.execute_sync", new_callable=AsyncMock) as mock_exec,
-        patch("arete.interface.mcp_server.Path") as mock_path_cls,
     ):
-        mock_path_cls.return_value.exists.return_value = True
-        mock_path_cls.return_value.__str__ = lambda self: "test.md"
-
         mock_exec.return_value.total_errors = 0
         mock_exec.return_value.total_imported = 1
 
@@ -88,11 +86,9 @@ async def test_sync_file_success(mcp_server):
 
 
 @pytest.mark.asyncio
-async def test_sync_file_not_found(mcp_server):
-    with patch("arete.interface.mcp_server.Path") as mock_path_cls:
-        mock_path_cls.return_value.exists.return_value = False
-        result = await mcp_server.call_tool("sync_file", {"file_path": "missing.md"})
-        assert "File not found" in _text(result)
+async def test_sync_file_not_found(mcp_server, configured_vault):
+    result = await mcp_server.call_tool("sync_file", {"file_path": "missing.md"})
+    assert "File not found" in _text(result)
 
 
 # ------------------------------------------------------------------

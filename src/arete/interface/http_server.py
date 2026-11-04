@@ -10,6 +10,12 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
 from arete.application.queue.service import QueueAlgo
+from arete.application.vault_paths import (
+    PathRefusedError,
+    configured_vault_root,
+    require_configured,
+    within_vault,
+)
 
 VERSION = version("arete")
 
@@ -50,14 +56,41 @@ async def health_check():
     return HealthResponse(status="ok", version=VERSION, uptime_seconds=time.time() - start_time)
 
 
+def _bridge_overrides(backend: str | None, anki_connect_url: str | None, anki_base: str | None):
+    """Config overrides for a route that opens Anki.
+
+    A request may not choose the Anki base folder: the direct backend unpickles
+    `prefs21.db` from it. It is accepted only when it names the configured one.
+    """
+    from arete.application.config import resolve_config
+
+    if anki_base is not None:
+        try:
+            require_configured(anki_base, resolve_config().anki_base, "anki_base")
+        except PathRefusedError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+    overrides = {"backend": backend, "anki_connect_url": anki_connect_url, "anki_base": anki_base}
+    return {k: v for k, v in overrides.items() if v is not None}
+
+
+def _vault_path(requested: str | None):
+    """The configured vault, or `requested` if it resolves inside it; else HTTP 400."""
+    try:
+        root = configured_vault_root()
+        return root, (within_vault(requested, root) if requested else root)
+    except PathRefusedError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+
 # Request model for sync parameters (subset of AppConfig settings)
 class SyncRequest(BaseModel):
     # If None, use defaults/config file.
-    vault_root: str | None = None
-    file_path: str | None = None  # sync single file
+    vault_root: str | None = None  # must be the configured vault or a folder inside it
+    file_path: str | None = None  # sync single file; must be inside the configured vault
     backend: str | None = None  # auto, direct, ankiconnect
-    force: bool | None = None
-    prune: bool | None = None
+    force: bool | None = None  # re-send every card, ignoring the cache; never confirms a prune
+    prune: bool | None = None  # without confirm_prune: a preview, nothing deleted
+    confirm_prune: bool = False  # delete what prune lists
     clear_cache: bool | None = None
     dry_run: bool | None = None
     anki_connect_url: str | None = None
@@ -69,8 +102,8 @@ class SyncStatsResponse(BaseModel):
     total_imported: int
     total_errors: int
     success: bool
-    # We could include error list, but might be too large.
-    # Just return count/status for now.
+    # What prune deleted, or would delete when not confirmed (None when prune was off).
+    prune: dict | None = None
 
 
 @app.post("/sync", response_model=SyncStatsResponse)
@@ -81,10 +114,14 @@ async def trigger_sync(req: SyncRequest):
 
     logger.info(f"Sync requested via API: {req}")
 
+    root, target = _vault_path(req.vault_root)
+    if req.file_path:
+        _, target = _vault_path(req.file_path)
+
     # Map request to overrides dict
     overrides = {
-        "vault_root": req.vault_root,
-        "root_input": req.file_path,  # single file sync basically sets root input
+        "vault_root": root,
+        "root_input": target,
         "backend": req.backend,
         "force": req.force,
         "prune": req.prune,
@@ -101,13 +138,14 @@ async def trigger_sync(req: SyncRequest):
         config = resolve_config(overrides)
 
         # Execute
-        stats = await execute_sync(config)
+        stats = await execute_sync(config, confirm_prune=req.confirm_prune)
 
         return SyncStatsResponse(
             total_generated=stats.total_generated,
             total_imported=stats.total_imported,
             total_errors=stats.total_errors,
             success=stats.total_errors == 0,
+            prune=stats.prune.to_dict() if stats.prune else None,
         )
     except Exception as e:
         logger.error(f"Sync failed: {e}", exc_info=True)
@@ -127,13 +165,9 @@ async def suspend_cards(req: CardsRequest):
     from arete.application.config import resolve_config
     from arete.composition.factory import get_anki_bridge
 
+    overrides = _bridge_overrides(req.backend, req.anki_connect_url, req.anki_base)
     try:
-        overrides = {
-            "backend": req.backend,
-            "anki_connect_url": req.anki_connect_url,
-            "anki_base": req.anki_base,
-        }
-        config = resolve_config({k: v for k, v in overrides.items() if v is not None})
+        config = resolve_config(overrides)
         anki = await get_anki_bridge(config)
         try:
             return {"ok": await anki.suspend_cards(req.cids)}
@@ -150,13 +184,9 @@ async def unsuspend_cards(req: CardsRequest):
     from arete.application.config import resolve_config
     from arete.composition.factory import get_anki_bridge
 
+    overrides = _bridge_overrides(req.backend, req.anki_connect_url, req.anki_base)
     try:
-        overrides = {
-            "backend": req.backend,
-            "anki_connect_url": req.anki_connect_url,
-            "anki_base": req.anki_base,
-        }
-        config = resolve_config({k: v for k, v in overrides.items() if v is not None})
+        config = resolve_config(overrides)
         anki = await get_anki_bridge(config)
         try:
             return {"ok": await anki.unsuspend_cards(req.cids)}
@@ -177,13 +207,9 @@ async def get_model_styling(
     from arete.application.config import resolve_config
     from arete.composition.factory import get_anki_bridge
 
+    overrides = _bridge_overrides(backend, anki_connect_url, anki_base)
     try:
-        overrides = {
-            "backend": backend,
-            "anki_connect_url": anki_connect_url,
-            "anki_base": anki_base,
-        }
-        config = resolve_config({k: v for k, v in overrides.items() if v is not None})
+        config = resolve_config(overrides)
         anki = await get_anki_bridge(config)
         try:
             css = await anki.get_model_styling(name)
@@ -204,13 +230,9 @@ async def get_model_templates(
     from arete.application.config import resolve_config
     from arete.composition.factory import get_anki_bridge
 
+    overrides = _bridge_overrides(backend, anki_connect_url, anki_base)
     try:
-        overrides = {
-            "backend": backend,
-            "anki_connect_url": anki_connect_url,
-            "anki_base": anki_base,
-        }
-        config = resolve_config({k: v for k, v in overrides.items() if v is not None})
+        config = resolve_config(overrides)
         anki = await get_anki_bridge(config)
         try:
             templates = await anki.get_model_templates(name)
@@ -258,16 +280,8 @@ async def get_stats(req: StatsRequest):
     """
     from arete.application.config import resolve_config
 
+    overrides = _bridge_overrides(req.backend, req.anki_connect_url, req.anki_base)
     try:
-        # Pass overrides from request to config
-        overrides = {
-            "backend": req.backend,
-            "anki_connect_url": req.anki_connect_url,
-            "anki_base": req.anki_base,
-        }
-        # Filter Nones
-        overrides = {k: v for k, v in overrides.items() if v is not None}
-
         config = resolve_config(overrides)
 
         from arete.composition.factory import get_stats_service
@@ -293,13 +307,9 @@ async def browse_anki(req: BrowseRequest):
     from arete.application.config import resolve_config
     from arete.composition.factory import get_anki_bridge
 
+    overrides = _bridge_overrides(req.backend, req.anki_connect_url, req.anki_base)
     try:
-        overrides = {
-            "backend": req.backend,
-            "anki_connect_url": req.anki_connect_url,
-            "anki_base": req.anki_base,
-        }
-        config = resolve_config({k: v for k, v in overrides.items() if v is not None})
+        config = resolve_config(overrides)
         anki = await get_anki_bridge(config)
         try:
             return {"ok": await anki.gui_browse(req.query)}
@@ -325,13 +335,9 @@ async def get_decks(req: DecksRequest):
     from arete.application.config import resolve_config
     from arete.composition.factory import get_anki_bridge
 
+    overrides = _bridge_overrides(req.backend, req.anki_connect_url, req.anki_base)
     try:
-        overrides = {
-            "backend": req.backend,
-            "anki_connect_url": req.anki_connect_url,
-            "anki_base": req.anki_base,
-        }
-        config = resolve_config({k: v for k, v in overrides.items() if v is not None})
+        config = resolve_config(overrides)
         anki = await get_anki_bridge(config)
         try:
             decks = await anki.get_deck_names()
@@ -348,7 +354,6 @@ class QueueBuildRequest(BaseModel):
     depth: int = 2
     max_cards: int = 50
     algo: QueueAlgo = "simple"  # same vocabulary as the CLI --algo
-    algo: QueueAlgo = "simple"  # same vocabulary as the CLI --algo
     vault_root: str | None = None
     backend: str | None = None
     anki_connect_url: str | None = None
@@ -364,14 +369,10 @@ async def build_queue(req: QueueBuildRequest):
     from arete.application.queue.service import build_study_queue
     from arete.composition.factory import get_anki_bridge
 
+    _, vault = _vault_path(req.vault_root)
+    overrides = _bridge_overrides(req.backend, req.anki_connect_url, req.anki_base)
     try:
-        overrides = {
-            "vault_root": req.vault_root,
-            "backend": req.backend,
-            "anki_connect_url": req.anki_connect_url,
-            "anki_base": req.anki_base,
-        }
-        config = resolve_config({k: v for k, v in overrides.items() if v is not None})
+        config = resolve_config({**overrides, "vault_root": vault})
 
         if not config.vault_root:
             raise HTTPException(status_code=400, detail="Vault root not configured.")
@@ -433,13 +434,9 @@ async def create_queue_deck(req: QueueCreateDeckRequest):
 
     logger.info(f"Create queue deck requested: {len(req.card_ids)} cards")
 
+    overrides = _bridge_overrides(req.backend, req.anki_connect_url, req.anki_base)
     try:
-        overrides = {
-            "backend": req.backend,
-            "anki_connect_url": req.anki_connect_url,
-            "anki_base": req.anki_base,
-        }
-        config = resolve_config({k: v for k, v in overrides.items() if v is not None})
+        config = resolve_config(overrides)
         anki = await get_anki_bridge(config)
         try:
             # 1. Resolve to CIDs
@@ -476,13 +473,8 @@ class GraphRequest(BaseModel):
 def get_graph(req: GraphRequest):
     """The resolved dependency graph, for the plugin's graph views (no Anki needed)."""
     from dataclasses import asdict
-    from pathlib import Path
 
-    from arete.application.config import resolve_config
     from arete.application.queue.graph_resolver import export_graph
 
-    overrides = {"vault_root": req.vault_root} if req.vault_root else None
-    config = resolve_config(overrides)
-    if not config.vault_root:
-        raise HTTPException(status_code=400, detail="Vault root not configured.")
-    return asdict(export_graph(Path(config.vault_root)))
+    _, vault = _vault_path(req.vault_root)
+    return asdict(export_graph(vault))

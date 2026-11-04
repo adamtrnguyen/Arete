@@ -10,7 +10,6 @@ import functools
 import json
 import logging
 from importlib.metadata import version
-from pathlib import Path
 from typing import Any
 
 from mcp.server.mcpserver import MCPServer
@@ -18,6 +17,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 
 from arete.application.config import AppConfig, resolve_config
 from arete.application.queue.service import QueueAlgo
+from arete.application.vault_paths import configured_vault_root, within_vault
 from arete.composition.factory import get_anki_bridge
 from arete.composition.orchestrator import execute_sync
 from arete.domain.interfaces import AnkiBridge
@@ -70,26 +70,35 @@ def create_server() -> MCPServer:  # noqa: C901
         vault_path: str = "",
         force: bool = False,
         prune: bool = False,
+        confirm_prune: bool = False,
     ) -> str:
-        """Sync Obsidian vault to Anki. Returns sync statistics.
+        """Sync the Obsidian vault to Anki. Returns sync statistics.
 
         Args:
-            vault_path: Path to vault (optional, uses config default)
-            force: Force sync all notes, ignoring cache
-            prune: Remove orphaned Anki notes
+            vault_path: A folder inside the configured vault (optional; default: the whole
+                vault). A path outside the configured vault is refused.
+            force: Re-send every card, ignoring and clearing the content cache. It deletes
+                nothing and does not confirm a prune.
+            prune: Find Anki notes Arete created whose card is gone from the vault, and
+                Arete decks that hold only such notes. Notes without an Arete id tag are
+                never touched. Runs only when vault_path is the whole vault. Without
+                confirm_prune this is a preview: the result's "prune" field lists what
+                would be deleted, and nothing is deleted.
+            confirm_prune: Delete what prune lists. Only set this after the user has seen
+                the preview from a run without it and agreed.
 
         """
-        overrides: dict[str, Any] = {}
-        if vault_path:
-            overrides["vault_root"] = vault_path
+        root = configured_vault_root()
+        target = within_vault(vault_path, root) if vault_path else root
+        overrides: dict[str, Any] = {"vault_root": root, "root_input": target}
         if force:
             overrides["force"] = True
             overrides["clear_cache"] = True
         if prune:
             overrides["prune"] = True
 
-        config = resolve_config(cli_overrides=overrides if overrides else None)
-        stats = await execute_sync(config)
+        config = resolve_config(cli_overrides=overrides)
+        stats = await execute_sync(config, confirm_prune=confirm_prune)
 
         return json.dumps(
             {
@@ -97,6 +106,7 @@ def create_server() -> MCPServer:  # noqa: C901
                 "total_generated": stats.total_generated,
                 "total_imported": stats.total_imported,
                 "total_errors": stats.total_errors,
+                "prune": stats.prune.to_dict() if stats.prune else None,
             },
             indent=2,
         )
@@ -107,18 +117,21 @@ def create_server() -> MCPServer:  # noqa: C901
         file_path: str,
         force: bool = False,
     ) -> str:
-        """Sync a specific Markdown file to Anki.
+        """Sync one Markdown file in the configured vault to Anki. Never prunes.
 
         Args:
-            file_path: Path to the Markdown file to sync
-            force: Force sync, ignoring cache
+            file_path: Path to the Markdown file, absolute or relative to the vault. A path
+                outside the configured vault is refused.
+            force: Re-send the file's cards, ignoring and clearing the content cache. It
+                deletes nothing.
 
         """
-        path = Path(file_path)
+        root = configured_vault_root()
+        path = within_vault(file_path, root)
         if not path.exists():
             return f"Error: File not found: {file_path}"
 
-        overrides: dict[str, Any] = {"root_input": path}
+        overrides: dict[str, Any] = {"vault_root": root, "root_input": path}
         if force:
             overrides["force"] = True
             overrides["clear_cache"] = True
@@ -169,7 +182,8 @@ def create_server() -> MCPServer:  # noqa: C901
         and reports structural issues. No Anki connection needed.
 
         Args:
-            vault_path: Path to vault (optional, uses config default)
+            vault_path: A folder inside the configured vault (optional; default: the
+                whole vault). A path outside it is refused.
             deck: Optional deck filter — only check cards in this deck
 
         """
@@ -177,10 +191,8 @@ def create_server() -> MCPServer:  # noqa: C901
 
         from arete.application.queue.graph_resolver import check_graph_health
 
-        config = _config()
-        vault_root = Path(vault_path) if vault_path else config.vault_root
-        if vault_root is None:
-            return "Error: vault_root not configured"
+        root = configured_vault_root()
+        vault_root = within_vault(vault_path, root) if vault_path else root
 
         result = check_graph_health(vault_root, deck_filter=deck or None)
         return json.dumps(asdict(result), indent=2)
@@ -365,12 +377,13 @@ def create_server() -> MCPServer:  # noqa: C901
         intuition, related concepts, etc.).
 
         Args:
-            file_path: Absolute path to the markdown file
+            file_path: Path to the markdown file, absolute or relative to the vault. A path
+                outside the configured vault is refused.
 
         """
         from arete.application.card_reader import get_note_body as _get_note_body
 
-        return _get_note_body(Path(file_path))
+        return _get_note_body(within_vault(file_path, configured_vault_root()))
 
     @mcp.tool()
     @_reported
@@ -382,14 +395,15 @@ def create_server() -> MCPServer:  # noqa: C901
         raw markdown and parsing YAML themselves.
 
         Args:
-            file_path: Absolute path to the markdown file
+            file_path: Path to the markdown file, absolute or relative to the vault. A path
+                outside the configured vault is refused.
 
         """
         from dataclasses import asdict
 
         from arete.application.card_reader import list_file_cards as _list_file_cards
 
-        result = _list_file_cards(Path(file_path))
+        result = _list_file_cards(within_vault(file_path, configured_vault_root()))
         if isinstance(result, str):
             return json.dumps({"error": result})
         return json.dumps(asdict(result), indent=2)

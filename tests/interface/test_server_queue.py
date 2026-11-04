@@ -24,7 +24,9 @@ async def test_server_get_decks(mock_bridge_factory):
 @patch("arete.application.queue.service.build_simple_queue")
 @patch("arete.application.queue.service.build_graph")
 @pytest.mark.asyncio
-async def test_server_build_queue(mock_build_graph, mock_build_queue, mock_bridge_factory):
+async def test_server_build_queue(
+    mock_build_graph, mock_build_queue, mock_bridge_factory, configured_vault
+):
     # Mock Anki Bridge
     mock_anki = AsyncMock()
     mock_anki.get_due_cards.return_value = [101, 102]

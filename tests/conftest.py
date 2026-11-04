@@ -100,6 +100,15 @@ def _isolated_home(monkeypatch, tmp_path):
     return home
 
 
+@pytest.fixture
+def configured_vault(monkeypatch, tmp_path):
+    """A vault configured through ARETE_VAULT_ROOT. Its name has a space, as the real one."""
+    vault = tmp_path / "Obsidian Vault"
+    vault.mkdir()
+    monkeypatch.setenv("ARETE_VAULT_ROOT", str(vault))
+    return vault.resolve()
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _real_config_untouched():
     """Fail the session if any test changed a file under the real ~/.config/arete."""

@@ -18,17 +18,18 @@ def test_health_check():
 @patch(
     "arete.composition.orchestrator.execute_sync", new_callable=AsyncMock
 )  # Patched arete.composition.orchestrator.execute_sync
-def test_sync_vault_endpoint(mock_sync):
+def test_sync_vault_endpoint(mock_sync, configured_vault):
     # Mock return value
     mock_stats = MagicMock()
     # Configure mock attributes to return primitives
     mock_stats.total_generated = 5
     mock_stats.total_imported = 5
     mock_stats.total_errors = 0
+    mock_stats.prune = None
     mock_sync.return_value = mock_stats
 
     # SyncRequest via JSON
-    response = client.post("/sync", json={"vault_root": "/tmp/vault", "force": True})
+    response = client.post("/sync", json={"vault_root": str(configured_vault), "force": True})
 
     # Check execution
     assert response.status_code == 200
@@ -40,10 +41,10 @@ def test_sync_vault_endpoint(mock_sync):
 
 
 @patch("arete.composition.orchestrator.execute_sync", new_callable=AsyncMock)
-def test_sync_fail(mock_sync):
+def test_sync_fail(mock_sync, configured_vault):
     mock_sync.side_effect = Exception("Boom")
 
-    response = client.post("/sync", json={"vault_root": "/tmp/vault"})
+    response = client.post("/sync", json={"vault_root": str(configured_vault)})
 
     assert response.status_code == 500
     assert "Boom" in response.json()["detail"]
@@ -161,11 +162,7 @@ def test_shutdown_endpoint(mock_kill):
 
 
 def test_build_queue_missing_vault_root():
-    # We need to simulate the case where AppConfig.vault_root is None
-    from arete.application.config import AppConfig
-
-    with patch("arete.application.config.resolve_config") as mock_resolve:
-        mock_resolve.return_value = AppConfig(vault_root=None)
-        response = client.post("/queue/build", json={})
-        assert response.status_code == 400
-        assert "Vault root not configured" in response.json()["detail"]
+    """With no vault configured, the server accepts no path and builds nothing."""
+    response = client.post("/queue/build", json={})
+    assert response.status_code == 400
+    assert "No vault is configured" in response.json()["detail"]
