@@ -39,6 +39,7 @@ src/arete/
 │   │   ├── id_service.py          Service for managing stable Arete IDs for cards
 │   │   ├── parser.py              MarkdownParser
 │   │   ├── pipeline.py            RunStats, run_pipeline
+│   │   ├── prune.py               Prune: delete the Anki notes and decks Arete made that the vault no longer claims
 │   │   ├── vault_service.py       VaultService
 │   ├── utils/                    
 │   │   ├── common.py              to_list, sanitize, detect_anki_paths
@@ -76,17 +77,18 @@ src/arete/
 │   ├── interfaces.py              Ports: what the application layer is allowed to ask of the outside world
 │   ├── models.py                  AnkiDeck, AnkiNote, AnkiCardStats...
 │   ├── note_types.py              Field mapping for changing a note's type in place
+│   ├── ownership.py               Which Anki notes Arete owns
 │
 ├── __main__.py
 ```
 
 | Layer | Modules | Lines | May import |
 |---|---|---|---|
-| `interface` | 7 | 1796 | application, composition |
-| `composition` | 2 | 161 | application, infrastructure, domain |
-| `application` | 23 | 4324 | domain (ports only) |
-| `infrastructure` | 7 | 2155 | domain |
-| `domain` | 7 | 650 | nothing in arete |
+| `interface` | 7 | 1815 | application, composition |
+| `composition` | 2 | 178 | application, infrastructure, domain |
+| `application` | 24 | 4496 | domain (ports only) |
+| `infrastructure` | 7 | 2176 | domain |
+| `domain` | 8 | 685 | nothing in arete |
 
 The import rules in the last column are enforced by `just check-architecture`
 (import-linter), not by convention.
@@ -133,8 +135,8 @@ The application runs in 5 distinct stages, orchestrated by `application/sync/pip
     *   Ensures future runs track existing cards correctly.
 
 5.  **Pruning**:
-    *   Calculates the set difference between "All IDs in Vault" vs "All IDs in Anki".
-    *   Deletes Anki notes and decks that no longer exist in Obsidian (if `--prune` is enabled).
+    *   Only notes carrying an Arete id tag can be orphans (`domain/ownership.py`); a deck goes only if every note in it is one (`application/sync/prune.py`).
+    *   Deletes nothing without a confirmation: `--yes`, `confirm_prune`, or "yes" at a terminal prompt (if `--prune` is enabled).
 
 ## Key Design Decisions
 

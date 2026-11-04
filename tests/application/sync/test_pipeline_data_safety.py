@@ -29,6 +29,7 @@ class FakeAnki:
     def __init__(self) -> None:
         """Start empty and succeeding; set `fail` to make every sync_notes call fail."""
         self.notes: dict[int, str] = {}  # nid -> deck
+        self.tags: dict[int, list[str]] = {}
         self.sent: list[tuple[str, int]] = []
         self.fail = False
         self._next = 1000
@@ -56,6 +57,7 @@ class FakeAnki:
                 self._next += 1
                 nid = self._next
             self.notes[nid] = note.deck
+            self.tags[nid] = list(note.tags)
             out.append(
                 UpdateItem(
                     source_file=wi.source_file,
@@ -74,12 +76,19 @@ class FakeAnki:
     async def get_notes_in_deck(self, deck):
         return {str(nid): nid for nid, d in self.notes.items() if d == deck}
 
+    async def get_note_tags(self, nids):
+        return {n: self.tags.get(n, []) for n in nids if n in self.notes}
+
     async def delete_notes(self, ids):
         for i in ids:
             self.notes.pop(i, None)
 
     async def delete_decks(self, names):
         pass
+
+
+# Well-formed Arete ids (`arete_` + 26 ULID characters): prune acts only on these.
+ID_A1, ID_A2, ID_B1 = (f"arete_{n:026d}" for n in (1, 2, 3))
 
 
 def card(cid: str, front: str = "q", back: str = "a") -> str:
@@ -112,7 +121,9 @@ def sync(root: Path, anki: FakeAnki, cache: ContentCache, **overrides) -> None:
     config = AppConfig.model_construct(**fields)
     vault = VaultService(root, cache, ignore_cache=False)
     parser = MarkdownParser(root, root / "media", ignore_cache=False, logger=LOG)
-    asyncio.run(run_pipeline(config, LOG, "run", vault, parser, cast(AnkiBridge, anki), cache))
+    bridge = cast(AnkiBridge, anki)
+    # Confirmed, so a prune test proves what prune keeps, not that it was never asked.
+    asyncio.run(run_pipeline(config, LOG, "run", vault, parser, bridge, cache, confirm_prune=True))
 
 
 @pytest.fixture
@@ -125,7 +136,7 @@ def vault(tmp_path):
 def test_prune_keeps_notes_created_in_the_same_run(vault):
     """New cards were inventoried with nid=None, so prune deleted what it had just made."""
     root, cache, anki = vault
-    (root / "a.md").write_text(note_file(card("arete_A1")))
+    (root / "a.md").write_text(note_file(card(ID_A1)))
     sync(root, anki, cache, prune=True)
     assert len(anki.notes) == 1
 
@@ -133,7 +144,7 @@ def test_prune_keeps_notes_created_in_the_same_run(vault):
 def test_prune_keeps_the_note_of_a_card_that_fails_validation(vault):
     """Emptying a Back skips the card; its existing note must survive a prune."""
     root, cache, anki = vault
-    (root / "a.md").write_text(note_file(card("arete_A1"), card("arete_A2", back="answer two")))
+    (root / "a.md").write_text(note_file(card(ID_A1), card(ID_A2, back="answer two")))
     sync(root, anki, cache)
     assert len(anki.notes) == 2
 
@@ -146,8 +157,8 @@ def test_prune_keeps_the_note_of_a_card_that_fails_validation(vault):
 def test_prune_refuses_while_a_file_cannot_be_read(vault):
     """A YAML error hides a file's note ids, so nothing can be proven orphaned."""
     root, cache, anki = vault
-    (root / "a.md").write_text(note_file(card("arete_A1")))
-    (root / "b.md").write_text(note_file(card("arete_B1")))
+    (root / "a.md").write_text(note_file(card(ID_A1)))
+    (root / "b.md").write_text(note_file(card(ID_B1)))
     sync(root, anki, cache)
     assert len(anki.notes) == 2
 

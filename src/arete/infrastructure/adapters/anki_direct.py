@@ -224,6 +224,19 @@ class AnkiDirectAdapter(AnkiBridge):
 
         return {}
 
+    async def get_note_tags(self, nids: list[int]) -> dict[int, list[str]]:
+        """Tags per note. A note that cannot be read is left out, so prune keeps it."""
+        tags: dict[int, list[str]] = {}
+        with AnkiRepository(self.anki_base) as repo:
+            if not repo.col:
+                return tags
+            for nid in nids:
+                try:
+                    tags[nid] = list(repo.col.get_note(cast(Any, nid)).tags)
+                except Exception as e:
+                    self.logger.warning(f"Failed to get note {nid}: {e}")
+        return tags
+
     async def delete_notes(self, nids: list[int]) -> bool:
         if not nids:
             return True

@@ -92,7 +92,20 @@ def sync(
         bool, typer.Option("--prune/--no-prune", help="Prune orphaned cards from Anki.")
     ] = False,
     force: Annotated[
-        bool, typer.Option("--force", "-f", help="Bypass confirmation for destructive actions.")
+        bool,
+        typer.Option(
+            "--force",
+            "-f",
+            help="Re-send every card, ignoring the content cache. Does not confirm a prune.",
+        ),
+    ] = False,
+    yes: Annotated[
+        bool,
+        typer.Option(
+            "--yes",
+            "-y",
+            help="Confirm the prune: delete the Arete notes and decks it lists, without asking.",
+        ),
     ] = False,
     clear_cache: Annotated[
         bool, typer.Option("--clear-cache", help="Force re-sync of all files.")
@@ -127,9 +140,15 @@ def sync(
     from arete.composition.orchestrator import SyncFailedError, run_sync_logic
 
     try:
-        asyncio.run(run_sync_logic(config))
+        asyncio.run(run_sync_logic(config, confirm_prune=yes, prompt=_confirm_prune_at_prompt))
     except SyncFailedError as e:
         raise typer.Exit(1) from e
+
+
+def _confirm_prune_at_prompt(_report) -> bool:
+    """Ask before prune deletes. Prune calls this only when stdin is a terminal."""
+    val = input("\nAre you sure you want to proceed? Type 'yes' to confirm: ")
+    return val.strip().lower() == "yes"
 
 
 @app.command()

@@ -114,6 +114,26 @@ describe('SyncService', () => {
 			);
 		});
 
+		test('an unconfirmed prune says what it found and that nothing was deleted', async () => {
+			(requestUrl as jest.Mock).mockResolvedValue({
+				status: 200,
+				json: {
+					success: true,
+					total_imported: 0,
+					prune: { status: 'unconfirmed', note_count: 3, deck_count: 1 },
+				},
+			});
+
+			await service.runSync(true, null, false, updateStatusBar);
+
+			expect(Notice).toHaveBeenCalledWith(
+				expect.stringContaining(
+					'3 Arete notes and 1 decks would be deleted. Nothing was deleted',
+				),
+				15000,
+			);
+		});
+
 		test('server sync with errors', async () => {
 			(requestUrl as jest.Mock).mockResolvedValue({
 				status: 200,

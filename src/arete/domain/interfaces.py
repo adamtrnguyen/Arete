@@ -74,6 +74,14 @@ class SyncPort(Protocol):
         pass
 
     @abstractmethod
+    async def get_note_tags(self, nids: list[int]) -> dict[int, list[str]]:
+        """Return {anki_nid: tags} for the given notes. A missing note is left out.
+
+        Used by the prune stage: only a note carrying an Arete id tag may be deleted.
+        """
+        pass
+
+    @abstractmethod
     async def delete_notes(self, nids: list[int]) -> bool:
         """Permanently delete specified note IDs from Anki."""
         pass

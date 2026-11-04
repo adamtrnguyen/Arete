@@ -198,7 +198,7 @@ def test_sync_prune_flow(tmp_path, anki_url, setup_anki, test_deck, run_arete):
     assert find("Prune Candidate") and find("Persistent Note")
 
     (tmp_path / "prune_me.md").unlink()
-    res = run_arete(tmp_path, anki_url, args=["--prune", "--force"])
+    res = run_arete(tmp_path, anki_url, args=["--prune", "--yes"])
     assert res.returncode == 0, res.stderr
 
     assert find("Prune Candidate") == [], "Orphan note was not pruned"

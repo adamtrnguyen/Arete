@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from arete.composition.orchestrator import execute_sync
+from arete.domain.ownership import is_arete_owned
 from tests.e2e.conftest import deck_of, open_collection
 
 
@@ -243,13 +244,12 @@ def _add_loose_note(col, deck: str, front: str) -> int:
 
 @pytest.mark.asyncio
 async def test_prune_keeps_a_claimed_note_moved_to_a_stray_deck(
-    single_card_vault: Path, anki_base: Path, make_config, monkeypatch
+    single_card_vault: Path, anki_base: Path, make_config
 ):
     """Its deck looked orphaned, and deleting the deck deleted the vault's note.
 
     Not --force: that re-sends every card and moves this one home before prune looks.
     """
-    monkeypatch.setattr("builtins.input", lambda _prompt="": "yes")
     await execute_sync(make_config(single_card_vault))
     col = open_collection(anki_base)
     try:
@@ -258,7 +258,7 @@ async def test_prune_keeps_a_claimed_note_moved_to_a_stray_deck(
     finally:
         col.close()
 
-    await execute_sync(make_config(single_card_vault, prune=True))
+    await execute_sync(make_config(single_card_vault, prune=True), confirm_prune=True)
 
     col = open_collection(anki_base)
     try:
@@ -267,40 +267,130 @@ async def test_prune_keeps_a_claimed_note_moved_to_a_stray_deck(
         col.close()
 
 
+def _arete_notes(col) -> set[int]:
+    return {n for n in col.find_notes("") if is_arete_owned(col.get_note(n).tags)}
+
+
 @pytest.mark.asyncio
 async def test_prune_deletes_each_orphan_once_and_spares_default(
-    single_card_vault: Path, anki_base: Path, make_config
+    vault: Path, anki_base: Path, make_config
 ):
-    await execute_sync(make_config(single_card_vault))
+    """Arete's orphans go, with the decks that held only them; hand-made notes stay."""
+    await execute_sync(make_config(vault))
     col = open_collection(anki_base)
     try:
-        [claimed] = col.find_notes("")
-        orphans = {
+        transformer = col.find_notes('"deck:AI::Deep Learning::Transformers"')
+        bayes = set(col.find_notes('"deck:Statistics"'))
+        assert len(transformer) == 1 and len(bayes) == 2
+        assert _arete_notes(col) == set(transformer) | bayes
+        loose = {
             _add_loose_note(col, "AI::Deep Learning::Transformers", "loose one"),
             _add_loose_note(col, "AI", "loose two"),
-        }
-        kept = {
             _add_loose_note(col, "Default", "in default"),
             _add_loose_note(col, "Default::Sub", "in a default subdeck"),
         }
     finally:
         col.close()
 
-    await execute_sync(make_config(single_card_vault, prune=True, force=True))
+    (vault / "Bayes.md").unlink()
+    stats = await execute_sync(make_config(vault, prune=True, force=True), confirm_prune=True)
 
+    assert stats.prune is not None and stats.prune.status == "deleted"
+    assert sorted(n.nid for n in stats.prune.notes) == sorted(bayes)
+    assert stats.prune.decks == ["Statistics"]
     col = open_collection(anki_base)
     try:
         left = set(col.find_notes(""))
-        assert claimed in left
-        assert kept <= left, "Default and its subdecks are never pruned"
-        assert not (orphans & left)
+        assert set(transformer) <= left
+        assert loose <= left, "a note without an Arete id is never pruned"
+        assert not (bayes & left), "each Arete orphan is deleted"
+        names = {d.name for d in col.decks.all_names_and_ids()}
+        assert "Statistics" not in names and "Statistics::Inference" not in names
+        assert {"AI", "Default::Sub"} <= names
+    finally:
+        col.close()
+
+
+@pytest.mark.asyncio
+async def test_a_hand_made_deck_with_hand_made_notes_survives_prune(
+    single_card_vault: Path, anki_base: Path, make_config
+):
+    """A one-file vault, pruned with --force and confirmed, keeps decks it never made."""
+    col = open_collection(anki_base)
+    try:
+        hand = {
+            _add_loose_note(col, "Personal::Japanese", "hand-made card 1"),
+            _add_loose_note(col, "Work", "hand-made card 2"),
+        }
+    finally:
+        col.close()
+
+    stats = await execute_sync(
+        make_config(single_card_vault, prune=True, force=True), confirm_prune=True
+    )
+
+    assert stats.prune is not None and stats.prune.notes == [] and stats.prune.decks == []
+    assert {"Personal", "Personal::Japanese", "Work"} <= set(stats.prune.decks_kept)
+    col = open_collection(anki_base)
+    try:
+        assert hand <= set(col.find_notes(""))
+        names = {d.name for d in col.decks.all_names_and_ids()}
+        assert {"Personal::Japanese", "Work"} <= names
+    finally:
+        col.close()
+
+
+@pytest.mark.asyncio
+async def test_a_mixed_deck_keeps_its_hand_made_notes_and_is_not_deleted(
+    vault: Path, anki_base: Path, make_config
+):
+    await execute_sync(make_config(vault))
+    col = open_collection(anki_base)
+    try:
+        bayes = set(col.find_notes('"deck:Statistics::Inference"'))
+        mine = _add_loose_note(col, "Statistics::Inference", "my own card")
+    finally:
+        col.close()
+
+    (vault / "Bayes.md").unlink()
+    stats = await execute_sync(make_config(vault, prune=True), confirm_prune=True)
+
+    assert stats.prune is not None and stats.prune.decks == []
+    col = open_collection(anki_base)
+    try:
+        left = set(col.find_notes(""))
+        assert mine in left
+        assert not (bayes & left), "the Arete orphans in the mixed deck are deleted"
+        assert "Statistics::Inference" in {d.name for d in col.decks.all_names_and_ids()}
+    finally:
+        col.close()
+
+
+@pytest.mark.asyncio
+async def test_an_unconfirmed_prune_returns_the_preview_and_deletes_nothing(
+    vault: Path, anki_base: Path, make_config, monkeypatch
+):
+    def no_input(*_args):
+        raise AssertionError("prune called input()")
+
+    monkeypatch.setattr("builtins.input", no_input)
+    await execute_sync(make_config(vault))
+    (vault / "Bayes.md").unlink()
+
+    stats = await execute_sync(make_config(vault, prune=True, force=True))
+
+    assert stats.prune is not None and stats.prune.status == "unconfirmed"
+    assert len(stats.prune.notes) == 2 and stats.prune.decks == ["Statistics"]
+    col = open_collection(anki_base)
+    try:
+        assert len(col.find_notes("")) == 3, "nothing deleted without a confirmation"
     finally:
         col.close()
 
 
 @pytest.mark.asyncio
 async def test_a_note_claimed_from_two_files_is_left_alone(
-    single_card_vault: Path, anki_base: Path, make_config, monkeypatch
+    single_card_vault: Path, anki_base: Path, make_config
 ):
     """B copied A's anki: block; syncing B overwrote A's note with B's card."""
     from arete.application.utils.text import parse_frontmatter
@@ -313,9 +403,7 @@ async def test_a_note_claimed_from_two_files_is_left_alone(
         f"  Back: B\n  anki:\n    nid: '{nid}'\n---\n",
         encoding="utf-8",
     )
-    monkeypatch.setattr("builtins.input", lambda _prompt="": "yes")
-
-    stats = await execute_sync(make_config(single_card_vault, prune=True))
+    stats = await execute_sync(make_config(single_card_vault, prune=True), confirm_prune=True)
 
     assert stats.total_errors >= 2, "both claimants are reported"
     col = open_collection(anki_base)

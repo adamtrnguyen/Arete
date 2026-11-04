@@ -140,3 +140,29 @@ def test_sync_command_clear_cache(mock_resolve_config, mock_run_sync):
     assert result.exit_code == 0
     call_args = mock_resolve_config.call_args[0][0]
     assert call_args["clear_cache"] is True
+
+
+@patch("arete.composition.orchestrator.run_sync_logic")
+@patch("arete.interface._common.resolve_config")
+def test_only_yes_confirms_a_prune(mock_resolve_config, mock_run_sync):
+    """--force re-sends cards; --yes is the one flag that confirms a prune."""
+    from arete.interface.cli import _confirm_prune_at_prompt
+
+    mock_resolve_config.return_value = MagicMock()
+    mock_run_sync.return_value = None
+
+    runner.invoke(app, ["sync", "/tmp/vault", "--prune", "--force"])
+    kwargs = mock_run_sync.call_args.kwargs
+    assert kwargs["confirm_prune"] is False
+    assert kwargs["prompt"] is _confirm_prune_at_prompt
+
+    runner.invoke(app, ["sync", "/tmp/vault", "--prune", "--yes"])
+    assert mock_run_sync.call_args.kwargs["confirm_prune"] is True
+
+
+def test_the_prompt_accepts_only_yes():
+    from arete.interface.cli import _confirm_prune_at_prompt
+
+    for answer, expected in [("yes", True), (" YES ", True), ("y", False), ("", False)]:
+        with patch("builtins.input", return_value=answer):
+            assert _confirm_prune_at_prompt(None) is expected

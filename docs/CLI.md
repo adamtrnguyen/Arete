@@ -19,8 +19,9 @@ uv sync
 | Command | Description |
 | :--- | :--- |
 | `arete sync` | Standard sync from Obsidian to Anki. |
-| `arete sync --prune` | Sync and delete notes in Anki that were removed from Obsidian. |
-| `arete sync --force` | Bypass destructive-action confirmations (typically used with `--prune`). |
+| `arete sync --prune` | Sync, then list the Arete notes whose card left the vault and ask before deleting them. |
+| `arete sync --prune --yes` | The same, without asking. |
+| `arete sync --force` | Re-send every card, ignoring the content cache. It does not confirm a prune. |
 | `arete queue` | Build `Arete::Queue` from due cards and resolved prerequisites. |
 | `arete init` | Initialize a new vault configuration. |
 | `arete logs` | Open the run logs directory. |
@@ -63,8 +64,13 @@ uv sync
 
 - `--dry-run`: Preview changes without applying to Anki.
 - `--clear-cache`: Force re-sync of all files.
-- `--prune`: Remove orphaned cards from Anki.
-- `--force`: Skip confirmation prompts for destructive actions.
+- `--prune`: Delete Anki notes Arete created whose card is gone from the vault, and decks
+  that hold only such notes. A note without an Arete id tag (`arete_` + 26-char ULID) is
+  never deleted, whatever deck it is in. Empty decks are listed, not deleted. Prune runs
+  only on a whole-vault sync. It shows what it will delete and asks; off a terminal it
+  deletes nothing and reports the list.
+- `--yes`, `-y`: Confirm the prune without the prompt.
+- `--force`: Re-send every card, ignoring the content cache. It does not confirm a prune.
 - `--backend`: Select backend (`auto`, `ankiconnect`, `direct`).
 - `--workers`: Override parallel sync worker count.
 

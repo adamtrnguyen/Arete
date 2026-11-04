@@ -1,7 +1,7 @@
 import asyncio
 import json
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -10,13 +10,14 @@ from tqdm import tqdm
 from arete.application.config import AppConfig
 from arete.application.sync.id_service import ensure_card_ids
 from arete.application.sync.parser import MarkdownParser
+from arete.application.sync.prune import PruneConfirm, PruneReport, prune_orphans
 from arete.application.sync.vault_service import VaultService
 from arete.application.utils.logging import RunRecorder
 from arete.application.utils.media import build_filename_index
 from arete.application.utils.text import parse_frontmatter, rebuild_markdown_with_frontmatter
 from arete.domain.constants import CONSUMER_BATCH_SIZE
 from arete.domain.interfaces import ContentCache, SyncPort
-from arete.domain.models import AnkiDeck, UpdateItem, WorkItem
+from arete.domain.models import UpdateItem, WorkItem
 
 
 @dataclass
@@ -24,6 +25,7 @@ class RunStats:
     total_generated: int
     total_imported: int
     total_errors: int
+    prune: PruneReport | None = field(default=None)
 
 
 async def run_pipeline(
@@ -34,7 +36,15 @@ async def run_pipeline(
     parser: MarkdownParser,
     anki_bridge: SyncPort,
     cache: ContentCache,
+    *,
+    confirm_prune: bool = False,
+    prompt: PruneConfirm | None = None,
 ) -> RunStats:
+    """Sync the vault to Anki, then prune if asked.
+
+    `confirm_prune` is the caller's explicit consent to delete. Without it prune asks
+    `prompt` at a terminal, and anywhere else returns a preview and deletes nothing.
+    """
     recorder = RunRecorder()
 
     # -------- Stage 1: filter --------
@@ -273,16 +283,21 @@ async def run_pipeline(
         )
 
     # -------- Stage 5: Prune Orphans (Destructive) --------
+    prune_report: PruneReport | None = None
     if config.prune:
         blockers = [f"{p.name} ({why})" for p, why in vault_service.unreadable]
         blockers += [f"{p.name} (parse crashed)" for p in unparsed_files]
         if blockers:
-            logger.warning(
-                "[prune] REFUSED: these Arete files could not be read, so their notes cannot "
-                f"be told apart from orphans. Fix them and prune again: {', '.join(blockers)}"
+            msg = (
+                "these Arete files could not be read, so their notes cannot be told apart "
+                f"from orphans. Fix them and prune again: {', '.join(blockers)}"
             )
+            logger.warning(f"[prune] REFUSED: {msg}")
+            prune_report = PruneReport("refused", msg)
         else:
-            await _prune_orphans(config, recorder, anki_bridge, logger)
+            prune_report = await prune_orphans(
+                config, recorder, anki_bridge, logger, confirmed=confirm_prune, prompt=prompt
+            )
 
     total_generated = len(updates)
     total_imported = sum(1 for u in updates if u.ok)
@@ -292,118 +307,5 @@ async def run_pipeline(
         total_generated=total_generated,
         total_imported=total_imported,
         total_errors=total_errors,
+        prune=prune_report,
     )
-
-
-async def _prune_orphans(
-    config: AppConfig, recorder: RunRecorder, bridge: SyncPort, logger: logging.Logger
-):
-    if config.root_input != config.vault_root:
-        logger.warning(
-            "[prune] SKIPPED: Pruning requires running on the entire vault root to ensure safety."
-        )
-        return
-
-    logger.info("[prune] analyzing vault vs anki state...")
-
-    valid_nids = recorder.inventory_nids
-    valid_decks = recorder.inventory_decks
-
-    logger.debug(f"[prune] Found {len(valid_nids)} valid NIDs in inventory.")
-    logger.debug(f"[prune] Found {len(valid_decks)} valid decks in inventory.")
-
-    anki_decks = await bridge.get_deck_names()
-
-    def is_default(deck: str) -> bool:
-        return deck == "Default" or deck.startswith("Default::")
-
-    protected_decks = set(valid_decks)
-    for d in valid_decks:
-        protected_decks.update(AnkiDeck(name=d).parents)
-
-    if all(is_default(d) for d in anki_decks):
-        logger.info("[prune] No non-default decks found.")
-        return
-
-    # Notes with a card anywhere under Default are never touched.
-    default_nids: set[int] = set()
-    if any(is_default(d) for d in anki_decks):
-        default_nids = set((await bridge.get_notes_in_deck("Default")).values())
-
-    # A deck search includes subdecks, so each deck's notes cover its whole subtree.
-    notes_by_deck = {d: await bridge.get_notes_in_deck(d) for d in anki_decks if not is_default(d)}
-
-    orphan_decks: list[str] = []
-    for d in anki_decks:
-        if d in protected_decks or is_default(d):
-            continue
-        claimed = [n for n in notes_by_deck[d] if n in valid_nids]
-        if claimed:
-            # Deleting the deck would delete notes the vault still owns (a card moved
-            # there in Anki). Keep it; the next sync with --force moves them home.
-            logger.warning(
-                f"[prune] keeping deck {d!r}: it holds {len(claimed)} note(s) the vault "
-                "still claims. Run 'arete sync --force' to move them back."
-            )
-            continue
-        orphan_decks.append(d)
-
-    in_orphan_decks: set[int] = set()
-    for d in orphan_decks:
-        in_orphan_decks.update(notes_by_deck[d].values())
-
-    orphan_note_ids: set[int] = set()
-    for d, deck_notes in notes_by_deck.items():
-        if d in orphan_decks:
-            continue
-        for nid_str, anki_id in deck_notes.items():
-            if nid_str not in valid_nids and anki_id not in default_nids:
-                orphan_note_ids.add(anki_id)
-    orphan_note_ids -= in_orphan_decks
-
-    n_decks = len(orphan_decks)
-    n_notes = len(orphan_note_ids)
-
-    if n_decks == 0 and n_notes == 0:
-        logger.info("[prune] Clean. No orphans found.")
-        return
-
-    logger.warning("\n" + "=" * 40)
-    logger.warning("PRUNE SUMMARY")
-    logger.info(f"Valid NIDs found in vault: {len(valid_nids)}")
-    logger.info(f"Valid Decks found in vault: {len(valid_decks)}")
-    logger.warning("-" * 20)
-    logger.warning(
-        f"Orphan Decks to DELETE: {n_decks} (with the {len(in_orphan_decks)} notes in them)"
-    )
-    for d in orphan_decks:
-        logger.warning(f"  - [DECK] {d}")
-    logger.warning(f"Orphan Notes to DELETE: {n_notes}")
-
-    if not config.force:
-        # Use asyncio-friendly input if needed?
-        # For CLI, standard input() is okay because the whole bridge is waiting here anyway.
-        val = input("\nAre you sure you want to proceed? Type 'yes' to confirm: ")
-        if val.lower() != "yes":
-            logger.info("[prune] Aborted by user.")
-            return
-
-    if config.dry_run:
-        logger.warning("[prune] DRY RUN: Destructive actions skipped.")
-        return
-
-    if n_notes > 0:
-        logger.info(f"[prune] Deleting {n_notes} notes...")
-        try:
-            await bridge.delete_notes(sorted(orphan_note_ids))
-        except Exception as e:
-            logger.error(f"[prune] Failed to delete notes: {e}")
-
-    if n_decks > 0:
-        logger.info(f"[prune] Deleting {n_decks} decks...")
-        try:
-            await bridge.delete_decks(orphan_decks)
-        except Exception as e:
-            logger.error(f"[prune] Failed to delete decks: {e}")
-
-    logger.info("[prune] Pruning complete.")

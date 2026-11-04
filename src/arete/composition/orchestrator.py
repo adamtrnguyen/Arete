@@ -8,13 +8,20 @@ from pathlib import Path
 from arete.application.config import AppConfig
 from arete.application.sync.parser import MarkdownParser
 from arete.application.sync.pipeline import RunStats, run_pipeline
+from arete.application.sync.prune import PruneConfirm
 from arete.application.sync.vault_service import VaultService
 from arete.application.utils.logging import setup_logging
 from arete.composition.factory import get_anki_bridge, get_cache
 
 
-async def execute_sync(config: AppConfig) -> RunStats:
-    """Core sync execution logic. Returns stats object instead of exiting."""
+async def execute_sync(
+    config: AppConfig, *, confirm_prune: bool = False, prompt: PruneConfirm | None = None
+) -> RunStats:
+    """Core sync execution logic. Returns stats object instead of exiting.
+
+    `confirm_prune` and `prompt` are per-run consent to delete; they are deliberately
+    not AppConfig fields, so no config file or environment variable can pre-approve one.
+    """
     logger, main_log_path, run_id = setup_logging(config.log_dir, config.verbose)
     logger.info(f"=== obsidian → anki (run_id={run_id}) ===")
     logger.info(f"System: {platform.system()} {platform.release()} ({platform.machine()})")
@@ -56,7 +63,15 @@ async def execute_sync(config: AppConfig) -> RunStats:
     anki_bridge = await get_anki_bridge(config)
     try:
         stats = await run_pipeline(
-            config, logger, run_id, vault_service, parser, anki_bridge, cache
+            config,
+            logger,
+            run_id,
+            vault_service,
+            parser,
+            anki_bridge,
+            cache,
+            confirm_prune=confirm_prune,
+            prompt=prompt,
         )
         return stats
     finally:
@@ -67,9 +82,11 @@ class SyncFailedError(Exception):
     """Raised when sync completes with errors and keep_going is False."""
 
 
-async def run_sync_logic(config: AppConfig):
+async def run_sync_logic(
+    config: AppConfig, *, confirm_prune: bool = False, prompt: PruneConfirm | None = None
+):
     """Orchestrates the sync process using the provided config."""
-    stats = await execute_sync(config)
+    stats = await execute_sync(config, confirm_prune=confirm_prune, prompt=prompt)
     logger = logging.getLogger("arete.main")
 
     logger.info(

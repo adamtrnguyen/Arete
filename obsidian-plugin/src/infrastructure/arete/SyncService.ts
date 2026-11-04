@@ -71,6 +71,16 @@ export class SyncService {
 
 			if (response.status === 200) {
 				const stats = response.json;
+				const pr = stats.prune;
+				if (pr && pr.status === 'unconfirmed') {
+					// The server never deletes without confirm_prune; say what it found.
+					new Notice(
+						`Prune preview: ${pr.note_count} Arete notes and ${pr.deck_count} decks ` +
+							'would be deleted. Nothing was deleted. Run "arete sync --prune" in a ' +
+							'terminal to review and confirm.',
+						15000,
+					);
+				}
 				if (stats.success) {
 					new Notice(`Sync Complete! (+${stats.total_imported} notes)`);
 					updateStatusBar('success');

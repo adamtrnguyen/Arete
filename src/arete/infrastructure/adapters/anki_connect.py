@@ -516,6 +516,14 @@ class AnkiConnectAdapter(AnkiBridge):
         nids = await self._invoke("findNotes", query=f'"deck:{deck_name}"')
         return {str(nid): nid for nid in nids or []}
 
+    async def get_note_tags(self, nids: list[int]) -> dict[int, list[str]]:
+        """Tags per note. A note whose chunk failed is left out, so prune keeps it."""
+        return {
+            int(info["noteId"]): list(info.get("tags") or [])
+            for info in await self._notes_info_chunked(nids)
+            if info and "noteId" in info
+        }
+
     async def delete_notes(self, nids: list[int]) -> bool:
         self.logger.info(f"Deleting notes: {nids}")
         await self._invoke("deleteNotes", notes=nids)
