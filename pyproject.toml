@@ -44,17 +44,16 @@ build-backend = "hatchling.build"
 [dependency-groups]
 dev = [
     "pytest>=9.0.2",
-    "ruff>=0.5.0",
+    "ruff==0.17.2",
     "pre-commit>=3.5.0",
     "rust-just>=1.46.0",
-    "ty>=0.0.8",
     "pytest-asyncio>=1.3.0",
     "respx>=0.22.0",
     "pytest-cov>=7.0.0",
     "mkdocs>=1.5.0",
     "mkdocs-material>=9.5.0",
     "import-linter>=2.1.0",
-    "pyright>=1.1.408",
+    "pyright==1.1.411",
     "build>=1.4.0",
     "coverage-badge>=1.1.2",
     "pyinstrument>=5.1.2",
@@ -62,6 +61,7 @@ dev = [
     "docker>=7.1.0",
     "hypothesis>=6.151.9",
     "requests>=2.31.0",
+    "vulture>=2.16",
 ]
 
 [tool.importlinter]
@@ -126,10 +126,10 @@ exclude = [
 # C4: flake8-comprehensions
 # UP: pyupgrade
 # W: pycodestyle warnings
-# C90: mccabe complexity
+# C901: mccabe complexity
 # D: pydocstyle (documentation)
 # FIX: flake8-fixme (TODO detection)
-select = ["E", "F", "I", "B", "C4", "UP", "W", "TID252", "C90", "D", "FIX", "S110", "S112"]
+select = ["E", "F", "I", "B", "C4", "UP", "W", "TID252", "C901", "D", "FIX", "S110", "S112"]
 ignore = ["D100", "D101", "D102", "D103", "D104"] # We will enable these selectively below
 
 [tool.ruff.lint.pydocstyle]
@@ -175,13 +175,16 @@ markers = [
     "integration: tests requiring a running Anki instance",
 ]
 
+[tool.vulture]
+paths = ["src", "scripts"]
+# At 60% vulture flags every typer command, FastAPI route, MCP tool and pydantic field, all
+# registered by decorator or read by key; 80% keeps only names nothing can reach.
+min_confidence = 80
+# Parameters a protocol requires by position, never read in the body:
+# pydantic-settings' settings_customise_sources (config.py) and a context manager's __exit__.
+ignore_names = ["dotenv_settings", "file_secret_settings", "exc_type", "exc_val", "exc_tb"]
+
 [tool.coverage.report]
 fail_under = 85
 show_missing = true
 omit = ["tests/*"]
-
-[tool.ty]
-
-[[tool.ty.overrides]]
-include = ["tests/fixtures/anki/**"]
-rules = { unresolved-import = "ignore" }

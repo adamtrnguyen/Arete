@@ -1,39 +1,47 @@
+# Commits run the fast fixers; the whole gate, `just qa`, runs before a push. A plain
+# `uvx pre-commit install` installs both hook types (default_install_hook_types).
+default_install_hook_types: [pre-commit, pre-push]
+default_stages: [pre-commit]
+
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.5.0
     hooks:
+      # Test vaults are markdown inputs: a trailing space is a line break the parser must see.
       - id: trailing-whitespace
+        exclude: ^tests/(fixtures|mock_vault)/
       - id: end-of-file-fixer
+        exclude: ^tests/(fixtures|mock_vault)/
       - id: check-yaml
+      - id: check-toml
       - id: check-added-large-files
+      - id: detect-private-key
+      - id: check-merge-conflict
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.5.0
+    # MUST equal the `ruff==` pin in pyproject: hook and gate sort imports and format alike only
+    # at the same version. A bump changes uv.lock and this rev together.
+    rev: v0.17.2
     hooks:
-      - id: ruff
-        args: [ --fix ]
+      # FIXERS, not the gate: `just qa` is the authority on whether lint and format pass.
+      - id: ruff-check
+        args: [--fix]
       - id: ruff-format
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.18.4
+    hooks:
+      - id: gitleaks
 
   - repo: local
     hooks:
-      - id: ts-lint
-        name: TypeScript Lint
-        entry: bash -c 'cd obsidian-plugin && npm run lint'
+      # THE GATE ITSELF -- `just qa`, not a list of what qa contains: naming the recipe means hook
+      # and gate cannot disagree. On pre-push, not each commit, because the tests are most of the
+      # cost.
+      - id: qa
+        name: just qa
+        entry: just qa
         language: system
-        files: ^obsidian-plugin/
         pass_filenames: false
-
-      - id: py-test
-        name: Python Unit Tests
-        # Runs the unit test suite (explicitly excluding integration)
-        entry: uv run just test
-        language: system
-        types: [python]
-        pass_filenames: false
-
-      - id: ts-test
-        name: TypeScript Tests
-        entry: bash -c 'cd obsidian-plugin && npm test'
-        language: system
-        files: ^obsidian-plugin/
-        pass_filenames: false
+        always_run: true
+        stages: [pre-push]

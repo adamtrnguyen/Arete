@@ -11,19 +11,22 @@ this file applies to you too.
 just qa
 ```
 
-It runs, in order:
+It runs these checks at once and names every one that fails. It never rewrites a file:
+the fixers are `just fix`.
 
-| Step | Command |
+| Check | Recipe |
 |---|---|
-| Python autofix | `just fix` |
-| Types | `just check-types` |
-| Import contracts | `just check-architecture` |
-| Docs references | `just check-docs` |
+| Python lint | `just lint` |
+| Python format | `just fmt-check` |
+| Types (pyright) | `just types` |
+| Import contracts | `just layers` |
+| Dead code (vulture) | `just dead` |
 | Python tests | `just test` |
-| Plugin format | `npm run format` |
-| Plugin tests | `just test-obsidian` |
+| Generated docs | `just check-docs` |
+| Version agreement | `just check-versions` |
 | Plugin lint | `just lint-obsidian` |
-| Plugin build | `just build-obsidian` |
+| Plugin types | `just types-obsidian` |
+| Plugin tests | `just test-obsidian` |
 
 **If `just qa` passes, push.**
 
@@ -38,7 +41,7 @@ just test-integration
 
 ```bash
 uv sync
-uv run pre-commit install
+uvx pre-commit install   # pre-commit fixers, `just qa` on pre-push
 cd obsidian-plugin && npm install
 ```
 
@@ -46,9 +49,9 @@ cd obsidian-plugin && npm install
 
 | Task | Command |
 |---|---|
-| Lint and format Python | `just lint` |
-| Autofix Python | `just fix` |
-| Type check | `just check-types` |
+| Lint Python | `just lint` |
+| Autofix (ruff, prettier) | `just fix` |
+| Type check | `just types` |
 | Python unit tests | `just test` |
 | Integration tests | `just test-integration` |
 | Build the plugin | `npm run build` |

@@ -28,7 +28,7 @@ interface → application → infrastructure → domain
 Import rules:
 - Domain imports nothing from other layers
 - Application cannot import from `infrastructure.adapters` (uses interfaces)
-- Verified by `just check-architecture` (`lint-imports`)
+- Verified by `just layers` (`lint-imports`)
 
 ## Anki Adapters
 
@@ -62,23 +62,19 @@ Plugin must be reloaded (restart Anki) after code changes.
 | `just test` | Unit tests (no Anki required) |
 | `just test-integration` | Integration tests (requires Dockerized Anki) |
 | `just coverage` | Tests with coverage report (85% threshold) |
-| `just lint` | Ruff linter check |
-| `just format` | Ruff formatter |
-| `just fix` | Auto-fix lint + format in one step |
-| `just check-types` | Pyright type checking |
-| `just check-architecture` | Import-linter layer enforcement |
-| `just qa` | Full QA: fix → types → architecture → docs → test, then plugin format → test → lint → build |
+| `just lint` | Ruff linter check (no fixes) |
+| `just fmt-check` | Ruff format check |
+| `just fix` | Opt-in fixers: ruff fix + format, prettier on the plugin |
+| `just types` | Pyright type checking (alias `check-types`) |
+| `just layers` | Import-linter layer enforcement (alias `check-architecture`) |
+| `just dead` | Vulture dead-code check |
+| `just qa` | The gate: every check at once, every failure named, never rewrites a file (`docs/CONTRIBUTING.md`) |
 
 ### Typical Workflow
 
 ```bash
-# After making changes:
 just fix              # auto-fix lint + format
-just test             # run unit tests
-just check-types      # type check
-
-# Before committing:
-just qa               # full quality gate
+just qa               # the gate; the pre-push hook runs it too
 ```
 
 ## Testing

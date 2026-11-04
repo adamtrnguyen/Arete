@@ -29,9 +29,9 @@ default:
 
 # --- Development ---
 
-# Start backend dev server with hot-reload
+# Start the HTTP daemon with hot-reload
 @dev-backend:
-    uv run uvicorn arete.interface.main:app --reload
+    uv run arete serve daemon --reload
 
 # Start plugin dev watcher
 @dev-plugin:
@@ -60,26 +60,39 @@ coverage-all *args:
     {{PYTEST}} --cov=src/arete --cov-report=term-missing {{TESTS}} {{args}}
 
 
-# Lint backend code with Ruff
-@lint:
-    {{RUFF}} check {{SRC}} {{TESTS}} scripts/
+# Lint backend code with Ruff (no fixes)
+lint:
+    {{RUFF}} check --no-fix {{SRC}} {{TESTS}} scripts/
+
+# The tree stays formatted (fix with `just format`)
+fmt-check:
+    {{RUFF}} format --check {{SRC}} {{TESTS}} scripts/
 
 # Format backend code with Ruff
 @format:
     {{RUFF}} format {{SRC}} {{TESTS}} scripts/
 
-# Fix all auto-fixable backend issues
+# Fixers, opt-in and never part of qa: ruff fixes + format, prettier on the plugin
 @fix:
     {{RUFF}} check --fix {{SRC}} {{TESTS}} scripts/
     {{RUFF}} format {{SRC}} {{TESTS}} scripts/
+    {{NPM}} run format
 
 # Static type checking
-@check-types:
+types:
     uv run pyright {{SRC}}
 
+alias check-types := types
+
 # Check architectural layers and isolation
-@check-architecture:
+layers:
     uv run lint-imports
+
+alias check-architecture := layers
+
+# Dead code: vulture, configured in [tool.vulture]
+dead:
+    uv run vulture
 
 # Check that generated docs match the code
 @check-docs:
@@ -100,11 +113,15 @@ coverage-all *args:
     {{NPM}} run build
 
 # Lint Obsidian plugin
-@lint-obsidian:
+lint-obsidian:
     {{NPM}} run lint
 
+# Type-check Obsidian plugin
+types-obsidian:
+    cd {{PLUGIN}} && npx tsc --noEmit
+
 # Test Obsidian plugin
-@test-obsidian:
+test-obsidian:
     {{NPM}} run test
 
 # --- Release & Artifacts ---
@@ -120,16 +137,8 @@ coverage-all *args:
     cd arete_ankiconnect && zip -r ../{{RELEASE}}/arete_ankiconnect.zip . -x "__pycache__/*"
     cp {{RELEASE}}/arete_ankiconnect.zip {{RELEASE}}/arete_ankiconnect.ankiaddon
 
-# Everything a release must satisfy, without changing a single file.
-# `just qa` runs `just fix`, which rewrites source; a release build must not.
-@verify:
-    just lint
-    just check-types
-    just check-architecture
-    just check-docs
-    just check-versions
-    just test
-    just test-obsidian
+# Everything a release must satisfy, without changing a single file: the qa gate
+verify: qa
 
 # Run the built wheel in a throwaway environment and call its console script.
 # The Obsidian plugin shells out to `arete`, so a wheel that builds but does not
@@ -152,24 +161,33 @@ coverage-all *args:
 
 # --- QA & CI ---
 
-# Verify V2 migration logic against mock vault
-@test-migration:
-    {{PY}} -m arete migrate {{TESTS}}/mock_vault -v
-
-# Run full project QA (Tests + Linting + Formatting)
-@qa:
-    @echo "--- 🐍 Backend QA ---"
-    just fix
-    just check-types
-    just check-architecture
-    just check-docs
-    just test
-    @echo "--- 🟦 Frontend QA ---"
-    {{NPM}} run format
-    just test-obsidian
-    just lint-obsidian
-    just build-obsidian
-    @echo "✅ All QA checks passed!"
+# The gate: every check at once, every failure named. Each PID is waited on by itself
+# (a bare `wait` returns only the last job's status). `failed` is a string because macOS
+# bash 3.2 errors on an empty array under `set -u`. It never rewrites files: see `fix`.
+# Integration tests (Dockerized Anki) stay out: `just test-integration`.
+[doc("the gate: every check at once, every failure named")]
+qa:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    names=(lint fmt-check types layers dead test check-docs check-versions lint-obsidian types-obsidian test-obsidian)
+    logs=$(mktemp -d "${TMPDIR:-/tmp}/qa.XXXXXX")
+    trap 'rm -rf "$logs"' EXIT
+    echo "== qa: ${#names[@]} checks, concurrent (${names[*]}); output replayed in that order =="
+    pids=()
+    for name in "${names[@]}"; do
+        just "$name" >"$logs/$name.out" 2>&1 &
+        pids+=("$!")
+    done
+    failed=""
+    for i in "${!pids[@]}"; do
+        wait "${pids[$i]}" || failed="$failed ${names[$i]}"
+    done
+    for name in "${names[@]}"; do echo "== $name =="; cat "$logs/$name.out"; echo ""; done
+    if [ -n "$failed" ]; then
+        echo "QA FAILED:$failed"
+        exit 1
+    fi
+    echo "QA passed: ${names[*]}."
 
 # `test-anki` and `mac-test-anki` used to sit here. Both started a compose container
 # on a fixed port, then ran pytest. Neither set ANKI_CONNECT_URL, so the integration

@@ -62,6 +62,9 @@ jobs:
     - name: Type Check
       run: uv run just check-types
 
+    - name: Import contracts
+      run: uv run just layers
+
   plugin:
     name: Obsidian Plugin (Build & Test)
     runs-on: ubuntu-latest
