@@ -28,7 +28,8 @@ Arete syncs cards written in note frontmatter (Obsidian) to Anki. **Obsidian is 
 |---|---|
 | **Edit/Write the note** | Drafting and polishing cards. The Card Editor updates within ~1 s. |
 | `open -g "obsidian://arete?vault=<Vault%20Name>&file=<path>&card=<id or position>"` | Put a card in front of the user without stealing focus. `card` is an Arete id or a 1-based position (drafts have no id). Plugin ≥ 2.5.0. |
-| vault MCP `obsidian_screenshot`, `obsidian_dom`, `obsidian_console` | See exactly what the user sees; read render errors. |
+| vault MCP `obsidian_screenshot`, `obsidian_dom` | See exactly what the user sees. |
+| `obsidian dev:console limit=<n> level=<level>` (Obsidian CLI) | Read render errors from the console. |
 | vault MCP `obsidian_click` `.arete-toolbar-btn[title="Preview Mode"]` | Switch the Card Editor to the rendered Anki preview (`.arete-preview-side-btn` toggles Front/Back). |
 | `arete` CLI (`uv tool`) | `sync`, `vault check/fix/format`, `graph check/export`, `queue`, `report`, `anki stats`. |
 | arete MCP | `list_file_cards`, `get_dep_subgraph`, `check_graph`, `sync_file`, `get_due_cards`, `build_study_queue`. |
