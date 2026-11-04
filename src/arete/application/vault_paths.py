@@ -2,7 +2,7 @@
 
 The MCP and HTTP surfaces take paths from whoever is calling (an agent, or any process
 that can reach the daemon's port), so every such path must resolve inside the vault.
-See docs/history/2026-11-04-prune-and-path-containment.md.
+See docs/history/prune-and-path-containment.md.
 
 The configured vault is `vault_root` from `~/.config/arete/config.toml` or the
 `ARETE_VAULT_ROOT` environment variable (the Obsidian plugin sets it on the daemon it

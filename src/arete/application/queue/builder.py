@@ -64,8 +64,8 @@ def build_simple_queue(
     for due_id in due_card_ids:
         distance.pop(due_id, None)
 
-    # G3 (2026-09-25): the cap used to keep the alphabetically-first ids and drop the
-    # rest silently. Keep the nearest (ties by id, for a stable result) and report the rest.
+    # The cap keeps the nearest prerequisites (ties by id, for a stable result) and
+    # reports the rest as dropped. See docs/history/queue-and-graph-fixes.md (G3).
     by_nearness = sorted(distance, key=lambda cid: (distance[cid], cid))
     room = max(0, max_cards - len(due_card_ids))
     prereq_list, dropped_prereqs = by_nearness[:room], by_nearness[room:]
@@ -149,9 +149,9 @@ def build_dynamic_queue(
 def _collect_prereqs(graph: DependencyGraph, card_id: str, depth: int) -> dict[str, int]:
     """Prerequisites within `depth` hops of `card_id`, mapped to their shortest distance.
 
-    Breadth-first (G2, 2026-09-25): the old depth-first walk shared one visited set, so a
-    card first reached by a long path was never expanded from a shorter one, and its own
-    prerequisites inside the limit were lost.
+    Breadth-first, so a card reached first by a long path is still expanded from its
+    shortest one and its own prerequisites inside the limit are kept (G2 in
+    docs/history/queue-and-graph-fixes.md).
     """
     distance: dict[str, int] = {card_id: 0}
     frontier = [card_id]

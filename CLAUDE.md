@@ -8,9 +8,9 @@ Arete is a one-way sync tool: Obsidian → Anki. Obsidian is the source of truth
 **Vault:** `/Users/adam/Obsidian Vault`
 
 > [!warning] A second vault copy exists and is stale
-> `~/Library/CloudStorage/OneDrive-Personal/Obsidian Vault` is also a git repo. Its
-> `.git` last moved 2026-08-29, against 2026-09-10 for the live one. Edit the live
-> vault (`~/Obsidian Vault`, which is also `arete_ankiconnect`'s `vault_root`).
+> `~/Library/CloudStorage/OneDrive-Personal/Obsidian Vault` is also a git repo, behind
+> the live one (`docs/history/vault-data-findings.md`). Edit the live vault
+> (`~/Obsidian Vault`, which is also `arete_ankiconnect`'s `vault_root`).
 
 ## Architecture
 
@@ -149,8 +149,8 @@ lives in `docs/history/`.
 
 **Backend**
 
-- [ ] `arete vault check` does not detect a duplicate Arete id. A run against a real
-      978-note vault found three.
+- [ ] `arete vault check` does not detect a duplicate Arete id, and the real vault
+      has some (`docs/history/vault-data-findings.md`).
 - [ ] Reconcile-by-Arete-id lives in the AnkiConnect adapter only. The direct backend
       creates a second copy when a vault carries a note id Anki never issued. A strict
       xfail at `tests/e2e/test_local_sync.py:119` records it and fails the day it is fixed.

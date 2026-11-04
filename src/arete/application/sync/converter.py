@@ -104,8 +104,8 @@ class MathPreprocessor(Preprocessor):
             if ch == "`":
                 run_len = self._backtick_run_length(text, i)
                 # Only a run that is closed later in the same paragraph opens a code span
-                # (CommonMark). An apostrophe-like stray backtick ("don`t") used to switch
-                # math parsing off for the rest of the field.
+                # (CommonMark), so a stray backtick ("don`t") cannot switch math parsing
+                # off for the rest of the field.
                 if self._has_closing_run(text, i + run_len, run_len):
                     code_span_len = run_len
                 out.append(text[i : i + run_len])
@@ -228,7 +228,7 @@ class MathPreprocessor(Preprocessor):
 
     def _store_math(self, content: str, is_display: bool) -> str:
         # Terminated, so a digit written right after the math cannot extend the token
-        # ("$n$1" used to become MATH-PLACEHOLDER-01 and leak onto the card).
+        # and leak a placeholder onto the card ("$n$1").
         placeholder = f"MATHPLACEHOLDER{self.counter}END"
         self.counter += 1
         # The math goes into HTML verbatim, so `<`/`>` must be escaped or the browser

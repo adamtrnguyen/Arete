@@ -28,8 +28,8 @@ def revlog_interval_days(ivl: int) -> float:
     """Anki's revlog interval in DAYS.
 
     Positive values are days; learning and relearning steps are stored as NEGATIVE
-    SECONDS. S2 (2026-09-25): they were mixed with days, so a lapse gave an interval
-    growth of -20 and a volatility of 88200.
+    SECONDS. Mixing the two scales corrupts every interval statistic (S2 in
+    docs/history/sync-render-stats-fixes.md).
     """
     return ivl if ivl >= 0 else -ivl / 86400
 

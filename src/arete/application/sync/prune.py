@@ -14,7 +14,7 @@ Three rules keep this from touching anything else:
    `confirm_prune=true`) or a person typed "yes" at a terminal prompt. Off a terminal
    (MCP, HTTP, an agent) the prompt is never shown: the run returns the preview.
 
-Background: docs/history/2026-11-04-prune-and-path-containment.md.
+Background: docs/history/prune-and-path-containment.md.
 """
 
 from __future__ import annotations

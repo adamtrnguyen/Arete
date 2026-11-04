@@ -11,8 +11,8 @@ import pytest
 import requests
 
 # --- Isolation: no test may touch the user's real ~/.config/arete ---
-# arete's defaults (cache.db, logs/, config.toml) all hang off Path.home(). On 2026-09-07 a
-# pytest run wiped the real cache and wrote run logs into ~/.config/arete/logs.
+# arete's defaults (cache.db, logs/, config.toml) all hang off Path.home(), so a test that
+# escapes the redirect writes into the real ones (docs/history/test-isolation.md).
 
 _REAL_ARETE_CONFIG = Path.home() / ".config" / "arete"
 
@@ -20,12 +20,8 @@ _REAL_ARETE_CONFIG = Path.home() / ".config" / "arete"
 # detect_anki_paths() in application/utils/common.py builds the collection path from
 # Path.home(), so the _isolated_home fixture below already redirects it. This is the
 # belt to that fixture's braces: if a test ever resolves the real path anyway, the
-# session fails loudly instead of writing notes into a live deck.
-#
-# It has happened. On 2026-03-03 and 2026-03-05 an integration run wrote four fixture
-# notes ("Hello Integration"/"World", "Healing Candidate"/"Same Back") into a real
-# collection under a deck named IntegrationTest. The dates come from the arete ULIDs
-# those notes carried. Nothing caught it for six months.
+# session fails loudly instead of writing notes into a live deck
+# (docs/history/test-isolation.md).
 
 _REAL_ANKI_BASE = Path.home() / "Library/Application Support/Anki2"  # macOS
 if not _REAL_ANKI_BASE.exists():  # pragma: no cover - platform dependent
@@ -166,12 +162,9 @@ def pytest_collection_modifyitems(items):
 
 
 # `anki_url` and `anki_media_dir` live in tests/integration/conftest.py, which is the
-# only place that needs them. That version reads the port off a throwaway container on
-# a random free port. The copies that used to sit here hardcoded 8766 and a bind-mount
-# under docker/anki_data, both left over from the fixed-port compose setup, and both
-# shadowed for every test under tests/integration/. Do not add them back here: a
-# session-scoped default that points at a real port is exactly how a test run reaches
-# a live collection.
+# only place that needs them; it reads the port off a throwaway container on a random
+# free port. Do not define them here: a session-scoped default that points at a real
+# port is how a test run reaches a live collection.
 
 
 @pytest.fixture

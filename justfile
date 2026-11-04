@@ -12,8 +12,8 @@ PLUGIN     := "obsidian-plugin"
 RELEASE    := "release_artifacts"
 
 # Every suite that needs no container. `test` and `coverage` both read this, so the
-# two cannot drift apart. They did: `coverage` was missing test_factories.py.
-UNIT       := TESTS/"application " + TESTS/"interface " + TESTS/"infrastructure " + TESTS/"domain " + TESTS/"e2e " + TESTS/"test_docs_architecture.py " + TESTS/"test_factories.py"
+# two cannot drift apart.
+UNIT       := TESTS/"application " + TESTS/"interface " + TESTS/"infrastructure " + TESTS/"domain " + TESTS/"e2e " + TESTS/"test_docs_architecture.py " + TESTS/"test_factories.py " + TESTS/"test_source_prose.py"
 
 # Default: List all available tasks
 default:
@@ -189,16 +189,9 @@ qa:
     fi
     echo "QA passed: ${names[*]}."
 
-# `test-anki` and `mac-test-anki` used to sit here. Both started a compose container
-# on a fixed port, then ran pytest. Neither set ANKI_CONNECT_URL, so the integration
-# conftest ignored that container and started a second one on a random port. Two
-# containers, one wasted.
-#
-# Locally, run `just test-integration` on its own. The conftest manages its own
-# container and tears it down after.
-#
-# CI still uses docker-up / wait-for-anki / docker-down below, and that path is
-# correct because ci.yml exports ANKI_CONNECT_URL first.
+# Locally, run `just test-integration` on its own: the integration conftest starts its
+# own container and tears it down after. docker-up / wait-for-anki / docker-down below
+# are for CI, which exports ANKI_CONNECT_URL so the conftest uses that container.
 
 # --- System ---
 

@@ -140,11 +140,10 @@ convention = "google"
 "tests/**/*.py" = ["E501"]
 "src/arete/domain/**/*.py" = ["D100", "D101", "D102", "D103", "D104"]
 
-# C901 debt, pinned file by file so a NEW complex function still fails the gate.
-# 18 functions are over the limit of 10; the worst is run_pipeline at 30. Each
-# entry here is a promise to split that file, not permission to grow it. Remove
-# an entry as soon as its file is under the limit.
-"src/arete/application/card_editor.py" = ["C901"]
+# C901 debt, pinned file by file so a complex function in any other file still fails the
+# gate. Each entry is a promise to split that file, not permission to grow it; remove an
+# entry as soon as its file is under the limit. The debt: `uv run ruff check --select C901
+# --isolated src`. History: docs/history/qa-gate.md.
 "src/arete/application/queue/builder.py" = ["C901"]
 "src/arete/application/queue/graph_resolver.py" = ["C901"]
 "src/arete/application/queue/service.py" = ["C901"]

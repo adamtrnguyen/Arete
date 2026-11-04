@@ -1,10 +1,8 @@
 """Ports: what the application layer is allowed to ask of the outside world.
 
-`AnkiBridge` used to be one interface of eighteen methods, so both adapters had to
-implement all eighteen whatever they were used for, and a use-case that only reads
-card statistics still received a handle that could delete decks.
-
-The four role ports below are what each caller actually uses. Type a use-case on
+The four role ports below are what each caller actually uses, so a use-case that only
+reads card statistics never holds a handle that can delete decks
+(docs/history/anki-bridge-ports.md). Type a use-case on
 its role and the type checker refuses any call outside it. `AnkiBridge` stays as
 the composite: it is the type of an adapter and of the shared test fake, nothing else.
 """

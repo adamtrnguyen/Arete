@@ -130,10 +130,9 @@ class MarkdownParser:
                             _, note_json = cached_note_data
                             if note_json:
                                 cached_note = AnkiNote.from_dict(json.loads(note_json))
-                                # C3 (2026-09-25): this appended the note to `notes`, so an
-                                # unchanged file re-sent every card on every warm run. The
-                                # entry is only written after Anki accepted the note, so an
-                                # unchanged file has nothing to send; prune still needs it.
+                                # The entry is only written after Anki accepted the note,
+                                # so an unchanged file has nothing to send; prune still
+                                # needs it (C3 in docs/history/sync-render-stats-fixes.md).
                                 inventory.append({"nid": cached_note.nid, "deck": cached_note.deck})
                                 continue
                         except Exception as e:
@@ -171,8 +170,8 @@ class MarkdownParser:
                         skipped_indices.append(idx)
                         continue
                 else:
-                    # Arete's own keys are not Anki fields. id/deps/anki/__line__ used to be
-                    # sent as fields and, being in the hash, re-synced cards whenever a line moved.
+                    # Arete's own keys are not Anki fields. Sent as fields they would enter the
+                    # hash, and a card would re-sync whenever its line moved.
                     _exclude = {
                         "model",
                         "deck",

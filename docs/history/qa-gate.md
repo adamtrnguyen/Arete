@@ -40,5 +40,16 @@ The fleet audits of 2026-11-04 (`/tmp/project-audits/arete.md`, gap G3) measured
 - CI's lint job runs `just layers`.
 - `dev-backend` runs `arete serve daemon --reload`; `test-migration` was deleted.
 
+## The C901 waivers
+
+The `pyproject.toml` comment over the per-file C901 waivers said "18 functions are over the
+limit of 10; the worst is run_pipeline at 30" (written at `43b090e`, 2026-09-08). The
+2026-11-04 audit measured 17 functions, `run_pipeline` at 38, `_prune_orphans` at 23 and
+`consumer` at 15: four sync commits on 2026-09-25 grew them under the waiver. One waiver
+named `application/card_editor.py`, a file that no longer exists; it was removed. The
+comment now names the command that measures the debt instead of a number.
+
+## Integration tests
+
 Integration tests (Dockerized Anki) stay out of `qa`: they need OrbStack and are flaky.
 Run `just test-integration` when a change touches the sync path or the bridge.

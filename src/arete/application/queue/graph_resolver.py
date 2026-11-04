@@ -176,7 +176,7 @@ def build_graph(vault_root: Path) -> DependencyGraph:
                     line_number=line_number,
                 )
                 if card_id in graph.nodes:
-                    # G7: the second card used to overwrite the first silently.
+                    # Keep the first card and record the duplicate; never overwrite (G7).
                     first = graph.nodes[card_id].file_path
                     files = graph.duplicate_ids.setdefault(card_id, [first])
                     files.append(str(md_path))
@@ -231,8 +231,8 @@ class _FileIndex:
 def _as_refs(value: Any, card_id: str, graph: DependencyGraph) -> list[str]:
     """Normalize a `requires`/`related` value to a list of string refs (G6).
 
-    `requires: Algebra` (a scalar) and `[2024]` (YAML reads it as an int) used to be
-    dropped without a word. Anything that cannot be a reference is reported.
+    A scalar (`requires: Algebra`) counts as a one-item list and an int (`[2024]`, as YAML
+    reads it) as its string. Anything that cannot be a reference is reported.
     """
     if value is None:
         return []
@@ -366,10 +366,9 @@ def topological_sort(
     def key(n: str) -> tuple[int, int]:
         return depth.get(n, 0), id_order[n]
 
-    # G1 (2026-09-25): a cycle used to make the whole queue fall back to set order, so
-    # prerequisites unrelated to the cycle could come after their dependents. Collapse
-    # each cycle into one group instead: groups are sorted by dependency, and only the
-    # cards inside a cycle are ordered by the tiebreaker alone.
+    # Collapse each cycle into one group: groups are sorted by dependency, so a cycle
+    # cannot reorder prerequisites outside it, and only the cards inside a cycle are
+    # ordered by the tiebreaker alone (G1 in docs/history/queue-and-graph-fixes.md).
     cond = nx.condensation(sub)
     members = nx.get_node_attributes(cond, "members")
     if any(len(m) > 1 for m in members.values()):
@@ -421,9 +420,8 @@ def filter_graph_by_deck(graph: DependencyGraph, deck: str) -> DependencyGraph:
             text = Path(fpath).read_text(encoding="utf-8")
             meta, _ = parse_frontmatter(text)
             file_deck = str((meta or {}).get("deck") or "")
-            # G4 (2026-09-25): this was a substring test ("Math" kept "Applied
-            # Mathematics"), and a matching FILE deck overrode the card's own deck --
-            # the reverse of sync (parser: card deck wins).
+            # Exact deck or subdeck, never a substring ("Math" must not keep "Applied
+            # Mathematics"), and the card's own deck wins over the file's, as in sync (G4).
             for card in (meta or {}).get("cards", []):
                 if not isinstance(card, dict):
                     continue
@@ -480,9 +478,8 @@ def check_graph_health(
     graph = filter_graph_by_deck(full, deck_filter) if deck_filter else full
     scope = set(graph.nodes)
 
-    # G8 (2026-09-25): analysed on the FILTERED graph, a card whose prerequisite sits in
-    # another deck lost that edge and was reported "isolated". Analyse the full graph
-    # and report only what touches the chosen deck.
+    # Analyse the full graph and report only what touches the chosen deck: on the
+    # filtered graph a card whose prerequisite sits in another deck looks isolated (G8).
     cycles_raw = [c for c in detect_cycles(full) if scope & set(c)]
     isolated_ids = [cid for cid in find_isolated_nodes(full) if cid in scope]
     components = find_connected_components(graph)
@@ -657,7 +654,7 @@ class GraphExport:
     """The whole resolved graph, for clients that draw it instead of resolving it.
 
     Edges are `[card, target]`: `requires` points at the prerequisite. The Obsidian plugin
-    used to resolve references itself and drifted (G5/G6); it now reads this.
+    reads this rather than resolving references itself, so the two cannot drift.
     """
 
     nodes: list[GraphExportNode]
