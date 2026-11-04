@@ -3,7 +3,7 @@
     "apiLogPath": null,
     "webBindAddress": "127.0.0.1",
     "webBindPort": 8765,
-    "webCorsOriginList": ["*"],
+    "webCorsOriginList": ["http://localhost"],
     "ignoreOriginList": [],
     "vault_root": "/Users/adam/Obsidian Vault"
 }
