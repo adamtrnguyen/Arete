@@ -1,4 +1,7 @@
+import errno
+import os
 import shutil
+import socket
 import subprocess
 import sys
 from pathlib import Path
@@ -43,6 +46,48 @@ def _snapshot(root: Path) -> dict[str, tuple[int, int]]:
         for f in root.rglob("*")
         if f.is_file()
     }
+
+
+# --- Isolation: no test may reach a running Anki over AnkiConnect ---
+# The HOME redirect above does nothing for the network. AppConfig defaults to
+# http://127.0.0.1:8765 and backend "auto", and the factory picks AnkiConnect when that
+# port answers. With Anki open, any test that builds a default config and reaches a
+# bridge would sync into the live collection. Refuse the connection at the socket, so
+# the adapter sees "Anki not running" and auto-selection falls back to the direct
+# backend under the isolated HOME. respx mocks never open a socket, so they still work.
+# The integration container listens on a random port, so it is not affected.
+
+_ANKICONNECT_PORT = 8765
+_REAL_CONNECT = socket.socket.connect
+_REAL_CONNECT_EX = socket.socket.connect_ex
+blocked_ankiconnect_attempts: list[object] = []
+
+
+def _is_ankiconnect(address: object) -> bool:
+    return isinstance(address, tuple) and len(address) >= 2 and address[1] == _ANKICONNECT_PORT
+
+
+def _guarded_connect(self, address):
+    if _is_ankiconnect(address):
+        blocked_ankiconnect_attempts.append(os.environ.get("PYTEST_CURRENT_TEST", address))
+        raise ConnectionRefusedError(f"tests may not reach AnkiConnect at {address}")
+    return _REAL_CONNECT(self, address)
+
+
+def _guarded_connect_ex(self, address):
+    if _is_ankiconnect(address):
+        blocked_ankiconnect_attempts.append(os.environ.get("PYTEST_CURRENT_TEST", address))
+        return errno.ECONNREFUSED
+    return _REAL_CONNECT_EX(self, address)
+
+
+@pytest.fixture(autouse=True)
+def _no_live_ankiconnect(monkeypatch):
+    """Refuse every socket connection to port 8765, and drop ARETE_* from the environment."""
+    monkeypatch.setattr(socket.socket, "connect", _guarded_connect)
+    monkeypatch.setattr(socket.socket, "connect_ex", _guarded_connect_ex)
+    for key in [k for k in os.environ if k.startswith("ARETE_")]:
+        monkeypatch.delenv(key)
 
 
 @pytest.fixture(autouse=True)
@@ -205,3 +250,14 @@ def integration_vault(tmp_path):
         shutil.rmtree(dest)
     shutil.copytree(src, dest)
     return dest
+
+
+def pytest_terminal_summary(terminalreporter):
+    """Say how many connections to a live AnkiConnect the guard refused this run."""
+    if blocked_ankiconnect_attempts:
+        terminalreporter.write_line(
+            f"AnkiConnect guard: refused {len(blocked_ankiconnect_attempts)} connection(s) "
+            "to port 8765 (no test reached a running Anki)."
+        )
+        for who in sorted({str(a) for a in blocked_ankiconnect_attempts}):
+            terminalreporter.write_line(f"  {who}")
