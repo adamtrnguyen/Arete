@@ -100,13 +100,12 @@ export default class AretePlugin extends Plugin {
 				vaultAdapter.getBasePath ? vaultAdapter.getBasePath() : '',
 			);
 
-			// Start Server (background) if enabled
-			this.serverManager.start(true);
-
-			// Auto-refresh stats on startup
+			// Start the server once the layout is ready, then refresh stats. A server already
+			// running is restarted: /health reports only a version, so the plugin cannot tell
+			// whether it serves this vault with the configured Python and project root.
 			this.app.workspace.onLayoutReady(async () => {
 				if (this.settings.execution_mode === 'server') {
-					await this.serverManager.start();
+					await this.serverManager.start(true);
 				}
 				console.log('[Arete] Refreshing stats on startup...');
 				this.statsService
