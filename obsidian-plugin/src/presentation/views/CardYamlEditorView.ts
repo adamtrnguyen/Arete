@@ -42,6 +42,13 @@ interface CardData {
 // Annotation to prevent infinite sync loops
 const syncAnnotation = Annotation.define<boolean>();
 
+/** Fit textareas to their content: every write, then every read, so layout runs once. */
+function fitTextareas(inputs: HTMLTextAreaElement[]) {
+	for (const input of inputs) input.style.height = 'auto';
+	const heights = inputs.map((input) => input.scrollHeight);
+	inputs.forEach((input, i) => (input.style.height = `${heights[i]}px`));
+}
+
 // ─────────────────────────────────────────────────────────────
 // Enums & Interfaces
 // ─────────────────────────────────────────────────────────────
@@ -203,6 +210,14 @@ export class CardYamlEditorView extends ItemView {
 	}
 
 	private handleActiveFileChange() {
+		// Same note and the same parsed cards (focus moved, e.g. into this view): keep the
+		// rendered fields, and the focus in them. A re-parse replaces the cards array.
+		const activeFile = this.app.workspace.getActiveFile();
+		if (activeFile && activeFile.path === this.currentFilePath) {
+			const cache = this.app.metadataCache.getFileCache(activeFile);
+			const cards = cache?.frontmatter?.cards;
+			if (cards !== undefined && cards === this.cards) return;
+		}
 		this.loadCards().then(() => {
 			this.renderIndex();
 			this.refreshActiveView();
@@ -573,6 +588,7 @@ export class CardYamlEditorView extends ItemView {
 		const excludeFields = ['id', 'model', 'deps', 'prerequisites', 'related', 'anki'];
 
 		// Render generic fields
+		const inputs: HTMLTextAreaElement[] = [];
 		Object.entries(card).forEach(([key, value]) => {
 			if (excludeFields.includes(key) || key.startsWith('__')) return;
 
@@ -583,21 +599,15 @@ export class CardYamlEditorView extends ItemView {
 				cls: 'arete-field-input',
 				text: String(value),
 			}) as HTMLTextAreaElement;
-
-			const autoResize = () => {
-				if (input) {
-					input.style.height = 'auto';
-					input.style.height = `${input.scrollHeight}px`;
-				}
-			};
-			setTimeout(autoResize, 0);
+			if (input) inputs.push(input);
 
 			input?.addEventListener('input', () => {
 				card[key] = input.value;
-				autoResize();
+				fitTextareas([input]);
 				this.debouncedSyncToMain();
 			});
 		});
+		setTimeout(() => fitTextareas(inputs), 0);
 
 		// Render Dependency Fields
 		this.renderDependencySection('requires', deps.requires || [], (newDeps) => {

@@ -129,3 +129,95 @@ describe('CardYamlEditorView live reload', () => {
 		expect(view.syncFromMain).toHaveBeenCalledTimes(1);
 	});
 });
+
+describe('CardYamlEditorView leaf changes and field sizing', () => {
+	let view: any;
+	let app: App;
+	const note = { path: 'Note.md' };
+	let cards: any[];
+
+	beforeEach(() => {
+		jest.clearAllMocks();
+		app = new (jest.requireMock('obsidian').App)();
+		view = new CardYamlEditorView({} as any, {} as any);
+		view.app = app;
+		cards = [{ Front: 'q', Back: 'a' }];
+		(app.workspace.getActiveFile as jest.Mock).mockReturnValue(note);
+		(app.metadataCache.getFileCache as jest.Mock).mockImplementation(() => ({
+			frontmatter: { cards },
+		}));
+		view.renderIndex = jest.fn();
+		view.refreshActiveView = jest.fn();
+	});
+
+	const settle = () => new Promise((r) => setImmediate(r));
+
+	it('a leaf change with the same note and parsed cards rebuilds nothing', async () => {
+		await view.loadCards();
+		view.handleActiveFileChange();
+		await settle();
+		expect(view.renderIndex).not.toHaveBeenCalled();
+		expect(view.refreshActiveView).not.toHaveBeenCalled();
+	});
+
+	it('a leaf change to another note reloads', async () => {
+		await view.loadCards();
+		(app.workspace.getActiveFile as jest.Mock).mockReturnValue({ path: 'Other.md' });
+		view.handleActiveFileChange();
+		await settle();
+		expect(view.renderIndex).toHaveBeenCalledTimes(1);
+		expect(view.refreshActiveView).toHaveBeenCalledTimes(1);
+	});
+
+	it('a leaf change after the note was re-parsed reloads', async () => {
+		await view.loadCards();
+		cards = [{ Front: 'q2', Back: 'a' }]; // a re-parse yields a new array
+		view.handleActiveFileChange();
+		await settle();
+		expect(view.refreshActiveView).toHaveBeenCalledTimes(1);
+		expect(view.cards).toBe(cards);
+	});
+
+	it('sizes every field with all writes before any read (one layout)', async () => {
+		jest.useFakeTimers();
+		const ops: string[] = [];
+		const textarea = (name: string) => {
+			const style: Record<string, string> = {};
+			return {
+				style: new Proxy(style, {
+					set(target, prop, value) {
+						ops.push(`write ${name} ${value}`);
+						target[prop as string] = value;
+						return true;
+					},
+				}),
+				get scrollHeight() {
+					ops.push(`read ${name}`);
+					return 40;
+				},
+				addEventListener: jest.fn(),
+			};
+		};
+		const group = createMockElement('div', {
+			createEl: jest.fn((tag: string, o: any) =>
+				tag === 'textarea' ? textarea(o.text) : createMockElement(tag),
+			),
+		});
+		view.fieldEditorContainer = createMockElement('div', { createDiv: jest.fn(() => group) });
+		view.renderDependencySection = jest.fn();
+		await view.loadCards();
+
+		view.renderFieldEditor();
+		jest.runOnlyPendingTimers();
+		jest.useRealTimers();
+
+		expect(ops).toEqual([
+			'write q auto',
+			'write a auto',
+			'read q',
+			'read a',
+			'write q 40px',
+			'write a 40px',
+		]);
+	});
+});
