@@ -35,6 +35,21 @@ def normalize_filename(name: str) -> str:
 # ---------- Frontmatter helpers ----------
 
 
+def _split_frontmatter(md_text: str) -> tuple[list[str], int | None] | None:
+    """Split into lines and find the frontmatter's closing `---`, line by line, no regex.
+
+    None when the first line is not `---`. Otherwise (lines, end): lines[end] is the
+    closing `---`, or end is None when the frontmatter never closes.
+    """
+    lines = md_text.split("\n")
+    if lines[0].strip() != "---":
+        return None
+    for i, line in enumerate(lines[1:], start=1):
+        if line.rstrip() == "---":  # column 0: an indented --- is a rule inside `Back: |`
+            return lines, i
+    return lines, None
+
+
 def parse_frontmatter(md_text: str) -> tuple[dict[str, Any], str]:
     """Parse YAML frontmatter from markdown text.
 
@@ -43,29 +58,15 @@ def parse_frontmatter(md_text: str) -> tuple[dict[str, Any], str]:
     # Handle potential BOM (Byte Order Mark)
     md_text = md_text.lstrip("\ufeff")
 
-    lines = md_text.split("\n")
-
-    # Check for opening ---
-    if not lines or lines[0].strip() != "---":
+    split = _split_frontmatter(md_text)
+    if split is None:
         return {}, md_text
-
-    # Find closing ---
-    yaml_end_line = None
-    for i, line in enumerate(lines[1:], start=1):
-        if line.rstrip() == "---":  # column 0: an indented --- is a rule inside `Back: |`
-            yaml_end_line = i
-            break
-
+    lines, yaml_end_line = split
     if yaml_end_line is None:
-        # No closing ---, return empty
         return {}, md_text
 
-    # Extract YAML content and body
-    yaml_lines = lines[1:yaml_end_line]
-    body_lines = lines[yaml_end_line + 1 :]
-
-    raw = "\n".join(yaml_lines)
-    body = "\n".join(body_lines)
+    raw = "\n".join(lines[1:yaml_end_line])
+    body = "\n".join(lines[yaml_end_line + 1 :])
 
     # Fix tabs (common user error)
     if "\t" in raw:
@@ -181,18 +182,10 @@ def validate_frontmatter(md_text: str) -> dict[str, Any]:
     # Handle potential BOM (Byte Order Mark)
     md_text = md_text.lstrip("\ufeff")
 
-    lines = md_text.split("\n")
-
-    # Check for opening ---
-    if not lines or lines[0].strip() != "---":
+    split = _split_frontmatter(md_text)
+    if split is None:
         return {}
-
-    # Find closing ---
-    yaml_end_line = None
-    for i, line in enumerate(lines[1:], start=1):
-        if line.rstrip() == "---":  # column 0: an indented --- is a rule inside `Back: |`
-            yaml_end_line = i
-            break
+    lines, yaml_end_line = split
 
     if yaml_end_line is None:
         # Unclosed frontmatter
@@ -258,22 +251,15 @@ def _extract_frontmatter_bounds(md_text: str) -> tuple[str, int, int] | None:
     Returns (yaml_content, start_index, end_index) or None if no frontmatter.
     Uses line-by-line parsing (no regex).
     """
-    lines = md_text.split("\n")
-
-    if not lines or lines[0].strip() != "---":
+    split = _split_frontmatter(md_text)
+    if split is None:
         return None
-
-    # Find closing ---
-    char_pos = len(lines[0]) + 1  # +1 for newline
-    for i, line in enumerate(lines[1:], start=1):
-        if line.rstrip() == "---":  # column 0: an indented --- is a rule inside `Back: |`
-            # Found closing ---
-            start = len(lines[0]) + 1  # After opening ---\n
-            yaml_content = "\n".join(lines[1:i])
-            return yaml_content, start, start + len(yaml_content)
-        char_pos += len(line) + 1  # +1 for newline
-
-    return None
+    lines, end = split
+    if end is None:
+        return None
+    start = len(lines[0]) + 1  # After opening ---\n
+    yaml_content = "\n".join(lines[1:end])
+    return yaml_content, start, start + len(yaml_content)
 
 
 def _preprocess_frontmatter_text(fm_text: str) -> str:
