@@ -23,6 +23,11 @@ anki_version = tuple(int(segment) for segment in aqt.appVersion.split("."))
 if anki_version < (2, 1, 45):
     raise Exception("Minimum Anki version supported: 2.1.45")
 
+# From Anki 23.10 a note saves through col.update_note(note, skip_undo_entry=True), which is
+# what Note.flush() does there, and Collection.autosave() is a no-op. Both legacy calls print a
+# deprecation warning with a stack walk on those versions, and are still needed before them.
+SAVE_VIA_UPDATE_NOTE = anki_version >= (23, 10)
+
 import base64
 import glob
 import hashlib
@@ -54,6 +59,11 @@ from aqt.utils import showWarning, tooltip
 from . import util, web
 from .edit import Edit
 from .web import format_exception_reply, format_success_reply
+
+# Anki 2.1.45 has only the camelCase originals; later versions keep them as aliases of the
+# snake_case functions that print a deprecation warning on every call.
+int_time = getattr(anki.utils, "int_time", None) or anki.utils.intTime
+field_checksum = getattr(anki.utils, "field_checksum", None) or anki.utils.fieldChecksum
 
 
 
@@ -214,7 +224,7 @@ class AnkiConnect:
         return media
 
     def getModel(self, modelName):
-        model = self.collection().models.byName(modelName)
+        model = self.collection().models.by_name(modelName)
         if model is None:
             raise Exception(f"model was not found: {modelName}")
         return model
@@ -241,16 +251,16 @@ class AnkiConnect:
     def createNote(self, note):
         collection = self.collection()
 
-        model = collection.models.byName(note["modelName"])
+        model = collection.models.by_name(note["modelName"])
         if model is None:
             raise Exception("model was not found: {}".format(note["modelName"]))
 
-        deck = collection.decks.byName(note["deckName"])
+        deck = collection.decks.by_name(note["deckName"])
         if deck is None:
             raise Exception("deck was not found: {}".format(note["deckName"]))
 
         ankiNote = anki.notes.Note(collection, model)
-        ankiNote.model()["did"] = deck["id"]
+        ankiNote.note_type()["did"] = deck["id"]
         if "tags" in note:
             ankiNote.tags = note["tags"]
 
@@ -336,14 +346,14 @@ class AnkiConnect:
         val = note.fields[0]
         if not val.strip():
             return 1
-        csum = anki.utils.fieldChecksum(val)
+        csum = field_checksum(val)
 
         # Create dictionary of deck ids
         dids = None
         if duplicateScope == "deck":
             did = deck["id"]
             if duplicateScopeDeckName is not None:
-                deck2 = collection.decks.byName(duplicateScopeDeckName)
+                deck2 = collection.decks.by_name(duplicateScopeDeckName)
                 if deck2 is None:
                     # Invalid deck, so cannot be duplicate
                     return 0
@@ -384,13 +394,13 @@ class AnkiConnect:
 
     def getCard(self, card_id: int) -> Card:
         try:
-            return self.collection().getCard(card_id)
+            return self.collection().get_card(card_id)
         except NotFoundError:
             self.raiseNotFoundError(f"Card was not found: {card_id}")
 
     def getNote(self, note_id: int) -> Note:
         try:
-            return self.collection().getNote(note_id)
+            return self.collection().get_note(note_id)
         except NotFoundError:
             self.raiseNotFoundError(f"Note was not found: {note_id}")
 
@@ -541,7 +551,9 @@ class AnkiConnect:
 
     @util.api()
     def deckNames(self):
-        return self.decks().allNames()
+        # What decks.allNames() returns, without its two deprecation warnings.
+        names = self.decks().all_names_and_ids(skip_empty_default=False, include_filtered=True)
+        return [name.name for name in names]
 
     @util.api()
     def deckNamesAndIds(self):
@@ -579,7 +591,7 @@ class AnkiConnect:
         self.startEditing()
 
         did = self.collection().decks.id(deck)
-        mod = anki.utils.intTime()
+        mod = int_time()
         usn = self.collection().usn()
 
         # normal cards
@@ -610,7 +622,8 @@ class AnkiConnect:
             decks = filter(lambda d: d in self.deckNames(), decks)
             for deck in decks:
                 did = self.decks().id(deck)
-                self.decks().rem(did, cardsToo=cardsToo)
+                # decks.rem() is a deprecated wrapper that ignores cardsToo and calls this.
+                self.decks().remove([did])
         finally:
             self.stopEditing()
 
@@ -666,7 +679,7 @@ class AnkiConnect:
 
         collection = self.collection()
         did = collection.decks.id(deck)
-        return collection.decks.confForDid(did)
+        return collection.decks.config_dict_for_deck_id(did)
 
     @util.api()
     def saveDeckConfig(self, config):
@@ -797,11 +810,11 @@ class AnkiConnect:
         ankiNote = self.createNote(note)
 
         collection = self.collection()
-        # Anki >= 25: note.model() returns a fresh copy of the notetype, so the
+        # Anki >= 25: note.note_type() returns a fresh copy of the notetype, so the
         # `did` set in createNote never reaches the legacy collection.addNote(),
         # which then files the note under the notetype's stored deck (Default).
         # Resolve the deck again and pass it explicitly.
-        deck = collection.decks.byName(note["deckName"])
+        deck = collection.decks.by_name(note["deckName"])
         if deck is None:
             raise Exception("deck was not found: {}".format(note["deckName"]))
         self.startEditing()
@@ -810,7 +823,8 @@ class AnkiConnect:
             raise Exception(
                 "The field values you have provided would make an empty question on all cards."
             )
-        collection.autosave()
+        if not SAVE_VIA_UPDATE_NOTE:
+            collection.autosave()
         self.stopEditing()
 
         return ankiNote.id
@@ -890,9 +904,11 @@ class AnkiConnect:
         pictureObjectOrList = note.get("picture")
         self.addMedia(ankiNote, pictureObjectOrList, util.MediaType.Picture)
 
-        ankiNote.flush()
-
-        self.collection().autosave()
+        if SAVE_VIA_UPDATE_NOTE:
+            self.collection().update_note(ankiNote, skip_undo_entry=True)
+        else:
+            ankiNote.flush()
+            self.collection().autosave()
         self.stopEditing()
 
     @util.api()
@@ -926,7 +942,11 @@ class AnkiConnect:
     @util.api()
     def addTags(self, notes, tags, add=True):
         self.startEditing()
-        self.collection().tags.bulkAdd(notes, tags, add)
+        # What tags.bulkAdd(notes, tags, add) does, without its deprecation warning.
+        if add:
+            self.collection().tags.bulk_add(notes, tags)
+        else:
+            self.collection().tags.bulk_remove(notes, tags)
         self.stopEditing()
 
     @util.api()
@@ -1186,7 +1206,7 @@ class AnkiConnect:
 
     @util.api()
     def modelFieldNames(self, modelName):
-        model = self.collection().models.byName(modelName)
+        model = self.collection().models.by_name(modelName)
         if model is None:
             raise Exception(f"model was not found: {modelName}")
         else:
@@ -1249,7 +1269,7 @@ class AnkiConnect:
 
     @util.api()
     def modelTemplates(self, modelName):
-        model = self.collection().models.byName(modelName)
+        model = self.collection().models.by_name(modelName)
         if model is None:
             raise Exception(f"model was not found: {modelName}")
 
@@ -1261,7 +1281,7 @@ class AnkiConnect:
 
     @util.api()
     def modelStyling(self, modelName):
-        model = self.collection().models.byName(modelName)
+        model = self.collection().models.by_name(modelName)
         if model is None:
             raise Exception(f"model was not found: {modelName}")
 
@@ -1405,14 +1425,14 @@ class AnkiConnect:
         model = self.getModel(modelName)
 
         # only adds the field if it doesn't already exist
-        fieldMap = mm.fieldMap(model)
+        fieldMap = mm.field_map(model)
         if fieldName not in fieldMap:
-            field = mm.newField(fieldName)
+            field = mm.new_field(fieldName)
             mm.addField(model, field)
 
         # repositions, even if the field already exists
         if index is not None:
-            fieldMap = mm.fieldMap(model)
+            fieldMap = mm.field_map(model)
             newField = fieldMap[fieldName][1]
             mm.repositionField(model, newField, index)
 
@@ -1482,14 +1502,14 @@ class AnkiConnect:
         if query is None:
             return []
 
-        return list(map(int, self.collection().findNotes(query)))
+        return list(map(int, self.collection().find_notes(query)))
 
     @util.api()
     def findCards(self, query=None):
         if query is None:
             return []
 
-        return list(map(int, self.collection().findCards(query)))
+        return list(map(int, self.collection().find_cards(query)))
 
     @util.api()
     def cardsInfo(self, cards):
@@ -1497,7 +1517,7 @@ class AnkiConnect:
         for cid in cards:
             try:
                 card = self.getCard(cid)
-                model = card.model()
+                model = card.note_type()
                 note = card.note()
                 fields = {}
                 for info in model["flds"]:
@@ -1643,7 +1663,7 @@ class AnkiConnect:
         for nid in notes:
             try:
                 note = self.getNote(nid)
-                model = note.model()
+                model = note.note_type()
 
                 fields = {}
                 for info in model["flds"]:
@@ -1674,7 +1694,7 @@ class AnkiConnect:
     @util.api()
     def deleteNotes(self, notes):
         try:
-            self.collection().remNotes(notes)
+            self.collection().remove_notes(notes)
         finally:
             self.stopEditing()
 
