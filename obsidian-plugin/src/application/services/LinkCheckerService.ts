@@ -13,6 +13,45 @@ export interface BrokenReference {
 	} | null;
 }
 
+/** A YAML block the metadata cache could not parse: empty, or invalid. */
+export type FrontmatterProblem = 'empty' | 'invalid';
+
+/**
+ * Section types whose block cannot begin with a `---` line. A note whose first section
+ * is one of these has no YAML block, so the scan does not read it.
+ */
+const NON_YAML_FIRST_SECTIONS = new Set([
+	'paragraph',
+	'heading',
+	'list',
+	'blockquote',
+	'callout',
+	'table',
+	'html',
+	'footnoteDefinition',
+]);
+
+/** Notes checked at once by `checkIntegrity`; each check may spawn `arete vault check`. */
+const CHECK_CONCURRENCY = 4;
+
+/** `fn` over `items` with at most `limit` calls in flight; results keep item order. */
+async function mapBounded<T, R>(
+	items: T[],
+	limit: number,
+	fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+	const results = new Array<R>(items.length);
+	let next = 0;
+	const worker = async () => {
+		while (next < items.length) {
+			const i = next++;
+			results[i] = await fn(items[i]);
+		}
+	};
+	await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+	return results;
+}
+
 export class LinkCheckerService {
 	app: App;
 	checkService: FileChecker;
@@ -27,21 +66,40 @@ export class LinkCheckerService {
 	 */
 	async checkIntegrity(files?: TFile[]): Promise<BrokenReference[]> {
 		const targetFiles = files || this.app.vault.getMarkdownFiles();
-		const allBroken: BrokenReference[] = [];
 
-		for (const file of targetFiles) {
+		const perFile = await mapBounded(targetFiles, CHECK_CONCURRENCY, async (file) => {
 			// 1. Check Links & Embeds (Images Only)
 			const brokenRefs = this.getBrokenReferences(file);
-			allBroken.push(...brokenRefs);
 
 			// 2. Check Invalid Frontmatter (User Request)
 			const invalidYaml = await this.getInvalidFrontmatter(file);
-			if (invalidYaml) {
-				allBroken.push(invalidYaml);
-			}
+			return invalidYaml ? [...brokenRefs, invalidYaml] : brokenRefs;
+		});
+
+		return perFile.flat();
+	}
+
+	/**
+	 * Whether the note opens with a YAML block that the metadata cache could not parse.
+	 * The note is read (cachedRead) only when its cached sections leave that possible.
+	 */
+	async findUnparsedFrontmatter(file: TFile): Promise<FrontmatterProblem | null> {
+		const cache = this.app.metadataCache.getFileCache(file);
+
+		// If cache parses frontmatter fine, we are good.
+		if (cache?.frontmatter) return null;
+		if (cache?.sections) {
+			const first = cache.sections[0];
+			if (!first || NON_YAML_FIRST_SECTIONS.has(first.type)) return null;
 		}
 
-		return allBroken;
+		const trimmed = (await this.app.vault.cachedRead(file)).trimStart();
+
+		// Check for empty frontmatter explicitly (e.g. --- followed directly by ---, or just whitespace)
+		if (/^---\s*\n\s*---/.test(trimmed)) return 'empty';
+		// File has YAML block start, but cache didn't parse it -> Invalid!
+		if (trimmed.startsWith('---\n') || trimmed.startsWith('---\r\n')) return 'invalid';
+		return null;
 	}
 
 	getBrokenReferences(file: TFile): BrokenReference[] {
@@ -139,17 +197,9 @@ export class LinkCheckerService {
 	}
 
 	async getInvalidFrontmatter(file: TFile): Promise<BrokenReference | null> {
-		const cache = this.app.metadataCache.getFileCache(file);
+		const problem = await this.findUnparsedFrontmatter(file);
 
-		// If cache parses frontmatter fine, we are good.
-		if (cache && cache.frontmatter) return null;
-
-		// If no frontmatter in cache, check if file actually HAS valid-looking YAML start
-		const content = await this.app.vault.read(file);
-		const trimmed = content.trimStart();
-
-		// Check for empty frontmatter explicitly (e.g. --- followed directly by ---, or just whitespace)
-		if (/^---\s*\n\s*---/.test(trimmed)) {
+		if (problem === 'empty') {
 			return {
 				sourceFile: file,
 				linkText: 'EMPTY YAML',
@@ -160,9 +210,7 @@ export class LinkCheckerService {
 			};
 		}
 
-		if (trimmed.startsWith('---\n') || trimmed.startsWith('---\r\n')) {
-			// File has YAML block start, but cache didn't parse it -> Invalid!
-
+		if (problem === 'invalid') {
 			// Attempt to get detailed reason from CLI
 			let reason = 'Obsidian failed to parse frontmatter.';
 			try {

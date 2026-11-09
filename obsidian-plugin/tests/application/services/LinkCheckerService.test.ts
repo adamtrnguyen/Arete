@@ -15,6 +15,7 @@ describe('LinkCheckerService', () => {
 				getCheckResult: jest.fn(),
 			},
 		};
+		(app.vault as any).cachedRead = jest.fn();
 		service = new LinkCheckerService(app, plugin.checkService);
 	});
 
@@ -85,7 +86,7 @@ describe('LinkCheckerService', () => {
 
 		test('detects empty YAML', async () => {
 			(app.metadataCache.getFileCache as jest.Mock).mockReturnValue({});
-			(app.vault.read as jest.Mock).mockResolvedValue('---\n---');
+			((app.vault as any).cachedRead as jest.Mock).mockResolvedValue('---\n---');
 
 			const result = await service.getInvalidFrontmatter({} as any);
 			expect(result?.linkText).toBe('EMPTY YAML');
@@ -94,7 +95,9 @@ describe('LinkCheckerService', () => {
 		test('detects invalid YAML and uses CLI for reason', async () => {
 			const file = { path: 'invalid.md' } as TFile;
 			(app.metadataCache.getFileCache as jest.Mock).mockReturnValue({});
-			(app.vault.read as jest.Mock).mockResolvedValue('---\ninvalid: [unclosed');
+			((app.vault as any).cachedRead as jest.Mock).mockResolvedValue(
+				'---\ninvalid: [unclosed',
+			);
 			((app.vault.adapter as any).getBasePath as jest.Mock).mockReturnValue('/mock/vault');
 			plugin.checkService.getCheckResult.mockResolvedValue({
 				ok: false,
@@ -109,11 +112,66 @@ describe('LinkCheckerService', () => {
 		test('handles CLI check failure gracefully', async () => {
 			const file = { path: 'invalid.md' } as TFile;
 			(app.metadataCache.getFileCache as jest.Mock).mockReturnValue({});
-			(app.vault.read as jest.Mock).mockResolvedValue('---\ninvalid: yaml');
+			((app.vault as any).cachedRead as jest.Mock).mockResolvedValue('---\ninvalid: yaml');
 			plugin.checkService.getCheckResult.mockRejectedValue(new Error('CLI error'));
 
 			const result = await service.getInvalidFrontmatter(file);
 			expect(result?.errorMessage).toContain('Check Failed: CLI error');
+		});
+	});
+
+	describe('integrity scan cost', () => {
+		const note = (path: string) => ({ path }) as TFile;
+
+		test('reads through the cache, never from disk', async () => {
+			(app.metadataCache.getFileCache as jest.Mock).mockReturnValue({});
+			((app.vault as any).cachedRead as jest.Mock).mockResolvedValue('# Title');
+			await service.getInvalidFrontmatter(note('a.md'));
+			expect((app.vault as any).cachedRead).toHaveBeenCalledTimes(1);
+			expect(app.vault.read).not.toHaveBeenCalled();
+		});
+
+		test('does not read a note whose first section cannot start a YAML block', async () => {
+			for (const type of ['paragraph', 'heading', 'list', 'callout']) {
+				(app.metadataCache.getFileCache as jest.Mock).mockReturnValue({
+					sections: [{ type }],
+				});
+				expect(await service.findUnparsedFrontmatter(note('a.md'))).toBeNull();
+			}
+			(app.metadataCache.getFileCache as jest.Mock).mockReturnValue({ sections: [] });
+			expect(await service.findUnparsedFrontmatter(note('blank.md'))).toBeNull();
+			expect((app.vault as any).cachedRead).not.toHaveBeenCalled();
+		});
+
+		test('reads a note whose first section may be a YAML block', async () => {
+			for (const type of ['yaml', 'thematicBreak', 'code', 'something-new']) {
+				(app.metadataCache.getFileCache as jest.Mock).mockReturnValue({
+					sections: [{ type }],
+				});
+				((app.vault as any).cachedRead as jest.Mock).mockResolvedValue('---\nbad: [\n---');
+				expect(await service.findUnparsedFrontmatter(note('a.md'))).toBe('invalid');
+			}
+			expect((app.vault as any).cachedRead).toHaveBeenCalledTimes(4);
+		});
+
+		test('checks at most 4 notes at once and keeps vault order', async () => {
+			const files = Array.from({ length: 10 }, (_, i) => note(`n${i}.md`));
+			(app.vault.getMarkdownFiles as jest.Mock).mockReturnValue(files);
+			(app.metadataCache.getFileCache as jest.Mock).mockReturnValue({});
+			((app.vault as any).cachedRead as jest.Mock).mockResolvedValue('---\nbad: [');
+			let inFlight = 0;
+			let peak = 0;
+			plugin.checkService.getCheckResult.mockImplementation(async (p: string) => {
+				inFlight++;
+				peak = Math.max(peak, inFlight);
+				await new Promise((r) => setTimeout(r, 5 - (p.length % 3)));
+				inFlight--;
+				return { ok: false, errors: [{ line: 1, message: p }] };
+			});
+
+			const results = await service.checkIntegrity();
+			expect(peak).toBe(4);
+			expect(results.map((r) => r.sourceFile.path)).toEqual(files.map((f) => f.path));
 		});
 	});
 
