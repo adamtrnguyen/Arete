@@ -22,6 +22,7 @@ def build_simple_queue(
     due_card_ids: list[str],
     depth: int = DEFAULT_PREREQ_DEPTH,
     max_cards: int = DEFAULT_MAX_QUEUE_SIZE,
+    graph: DependencyGraph | None = None,
 ) -> "QueueBuildResult":
     """Build a simple study queue from due cards.
 
@@ -34,6 +35,8 @@ def build_simple_queue(
         max_cards: Queue size bound. Due cards are never dropped; prerequisites fill
             the space left, nearest to a due card first, and the rest are reported in
             `dropped_prereqs`.
+        graph: The vault graph, when the caller has already built it. Built from
+            `vault_root` otherwise.
 
     Returns:
         QueueBuildResult with ordered queues and diagnostics
@@ -41,7 +44,8 @@ def build_simple_queue(
     """
     from arete.application.queue.graph_resolver import detect_cycles
 
-    graph = build_graph(vault_root)
+    if graph is None:
+        graph = build_graph(vault_root)
 
     # Collect all prerequisites for due cards, with each one's distance to the nearest
     # due card (the cap below keeps the nearest).
@@ -104,6 +108,7 @@ def build_dynamic_queue(
     depth: int = DEFAULT_PREREQ_DEPTH,
     max_cards: int = DEFAULT_MAX_QUEUE_SIZE,
     card_stats: dict[str, dict] | None = None,
+    graph: DependencyGraph | None = None,
 ) -> QueueBuildResult:
     """Build a queue using a dynamic ready-frontier ordering heuristic.
 
@@ -113,15 +118,20 @@ def build_dynamic_queue(
       1) Cards that unlock more due descendants
       2) Weaker cards -- only when the caller supplies card_stats
       3) Deterministic lexical tie-breaks
+
+    `graph` is the vault graph when the caller has already built it; it is built from
+    `vault_root` otherwise, once for both passes.
     """
+    if graph is None:
+        graph = build_graph(vault_root)
     base = build_simple_queue(
         vault_root=vault_root,
         due_card_ids=due_card_ids,
         depth=depth,
         max_cards=max_cards,
+        graph=graph,
     )
 
-    graph = build_graph(vault_root)
     due_set = {cid for cid in due_card_ids if cid in graph.nodes}
     candidates = [
         cid for cid in dict.fromkeys(base.prereq_queue + base.main_queue) if cid in graph.nodes

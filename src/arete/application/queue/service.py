@@ -158,12 +158,15 @@ async def build_study_queue(  # noqa: PLR0913
     effective_depth = depth if (not deck or cross_deck) else 0
 
     # -- Step 4: Build the queue --
+    # One graph per request: the builder, the final sort and the enrich step share it.
+    graph = build_graph(vault_root)
     if algo == "dynamic":
         build_result = build_dynamic_queue(
             vault_root=vault_root,
             due_card_ids=valid_ids,
             depth=effective_depth,
             max_cards=max_cards,
+            graph=graph,
         )
     else:
         # "static" and "simple" were two names for the same traversal: the weak/strong
@@ -173,6 +176,7 @@ async def build_study_queue(  # noqa: PLR0913
             due_card_ids=valid_ids,
             depth=effective_depth,
             max_cards=max_cards,
+            graph=graph,
         )
 
     result.build_result = build_result
@@ -182,12 +186,10 @@ async def build_study_queue(  # noqa: PLR0913
         combined = build_result.ordered_queue
     else:
         all_ids = list(dict.fromkeys(build_result.prereq_queue + build_result.main_queue))
-        graph = build_graph(vault_root)
         combined = topological_sort(graph, all_ids)
 
     # -- Step 6: Enrich with graph metadata --
     if enrich and combined:
-        graph = build_graph(vault_root)
         prereq_set = set(build_result.prereq_queue)
         for idx, card_id in enumerate(combined, 1):
             node = graph.nodes.get(card_id)
