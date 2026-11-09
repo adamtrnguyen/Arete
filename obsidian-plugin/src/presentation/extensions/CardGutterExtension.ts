@@ -1,5 +1,12 @@
 import { EditorView, gutter, GutterMarker, Decoration, DecorationSet } from '@codemirror/view';
-import { RangeSet, RangeSetBuilder, StateField, StateEffect } from '@codemirror/state';
+import {
+	RangeSet,
+	RangeSetBuilder,
+	StateField,
+	StateEffect,
+	Text,
+	Transaction,
+} from '@codemirror/state';
 import { Notice } from 'obsidian';
 import type { AnkiCardStats } from '@/domain/stats';
 import { CardVisualsService } from '@/application/services/CardVisualsService';
@@ -227,16 +234,42 @@ class CardGutterMarker extends GutterMarker {
 
 import { CardParserService, ParseResult } from '@/application/services/CardParserService';
 
-// State field to track card ranges
-const cardRangesField = StateField.define<ParseResult>({
+function parseDoc(doc: Text): ParseResult {
+	return (
+		CardParserService.noCardsResult(doc.iterLines()) ??
+		CardParserService.parseCards(doc.toString())
+	);
+}
+
+/**
+ * True when every change in `tr` starts after the closing `---` line of the
+ * frontmatter that `result` was parsed from. `parseCards` reads only the lines up to
+ * that one when the frontmatter is closed, so such an edit leaves its result, line
+ * numbers included, unchanged.
+ */
+function editsAfterFrontmatter(result: ParseResult, tr: Transaction): boolean {
+	if (result.frontmatterEndLine === null) return false;
+	const closingLineEnd = tr.startState.doc.line(result.frontmatterEndLine + 1).to;
+	let after = true;
+	tr.changes.iterChangedRanges((fromA) => {
+		if (fromA <= closingLineEnd) after = false;
+	});
+	return after;
+}
+
+/**
+ * The `CardParserService.parseCards` result for the current document, shared by the
+ * card gutter and the card YAML highlight. The value keeps its identity across a
+ * transaction only when every line it describes is unchanged in text and position,
+ * so readers may reuse what they built from it.
+ */
+export const cardRangesField = StateField.define<ParseResult>({
 	create(state) {
-		return CardParserService.parseCards(state.doc.toString());
+		return parseDoc(state.doc);
 	},
 	update(result, tr) {
-		if (tr.docChanged) {
-			return CardParserService.parseCards(tr.state.doc.toString());
-		}
-		return result;
+		if (!tr.docChanged || editsAfterFrontmatter(result, tr)) return result;
+		return parseDoc(tr.state.doc);
 	},
 });
 

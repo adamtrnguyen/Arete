@@ -22,7 +22,7 @@ jest.mock('obsidian', () => ({
 import { EditorState, RangeSet, TransactionSpec } from '@codemirror/state';
 import type { GutterMarker } from '@codemirror/view';
 import type { AnkiCardStats } from '@/domain/stats';
-import { createCardGutter } from '@/presentation/extensions/CardGutterExtension';
+import { cardRangesField, createCardGutter } from '@/presentation/extensions/CardGutterExtension';
 import { CardParserService } from '@/application/services/CardParserService';
 import { ankiCardStats, card, noteYaml } from '../../factories';
 
@@ -156,6 +156,68 @@ describe('card gutter markers', () => {
 		expect(new Set(cardMarkers(fromB).map((e) => e.marker.index))).toEqual(new Set([0]));
 		expect(a.markers()).toBe(fromA);
 		expect(a.markersFn(viewB)).toBe(fromB);
+	});
+});
+
+describe('cardRangesField', () => {
+	it('equals parseCards of the current document after any sequence of edits', () => {
+		// Deterministic pseudo-random edits, biased toward the closing `---` line where
+		// the rule for keeping the previous value has its boundary.
+		let seed = 7;
+		const rand = (n: number) => {
+			seed ^= seed << 13;
+			seed ^= seed >>> 17;
+			seed ^= seed << 5;
+			return (seed >>> 0) % n;
+		};
+		const pieces = [
+			'x',
+			'\n',
+			'-',
+			'---',
+			'\n---\n',
+			'cards:',
+			'\n  - Front: q',
+			"\n      nid: '42'",
+		];
+		let kept = 0;
+		for (let round = 0; round < 40; round++) {
+			let state = EditorState.create({ doc: threeCards(), extensions: [cardRangesField] });
+			for (let k = 0; k < 15; k++) {
+				const text = state.doc.toString();
+				const close = text.indexOf('\n---\n', 3);
+				const from = Math.min(
+					text.length,
+					close >= 0 && rand(3) > 0 ? close + rand(9) : rand(text.length + 1),
+				);
+				const to = Math.min(text.length, from + (rand(4) === 0 ? rand(5) : 0));
+				const insert = rand(5) === 0 ? '' : pieces[rand(pieces.length)];
+				if (from === to && !insert) continue;
+				const prev = state.field(cardRangesField);
+				state = state.update({ changes: { from, to, insert } }).state;
+				if (state.field(cardRangesField) === prev) kept++;
+				expect(state.field(cardRangesField)).toEqual(
+					CardParserService.parseCards(state.doc.toString()),
+				);
+			}
+		}
+		// The reuse path ran often enough for the comparison above to mean something.
+		expect(kept).toBeGreaterThan(50);
+	});
+
+	it('keeps its value and the gutter its markers for an edit after the frontmatter', () => {
+		const g = setup(threeCards());
+		const result = g.view.state.field(cardRangesField);
+		const before = g.markers();
+		g.apply({ changes: { from: g.view.state.doc.length, insert: '\nmore body\n' } });
+
+		expect(g.view.state.field(cardRangesField)).toBe(result);
+		expect(g.markers()).toBe(before);
+		const doc = g.view.state.doc;
+		for (const { from, marker } of cardMarkers(before)) {
+			const range = result.ranges[marker.index];
+			expect(from).toBe(doc.line(range.startLine + marker.lineIndex + 1).from);
+		}
 	});
 });
 

@@ -7,7 +7,7 @@
  */
 import { Decoration, DecorationSet, EditorView, ViewPlugin, ViewUpdate } from '@codemirror/view';
 import { Range } from '@codemirror/state';
-import { CardParserService } from '@/application/services/CardParserService';
+import { cardRangesField } from '@/presentation/extensions/CardGutterExtension';
 
 type Role = 'q' | 'a' | 'deps' | 'meta' | 'field';
 
@@ -47,7 +47,7 @@ const mathMark = Decoration.mark({ class: 'arete-yaml-math' });
 
 function build(view: EditorView): DecorationSet {
 	const doc = view.state.doc;
-	const { ranges, hasCards } = CardParserService.parseCards(doc.toString());
+	const { ranges, hasCards } = view.state.field(cardRangesField);
 	if (!hasCards) return Decoration.none;
 
 	const decos: Range<Decoration>[] = [];
@@ -106,8 +106,20 @@ export const cardYamlHighlight = ViewPlugin.fromClass(
 			this.decorations = build(view);
 		}
 		update(update: ViewUpdate) {
-			if (update.docChanged) this.decorations = build(update.view);
+			if (!update.docChanged) return;
+			// The parse result keeps its identity only when no card line changed in text or
+			// position, so mapping the decorations gives what a rebuild would.
+			const unchanged =
+				update.state.field(cardRangesField) ===
+				update.startState.field(cardRangesField, false);
+			this.decorations = unchanged
+				? this.decorations.map(update.changes)
+				: build(update.view);
 		}
 	},
-	{ decorations: (v) => v.decorations },
+	{
+		decorations: (v) => v.decorations,
+		// The gutter registers the same field; CodeMirror keeps one instance of it.
+		provide: () => cardRangesField,
+	},
 );

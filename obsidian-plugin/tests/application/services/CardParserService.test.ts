@@ -77,3 +77,85 @@ cards:
 		expect(result.ranges[0].nid).toBeNull();
 	});
 });
+
+describe('CardParserService.noCardsResult', () => {
+	const quick = (text: string) => CardParserService.noCardsResult(text.split('\n'));
+
+	// Either null (needs the full parse) or exactly what parseCards returns, and never
+	// a no-cards answer for a note in which parseCards finds a card.
+	const expectAgrees = (text: string) => {
+		const full = CardParserService.parseCards(text);
+		const fast = quick(text);
+		if (fast !== null) expect(fast).toEqual(full);
+		if (full.hasCards) expect(fast).toBeNull();
+		return fast;
+	};
+
+	it('needs the full parse when cards sit below a long frontmatter', () => {
+		const keys = Array.from({ length: 400 }, (_, i) => `key_${i}: value ${i}`);
+		const text = noteYaml({ cards: [card({ nid: 1 })] }).replace(
+			'---\n',
+			`---\n${keys.join('\n')}\n`,
+		);
+		expect(CardParserService.parseCards(text).hasCards).toBe(true);
+		expect(expectAgrees(text)).toBeNull();
+	});
+
+	it('needs the full parse for a cards key anywhere parseCards looks', () => {
+		for (const text of [
+			'---\ntags:\n  - a\n  cards:\n    - Front: q\n---\n',
+			'---\ncards: []\n---\n',
+			'# No frontmatter\ncards:\n  - Front: q\n',
+			'---\nunclosed: true\ncards:\n  - Front: q\n',
+		]) {
+			expect(expectAgrees(text)).toBeNull();
+		}
+	});
+
+	it('answers without parsing when parseCards cannot find a cards key', () => {
+		for (const text of [
+			'',
+			'---',
+			'---\n---',
+			'plain text',
+			'---\ntitle: x\n---\n# Body\n',
+			'---\ntitle: x\n---\ncards:\n  - Front: in the body, after the frontmatter\n',
+			'cards:\n  - Front: on line 0, which parseCards skips\n',
+		]) {
+			expect(expectAgrees(text)).not.toBeNull();
+		}
+	});
+
+	it('agrees with parseCards on generated notes', () => {
+		let seed = 11;
+		const rand = (n: number) => {
+			seed ^= seed << 13;
+			seed ^= seed >>> 17;
+			seed ^= seed << 5;
+			return (seed >>> 0) % n;
+		};
+		const pool = [
+			'---',
+			'cards:',
+			'  cards:',
+			'cards: []',
+			'  - Front: q',
+			'    Back: a',
+			'- bullet',
+			'title: x',
+			'',
+			'body text',
+			'    anki:',
+			"      nid: '123'",
+		];
+		let full = 0;
+		for (let n = 0; n < 3000; n++) {
+			const lines = Array.from({ length: 1 + rand(12) }, () => pool[rand(pool.length)]);
+			if (rand(2) === 0) lines.unshift('---');
+			if (expectAgrees(lines.join('\n')) === null) full++;
+		}
+		// Both outcomes occur, so the agreement above covers both.
+		expect(full).toBeGreaterThan(100);
+		expect(full).toBeLessThan(2900);
+	});
+});

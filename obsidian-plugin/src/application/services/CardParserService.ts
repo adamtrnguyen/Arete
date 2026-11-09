@@ -16,6 +16,33 @@ export interface ParseResult {
 
 export class CardParserService {
 	/**
+	 * The result `parseCards` returns for a note that has no `cards:` key where
+	 * `parseCards` looks for one, or null when the note has such a key and needs
+	 * `parseCards`. Takes the note's lines (as `text.split('\n')` yields them) lazily,
+	 * so it allocates no copy of the text and stops at the closing `---` of the
+	 * frontmatter.
+	 *
+	 * `parseCards` finds a card only after a line whose trimmed text starts with
+	 * `cards:`, at line 1 or later and before the closing `---` when the note opens
+	 * with `---`. With no such line its result is fixed by the frontmatter end alone.
+	 */
+	static noCardsResult(lines: Iterable<string>): ParseResult | null {
+		let i = 0;
+		let opensFrontmatter = false;
+		for (const line of lines) {
+			if (i === 0) {
+				opensFrontmatter = line === '---';
+			} else if (opensFrontmatter && line === '---') {
+				return { ranges: [], frontmatterEndLine: i, hasCards: false };
+			} else if (line.trim().startsWith('cards:')) {
+				return null;
+			}
+			i++;
+		}
+		return { ranges: [], frontmatterEndLine: null, hasCards: false };
+	}
+
+	/**
 	 * Parses a document string to find card ranges and their IDs.
 	 * This is the primary logic for identifying cards in a note.
 	 */
