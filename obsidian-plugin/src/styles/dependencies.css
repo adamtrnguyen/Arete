@@ -59,26 +59,6 @@
 	max-width: 200px;
 }
 
-.arete-dep-action {
-	display: flex;
-	align-items: center;
-	cursor: pointer;
-	color: var(--text-muted);
-	padding: 2px;
-	border-radius: 50%;
-	margin-right: 2px;
-}
-
-.arete-dep-action:hover {
-	color: var(--text-normal);
-	background: var(--background-modifier-hover);
-}
-
-.arete-dep-action svg {
-	width: 12px;
-	height: 12px;
-}
-
 .arete-dep-remove {
 	display: flex;
 	align-items: center;
@@ -96,22 +76,6 @@
 .arete-dep-remove svg {
 	width: 12px;
 	height: 12px;
-}
-
-.arete-dep-diag-item {
-	display: flex;
-	align-items: center;
-	gap: 6px;
-	font-size: 12px;
-	padding: 4px 0;
-}
-
-.arete-dep-diag-item.mod-warning {
-	color: var(--color-orange);
-}
-
-.arete-dep-diag-item.mod-cycle {
-	color: var(--color-red);
 }
 
 /* Add Button in Editor */

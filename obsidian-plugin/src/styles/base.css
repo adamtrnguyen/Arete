@@ -1,10 +1,5 @@
 /* Arete Plugin - Base & Utility Styles */
 
-/* --- Utility Classes --- */
-.arete-hidden {
-	display: none;
-}
-
 /* Modal Container */
 .arete-modal {
 	padding: 1rem;
@@ -112,14 +107,4 @@
 .arete-err-msg {
 	color: var(--text-error);
 	line-height: 1.4;
-}
-
-.arete-hint {
-	margin-top: 1rem;
-	padding: 0.8rem;
-	background-color: var(--background-secondary);
-	border-left: 4px solid var(--text-accent);
-	color: var(--text-muted);
-	font-style: italic;
-	font-size: 0.9rem;
 }

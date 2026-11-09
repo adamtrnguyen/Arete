@@ -133,23 +133,6 @@
 	box-shadow: var(--shadow-s);
 }
 
-.arete-card-label {
-	font-size: 11px;
-	text-transform: uppercase;
-	color: var(--text-muted);
-	font-weight: 600;
-	margin-bottom: 8px;
-	letter-spacing: 0.05em;
-}
-
-.arete-card-side {
-	margin-bottom: 24px;
-}
-
-.arete-card-side:last-child {
-	margin-bottom: 0;
-}
-
 /* ─── Card Stats Modal ─── */
 .arete-stats-modal {
 	width: 60vw !important;
