@@ -4,7 +4,7 @@ import logging
 from collections import defaultdict
 from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Protocol, runtime_checkable
+from typing import Any
 
 from arete.application.utils.common import sanitize
 from arete.application.utils.fs import iter_markdown_files
@@ -19,11 +19,6 @@ UNREADABLE_REASONS = ("read_error", "no_or_bad_yaml", "no_deck")
 # mtime and size it was read at, so any edit (one that adds `arete:` included) misses it
 # and the file is read again. A reader that knows only `arete: true` entries sees a miss.
 NOT_ARETE_META: dict[str, Any] = {"__not_arete__": True}
-
-
-@runtime_checkable
-class _BatchingFileCache(Protocol):
-    def set_file_metas(self, rows: list[tuple[Path, str, dict[str, Any], float, int]]) -> None: ...
 
 
 class VaultService:
@@ -84,11 +79,7 @@ class VaultService:
         if not rows or not self.cache:
             return
         try:
-            if isinstance(self.cache, _BatchingFileCache):
-                self.cache.set_file_metas(rows)
-            else:
-                for p, h, meta, mtime, size in rows:
-                    self.cache.set_file_meta(p, h, meta, mtime=mtime, size=size)
+            self.cache.set_file_metas(rows)
         except Exception as e:
             self.logger.warning(f"[cache] could not record {len(rows)} plain notes: {e}")
 

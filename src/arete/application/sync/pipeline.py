@@ -3,7 +3,7 @@ import json
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Protocol, runtime_checkable
+from typing import Any
 
 from tqdm import tqdm
 
@@ -18,26 +18,6 @@ from arete.application.utils.text import rebuild_markdown_with_frontmatter
 from arete.domain.constants import CONSUMER_BATCH_SIZE
 from arete.domain.interfaces import ContentCache, SyncPort
 from arete.domain.models import UpdateItem, WorkItem
-
-
-@runtime_checkable
-class _BatchingCache(Protocol):
-    def set_notes(self, rows: list[tuple[Path, int, str, str]]) -> None: ...
-
-
-def _record_synced_cards(cache: ContentCache, rows: list[tuple[Path, int, str, str]]) -> None:
-    """Record cards Anki has accepted, one transaction per consumer batch.
-
-    Called only after the bridge returned, with ok rows only. A crash before the commit
-    loses the rows, so those cards are checked again next sync; nothing is recorded early.
-    """
-    if not rows:
-        return
-    if isinstance(cache, _BatchingCache):
-        cache.set_notes(rows)
-        return
-    for row in rows:
-        cache.set_note(*row)
 
 
 @dataclass
@@ -241,7 +221,10 @@ async def run_pipeline(
                             recorder.add_error(
                                 u.source_file, f"Sync fail: {u.error}", f"#{u.source_index}"
                             )
-                    _record_synced_cards(cache, synced_rows)
+                    # One transaction per batch, written after Anki accepted these cards. A
+                    # crash before the commit loses the rows; the cards are checked again.
+                    if synced_rows:
+                        cache.set_notes(synced_rows)
             except Exception as e:
                 logger.error(f"[consumer-error] {e}")
                 for wi in batch:

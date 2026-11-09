@@ -31,6 +31,10 @@ class ContentCache(Protocol):
         size: int = 0,
     ) -> None: ...
 
+    def set_file_metas(self, rows: list[tuple[Path, str, dict[str, Any], float, int]]) -> None:
+        """Write (path, hash, meta, mtime, size) rows in one transaction, all or none."""
+        ...
+
     def get_hash(self, md_path: Path, card_index: int) -> str | None: ...
 
     def get_note(self, md_path: Path, card_index: int) -> tuple[str, str | None] | None: ...
@@ -38,6 +42,13 @@ class ContentCache(Protocol):
     def set_note(
         self, md_path: Path, card_index: int, content_hash: str, note_json: str
     ) -> None: ...
+
+    def set_notes(self, rows: list[tuple[Path, int, str, str]]) -> None:
+        """Write (path, index, hash, note_json) rows in one transaction, all or none.
+
+        The sync calls it once per batch, only with cards Anki has accepted.
+        """
+        ...
 
     def clear(self) -> None: ...
 
