@@ -145,15 +145,48 @@ class AnkiConnectAdapter(AnkiBridge):
                 self.logger.warning(f"Failed to ensure source field for '{model_name}': {e}")
 
         sem = asyncio.Semaphore(SYNC_CONCURRENCY)
+        cid_wanted: list[tuple[UpdateItem, str]] = []
 
         async def _bounded(item: WorkItem) -> UpdateItem:
             async with sem:
-                return await self._sync_single_note(item)
+                return await self._sync_single_note(item, cid_wanted)
 
-        return list(await asyncio.gather(*(_bounded(item) for item in work_items)))
+        results = list(await asyncio.gather(*(_bounded(item) for item in work_items)))
+        await self._fill_first_cids(cid_wanted)
+        return results
 
-    async def _sync_single_note(self, item: WorkItem) -> UpdateItem:
-        """Sync a single work item, routing to update or add/heal paths."""
+    async def _fill_first_cids(self, wanted: list[tuple[UpdateItem, str]]) -> None:
+        """Set ``new_cid`` on created and healed notes from one notesInfo per chunk.
+
+        It runs after every write of the batch, so the cid is the note's first card as
+        Anki holds it then. A note whose notesInfo failed keeps ``new_cid=None``.
+        """
+        if not wanted:
+            return
+        nids = list(dict.fromkeys(int(result.new_nid or 0) for result, _ in wanted))
+        first_cid: dict[int, str] = {}
+        for info in await self._notes_info_chunked(nids):
+            if info and info.get("noteId") and info.get("cards"):
+                first_cid[int(info["noteId"])] = str(info["cards"][0])
+        for result, label in wanted:
+            nid = int(result.new_nid or 0)
+            result.new_cid = first_cid.get(nid)
+            if result.new_cid is None:
+                self.logger.warning(f"Failed to fetch CID for nid={nid}")
+            deck = f" deck={result.note.deck!r}" if label == "heal" and result.note else ""
+            self.logger.info(
+                f"[{label}] {result.source_file} #{result.source_index} -> nid={nid} "
+                f"cid={result.new_cid}{deck}"
+            )
+
+    async def _sync_single_note(
+        self, item: WorkItem, cid_wanted: list[tuple[UpdateItem, str]]
+    ) -> UpdateItem:
+        """Sync a single work item, routing to update or add/heal paths.
+
+        A created or healed note is appended to ``cid_wanted``; its cid is read once per
+        batch, after the writes.
+        """
         note = item.note
         try:
             html_fields = dict(note.fields)
@@ -172,7 +205,9 @@ class AnkiConnectAdapter(AnkiBridge):
 
             if target_nid:
                 return await self._update_existing_note(item, note, html_fields, target_nid, info)
-            return await self._add_or_heal_note(item, note, html_fields)
+            result, label = await self._add_or_heal_note(item, note, html_fields)
+            cid_wanted.append((result, label))
+            return result
 
         except Exception as e:
             msg = f"ERR file={item.source_file} card={item.source_index} error={e}"
@@ -244,21 +279,18 @@ class AnkiConnectAdapter(AnkiBridge):
             note=note,
         )
 
-    async def _add_or_heal_note(self, item: WorkItem, note: Any, html_fields: dict) -> UpdateItem:
-        """Add a new note or heal by matching existing content."""
-        existing_nid = await self._find_existing_note(note, html_fields)
+    async def _add_or_heal_note(
+        self, item: WorkItem, note: Any, html_fields: dict
+    ) -> tuple[UpdateItem, str]:
+        """Add a new note or heal by matching existing content; the label names which."""
+        existing_nid, existing_info = await self._find_existing_note(note, html_fields)
 
         if existing_nid:
             # Reconcile: same treatment as a note with a valid nid -- fields, tags AND deck.
             # A twin that landed in the wrong deck is moved, never duplicated.
-            info = await self._invoke("notesInfo", notes=[existing_nid])
+            info = existing_info or await self._invoke("notesInfo", notes=[existing_nid])
             result = await self._update_existing_note(item, note, html_fields, existing_nid, info)
-            result.new_cid = await self._fetch_cid(existing_nid)
-            self.logger.info(
-                f"[heal] {item.source_file} #{item.source_index} -> nid={existing_nid} "
-                f"cid={result.new_cid} deck={note.deck!r}"
-            )
-            return result
+            return result, "heal"
 
         params = {
             "note": {
@@ -274,19 +306,15 @@ class AnkiConnectAdapter(AnkiBridge):
             raise Exception("addNote returned null ID")
         self._index_new_note(note, html_fields, int(new_id))
 
-        new_cid_val = await self._fetch_cid(new_id)
-
-        self.logger.info(
-            f"[create] {item.source_file} #{item.source_index} -> nid={new_id} cid={new_cid_val}"
-        )
-        return UpdateItem(
+        result = UpdateItem(
             source_file=item.source_file,
             source_index=item.source_index,
             new_nid=str(new_id),
-            new_cid=new_cid_val,
+            new_cid=None,
             ok=True,
             note=note,
         )
+        return result, "create"
 
     @staticmethod
     def _normalize_field(value: str) -> str:
@@ -295,7 +323,9 @@ class AnkiConnectAdapter(AnkiBridge):
         text = re.sub(r"\{\{c\d+::", "", text).replace("}}", "")
         return " ".join(text.split()).strip().lower()
 
-    async def _find_existing_note(self, note: Any, html_fields: dict) -> int | None:
+    async def _find_existing_note(
+        self, note: Any, html_fields: dict
+    ) -> tuple[int | None, list[dict] | None]:
         """Find the Anki note that already IS this card, for a card without a usable nid.
 
         Lookup order, both collection-wide:
@@ -303,31 +333,35 @@ class AnkiConnectAdapter(AnkiBridge):
           2. normalized first-field content within the same model (indexed once per run).
         Deck is deliberately not part of either lookup: a twin that landed in the wrong
         deck is still the same card and gets moved by the caller, not duplicated.
+        Returns the nid and, when the lookup already read it, the note's notesInfo reply.
         """
         first_field_name = next(iter(html_fields))
         our_value = self._normalize_field(html_fields[first_field_name])
         if not our_value:
-            return None
+            return None, None
 
         arete_id = next((t for t in note.tags if str(t).startswith("arete_")), None)
         if arete_id:
-            nid = await self._match_by_tag(arete_id, first_field_name, our_value)
-            if nid is not None:
-                self.logger.info(f" -> Healed by arete ID {arete_id}: nid={nid}")
-                return nid
+            match = await self._match_by_tag(arete_id, first_field_name, our_value)
+            if match is not None:
+                self.logger.info(f" -> Healed by arete ID {arete_id}: nid={match['noteId']}")
+                return int(match["noteId"]), [match]
 
         index = await self._content_index_for(note.model, first_field_name)
         matches = index.get(our_value)
         if matches:
             nid = matches[0]
             self.logger.info(f" -> Healed! matched existing note: {nid}")
-            return nid
-        return None
+            return nid, None
+        return None, None
 
     async def _match_by_tag(
         self, arete_id: str, first_field_name: str, our_value: str
-    ) -> int | None:
-        """Resolve a card by its arete ID tag; content must still match (tags can be copied)."""
+    ) -> dict | None:
+        """Resolve a card by its arete ID tag; content must still match (tags can be copied).
+
+        Returns the notesInfo entry of the matched note.
+        """
         try:
             candidates = await self._invoke("findNotes", query=f"tag:{arete_id}")
         except Exception as e:
@@ -336,14 +370,14 @@ class AnkiConnectAdapter(AnkiBridge):
         if not candidates:
             return None
 
-        matches = [
-            int(info["noteId"])
+        matches = {
+            int(info["noteId"]): info
             for info in await self._notes_info_chunked(candidates)
             if self._normalize_field(
                 info.get("fields", {}).get(first_field_name, {}).get("value", "")
             )
             == our_value
-        ]
+        }
         if not matches:
             self.logger.warning(
                 f"[heal] tag {arete_id} is on {len(candidates)} note(s) but none match "
@@ -355,7 +389,7 @@ class AnkiConnectAdapter(AnkiBridge):
                 f"[heal] tag {arete_id} matches {len(matches)} notes; using oldest "
                 f"nid={min(matches)} (the rest are duplicates -- prune them)"
             )
-        return min(matches)
+        return matches[min(matches)]
 
     async def _content_index_for(self, model: str, first_field_name: str) -> dict[str, list[int]]:
         """Build (once per run, per model) normalized first field -> sorted nids."""
@@ -400,16 +434,6 @@ class AnkiConnectAdapter(AnkiBridge):
         val = self._normalize_field(html_fields[first_field_name])
         if val:
             index.setdefault(val, []).append(nid)
-
-    async def _fetch_cid(self, nid: int) -> str | None:
-        """Fetch the first card ID for a note."""
-        try:
-            info_new = await self._invoke("notesInfo", notes=[nid])
-            if info_new and info_new[0].get("cards"):
-                return str(info_new[0]["cards"][0])
-        except Exception as e_cid:
-            self.logger.warning(f"Failed to fetch CID for nid={nid}: {e_cid}")
-        return None
 
     async def _invoke(self, action: str, **params) -> Any:
         payload = {"action": action, "version": 6, "params": params}
