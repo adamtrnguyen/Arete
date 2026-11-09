@@ -145,6 +145,18 @@ class ContentCache:
             )
             self._conn.commit()
 
+    def set_file_metas(self, rows: Iterable[tuple[Path, str, dict[str, Any], float, int]]) -> None:
+        """Write many (path, hash, meta, mtime, size) rows in one transaction, all or none."""
+        params = [(str(p), h, mtime, size, json.dumps(meta)) for p, h, meta, mtime, size in rows]
+        if not params:
+            return
+        with self._lock, self._conn:
+            self._conn.executemany(
+                "INSERT OR REPLACE INTO files (path, hash, mtime, size, meta_json) "
+                "VALUES (?, ?, ?, ?, ?)",
+                params,
+            )
+
     def clear(self):
         with self._lock:
             self._conn.execute("DELETE FROM cards")

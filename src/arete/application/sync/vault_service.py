@@ -3,7 +3,7 @@ import logging
 from collections import defaultdict
 from collections.abc import Iterable
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 
 from arete.application.utils.common import sanitize
 from arete.application.utils.fs import iter_markdown_files
@@ -13,6 +13,16 @@ from arete.domain.models import UpdateItem
 
 # _quick_check_file reasons for an Arete file whose cards (and nids) could not be read.
 UNREADABLE_REASONS = ("read_error", "no_or_bad_yaml", "no_deck")
+
+# Stat-cache meta for a file whose text is not an Arete note. The entry matches only the
+# mtime and size it was read at, so any edit (one that adds `arete:` included) misses it
+# and the file is read again. A reader that knows only `arete: true` entries sees a miss.
+NOT_ARETE_META: dict[str, Any] = {"__not_arete__": True}
+
+
+@runtime_checkable
+class _BatchingFileCache(Protocol):
+    def set_file_metas(self, rows: list[tuple[Path, str, dict[str, Any], float, int]]) -> None: ...
 
 
 class VaultService:
@@ -25,6 +35,8 @@ class VaultService:
         # Arete files the last scan could not read. Their note ids are unknowable, so
         # nothing in Anki can be proven orphaned while this is non-empty (see prune).
         self.unreadable: list[tuple[Path, str]] = []
+        # Plain notes read by this scan: (path, mtime, size) at the stat before the read.
+        self._not_arete: list[tuple[Path, float, int]] = []
 
     def scan_for_compatible_files(self) -> Iterable[tuple[Path, dict[str, Any], bool]]:
         """Iterate over all markdown files in the vault, check them for validity.
@@ -35,6 +47,7 @@ class VaultService:
                  is_fresh=False means we loaded meta from stat-cache (cache was warm).
         """
         self.unreadable = []
+        self._not_arete = []
         for p in iter_markdown_files(self.root):
             ok, _, reason, meta, is_fresh = self._quick_check_file(p)
             if not ok and reason and reason.startswith(UNREADABLE_REASONS):
@@ -45,6 +58,22 @@ class VaultService:
                 yield p, meta, is_fresh
             else:
                 self.logger.debug(f"[vault] Skipped {p.name}: {reason}")
+        self._remember_not_arete()
+
+    def _remember_not_arete(self) -> None:
+        """Store this scan's plain notes in the stat cache, in one transaction."""
+        rows = [(p, "", NOT_ARETE_META, mtime, size) for p, mtime, size in self._not_arete]
+        self._not_arete = []
+        if not rows or not self.cache:
+            return
+        try:
+            if isinstance(self.cache, _BatchingFileCache):
+                self.cache.set_file_metas(rows)
+            else:
+                for p, h, meta, mtime, size in rows:
+                    self.cache.set_file_meta(p, h, meta, mtime=mtime, size=size)
+        except Exception as e:
+            self.logger.warning(f"[cache] could not record {len(rows)} plain notes: {e}")
 
     def _card_position(self, cards: list[Any], u: UpdateItem) -> int | None:
         """Where to write this card's nid/cid: found by its Arete id, not its position.
@@ -79,6 +108,8 @@ class VaultService:
         if self.cache and not self.ignore_cache:
             try:
                 cached_meta = self.cache.get_file_meta_by_stat(md_file, mtime, size)
+                if cached_meta == NOT_ARETE_META:
+                    return (False, 0, "not_arete_file", None, False)
                 if cached_meta and cached_meta.get("arete") is True:
                     cards = cached_meta.get("cards", [])
                     return (True, len(cards), None, cached_meta, False)
@@ -93,12 +124,14 @@ class VaultService:
         # Only parse files that could be Arete notes; the parse below decides. The marker
         # can sit after a long cards block, so the whole text is searched, not a prefix.
         if "arete:" not in text:
+            self._not_arete.append((md_file, mtime, size))
             return (False, 0, "not_arete_file", None, True)
 
         meta, _body = parse_frontmatter(text)
         if not meta or "__yaml_error__" in meta:
             return (False, 0, "no_or_bad_yaml", None, True)
         if meta.get("arete") is not True:
+            self._not_arete.append((md_file, mtime, size))
             return (False, 0, "not_arete_file", None, True)
 
         cards = meta.get("cards", [])
@@ -117,9 +150,9 @@ class VaultService:
                     f"[vault] {md_file.name}: no deck, but accepted for normalization (--force)"
                 )
 
-        # The stat cache is written by record_synced, after the file's cards reached Anki.
-        # Writing it here let a dry run, or a run where a card failed, hide the edit from
-        # every later sync.
+        # An Arete file enters the stat cache in record_synced, after its cards reached
+        # Anki. Writing it here let a dry run, or a run where a card failed, hide the edit
+        # from every later sync. Only plain notes are remembered by the scan itself.
         return (True, len(cards), None, meta, True)
 
     def record_synced(self, paths: Iterable[Path]) -> None:
