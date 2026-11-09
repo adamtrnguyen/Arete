@@ -36,9 +36,15 @@ describe('graph views load 3d-force-graph lazily', () => {
 	it('requires it on the first local 3D render', () => {
 		let graph3D: any;
 		const loads = withViews(({ local }) => {
-			const view = Object.create(local.prototype);
+			const view = new local(
+				{},
+				{
+					dependencyResolver: {},
+					getCardContext: jest.fn(),
+					setCardContext: jest.fn(),
+				},
+			);
 			view.container = element();
-			view.graph3D = null;
 			view.render3DGraph(element(), [], []);
 			graph3D = view.graph3D;
 		});
@@ -49,9 +55,8 @@ describe('graph views load 3d-force-graph lazily', () => {
 	it('requires it on the first global 3D render', () => {
 		let graph3D: any;
 		const loads = withViews(({ global }) => {
-			const view = Object.create(global.prototype);
+			const view = new global({}, { dependencyResolver: {} });
 			view.graphContainer = element();
-			view.graph3D = null;
 			view.graphData = {
 				files: [{ path: 'a.md', basename: 'a', cardCount: 1, cardIds: ['x'] }],
 				cards: [{ id: 'x', title: 'x', filePath: 'a.md', lineNumber: 1 }],

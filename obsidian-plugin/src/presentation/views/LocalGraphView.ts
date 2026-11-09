@@ -65,6 +65,13 @@ export class LocalGraphView extends ItemView {
 	private drawnSize = { width: 0, height: 0 };
 	/** Where the 2D layout is centred, in svg units. */
 	private layoutCenter = { x: 0, y: 0 };
+	/**
+	 * Parent of what MarkdownRenderer attaches for the current 2D drawing (card-mode nodes
+	 * and hover tooltips). A child of tooltipComponent, unloaded when the drawing goes.
+	 */
+	private drawingComponent: Component | null = null;
+	/** Hover tooltips of the current drawing by node id, rendered on first hover. */
+	private tooltipCache = new Map<string, HTMLElement>();
 
 	constructor(leaf: WorkspaceLeaf, plugin: LocalGraphHost) {
 		super(leaf);
@@ -460,8 +467,16 @@ export class LocalGraphView extends ItemView {
 		}
 	}
 
+	/** Release the current drawing's rendered markdown; the next drawing starts empty. */
+	private releaseDrawing(): void {
+		if (this.drawingComponent) this.tooltipComponent.removeChild(this.drawingComponent);
+		this.drawingComponent = null;
+		this.tooltipCache.clear();
+	}
+
 	renderEmpty(container: HTMLElement, msg: string) {
 		this.drawnKey = null;
+		this.releaseDrawing();
 		container.empty();
 		container.createDiv({
 			text: msg,
@@ -529,6 +544,9 @@ export class LocalGraphView extends ItemView {
 
 	renderD3Graph(container: HTMLElement, nodes: GraphNode[], links: GraphLink[]) {
 		container.empty();
+		this.releaseDrawing();
+		const drawingComponent = this.tooltipComponent.addChild(new Component());
+		this.drawingComponent = drawingComponent;
 
 		// Setup Tooltip Container if not exists
 		if (!this.tooltipContainer) {
@@ -639,7 +657,7 @@ export class LocalGraphView extends ItemView {
 		if (this.renderCardNodes) {
 			// --- Card Mode ---
 			const app = this.app;
-			const component = this.tooltipComponent;
+			const component = drawingComponent;
 
 			nodeGroup.each(function (d) {
 				const group = d3.select(this);
@@ -726,11 +744,18 @@ export class LocalGraphView extends ItemView {
 						this.tooltipContainer.style.left = event.pageX + 10 + 'px';
 						this.tooltipContainer.style.top = event.pageY + 10 + 'px';
 
-						// Populate tooltip
+						// Populate tooltip. A node's tooltip is rendered on its first hover in
+						// this drawing and reattached on later ones.
 						this.tooltipContainer.empty();
+						const cached = this.tooltipCache.get(d.id);
+						if (cached) {
+							this.tooltipContainer.appendChild(cached);
+							return;
+						}
 						const cardDiv = this.tooltipContainer.createDiv({
 							cls: 'arete-card-preview',
 						});
+						this.tooltipCache.set(d.id, cardDiv);
 						cardDiv.style.width = '300px';
 						cardDiv.style.maxHeight = '300px';
 						cardDiv.style.overflow = 'auto';
@@ -749,7 +774,7 @@ export class LocalGraphView extends ItemView {
 							cardDiv,
 							cardMock,
 							d.filePath,
-							this.tooltipComponent,
+							drawingComponent,
 						);
 					}
 				})
@@ -870,6 +895,7 @@ export class LocalGraphView extends ItemView {
 	 */
 	render3DGraph(container: HTMLElement, nodes: GraphNode[], links: GraphLink[]) {
 		container.empty();
+		this.releaseDrawing();
 
 		// Destroy previous 3D graph if exists
 		if (this.graph3D) {
