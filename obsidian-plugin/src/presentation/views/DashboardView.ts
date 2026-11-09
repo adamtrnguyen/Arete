@@ -17,6 +17,8 @@ export interface DashboardHost {
 	areteClient: AreteClient;
 	saveSettings(): Promise<void>;
 	saveStats(): Promise<void>;
+	/** Persist the `ui_expanded_*` settings soon; repeated calls coalesce into one write. */
+	requestSaveUiState(): void;
 }
 
 export const DASHBOARD_VIEW_TYPE = 'arete-stats-view';
@@ -30,6 +32,8 @@ export class DashboardView extends ItemView {
 	// Overview State
 	expandedConcepts: Set<string>;
 	expandedDecks: Set<string>;
+	// Deck tree for one stats-cache `concepts` map; rebuilt only when the map is replaced.
+	private aggregated: { concepts: object; root: StatsNode } | null = null;
 	// Integrity State
 	brokenRefs: BrokenReference[] | null = null;
 	isScanning = false;
@@ -211,7 +215,11 @@ export class DashboardView extends ItemView {
 		}
 
 		// Use the service to get the pre-calculated tree
-		const root = this.plugin.statsService.getAggregatedStats(concepts);
+		if (this.aggregated?.concepts !== conceptsMap) {
+			const root = this.plugin.statsService.getAggregatedStats(concepts);
+			this.aggregated = { concepts: conceptsMap, root };
+		}
+		const root = this.aggregated.root;
 
 		// Render Tree
 		const list = container.createDiv({ cls: 'arete-deck-list' });
@@ -323,31 +331,32 @@ export class DashboardView extends ItemView {
 			scoreBadge.style.marginLeft = '10px';
 		}
 
-		header.onclick = async () => {
-			// Find the correct container by looking for .arete-dashboard-content
-			const overviewContainer = container.closest('.arete-dashboard-content') as HTMLElement;
-			if (!overviewContainer) return;
+		// Children go in their own element, so a toggle rebuilds only this subtree.
+		const body = deckContainer.createDiv();
+
+		header.onclick = () => {
+			const expanded = node.isLeaf ? this.expandedConcepts : this.expandedDecks;
+			if (expanded.has(expansionKey)) {
+				expanded.delete(expansionKey);
+			} else {
+				expanded.add(expansionKey);
+			}
+			this.persistExpansion();
+
+			// Stats refreshed since the tree was built: rebuild it all with the new numbers.
+			if (this.aggregated?.concepts !== this.plugin.statsService.getCache().concepts) {
+				const overviewContainer = container.closest(
+					'.arete-dashboard-content',
+				) as HTMLElement | null;
+				if (overviewContainer) this.renderOverview(overviewContainer);
+				return;
+			}
 
 			if (!node.isLeaf) {
-				if (this.expandedDecks.has(expansionKey)) {
-					this.expandedDecks.delete(expansionKey);
-				} else {
-					this.expandedDecks.add(expansionKey);
-				}
-				this.plugin.saveSettings();
-				// Re-render whole view to refresh tree state
-				this.renderOverview(overviewContainer);
-			} else {
-				// Leaf click: Toggle file expansion
-				if (this.expandedConcepts.has(node.filePath)) {
-					this.expandedConcepts.delete(node.filePath);
-				} else {
-					this.expandedConcepts.add(node.filePath);
-				}
-				this.plugin.saveSettings();
-				// Re-render using correct container
-				this.renderOverview(overviewContainer);
+				setIcon(icon, expanded.has(expansionKey) ? 'chevron-down' : 'chevron-right');
 			}
+			body.empty();
+			this.renderNodeBody(body, node, depth);
 		};
 
 		// Leaf name click action (go to file)
@@ -359,21 +368,32 @@ export class DashboardView extends ItemView {
 			};
 		}
 
-		// Children Rendering
-		if (!node.isLeaf && this.expandedDecks.has(expansionKey)) {
+		this.renderNodeBody(body, node, depth);
+	}
+
+	/** Render a node's expanded content (child decks, or a file's cards) into `body`. */
+	private renderNodeBody(body: HTMLElement, node: StatsNode, depth: number) {
+		if (!node.isLeaf && this.expandedDecks.has(node.deckName)) {
 			// Render children nodes
 			Object.values(node.children).forEach((child) =>
-				this.renderDeckNode(deckContainer, child, depth + 1),
+				this.renderDeckNode(body, child, depth + 1),
 			);
 		} else if (node.isLeaf && this.expandedConcepts.has(node.filePath)) {
 			// This is a file, find ConceptStats to render individual cards
 			const concepts = this.plugin.statsService.getCache().concepts[node.filePath];
 			if (concepts) {
-				const cardListWrapper = deckContainer.createDiv({ cls: 'arete-card-list-wrapper' });
+				const cardListWrapper = body.createDiv({ cls: 'arete-card-list-wrapper' });
 				cardListWrapper.style.paddingLeft = `${24 + depth * 16}px`;
 				this.renderCardList(cardListWrapper, concepts);
 			}
 		}
+	}
+
+	/** Copy the expansion sets into settings and ask the plugin to persist them. */
+	private persistExpansion() {
+		this.plugin.settings.ui_expanded_decks = [...this.expandedDecks];
+		this.plugin.settings.ui_expanded_concepts = [...this.expandedConcepts];
+		this.plugin.requestSaveUiState();
 	}
 
 	renderCardList(container: HTMLElement, concept: ConceptStats) {

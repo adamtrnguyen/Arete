@@ -48,6 +48,8 @@ function mayAffectGraph(cache: CachedMetadata | null | undefined): boolean {
 	return !!fm && (fm.arete !== undefined || fm.cards !== undefined);
 }
 
+const UI_STATE_SAVE_DELAY_MS = 1000;
+
 export default class AretePlugin extends Plugin {
 	settings: AretePluginSettings;
 	statsCache: StatsCache;
@@ -68,6 +70,10 @@ export default class AretePlugin extends Plugin {
 
 	// One sync-on-save timer per note, so editing B within the delay does not cancel A.
 	private syncOnSaveTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
+
+	// Debounced save of the dashboard's `ui_expanded_*` settings, and what was last written.
+	private uiStateSaveTimer: ReturnType<typeof setTimeout> | null = null;
+	private savedUiState = '';
 
 	async onload() {
 		console.log('[Arete] Plugin Loading...');
@@ -539,6 +545,7 @@ export default class AretePlugin extends Plugin {
 	onunload() {
 		for (const timer of this.syncOnSaveTimers.values()) clearTimeout(timer);
 		this.syncOnSaveTimers.clear();
+		if (this.uiStateSaveTimer) void this.flushUiState();
 		if (this.statusBarItem) {
 			this.statusBarItem.empty();
 		}
@@ -658,15 +665,47 @@ export default class AretePlugin extends Plugin {
 		if (this.settings.project_root.startsWith('~')) {
 			this.settings.project_root = this.settings.project_root.replace('~', home);
 		}
+		this.savedUiState = this.uiStateKey();
 	}
 
-	async saveSettings() {
+	/** What `data.json` holds: the settings, `project_root` relative to home, and the stats cache. */
+	private dataToSave() {
 		const toSave = { ...this.settings, statsCache: this.statsCache };
 		const home = os.homedir();
 		if (toSave.project_root.startsWith(home)) {
 			toSave.project_root = toSave.project_root.replace(home, '~');
 		}
-		await this.saveData(toSave);
+		return toSave;
+	}
+
+	private uiStateKey(): string {
+		return JSON.stringify([
+			this.settings.ui_expanded_decks,
+			this.settings.ui_expanded_concepts,
+		]);
+	}
+
+	/**
+	 * Persist the dashboard's expansion state after a short quiet period. A burst of
+	 * toggles writes `data.json` once, and not at all if it ends where it started.
+	 */
+	requestSaveUiState(): void {
+		if (this.uiStateSaveTimer) clearTimeout(this.uiStateSaveTimer);
+		this.uiStateSaveTimer = setTimeout(() => void this.flushUiState(), UI_STATE_SAVE_DELAY_MS);
+	}
+
+	private async flushUiState(): Promise<void> {
+		if (this.uiStateSaveTimer) clearTimeout(this.uiStateSaveTimer);
+		this.uiStateSaveTimer = null;
+		const state = this.uiStateKey();
+		if (state === this.savedUiState) return;
+		this.savedUiState = state;
+		await this.saveData(this.dataToSave());
+	}
+
+	async saveSettings() {
+		this.savedUiState = this.uiStateKey();
+		await this.saveData(this.dataToSave());
 		// Update services with new settings
 		this.syncService.settings = this.settings;
 		this.checkService.settings = this.settings;
