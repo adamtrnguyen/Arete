@@ -119,3 +119,7 @@ class UpdateItem:
     ok: bool
     error: str | None = None
     note: AnkiNote | None = None
+
+
+class OutcomeUnknown(Exception):
+    """A write that is not safe to send twice lost its reply: it may or may not have landed."""

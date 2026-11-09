@@ -6,6 +6,10 @@ a ``multi`` sub-action that names none) gets the bare result, any other gets
 ``{"result", "error"}``, and an error is always ``{"result": None, "error"}``.
 ``requests`` counts HTTP requests by action; ``sub_actions`` counts what ran inside
 ``multi``. Plug it in with ``adapter._http_request = fake.http``.
+
+``interrupt`` cuts a request off in transit: ``(applied, exc)`` runs the action first
+when ``applied`` is true, then raises ``exc`` where the reply would be. A ``TimeoutError``
+there is what ``asyncio.wait_for`` raises when Anki answers too late.
 """
 
 from __future__ import annotations
@@ -32,6 +36,11 @@ class FakeAnki:
         self.log: list[tuple[str, dict]] = []
         # fail(action, params) -> error text or None: inject an add-on error.
         self.fail: Callable[[str, dict], str | None] = lambda action, params: None
+        # interrupt(action, params) -> (applied, exception) or None: lose the reply.
+        self.interrupt: Callable[[str, dict], tuple[bool, BaseException] | None] = (
+            lambda action, params: None
+        )
+        self.templates: dict[str, int] = {}  # model -> number of card templates (default 1)
         self._next_id = 1000
 
     # -- state helpers -------------------------------------------------------
@@ -68,6 +77,12 @@ class FakeAnki:
     async def http(self, payload: dict) -> Any:
         self.requests[payload["action"]] += 1
         await asyncio.sleep(0)  # a real transport yields, so concurrent callers interleave
+        cut = self.interrupt(payload["action"], payload.get("params", {}))
+        if cut is not None:
+            applied, exc = cut
+            if applied:
+                self._handle(payload)
+            raise exc
         return self._handle(payload)
 
     def _handle(self, request: dict) -> Any:
@@ -109,6 +124,10 @@ class FakeAnki:
     def _a_modelFieldAdd(self, modelName, fieldName):
         self.models[modelName].append(fieldName)
 
+    def _a_modelTemplates(self, modelName):
+        n = self.templates.get(modelName, 1)
+        return {f"Card {i + 1}": {"Front": "", "Back": ""} for i in range(n)}
+
     def _note_info(self, nid):
         note = self.notes.get(nid)
         if note is None:
@@ -145,9 +164,51 @@ class FakeAnki:
         raise Exception(f"fake cannot search {query!r}")
 
     def _a_addNote(self, note):
+        if note["modelName"] not in self.models:
+            raise Exception("model was not found: {}".format(note["modelName"]))
         if note["deckName"] not in self.decks:
             raise Exception("deck was not found: {}".format(note["deckName"]))
+        self._refuse_duplicate(note)
         return self.add(note["fields"], note["deckName"], note["modelName"], note["tags"])
+
+    def _refuse_duplicate(self, note: dict) -> None:
+        """The add-on's check (``createNote``, ``isNoteDuplicateOrEmptyInScope``).
+
+        The note type's first field, HTML stripped, against every note of the same type;
+        with ``duplicateScope: "deck"`` only notes with a card in the target deck count.
+        """
+        options = note.get("options", {})
+        first = self.models[note["modelName"]][0]
+        raw = note["fields"].get(first, "")
+        if not raw.strip():
+            raise Exception("cannot create note because it is empty")
+        value = _checksum_text(raw)
+        if options.get("allowDuplicate", False):
+            return
+        in_deck = options.get("duplicateScope") == "deck"
+        for held in self.notes.values():
+            if held["model"] != note["modelName"]:
+                continue
+            if _checksum_text(held["fields"].get(first, "")) != value:
+                continue
+            if not in_deck or any(self.card_deck[c] == note["deckName"] for c in held["cards"]):
+                raise Exception("cannot create note because it is a duplicate")
+
+    def _a_changeNoteType(self, notes, modelName, newFields):
+        """The add-on's changeNoteType: ``newFields[i]`` indexes the note's current fields."""
+        if modelName not in self.models:
+            raise Exception(f"model was not found: {modelName}")
+        if len({self.notes[int(nid)]["model"] for nid in notes}) != 1:
+            raise Exception("changeNoteType takes notes of one type at a time")
+        for nid in notes:
+            held = self.notes[int(nid)]
+            old = [held["fields"][name] for name in self.models[held["model"]]]
+            held["fields"] = {
+                name: old[i] if i >= 0 else ""
+                for name, i in zip(self.models[modelName], newFields, strict=True)
+            }
+            held["model"] = modelName
+        return True
 
     def _a_updateNoteFields(self, note):
         held = self.notes.get(note["id"])
@@ -188,3 +249,8 @@ class FakeAnki:
     def _a_deleteDecks(self, decks, cardsToo=False):
         for deck in decks:
             self.decks.discard(deck)
+
+
+def _checksum_text(value: str) -> str:
+    """What Anki's field checksum compares: the field without its HTML."""
+    return re.sub(r"<[^>]+>", "", value)

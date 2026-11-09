@@ -352,20 +352,22 @@ def _make_tagged_item(fields, tags, deck="Right::Deck", nid=None):
 @pytest.mark.asyncio
 async def test_heal_by_arete_id_tag_and_move_deck(adapter):
     """A twin found by its arete_ tag is updated and MOVED to the vault's deck, not re-created."""
-    item = _make_tagged_item({"Front": "Q1", "Back": "A"}, tags=["arete_01ABC"])
+    item = _make_tagged_item(
+        {"Front": "Q1", "Back": "A"}, tags=["arete_01ABC000000000000000000000"]
+    )
     calls = []
 
     async def side_effect(action, **kwargs):
         calls.append((action, kwargs))
         if action == "findNotes":
-            assert kwargs["query"] == "tag:arete_01ABC"
+            assert kwargs["query"] == "tag:arete_01ABC000000000000000000000"
             return [500]
         if action == "notesInfo":
             return [
                 {
                     "noteId": 500,
                     "fields": {"Front": {"value": "Q1"}, "Back": {"value": "stale"}},
-                    "tags": ["arete_01ABC"],
+                    "tags": ["arete_01ABC000000000000000000000"],
                     "cards": [501],
                 }
             ]

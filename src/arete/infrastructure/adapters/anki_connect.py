@@ -17,12 +17,69 @@ from arete.domain.constants import (
     SYNC_CONCURRENCY,
 )
 from arete.domain.interfaces import AnkiBridge
-from arete.domain.models import AnkiDeck, UpdateItem, WorkItem
+from arete.domain.models import AnkiDeck, OutcomeUnknown, UpdateItem, WorkItem
 from arete.domain.note_types import map_note_type_fields
+from arete.domain.ownership import is_arete_id
 
 # Writes sent in one multi request. Every write resets Anki's UI on its main thread, so
 # one request holds no more than a consumer batch.
 _WRITES_PER_REQUEST = 50
+
+# Whether an action may be sent again after its reply was lost (a timeout, a dropped
+# connection): True where running it twice leaves Anki as running it once does, as the
+# add-on implements it. An action missing here is never sent again. A multi is as safe as
+# its least safe action.
+_RESEND_SAFE: dict[str, bool] = {
+    # reads
+    "version": True,
+    "deckNames": True,
+    "getDecks": True,
+    "findNotes": True,
+    "findCards": True,
+    "notesInfo": True,
+    "cardsInfo": True,
+    "modelFieldNames": True,
+    "modelTemplates": True,
+    "modelStyling": True,
+    # writes that set a state: a second run finds it set
+    "createDeck": True,  # decks.id() returns the existing deck
+    "changeDeck": True,  # sets the deck of the listed cards
+    "updateNoteFields": True,  # sets the listed fields
+    "addTags": True,
+    "removeTags": True,
+    "modelFieldAdd": True,  # adds the field only if the type lacks it
+    "suspend": True,  # sets the queue; a second run answers False
+    "unsuspend": True,
+    "deleteNotes": True,
+    "deleteDecks": True,  # skips a deck that no longer exists
+    "createFilteredDeck": True,  # empties and rebuilds the same deck
+    "guiBrowse": True,
+    # writes that are not: a second addNote makes a second note (or is refused as a
+    # duplicate although the first landed); a second changeNoteType re-maps fields that
+    # were mapped for the old type onto the converted note
+    "addNote": False,
+    "changeNoteType": False,
+}
+
+# Failures that prove the request never reached Anki: no connection was made.
+_NOT_SENT = (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout)
+_ATTEMPTS = 3
+_RETRY_DELAY = 1.0  # seconds before sending again after a timeout
+# A refused connection almost always means Anki is not running, and the caller falls back
+# to the closed-Anki path only once this gives up; so it waits only briefly.
+_NOT_SENT_DELAY = 0.1
+
+
+def _is_resend_safe(action: str, params: dict) -> bool:
+    if action == "multi":
+        subs = params.get("actions") or []
+        return all(_is_resend_safe(s.get("action", ""), s.get("params") or {}) for s in subs)
+    return _RESEND_SAFE.get(action, False)
+
+
+def _unknown_text(action: str, how: str) -> str:
+    return f"AnkiConnect '{action}' {how}: Anki may or may not have applied it"
+
 
 # getDecks names the Default deck for a card whose deck id no longer exists, so a card
 # reported there is no proof that a changeDeck would change nothing.
@@ -468,13 +525,33 @@ class AnkiConnectAdapter(AnkiBridge):
         fields = info.get("fields", {})
         old_fields = sorted(fields, key=lambda name: fields[name].get("order", 0))
         new_fields = await self._invoke("modelFieldNames", modelName=new_model)
-        await self._invoke(
-            "changeNoteType",
-            notes=[nid],
-            modelName=new_model,
-            newFields=map_note_type_fields(old_fields, new_fields),
-        )
+        try:
+            await self._invoke(
+                "changeNoteType",
+                notes=[nid],
+                modelName=new_model,
+                newFields=map_note_type_fields(old_fields, new_fields),
+            )
+        except OutcomeUnknown as lost:
+            await self._confirm_retype(nid, new_model, lost)
         self.logger.info(f"[anki] note {nid}: note type {info.get('modelName')} -> {new_model}")
+
+    async def _confirm_retype(self, nid: int, new_model: str, lost: OutcomeUnknown) -> None:
+        """Count a ``changeNoteType`` with a lost reply as done if the note has the new type.
+
+        It is never sent a second time: its field map indexes the old type's fields, and
+        on a note already converted it would move them again. Otherwise this raises.
+        """
+        try:
+            [held] = await self._invoke("notesInfo", notes=[nid])
+        except Exception as e:
+            raise OutcomeUnknown(f"{lost}. Re-reading note {nid} failed: {e}") from lost
+        if held.get("modelName") != new_model:
+            raise OutcomeUnknown(
+                f"{lost}. Note {nid} is still {held.get('modelName')!r}, so it was not sent "
+                "again; the next sync converts it."
+            ) from lost
+        self.logger.warning(f"[retype] {lost}; note {nid} has type {new_model}, counted as done")
 
     async def _add_or_heal_note(self, item: WorkItem, note: Any, html_fields: dict) -> _NotePlan:
         """Add a new note or heal by matching existing content."""
@@ -495,7 +572,10 @@ class AnkiConnectAdapter(AnkiBridge):
                 "options": {"allowDuplicate": False, "duplicateScope": "deck"},
             }
         }
-        new_id = await self._invoke("addNote", **params)
+        try:
+            new_id = await self._invoke("addNote", **params)
+        except OutcomeUnknown as lost:
+            new_id = await self._adopt_lost_add(note, html_fields, lost)
         if not new_id:
             raise Exception("addNote returned null ID")
         self._index_new_note(note, html_fields, int(new_id))
@@ -510,6 +590,38 @@ class AnkiConnectAdapter(AnkiBridge):
         )
         return _NotePlan(item=item, result=result, label="create")
 
+    async def _adopt_lost_add(self, note: Any, html_fields: dict, lost: OutcomeUnknown) -> int:
+        """The note an ``addNote`` with a lost reply made, found by the card's Arete id.
+
+        ``addNote`` is never sent a second time for the card: if the first one landed, a
+        second would duplicate it. When Anki holds no note with the id, this raises and
+        the card fails; the next sync finds the note by its id, or creates it.
+        """
+        arete_id = self._arete_id_of(note)
+        if arete_id:
+            first_field_name = next(iter(html_fields))
+            our_value = self._normalize_field(html_fields[first_field_name])
+            match = await self._match_by_tag(arete_id, first_field_name, our_value)
+            if match is not None:
+                nid = int(match["noteId"])
+                self.logger.warning(f"[adopt] {lost}; Anki holds {arete_id} as nid={nid}")
+                return nid
+        raise OutcomeUnknown(
+            f"{lost}. No note with id {arete_id} found in Anki, so it was not sent again; "
+            "the next sync reconciles this card."
+        ) from lost
+
+    @staticmethod
+    def _arete_id_of(note: Any) -> str | None:
+        """The card's own Arete id: its ``id:``, else the one tag shaped like an Arete id.
+
+        Not the first tag starting with ``arete_``: file tags come first, and a tag such
+        as ``arete_review`` is not an id.
+        """
+        if note.arete_id:
+            return note.arete_id
+        return next((t for t in note.tags if is_arete_id(str(t))), None)
+
     @staticmethod
     def _normalize_field(value: str) -> str:
         """Normalize a field value for comparison: strip HTML, cloze markers, whitespace."""
@@ -523,7 +635,7 @@ class AnkiConnectAdapter(AnkiBridge):
         """Find the Anki note that already IS this card, for a card without a usable nid.
 
         Lookup order, both collection-wide:
-          1. the card's ``arete_`` ID tag (exact identity);
+          1. the card's Arete id tag (exact identity);
           2. normalized first-field content within the same model (indexed once per run).
         Deck is deliberately not part of either lookup: a twin that landed in the wrong
         deck is still the same card and gets moved by the caller, not duplicated.
@@ -534,7 +646,7 @@ class AnkiConnectAdapter(AnkiBridge):
         if not our_value:
             return None, None
 
-        arete_id = next((t for t in note.tags if str(t).startswith("arete_")), None)
+        arete_id = self._arete_id_of(note)
         if arete_id:
             match = await self._match_by_tag(arete_id, first_field_name, our_value)
             if match is not None:
@@ -642,41 +754,73 @@ class AnkiConnectAdapter(AnkiBridge):
             index.setdefault(val, []).append(nid)
 
     async def _invoke(self, action: str, **params) -> Any:
+        """Send one action and return its result; an error reply raises.
+
+        A request that provably never left (no connection) is sent again, up to
+        ``_ATTEMPTS`` times. A timeout is sent again only for an action ``_RESEND_SAFE``
+        allows. For any other action, a timeout, a dropped connection or an unreadable
+        reply raises ``OutcomeUnknown``: Anki may have applied it.
+        """
         payload = {"action": action, "version": 6, "params": params}
-        max_retries = 2
-        for attempt in range(max_retries + 1):
+        resend_safe = _is_resend_safe(action, params)
+        for attempt in range(1, _ATTEMPTS + 1):
             try:
                 async with self._invoke_sem:
                     data = await asyncio.wait_for(
                         self._http_request(payload), timeout=REQUEST_TIMEOUT
                     )
-
-                if len(data) != 2:
-                    raise ValueError("response has an unexpected number of fields")
-                if "error" not in data:
-                    raise ValueError("response is missing required error field")
-                if "result" not in data:
-                    raise ValueError("response is missing required result field")
-                if data["error"] is not None:
-                    raise Exception(data["error"])
-                return data["result"]
-            except TimeoutError as exc:
+            except _NOT_SENT as exc:
                 self.logger.warning(
-                    f"AnkiConnect timeout on '{action}' (attempt {attempt + 1}/{max_retries + 1})"
+                    f"AnkiConnect '{action}' not sent: {exc} (attempt {attempt}/{_ATTEMPTS})"
                 )
-                # Reset the HTTP client to drop stale connections
-                if self._client is not None:
-                    await self._client.aclose()
-                    self._client = None
-                if attempt < max_retries:
-                    await asyncio.sleep(1.0)
-                    continue
-                raise TimeoutError(
-                    f"AnkiConnect timeout on '{action}' after {max_retries + 1} attempts"
-                ) from exc
+                if attempt == _ATTEMPTS:
+                    raise
+                await asyncio.sleep(_NOT_SENT_DELAY)
+                continue
+            except (TimeoutError, httpx.TimeoutException) as exc:
+                self.logger.warning(
+                    f"AnkiConnect timeout on '{action}' (attempt {attempt}/{_ATTEMPTS})"
+                )
+                await self._reset_client()
+                if not resend_safe:
+                    raise OutcomeUnknown(_unknown_text(action, "timed out")) from exc
+                if attempt == _ATTEMPTS:
+                    raise TimeoutError(
+                        f"AnkiConnect timeout on '{action}' after {_ATTEMPTS} attempts"
+                    ) from exc
             except Exception as e:
                 self.logger.error(f"AnkiConnect call failed: {e}")
+                if not resend_safe:
+                    raise OutcomeUnknown(_unknown_text(action, f"failed in transit ({e})")) from e
                 raise
+            else:
+                return self._result_of(action, data, resend_safe)
+            await asyncio.sleep(_RETRY_DELAY)
+
+    async def _reset_client(self) -> None:
+        """Reset the HTTP client to drop stale connections."""
+        if self._client is not None:
+            await self._client.aclose()
+            self._client = None
+
+    def _result_of(self, action: str, data: Any, resend_safe: bool) -> Any:
+        """The result of a reply. An error reply raises; so does a malformed one."""
+        problem = None
+        if len(data) != 2:
+            problem = "response has an unexpected number of fields"
+        elif "error" not in data:
+            problem = "response is missing required error field"
+        elif "result" not in data:
+            problem = "response is missing required result field"
+        if problem is not None:
+            self.logger.error(f"AnkiConnect call failed: {problem}")
+            if not resend_safe:
+                raise OutcomeUnknown(_unknown_text(action, problem))
+            raise ValueError(problem)
+        if data["error"] is not None:
+            self.logger.error(f"AnkiConnect call failed: {data['error']}")
+            raise Exception(data["error"])
+        return data["result"]
 
     async def _http_request(self, payload: dict) -> dict:
         if self.use_windows_curl:
