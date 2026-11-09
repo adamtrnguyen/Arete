@@ -521,14 +521,36 @@ export class GlobalGraphView extends ItemView {
 			this.renderCardNodes(nodeGroup, matchingIds);
 		}
 
-		// Hover highlight
+		// Hover highlight: global-graph.css dims everything while the svg has
+		// `arete-hovering`, except elements marked `arete-connected`. Only the hovered
+		// node, its neighbours and its links are marked, so a hover costs its degree.
+		const { neighbours, incident } = this.indexLinks(links);
+		const nodeEls = new Map<string, Element>();
+		nodeGroup.each(function (d) {
+			nodeEls.set(d.id, this as Element);
+		});
+		const linkEls = link.nodes() as Element[];
+		const svgEl = svg.node() as Element;
+		let marked: Element[] = [];
+		const clearHover = () => {
+			svgEl.classList.remove('arete-hovering');
+			for (const el of marked) el.classList.remove('arete-connected');
+			marked = [];
+		};
 		nodeGroup
 			.on('mouseover', (_event, d) => {
-				this.highlightConnected(d.id, nodeGroup, link, links, true);
+				clearHover();
+				const mark = (el: Element | undefined) => {
+					if (!el) return;
+					el.classList.add('arete-connected');
+					marked.push(el);
+				};
+				mark(nodeEls.get(d.id));
+				for (const id of neighbours.get(d.id) ?? []) mark(nodeEls.get(id));
+				for (const i of incident.get(d.id) ?? []) mark(linkEls[i]);
+				svgEl.classList.add('arete-hovering');
 			})
-			.on('mouseout', () => {
-				this.highlightConnected(null, nodeGroup, link, links, false);
-			});
+			.on('mouseout', clearHover);
 
 		// Click
 		nodeGroup.on('click', (event, d) => {
@@ -652,28 +674,25 @@ export class GlobalGraphView extends ItemView {
 			})
 			.style('cursor', 'pointer');
 
-		// Labels (only on hover or for selected)
+		// A card's label exists only while the card is hovered, so the svg does not carry
+		// one hidden <text> per card.
 		nodeGroup
-			.append('text')
-			.text((d: any) => {
+			.on('mouseover.label', function (_event, d: any) {
 				const t = d.title || d.id;
-				return t.length > 20 ? t.slice(0, 18) + '...' : t;
-			})
-			.attr('font-size', '8px')
-			.attr('dx', 8)
-			.attr('dy', 3)
-			.attr('fill', 'var(--text-muted)')
-			.attr('opacity', 0)
-			.style('pointer-events', 'none')
-			.attr('class', 'arete-global-graph-card-label');
-
-		// Show labels on hover
-		nodeGroup
-			.on('mouseover.label', function () {
-				d3.select(this).select('.arete-global-graph-card-label').attr('opacity', 1);
+				const group = d3.select(this);
+				group.selectAll('.arete-global-graph-card-label').remove();
+				group
+					.append('text')
+					.text(t.length > 20 ? t.slice(0, 18) + '...' : t)
+					.attr('font-size', '8px')
+					.attr('dx', 8)
+					.attr('dy', 3)
+					.attr('fill', 'var(--text-muted)')
+					.style('pointer-events', 'none')
+					.attr('class', 'arete-global-graph-card-label');
 			})
 			.on('mouseout.label', function () {
-				d3.select(this).select('.arete-global-graph-card-label').attr('opacity', 0);
+				d3.select(this).selectAll('.arete-global-graph-card-label').remove();
 			});
 	}
 
@@ -1123,43 +1142,34 @@ export class GlobalGraphView extends ItemView {
 
 	// --- Helpers ---
 
-	private highlightConnected(
-		hoveredId: string | null,
-		nodeGroup: d3.Selection<any, GlobalNode, any, any>,
-		linkSel: d3.Selection<any, GlobalLink, any, any>,
-		links: GlobalLink[],
-		highlight: boolean,
-	): void {
-		if (!highlight || !hoveredId) {
-			// Reset
-			nodeGroup.select('circle').attr('opacity', 1);
-			nodeGroup.selectAll('text').attr('opacity', () => {
-				// Keep card labels hidden
-				if (this.viewMode === 'card') return 0;
-				return 1;
-			});
-			linkSel.attr('stroke-opacity', 0.4);
-			return;
-		}
-
-		// Find connected node IDs
-		const connected = new Set<string>([hoveredId]);
-		for (const l of links) {
-			const srcId = typeof l.source === 'string' ? l.source : (l.source as GlobalNode).id;
-			const tgtId = typeof l.target === 'string' ? l.target : (l.target as GlobalNode).id;
-			if (srcId === hoveredId) connected.add(tgtId);
-			if (tgtId === hoveredId) connected.add(srcId);
-		}
-
-		nodeGroup.select('circle').attr('opacity', (d) => (connected.has(d.id) ? 1 : 0.1));
-		nodeGroup
-			.selectAll('text:not(.arete-global-graph-card-label)')
-			.attr('opacity', (d: any) => (connected.has(d.id) ? 1 : 0.1));
-		linkSel.attr('stroke-opacity', (d: any) => {
-			const srcId = typeof d.source === 'string' ? d.source : d.source.id;
-			const tgtId = typeof d.target === 'string' ? d.target : d.target.id;
-			return srcId === hoveredId || tgtId === hoveredId ? 0.8 : 0.05;
+	/**
+	 * For each node id: the nodes one link away (either direction) and the indexes in
+	 * `links` of the links that touch it. Accepts endpoints as ids or as resolved nodes.
+	 */
+	private indexLinks(links: GlobalLink[]): {
+		neighbours: Map<string, Set<string>>;
+		incident: Map<string, number[]>;
+	} {
+		const neighbours = new Map<string, Set<string>>();
+		const incident = new Map<string, number[]>();
+		links.forEach((l, i) => {
+			const src = typeof l.source === 'string' ? l.source : (l.source as GlobalNode).id;
+			const tgt = typeof l.target === 'string' ? l.target : (l.target as GlobalNode).id;
+			for (const [a, b] of [
+				[src, tgt],
+				[tgt, src],
+			]) {
+				let set = neighbours.get(a);
+				if (!set) neighbours.set(a, (set = new Set()));
+				set.add(b);
+			}
+			for (const id of src === tgt ? [src] : [src, tgt]) {
+				let list = incident.get(id);
+				if (!list) incident.set(id, (list = []));
+				list.push(i);
+			}
 		});
+		return { neighbours, incident };
 	}
 
 	private applyClusteringForce(

@@ -89,6 +89,30 @@
 	margin-top: 6px;
 }
 
+/* Hover highlight. While a node is hovered the svg has .arete-hovering, and the node, its
+ * neighbours and its links have .arete-connected. CSS beats the opacity attributes the
+ * search sets, so leaving the node shows the search dimming again. */
+.arete-global-graph-canvas svg.arete-hovering .node circle,
+.arete-global-graph-canvas svg.arete-hovering .node text:not(.arete-global-graph-card-label) {
+	opacity: 0.1;
+}
+
+.arete-global-graph-canvas svg.arete-hovering .node.arete-connected circle,
+.arete-global-graph-canvas
+	svg.arete-hovering
+	.node.arete-connected
+	text:not(.arete-global-graph-card-label) {
+	opacity: 1;
+}
+
+.arete-global-graph-canvas svg.arete-hovering line {
+	stroke-opacity: 0.05;
+}
+
+.arete-global-graph-canvas svg.arete-hovering line.arete-connected {
+	stroke-opacity: 0.8;
+}
+
 .arete-global-graph-file-label,
 .arete-global-graph-card-label {
 	font-size: 10px;
