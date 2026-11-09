@@ -73,7 +73,7 @@ def parse_frontmatter(md_text: str) -> tuple[dict[str, Any], str]:
 
     try:
         # Use our custom loader to get line numbers and handle duplicates
-        meta = yaml.load(raw, Loader=UniqueKeyLoader) or {}
+        meta = _load_yaml(raw) or {}
 
         # Add offset to __line__ to make it absolute (account for opening ---)
         offset = 1  # Opening --- is line 0, YAML starts at line 1
@@ -96,8 +96,8 @@ def parse_frontmatter(md_text: str) -> tuple[dict[str, Any], str]:
     return meta, body
 
 
-class UniqueKeyLoader(yaml.SafeLoader):
-    """Custom YAML loader that forbids duplicate keys."""
+class _UniqueKeyConstructor(yaml.constructor.SafeConstructor):
+    """Forbid duplicate keys and record each mapping's 1-based line as `__line__`."""
 
     def construct_mapping(self, node, deep=False):
         mapping = set()
@@ -114,6 +114,62 @@ class UniqueKeyLoader(yaml.SafeLoader):
             # Inject line number (1-based)
             result["__line__"] = node.start_mark.line + 1
         return result
+
+
+class UniqueKeyLoader(_UniqueKeyConstructor, yaml.SafeLoader):
+    """Pure-Python YAML loader that forbids duplicate keys. Its errors are the ones shown."""
+
+
+# libyaml parses about 9x faster than UniqueKeyLoader, and the two must give one answer.
+# libyaml words errors differently and its marks carry no snippet, so a document it rejects
+# is parsed again by UniqueKeyLoader, whose exception is the one raised. The inputs the
+# two read differently go straight to UniqueKeyLoader: a BOM inside the text, a `#` right
+# after a block scalar header (`|#`), an explicit tag (`a: !` is null in PyYAML, '' in
+# libyaml), and a `?` inside a plain scalar in a flow collection (`[what?]`).
+_FastUniqueKeyLoader: type | None = (
+    type("_FastUniqueKeyLoader", (_UniqueKeyConstructor, yaml.CSafeLoader), {})
+    if getattr(yaml, "__with_libyaml__", False)
+    else None
+)
+_PURE_PYTHON_ONLY = re.compile(r"\ufeff|[|>][-+0-9]*#|(?:^|[\s\[{,:])!", re.MULTILINE)
+
+
+def _flow_scalar_has_question_mark(root: Any) -> bool:
+    """Whether a scalar inside a flow collection contains `?` (libyaml reads it, PyYAML not)."""
+    stack = [(root, False)]
+    seen: set[int] = set()
+    while stack:
+        node, in_flow = stack.pop()
+        if id(node) in seen:
+            continue
+        seen.add(id(node))
+        if isinstance(node, yaml.ScalarNode):
+            if in_flow and "?" in node.value:
+                return True
+            continue
+        in_flow = in_flow or bool(node.flow_style)
+        if isinstance(node, yaml.MappingNode):
+            stack.extend((n, in_flow) for pair in node.value for n in pair)
+        else:
+            stack.extend((n, in_flow) for n in node.value)
+    return False
+
+
+def _load_yaml(raw: str) -> Any:
+    if _FastUniqueKeyLoader is None or _PURE_PYTHON_ONLY.search(raw) is not None:
+        return yaml.load(raw, Loader=UniqueKeyLoader)
+    loader = _FastUniqueKeyLoader(raw)
+    try:
+        node = loader.get_single_node()
+        if node is None:
+            return None
+        if not _flow_scalar_has_question_mark(node):
+            return loader.construct_document(node)
+    except Exception:  # noqa: S110 - UniqueKeyLoader below raises the error users see
+        pass
+    finally:
+        loader.dispose()
+    return yaml.load(raw, Loader=UniqueKeyLoader)
 
 
 def validate_frontmatter(md_text: str) -> dict[str, Any]:
@@ -166,7 +222,7 @@ def validate_frontmatter(md_text: str) -> dict[str, Any]:
         raise err
 
     try:
-        return yaml.load(raw, Loader=UniqueKeyLoader) or {}
+        return _load_yaml(raw) or {}
     except yaml.YAMLError as e:
         # Adjust the line number in the exception to match the file
         if hasattr(e, "problem_mark"):
