@@ -1,5 +1,6 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 from fastapi.testclient import TestClient
 
 from arete.interface.http_server import VERSION, app
@@ -194,3 +195,80 @@ def test_stats_closes_its_anki_client(monkeypatch):
 
     assert len(opened) == 5
     assert [c for c in opened if not c.is_closed] == []
+
+
+# --- Blocking work on the event loop (P11) ---
+# Each test sends /health while a slow route runs, with the blocking piece stubbed to wait
+# for /health. While the blocking piece runs on the event loop, /health waits for it.
+
+
+async def _health_during(method: str, path: str, release, body: dict) -> list[str]:
+    import asyncio
+
+    import httpx
+
+    finished: list[str] = []
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://t") as c:
+
+        async def slow():
+            response = await c.request(method, path, json=body)
+            assert response.status_code == 200, response.text
+            finished.append("slow")
+
+        async def health():
+            await asyncio.sleep(0.05)
+            assert (await c.get("/health")).status_code == 200
+            finished.append("health")
+            release.set()
+
+        await asyncio.gather(slow(), health())
+    return finished
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="build_study_queue parses the vault on the event loop "
+    "(application/queue/service.py build_graph calls); the route cannot move it to a thread",
+)
+@pytest.mark.asyncio
+async def test_health_answers_during_a_queue_build(configured_vault):
+    import threading
+
+    from arete.domain.graph import DependencyGraph
+
+    release = threading.Event()
+
+    def blocking_graph(_vault_root):
+        release.wait(timeout=0.5)
+        return DependencyGraph()
+
+    bridge = AsyncMock()
+    bridge.get_due_cards.return_value = [1]
+    bridge.map_nids_to_arete_ids.return_value = ["arete_A"]
+    with (
+        patch("arete.composition.factory.get_anki_bridge", AsyncMock(return_value=bridge)),
+        patch("arete.application.queue.service.build_graph", blocking_graph),
+    ):
+        finished = await _health_during("POST", "/queue/build", release, {})
+    assert finished == ["health", "slow"]
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="the sync pipeline reads files, parses YAML and writes sqlite on the event loop; "
+    "the route cannot move it to a thread",
+)
+@pytest.mark.asyncio
+async def test_health_answers_during_a_sync(configured_vault):
+    import threading
+
+    release = threading.Event()
+
+    async def sync_with_a_blocking_piece(*_args, **_kwargs):
+        release.wait(timeout=0.5)
+        return MagicMock(total_generated=0, total_imported=0, total_errors=0, prune=None)
+
+    with patch("arete.composition.orchestrator.execute_sync", sync_with_a_blocking_piece):
+        finished = await _health_during("POST", "/sync", release, {})
+    assert finished == ["health", "slow"]

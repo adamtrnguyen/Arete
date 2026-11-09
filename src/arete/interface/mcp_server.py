@@ -6,6 +6,7 @@ enabling AI agents (Claude, Gemini, etc.) to interact with Anki flashcards.
 
 from __future__ import annotations
 
+import asyncio
 import functools
 import json
 import logging
@@ -199,7 +200,8 @@ def create_server() -> MCPServer:  # noqa: C901
         root = configured_vault_root()
         vault_root = within_vault(vault_path, root) if vault_path else root
 
-        result = check_graph_health(vault_root, deck_filter=deck or None)
+        # A whole-vault parse: a worker thread keeps the server answering other calls.
+        result = await asyncio.to_thread(check_graph_health, vault_root, deck_filter=deck or None)
         return json.dumps(asdict(result), indent=2)
 
     @mcp.tool()
@@ -436,7 +438,7 @@ def create_server() -> MCPServer:  # noqa: C901
             return json.dumps({"error": "vault_root not configured"})
 
         paths = [p.strip() for p in file_paths.split(",") if p.strip()]
-        result = get_subgraph_for_files(vault_root, paths)
+        result = await asyncio.to_thread(get_subgraph_for_files, vault_root, paths)
         return json.dumps(asdict(result), indent=2)
 
     return mcp

@@ -322,3 +322,47 @@ async def test_a_direct_bridge_is_not_kept_between_calls(mcp_server):
     assert mock_get.await_count == 2
     direct.gui_browse.assert_awaited_once()
     assert connect.gui_browse.await_count == 2
+
+
+# ------------------------------------------------------------------
+# a whole-vault parse does not hold up other calls
+# ------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("tool", "target", "args"),
+    [
+        ("check_graph", "check_graph_health", {}),
+        ("get_dep_subgraph", "get_subgraph_for_files", {"file_paths": "note.md"}),
+    ],
+)
+async def test_graph_tools_leave_the_server_answering(configured_vault, tool, target, args):
+    import asyncio
+    import threading
+
+    from mcp import Client
+
+    (configured_vault / "note.md").write_text("---\narete: true\n---\nbody\n")
+    release = threading.Event()
+    finished: list[str] = []
+
+    def blocking_parse(*_args, **_kwargs):
+        release.wait(timeout=2)  # the server's loop is stuck here unless this runs in a thread
+        raise RuntimeError("stub")
+
+    async def slow(client):
+        await client.call_tool(tool, args)
+        finished.append("slow")
+
+    async def fast(client):
+        await asyncio.sleep(0.05)
+        await client.call_tool("get_note_body", {"file_path": "note.md"})
+        finished.append("fast")
+        release.set()
+
+    with patch(f"arete.application.queue.graph_resolver.{target}", blocking_parse):
+        async with Client(create_server()) as client:
+            await asyncio.gather(slow(client), fast(client))
+
+    assert finished == ["fast", "slow"]
