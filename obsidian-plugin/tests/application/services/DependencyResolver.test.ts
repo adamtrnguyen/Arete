@@ -54,6 +54,19 @@ describe('DependencyResolver', () => {
 		expect(src.calls).toHaveLength(3);
 	});
 
+	it('changes its version when the cached graph is dropped, not when it is reused', async () => {
+		const r = new DependencyResolver(source(), '/vault');
+		const v0 = r.version;
+		await r.buildGraph();
+		await r.buildGraph();
+		expect(r.version).toBe(v0);
+		r.invalidate();
+		const v1 = r.version;
+		expect(v1).not.toBe(v0);
+		await r.buildGraph(true);
+		expect(r.version).not.toBe(v1);
+	});
+
 	it('retries after a failed fetch instead of caching the failure', async () => {
 		const src = source();
 		(src.fetchGraph as jest.Mock).mockRejectedValueOnce(new Error('arete not found'));

@@ -53,6 +53,20 @@ export class LocalGraphView extends ItemView {
 	private clusteringEnabled = false;
 	private graph3D: any = null; // 3d-force-graph instance
 
+	/** Delay that lets bursts of leaf changes, selections and resizes settle. */
+	private static readonly REFRESH_DEBOUNCE_MS = 100;
+	private refreshTimer: ReturnType<typeof setTimeout> | null = null;
+	/** Bumped by each refresh(); a refresh that is no longer the latest does not draw. */
+	private refreshSeq = 0;
+	/**
+	 * What the current drawing shows: file, centre card, options and the resolver's data
+	 * version. Null when no graph is drawn.
+	 */
+	private drawnKey: string | null = null;
+	private drawnSize = { width: 0, height: 0 };
+	/** Where the 2D layout is centred, in svg units. */
+	private layoutCenter = { x: 0, y: 0 };
+
 	constructor(leaf: WorkspaceLeaf, plugin: LocalGraphHost) {
 		super(leaf);
 		this.plugin = plugin;
@@ -88,15 +102,20 @@ export class LocalGraphView extends ItemView {
 		graphDiv.style.overflow = 'hidden'; // SVG handles scroll via zoom
 		graphDiv.style.position = 'relative';
 
-		// Render when the canvas gains or changes size. Polling every 100 ms while hidden
-		// (the old retry) re-rendered forever in a background tab.
+		// Refresh when the canvas gains or changes size. A hidden canvas measures 0x0 and
+		// refresh() skips it, so a zero size is forgotten: showing the view again at its
+		// old size still refreshes. A pure size change only resizes the drawing.
 		let lastSize = '';
 		const observer = new ResizeObserver(([entry]) => {
 			const { width, height } = entry.contentRect;
+			if (width === 0 || height === 0) {
+				lastSize = '';
+				return;
+			}
 			const size = `${Math.round(width)}x${Math.round(height)}`;
-			if (width === 0 || height === 0 || size === lastSize) return;
+			if (size === lastSize) return;
 			lastSize = size;
-			this.refresh();
+			this.scheduleRefresh();
 		});
 		observer.observe(graphDiv);
 		this.register(() => observer.disconnect());
@@ -113,7 +132,7 @@ export class LocalGraphView extends ItemView {
 				console.log('[Arete Graph] Received selection event:', cardId);
 				this.centeredCardId = cardId;
 				// If we receive a selection, we assume the file context is still valid or will handle in refresh
-				this.refresh();
+				this.scheduleRefresh();
 			}),
 		);
 
@@ -123,15 +142,20 @@ export class LocalGraphView extends ItemView {
 				if (af) {
 					this.currentFilePath = af.path;
 				}
-				this.refresh();
+				this.scheduleRefresh();
 			}),
 		);
-		// Update on resize
-		this.registerEvent(
-			this.app.workspace.on('resize', () => {
-				this.refresh();
-			}),
-		);
+		// No workspace 'resize' listener: the ResizeObserver above sees every size change
+		// of the canvas, including those a workspace resize causes.
+	}
+
+	/** Refresh after events settle; refresh() itself skips a picture that is unchanged. */
+	private scheduleRefresh(): void {
+		if (this.refreshTimer) clearTimeout(this.refreshTimer);
+		this.refreshTimer = setTimeout(() => {
+			this.refreshTimer = null;
+			void this.refresh();
+		}, LocalGraphView.REFRESH_DEBOUNCE_MS);
 	}
 
 	renderToolbar() {
@@ -266,6 +290,10 @@ export class LocalGraphView extends ItemView {
 			console.error('[Arete Graph] No canvas element found');
 			return;
 		}
+		// A hidden view measures 0x0 and draws nothing, so it does not fetch the graph
+		// either; the ResizeObserver refreshes once the view is shown.
+		if (canvas.clientWidth === 0 || canvas.clientHeight === 0) return;
+		const seq = ++this.refreshSeq;
 
 		// 1. Get Data Resolution Strategy
 		// Priority:
@@ -360,15 +388,34 @@ export class LocalGraphView extends ItemView {
 			return;
 		}
 
+		// The picture depends on these and on the graph data. The version is read before
+		// the fetch, so a graph dropped while it loads does not match next time.
+		const key = JSON.stringify([
+			filePath,
+			targetCardId,
+			this.depth,
+			this.viewMode,
+			this.showRelated,
+			this.renderCardNodes,
+			this.clusteringEnabled,
+			this.resolver.version,
+		]);
+		if (key === this.drawnKey) {
+			this.resizeDrawing(canvas);
+			return;
+		}
+
 		// Cached; dropped on any markdown edit (main.ts) or the refresh button. An uncached
 		// build asks the Python side (~3 s), so say so instead of showing a stale message.
 		this.renderEmpty(canvas, 'Loading graph…');
 		try {
 			await this.resolver.buildGraph();
 		} catch (e) {
+			if (seq !== this.refreshSeq) return;
 			this.renderEmpty(canvas, `Could not load the graph: ${(e as Error).message}`);
 			return;
 		}
+		if (seq !== this.refreshSeq) return; // a later refresh owns the canvas
 
 		// Use resolver to get structured data
 		const localGraph = this.resolver.getLocalGraph(targetCardId, this.depth);
@@ -395,9 +442,27 @@ export class LocalGraphView extends ItemView {
 		} else {
 			this.renderD3Graph(canvas, nodes, links);
 		}
+		this.drawnKey = key;
+		this.drawnSize = { width: canvas.clientWidth, height: canvas.clientHeight };
+	}
+
+	/** Fit the current drawing to the canvas size, keeping its layout. */
+	private resizeDrawing(canvas: HTMLElement): void {
+		const width = canvas.clientWidth;
+		const height = canvas.clientHeight;
+		if (width === this.drawnSize.width && height === this.drawnSize.height) return;
+		this.drawnSize = { width, height };
+		if (this.viewMode === '3d') {
+			this.graph3D?.width(width).height(height);
+		} else {
+			// Keep the layout centre in the middle of the canvas.
+			const { x, y } = this.layoutCenter;
+			this._svg?.attr('viewBox', [x - width / 2, y - height / 2, width, height]);
+		}
 	}
 
 	renderEmpty(container: HTMLElement, msg: string) {
+		this.drawnKey = null;
 		container.empty();
 		container.createDiv({
 			text: msg,
@@ -490,6 +555,7 @@ export class LocalGraphView extends ItemView {
 			.attr('viewBox', [0, 0, width, height]);
 
 		this._svg = svg;
+		this.layoutCenter = { x: width / 2, y: height / 2 };
 		const g = svg.append('g');
 
 		// Zoom
@@ -739,6 +805,7 @@ export class LocalGraphView extends ItemView {
 	}
 
 	async onClose() {
+		if (this.refreshTimer) clearTimeout(this.refreshTimer);
 		if (this.simulation) this.simulation.stop();
 		this.tooltipComponent.unload();
 	}

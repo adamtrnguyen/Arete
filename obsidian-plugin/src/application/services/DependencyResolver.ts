@@ -21,15 +21,25 @@ export class DependencyResolver {
 	private graphBuilder = new DependencyGraphBuilder();
 	private cycles: string[][] = [];
 	private loaded: Promise<void> | null = null;
+	private dataVersion = 0;
 
 	constructor(
 		private source: GraphSource,
 		private vaultRoot: string,
 	) {}
 
+	/**
+	 * Changes each time the cached graph is dropped. Two equal readings mean the graph a
+	 * caller drew is still the one buildGraph() serves; read it before awaiting buildGraph().
+	 */
+	get version(): number {
+		return this.dataVersion;
+	}
+
 	/** Drop the cached graph; the next buildGraph() fetches it again. */
 	invalidate(): void {
 		this.loaded = null;
+		this.dataVersion++;
 	}
 
 	/** Load the graph once; later calls reuse it until invalidate() (or force). */
