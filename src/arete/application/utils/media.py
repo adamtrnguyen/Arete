@@ -10,29 +10,40 @@ from arete.application.utils.fs import file_md5
 from arete.domain.constants import MEDIA_DIR_NAMES
 
 
-def unique_media_name(dest_dir: Path, src: Path) -> str:
+def _media_target(dest_dir: Path, src: Path) -> tuple[str, bool]:
+    """The name `src` gets in `dest_dir`, and whether that file already holds its bytes."""
     base = src.name
     cand = dest_dir / base
     if not cand.exists():
-        return base
+        return base, False
     try:
         if cand.stat().st_size == src.stat().st_size:
             if file_md5(cand) == file_md5(src):
-                return base
+                return base, True
     except Exception as e:
         # Cannot compare -> fall through to a uniquified name (a duplicate copy, not data loss).
         logging.getLogger(__name__).debug(f"[media] could not compare {cand} with {src}: {e}")
     stem, suf = src.stem, src.suffix
     short = file_md5(src)[:8]
-    return f"{stem}_{short}{suf}"
+    return f"{stem}_{short}{suf}", False
+
+
+def unique_media_name(dest_dir: Path, src: Path) -> str:
+    return _media_target(dest_dir, src)[0]
 
 
 def _copy_to_anki_media(src: Path, anki_media_dir: Path, logger: logging.Logger) -> str | None:
     try:
         anki_media_dir.mkdir(parents=True, exist_ok=True)
-        media_name = unique_media_name(anki_media_dir, src)
-        shutil.copy2(src, anki_media_dir / media_name)
-        logger.debug(f"[media] copied {src} → {anki_media_dir / media_name}")
+        media_name, present = _media_target(anki_media_dir, src)
+        dest = anki_media_dir / media_name
+        # An identical file is left alone. A source that IS the destination still goes to
+        # copy2, which refuses it, so that embed keeps resolving as it always has.
+        if present and not os.path.samefile(src, dest):
+            logger.debug(f"[media] {dest} already holds {src}")
+            return media_name
+        shutil.copy2(src, dest)
+        logger.debug(f"[media] copied {src} → {dest}")
         return media_name
     except Exception as e:
         logger.warning(f"[media] failed to copy '{src}': {e}")
