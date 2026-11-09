@@ -13,6 +13,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
+import copy
 import enum
 import os
 import sys
@@ -98,9 +99,41 @@ def setting(key):
             return env_val
 
     try:
-        return aqt.mw.addonManager.getConfig(__name__).get(key, DEFAULT_CONFIG[key])
+        value = config().get(key, DEFAULT_CONFIG[key])
     except:
         raise Exception(f"setting {key} not found")
+    # A caller may mutate what it gets (CORS list, permission prompts); keep the cache intact.
+    return copy.deepcopy(value)
+
+
+_configFiles = None
+_configCache = None
+
+
+def _fileStamp(path):
+    try:
+        st = os.stat(path)
+    except OSError:
+        return None
+    return (st.st_mtime_ns, st.st_size, st.st_ino)
+
+
+def config():
+    """The add-on config exactly as `addonManager.getConfig` returns it.
+
+    getConfig opens and parses config.json and meta.json on every call. They are re-read
+    here only when either file's stamp changes, so an edit in Anki's config dialog (which
+    writes meta.json) or by hand still applies to the next request.
+    """
+    global _configFiles, _configCache
+    manager = aqt.mw.addonManager
+    if _configFiles is None:
+        folder = manager.addonsFolder(manager.addonFromModule(__name__))
+        _configFiles = (os.path.join(folder, "config.json"), os.path.join(folder, "meta.json"))
+    stamp = tuple(_fileStamp(path) for path in _configFiles)
+    if _configCache is None or _configCache[0] != stamp:
+        _configCache = (stamp, manager.getConfig(__name__))
+    return _configCache[1]
 
 
 # see https://github.com/FooSoft/anki-connect/issues/308
