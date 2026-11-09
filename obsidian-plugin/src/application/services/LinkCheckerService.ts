@@ -33,6 +33,8 @@ const NON_YAML_FIRST_SECTIONS = new Set([
 
 /** Notes checked at once by `checkIntegrity`; each check may spawn `arete vault check`. */
 const CHECK_CONCURRENCY = 4;
+/** Notes read at once by `findAllUnparsedFrontmatter`, which spawns nothing. */
+const READ_CONCURRENCY = 16;
 
 /** `fn` over `items` with at most `limit` calls in flight; results keep item order. */
 async function mapBounded<T, R>(
@@ -77,6 +79,14 @@ export class LinkCheckerService {
 		});
 
 		return perFile.flat();
+	}
+
+	/** The notes among `files` (in their order) whose YAML block the cache could not parse. */
+	async findAllUnparsedFrontmatter(files: TFile[]): Promise<TFile[]> {
+		const problems = await mapBounded(files, READ_CONCURRENCY, (file) =>
+			this.findUnparsedFrontmatter(file),
+		);
+		return files.filter((_, i) => problems[i] !== null);
 	}
 
 	/**

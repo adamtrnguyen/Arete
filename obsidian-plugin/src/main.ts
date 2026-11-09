@@ -645,8 +645,27 @@ export default class AretePlugin extends Plugin {
 		await this.checkService.runFix(filePath);
 	}
 
+	/** The "Debug: Vault Integrity Check" command: notes whose YAML Obsidian cannot parse. */
 	async checkVaultIntegrity() {
-		await this.checkService.checkVaultIntegrity();
+		new Notice('Running Integrity Check...');
+		const files = this.app.vault.getMarkdownFiles();
+		console.log('--- Arete Integrity Check ---');
+
+		const failing = await this.linkCheckerService.findAllUnparsedFrontmatter(files);
+		for (const file of failing) {
+			console.error(
+				`[FAIL] ${file.path}: Has YAML block, but Obsidian Cache has no frontmatter! (Likely Invalid Properties)`,
+			);
+		}
+
+		console.log(
+			`Integrity Check Complete. ${files.length} files checked. ${failing.length} potential issues.`,
+		);
+		if (failing.length > 0) {
+			new Notice(`Found ${failing.length} files with Invalid Properties (Check Console)`);
+		} else {
+			new Notice(`Integrity Check Passed (Obsidian parses all YAML correctly)`);
+		}
 	}
 
 	async testConfig() {

@@ -124,26 +124,4 @@ describe('CheckService', () => {
 			expect.stringContaining('Error: Python Executable setting is empty'),
 		);
 	});
-
-	test('checkVaultIntegrity detects missing frontmatter', async () => {
-		const file = { path: 'fail.md' };
-		(app.vault.getMarkdownFiles as jest.Mock).mockReturnValue([file]);
-		(app.vault.read as jest.Mock).mockResolvedValue('---\ntest: true\n---\n');
-		(app.metadataCache.getFileCache as jest.Mock).mockReturnValue({}); // No frontmatter
-
-		await service.checkVaultIntegrity();
-		expect(Notice).toHaveBeenCalledWith(expect.stringContaining('Found 1 files'));
-	});
-
-	test('checkVaultIntegrity passed', async () => {
-		const file = { path: 'pass.md' };
-		(app.vault.getMarkdownFiles as jest.Mock).mockReturnValue([file]);
-		(app.vault.read as jest.Mock).mockResolvedValue('---\ntest: true\n---\n');
-		(app.metadataCache.getFileCache as jest.Mock).mockReturnValue({
-			frontmatter: { test: true },
-		});
-
-		await service.checkVaultIntegrity();
-		expect(Notice).toHaveBeenCalledWith(expect.stringContaining('Integrity Check Passed'));
-	});
 });

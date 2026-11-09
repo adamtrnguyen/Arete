@@ -101,37 +101,4 @@ export class CheckService implements FileChecker {
 			},
 		);
 	}
-
-	async checkVaultIntegrity() {
-		new Notice('Running Integrity Check...');
-		const files = this.app.vault.getMarkdownFiles();
-		let issues = 0;
-		let checked = 0;
-
-		console.log('--- Arete Integrity Check ---');
-
-		for (const file of files) {
-			checked++;
-			const cache = this.app.metadataCache.getFileCache(file);
-			const content = await this.app.vault.read(file);
-
-			if (content.startsWith('---\n')) {
-				if (!cache || !cache.frontmatter) {
-					console.error(
-						`[FAIL] ${file.path}: Has YAML block, but Obsidian Cache has no frontmatter! (Likely Invalid Properties)`,
-					);
-					issues++;
-				}
-			}
-		}
-
-		console.log(
-			`Integrity Check Complete. ${checked} files checked. ${issues} potential issues.`,
-		);
-		if (issues > 0) {
-			new Notice(`Found ${issues} files with Invalid Properties (Check Console)`);
-		} else {
-			new Notice(`Integrity Check Passed (Obsidian parses all YAML correctly)`);
-		}
-	}
 }

@@ -56,9 +56,10 @@ describe('AretePlugin Composition', () => {
 		await commands['arete-check-file'].editorCallback(null, mockView);
 		expect(plugin.checkService.getCheckResult).toHaveBeenCalledWith('/mock/vault/path/test.md');
 
-		// integrity delegation
+		// integrity: the shared frontmatter check
+		const scan = jest.spyOn(plugin.linkCheckerService, 'findAllUnparsedFrontmatter');
 		await commands['arete-check-integrity'].callback();
-		expect(plugin.checkService.checkVaultIntegrity).toHaveBeenCalled();
+		expect(scan).toHaveBeenCalled();
 	});
 });
 
