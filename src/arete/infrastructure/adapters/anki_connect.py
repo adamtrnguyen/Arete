@@ -721,16 +721,15 @@ class AnkiConnectAdapter(AnkiBridge):
         return await self._invoke("findNotes", query=query)
 
     async def map_nids_to_arete_ids(self, nids: list[int]) -> list[str]:
-        """Convert NIDs to Arete IDs via tags."""
+        """Convert NIDs to Arete IDs via tags; empty if any notesInfo chunk fails."""
         if not nids:
             return []
 
         arete_ids = []
         try:
-            # Chunk request if too large?
-            # AnkiConnect default max is usually generous but let's be safe if list is huge.
-            # For now assume it fits.
-            infos = await self._invoke("notesInfo", notes=nids)
+            infos: list[dict] = []
+            for i in range(0, len(nids), CHUNK_SIZE):
+                infos.extend(await self._invoke("notesInfo", notes=nids[i : i + CHUNK_SIZE]))
             for note in infos:
                 tags = note.get("tags", [])
                 for tag in tags:

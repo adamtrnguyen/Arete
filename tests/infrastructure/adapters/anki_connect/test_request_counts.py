@@ -412,3 +412,28 @@ async def test_a_deck_that_failed_is_retried_and_the_others_are_kept():
     fake.reset_counts()
     assert await adapter._ensure_decks({"A", "B", "C"}) == {"A": True, "B": True, "C": True}
     assert fake.log == [("createDeck", {"deck": "B"})]
+
+
+# ---------------------------------------------------------------------------
+# Queue: due notes mapped to Arete ids in chunks
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_due_notes_are_mapped_to_arete_ids_in_chunks_of_500():
+    fake = FakeAnki()
+    nids = [fake.add({"Front": f"f{i}"}, tags=["x", f"arete_{i}"]) for i in range(1200)]
+
+    ids = await _adapter(fake).map_nids_to_arete_ids(nids)
+
+    assert ids == [f"arete_{i}" for i in range(1200)]
+    assert [len(p["notes"]) for a, p in fake.log if a == "notesInfo"] == [500, 500, 200]
+
+
+@pytest.mark.asyncio
+async def test_a_failed_chunk_maps_nothing_as_a_failed_request_did():
+    fake = FakeAnki()
+    nids = [fake.add({"Front": f"f{i}"}, tags=[f"arete_{i}"]) for i in range(1200)]
+    fake.fail = lambda action, params: "busy" if params.get("notes", [0])[0] == nids[500] else None
+
+    assert await _adapter(fake).map_nids_to_arete_ids(nids) == []
