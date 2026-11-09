@@ -16,6 +16,22 @@ interface SelectionItem {
 	description?: string;
 	value: any; // TFile or Card Object
 	id: string; // Unique ID for selection tracking
+	// label and description lowercased once, for the per-keystroke filter
+	labelLower: string;
+	descLower: string;
+}
+
+/** Results shown at once; the filter stops at this many matches. */
+const MAX_RESULTS = 20;
+/** Quiet period before the preview of the selected item is rendered. */
+const PREVIEW_DELAY_MS = 100;
+
+function selectionItem(fields: Omit<SelectionItem, 'labelLower' | 'descLower'>): SelectionItem {
+	return {
+		...fields,
+		labelLower: fields.label.toLowerCase(),
+		descLower: (fields.description ?? '').toLowerCase(),
+	};
 }
 
 export class DependencySelectionModal extends Modal {
@@ -34,6 +50,9 @@ export class DependencySelectionModal extends Modal {
 	private searchInput: SearchComponent;
 
 	private _component = new Component();
+	private previewTimer: ReturnType<typeof setTimeout> | null = null;
+	// Incremented per preview; a render that finds it changed has been superseded.
+	private previewRevision = 0;
 
 	constructor(app: App, onSubmit: (result: string | null) => void) {
 		super(app);
@@ -90,6 +109,8 @@ export class DependencySelectionModal extends Modal {
 	onClose() {
 		const { contentEl } = this;
 		contentEl.empty();
+		if (this.previewTimer) clearTimeout(this.previewTimer);
+		this.previewRevision++;
 		this._component.unload(); // Unload the component
 	}
 
@@ -101,13 +122,15 @@ export class DependencySelectionModal extends Modal {
 		);
 
 		const files = this.app.vault.getMarkdownFiles();
-		this.items = files.map((f) => ({
-			type: 'file',
-			label: f.basename,
-			description: f.path,
-			value: f, // TFile
-			id: f.path,
-		}));
+		this.items = files.map((f) =>
+			selectionItem({
+				type: 'file',
+				label: f.basename,
+				description: f.path,
+				value: f, // TFile
+				id: f.path,
+			}),
+		);
 
 		this.filterItems('');
 	}
@@ -135,24 +158,26 @@ export class DependencySelectionModal extends Modal {
 				// Simple strip of images/links for list view
 				const label = rawFront.replace(/!\[\[.*?\]\]/g, '[Image]').substring(0, 60);
 
-				return {
+				return selectionItem({
 					type: 'card',
 					label: label,
 					description: c.id,
 					value: c, // Card Object
 					id: c.id,
-				} as SelectionItem;
+				});
 			})
 			.filter((i): i is SelectionItem => i !== null);
 
 		// Back button
-		this.items.unshift({
-			type: 'file', // abusing type slightly for navigation
-			label: '.. (Back to Files)',
-			description: 'Go up one level',
-			value: null,
-			id: '__back__',
-		});
+		this.items.unshift(
+			selectionItem({
+				type: 'file', // abusing type slightly for navigation
+				label: '.. (Back to Files)',
+				description: 'Go up one level',
+				value: null,
+				id: '__back__',
+			}),
+		);
 
 		this.filterItems('');
 	}
@@ -163,21 +188,17 @@ export class DependencySelectionModal extends Modal {
 
 	private filterItems(query: string) {
 		const q = query.toLowerCase();
-		if (!q) {
-			this.filteredItems = [...this.items];
-		} else {
-			this.filteredItems = this.items.filter(
-				(i) =>
-					i.label.toLowerCase().includes(q) ||
-					(i.description && i.description.toLowerCase().includes(q)),
-			);
+		// The first MAX_RESULTS matches in item order (prevents rendering lag).
+		const matches: SelectionItem[] = [];
+		for (const i of this.items) {
+			if (matches.length >= MAX_RESULTS) break;
+			if (!q || i.labelLower.includes(q) || i.descLower.includes(q)) matches.push(i);
 		}
-		// Optimization: Limit to top 20 as requested (and prevent rendering lag)
-		this.filteredItems = this.filteredItems.slice(0, 20);
+		this.filteredItems = matches;
 
 		this.selectedIndex = 0;
 		this.renderResults();
-		this.renderPreview();
+		this.schedulePreview();
 	}
 
 	private renderResults() {
@@ -202,7 +223,7 @@ export class DependencySelectionModal extends Modal {
 			el.addEventListener('mouseenter', () => {
 				this.selectedIndex = idx;
 				this.updateSelectionVisuals();
-				this.renderPreview();
+				this.schedulePreview();
 			});
 			el.addEventListener('click', () => {
 				this.selectCurrent();
@@ -227,7 +248,7 @@ export class DependencySelectionModal extends Modal {
 		this.selectedIndex = (this.selectedIndex + delta + len) % len;
 		this.updateSelectionVisuals();
 		this.ensureScroll();
-		this.renderPreview();
+		this.schedulePreview();
 	}
 
 	private ensureScroll() {
@@ -237,9 +258,28 @@ export class DependencySelectionModal extends Modal {
 		}
 	}
 
+	/** Preview the selected item once selection has been still for PREVIEW_DELAY_MS. */
+	private schedulePreview() {
+		if (this.previewTimer) clearTimeout(this.previewTimer);
+		this.previewTimer = setTimeout(() => {
+			this.previewTimer = null;
+			void this.renderPreview();
+		}, PREVIEW_DELAY_MS);
+	}
+
 	private async renderPreview() {
-		this.previewContainer.empty();
+		const revision = ++this.previewRevision;
 		const item = this.filteredItems[this.selectedIndex];
+		const current = () => revision === this.previewRevision;
+
+		// Read before clearing, so a superseded preview never touches the pane.
+		let fileContent = '';
+		if (item?.type === 'file' && item.id !== '__back__') {
+			fileContent = await this.app.vault.cachedRead(item.value as TFile);
+			if (!current()) return;
+		}
+
+		this.previewContainer.empty();
 
 		if (!item) {
 			this.previewContainer.createDiv({
@@ -262,11 +302,10 @@ export class DependencySelectionModal extends Modal {
 
 		if (item.type === 'file') {
 			const file = item.value as TFile;
-			const content = await this.app.vault.read(file);
 			// Render first 2000 chars to avoid lags on huge files
 			await MarkdownRenderer.render(
 				this.app,
-				content.substring(0, 3000),
+				fileContent.substring(0, 3000),
 				contentEl,
 				file.path,
 				this._component,
