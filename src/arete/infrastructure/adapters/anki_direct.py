@@ -522,11 +522,13 @@ class AnkiDirectAdapter(AnkiBridge):
 
             # We must preserve order.
 
+            seen: set[int] = set()
             for aid in arete_ids:
                 found = repo.col.find_cards(f"tag:{aid}")
                 # Append all cards found (if multiple cards per note, they all go in queue)
                 for cid in found:
-                    if cid not in cids_ordered:
+                    if cid not in seen:
+                        seen.add(cid)
                         cids_ordered.append(cid)
 
         return cids_ordered

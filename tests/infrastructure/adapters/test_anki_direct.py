@@ -895,3 +895,25 @@ async def test_no_collection_fallback(adapter, method, args, expected):
 
         result = await getattr(adapter, method)(*args)
         assert result == expected
+
+
+@pytest.mark.asyncio
+async def test_get_card_ids_for_arete_ids_dedupes_without_rescanning(adapter, mock_repo):
+    """Dedup is a set lookup per card, not a scan of the cards found so far."""
+    comparisons = 0
+
+    class Cid(int):
+        def __eq__(self, other):
+            nonlocal comparisons
+            comparisons += 1
+            return int(self) == int(other)
+
+        __hash__ = int.__hash__
+
+    cids = [Cid(i) for i in range(2000)]
+    mock_repo.col.find_cards.side_effect = [[c] for c in cids]
+
+    result = await adapter.get_card_ids_for_arete_ids([f"arete_{i}" for i in range(2000)])
+
+    assert result == cids
+    assert comparisons < 100  # a list scan makes about 2000 * 1999 / 2
