@@ -86,11 +86,17 @@ export class DependencyGraphBuilder {
 	private nodes: Map<string, CardNode> = new Map();
 	private requires: Map<string, string[]> = new Map();
 	private related: Map<string, string[]> = new Map();
+	/**
+	 * Reverse of `requires`, built on the first `getDependents` after a change. Each list is
+	 * in the insertion order of the `requires` keys, the order a scan of `requires` yields.
+	 */
+	private dependents: Map<string, string[]> | null = null;
 
 	addNode(node: CardNode): void {
 		this.nodes.set(node.id, node);
 		if (!this.requires.has(node.id)) {
 			this.requires.set(node.id, []);
+			this.dependents = null;
 		}
 		if (!this.related.has(node.id)) {
 			this.related.set(node.id, []);
@@ -102,6 +108,7 @@ export class DependencyGraphBuilder {
 		if (!prereqs.includes(toId)) {
 			prereqs.push(toId);
 			this.requires.set(fromId, prereqs);
+			this.dependents = null;
 		}
 	}
 
@@ -117,14 +124,20 @@ export class DependencyGraphBuilder {
 		return this.requires.get(cardId) || [];
 	}
 
+	/** Cards that require `cardId`, as a fresh array. */
 	getDependents(cardId: string): string[] {
-		const dependents: string[] = [];
-		for (const [id, prereqs] of this.requires) {
-			if (prereqs.includes(cardId)) {
-				dependents.push(id);
+		if (!this.dependents) {
+			const index = new Map<string, string[]>();
+			for (const [id, prereqs] of this.requires) {
+				for (const prereq of prereqs) {
+					const list = index.get(prereq);
+					if (list) list.push(id);
+					else index.set(prereq, [id]);
+				}
 			}
+			this.dependents = index;
 		}
-		return dependents;
+		return (this.dependents.get(cardId) ?? []).slice();
 	}
 
 	getRelated(cardId: string): string[] {

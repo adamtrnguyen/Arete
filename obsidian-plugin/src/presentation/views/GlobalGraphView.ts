@@ -70,6 +70,8 @@ export class GlobalGraphView extends ItemView {
 
 	// Cached data
 	private graphData: GlobalGraphResult | null = null;
+	/** `graphData.cards` by id, rebuilt with `graphData`. */
+	private cardById = new Map<string, CardNode>();
 
 	// Layout elements
 	private toolbarEl: HTMLElement;
@@ -133,6 +135,7 @@ export class GlobalGraphView extends ItemView {
 	private async loadData(force = false): Promise<void> {
 		await this.resolver.buildGraph(force);
 		this.graphData = this.resolver.getGlobalGraph();
+		this.cardById = new Map(this.graphData.cards.map((c) => [c.id, c]));
 	}
 
 	// --- Toolbar ---
@@ -949,7 +952,7 @@ export class GlobalGraphView extends ItemView {
 			listSection.createEl('h4', { text: 'Cards' });
 			const list = listSection.createEl('ul', { cls: 'arete-global-graph-detail-list' });
 			for (const cid of cardIds) {
-				const card = this.graphData?.cards.find((c) => c.id === cid);
+				const card = this.cardById.get(cid);
 				const li = list.createEl('li');
 				const link = li.createEl('a', {
 					text: card?.title || cid,
@@ -1019,7 +1022,7 @@ export class GlobalGraphView extends ItemView {
 		// Prerequisites
 		const prereqs = this.graphData.requiresEdges
 			.filter((e) => e.fromId === node.id)
-			.map((e) => this.graphData!.cards.find((c) => c.id === e.toId))
+			.map((e) => this.cardById.get(e.toId))
 			.filter(Boolean) as CardNode[];
 
 		if (prereqs.length > 0) {
@@ -1048,7 +1051,7 @@ export class GlobalGraphView extends ItemView {
 		// Dependents
 		const dependents = this.graphData.requiresEdges
 			.filter((e) => e.toId === node.id)
-			.map((e) => this.graphData!.cards.find((c) => c.id === e.fromId))
+			.map((e) => this.cardById.get(e.fromId))
 			.filter(Boolean) as CardNode[];
 
 		if (dependents.length > 0) {
@@ -1080,7 +1083,7 @@ export class GlobalGraphView extends ItemView {
 				.filter((e) => e.fromId === node.id || e.toId === node.id)
 				.map((e) => {
 					const otherId = e.fromId === node.id ? e.toId : e.fromId;
-					return this.graphData!.cards.find((c) => c.id === otherId);
+					return this.cardById.get(otherId);
 				})
 				.filter(Boolean) as CardNode[];
 
