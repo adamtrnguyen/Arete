@@ -5,6 +5,7 @@ Implements StatsRepository by querying the Anki collection directly.
 
 import logging
 from pathlib import Path
+from typing import Any, cast
 
 from arete.domain.stats.models import CardStatsAggregate, ReviewEntry, revlog_interval_days
 from arete.domain.stats.ports import StatsRepository
@@ -12,6 +13,8 @@ from arete.infrastructure.anki.fsrs import fsrs_state_of
 from arete.infrastructure.anki.repository import AnkiRepository
 
 logger = logging.getLogger(__name__)
+
+_SQL_CHUNK = 500  # ids per IN (...) query, well under SQLite's variable limit
 
 
 class DirectStatsRepository(StatsRepository):
@@ -36,34 +39,38 @@ class DirectStatsRepository(StatsRepository):
                 logger.warning("Could not open Anki collection")
                 return []
 
+            # Grouped reads: the cards of every note and the revlog aggregates of every
+            # card, one query per chunk; deck and note lookups once per deck and note.
+            cids_of = self._cids_by_note(repo, nids)
+            revlog = self._revlog_aggregates(repo, [c for cids in cids_of.values() for c in cids])
+            deck_names: dict[int, str] = {}
+            fronts: dict[int, str | None] = {}
+
             for nid in nids:
                 try:
-                    cids = repo.col.find_cards(f"nid:{nid}")
+                    cids = cids_of[int(nid)]
 
                     for cid in cids:
-                        card = repo.col.get_card(cid)
-                        deck = repo.col.decks.get(card.did)
-                        deck_name = deck["name"] if deck else "Unknown"
+                        card = repo.col.get_card(cast(Any, cid))
+                        if card.did not in deck_names:
+                            deck = repo.col.decks.get(card.did)
+                            deck_names[card.did] = deck["name"] if deck else "Unknown"
+                        deck_name = deck_names[card.did]
 
                         # Extract FSRS memory state
                         fsrs_state = fsrs_state_of(card)
 
-                        # Get last review time from revlog
-                        last_review = self._get_last_review_time(repo, cid)
-
                         # Get front content
-                        front = None
-                        try:
-                            note = repo.col.get_note(card.nid)
-                            front = note.fields[0] if note.fields else None
-                        except Exception as e:
-                            logger.debug(f"[stats] no note for cid={card.id}: {e}")
+                        if card.nid not in fronts:
+                            fronts[card.nid] = None
+                            try:
+                                note = repo.col.get_note(card.nid)
+                                fronts[card.nid] = note.fields[0] if note.fields else None
+                            except Exception as e:
+                                logger.debug(f"[stats] no note for cid={card.id}: {e}")
+                        front = fronts[card.nid]
 
-                        # Get answer distribution from revlog
-                        answer_dist = self._get_answer_distribution(repo, cid)
-
-                        # Get average time
-                        avg_time = self._get_average_time(repo, cid)
+                        answer_dist, last_review, avg_time = revlog.get(cid, ({}, None, 0))
 
                         stats_list.append(
                             CardStatsAggregate(
@@ -80,7 +87,7 @@ class DirectStatsRepository(StatsRepository):
                                 average_time_ms=avg_time,
                                 reviews=[],  # Populated on demand via get_review_history
                                 front=front,
-                                answer_distribution=answer_dist,
+                                answer_distribution=dict(answer_dist),
                             )
                         )
 
@@ -192,41 +199,78 @@ class DirectStatsRepository(StatsRepository):
 
         return params
 
-    def _get_answer_distribution(self, repo: AnkiRepository, cid: int) -> dict[int, int]:
-        """Get counts of each answer button rating for a card."""
-        try:
-            if repo.col is None or repo.col.db is None:
-                return {}
+    @staticmethod
+    def _cids_by_note(repo: AnkiRepository, nids: list) -> dict[int, list[int]]:
+        """Card ids per note id, ascending, as find_cards("nid:N") returns them.
 
-            dist: dict[int, int] = {}
-            query = "SELECT ease, COUNT(*) FROM revlog WHERE cid = ? GROUP BY ease"
-            for rating, count in repo.col.db.execute(query, cid):
-                dist[rating] = count
-            return dist
-        except Exception as e:
-            logger.warning(f"[stats] rating distribution query failed for cid={cid}: {e}")
-            return {}
+        One query per chunk of notes. A chunk whose query fails is left out, so its notes
+        are logged and skipped by the caller as a failed find_cards was.
+        """
+        cids_of: dict[int, list[int]] = {}
+        wanted: list[int] = []
+        for nid in nids:
+            try:
+                wanted.append(int(nid))
+            except (TypeError, ValueError):
+                continue  # the caller reports it
+        wanted = list(dict.fromkeys(wanted))
+        if repo.col is None or repo.col.db is None:
+            return cids_of
+        for i in range(0, len(wanted), _SQL_CHUNK):
+            chunk = wanted[i : i + _SQL_CHUNK]
+            query = (
+                f"SELECT nid, id FROM cards WHERE nid IN ({','.join('?' * len(chunk))}) "
+                "ORDER BY nid, id"
+            )
+            try:
+                rows = repo.col.db.all(query, *chunk)
+            except Exception as e:
+                logger.warning(f"[stats] card query failed for {len(chunk)} notes: {e}")
+                continue
+            for nid in chunk:
+                cids_of[nid] = []
+            for nid, cid in rows:
+                cids_of[nid].append(cid)
+        return cids_of
 
-    def _get_last_review_time(self, repo: AnkiRepository, cid: int) -> int | None:
-        """Get the most recent review time for a card."""
-        try:
-            if repo.col is None or repo.col.db is None:
-                return None
-            result = repo.col.db.scalar("SELECT MAX(id) FROM revlog WHERE cid = ?", cid)
-            if result:
-                return result // 1000  # Convert ms to seconds
-        except Exception as e:
-            logger.warning(f"[stats] last-review query failed for cid={cid}: {e}")
-        return None
+    @staticmethod
+    def _revlog_aggregates(
+        repo: AnkiRepository, cids: list[int]
+    ) -> dict[int, tuple[dict[int, int], int | None, int]]:
+        """Per card: answer counts by rating, last review (s), average time (ms).
 
-    def _get_average_time(self, repo: AnkiRepository, cid: int) -> int:
-        """Get average time taken (ms) for a card."""
-        try:
-            if repo.col is None or repo.col.db is None:
-                return 0
-            # time limit is usually capped at 60s (60000ms) in revlog logic but here we just avg
-            result = repo.col.db.scalar("SELECT AVG(time) FROM revlog WHERE cid = ?", cid)
-            return int(result) if result else 0
-        except Exception as e:
-            logger.warning(f"[stats] avg-time query failed for cid={cid}: {e}")
-        return 0
+        One grouped revlog query per chunk of cards. A card with no review is absent; a
+        chunk whose query fails is logged and left out, so its cards get the defaults.
+        """
+        out: dict[int, tuple[dict[int, int], int | None, int]] = {}
+        if repo.col is None or repo.col.db is None:
+            return out
+        unique = list(dict.fromkeys(cids))
+        for i in range(0, len(unique), _SQL_CHUNK):
+            chunk = unique[i : i + _SQL_CHUNK]
+            query = (
+                "SELECT cid, ease, COUNT(*), MAX(id), SUM(time) FROM revlog "
+                f"WHERE cid IN ({','.join('?' * len(chunk))}) GROUP BY cid, ease"
+            )
+            try:
+                rows = repo.col.db.all(query, *chunk)
+            except Exception as e:
+                logger.warning(f"[stats] revlog query failed for {len(chunk)} cards: {e}")
+                continue
+            totals: dict[int, list[int]] = {}  # cid -> [reviews, time, newest id]
+            dists: dict[int, dict[int, int]] = {}
+            for cid, ease, count, newest, time_sum in rows:
+                dists.setdefault(cid, {})[ease] = count
+                total = totals.setdefault(cid, [0, 0, 0])
+                total[0] += count
+                total[1] += time_sum or 0
+                total[2] = max(total[2], newest or 0)
+            for cid, (count, time_sum, newest) in totals.items():
+                # AVG(time) is the float mean, truncated by int() as the per-card query was
+                mean = time_sum / count if count else 0
+                out[cid] = (
+                    dists[cid],
+                    newest // 1000 if newest else None,
+                    int(mean) if mean else 0,
+                )
+        return out

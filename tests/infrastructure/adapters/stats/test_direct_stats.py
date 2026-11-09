@@ -54,21 +54,33 @@ async def test_get_card_stats_no_collection(mock_repo):
     assert result == []
 
 
+def _db(mock_repo, cards: dict[int, list[int]], revlog: list[tuple] = ()):
+    """Answer the two grouped queries: cards per note, revlog aggregates per card.
+
+    ``revlog`` rows are (cid, ease, count, max_id, time_sum).
+    """
+
+    def all_(query, *args):
+        if query.startswith("SELECT nid, id FROM cards"):
+            return [(nid, cid) for nid in args for cid in cards.get(nid, [])]
+        if query.startswith("SELECT cid, ease"):
+            return [row for row in revlog if row[0] in args]
+        raise AssertionError(query)
+
+    mock_repo.col.db.all.side_effect = all_
+
+
 @pytest.mark.asyncio
 async def test_get_card_stats_basic(mock_repo):
     """Basic stats fetching with a single NID."""
     card = _make_card(cid=101, nid=1, lapses=3, factor=2500, ivl=14, due=1700000000, reps=20)
-    mock_repo.col.find_cards.return_value = [101]
+    _db(mock_repo, {1: [101]})
     mock_repo.col.get_card.return_value = card
     mock_repo.col.decks.get.return_value = {"name": "Science"}
 
     note = MagicMock()
     note.fields = ["What is DNA?", "Deoxyribonucleic acid"]
     mock_repo.col.get_note.return_value = note
-
-    # Mock helper queries (revlog)
-    mock_repo.col.db.scalar.return_value = None
-    mock_repo.col.db.execute.return_value = []
 
     repo = DirectStatsRepository(anki_base=None)
     result = await repo.get_card_stats([1])
@@ -85,6 +97,7 @@ async def test_get_card_stats_basic(mock_repo):
     assert s.reps == 20
     assert s.front == "What is DNA?"
     assert s.fsrs is None  # No memory_state set
+    assert (s.last_review, s.average_time_ms, s.answer_distribution) == (None, 0, {})
 
 
 @pytest.mark.asyncio
@@ -96,12 +109,10 @@ async def test_get_card_stats_with_fsrs_memory_state(mock_repo):
     ms.stability = 30.0
     card.memory_state = ms
 
-    mock_repo.col.find_cards.return_value = [201]
+    _db(mock_repo, {2: [201]})
     mock_repo.col.get_card.return_value = card
     mock_repo.col.decks.get.return_value = {"name": "Default"}
     mock_repo.col.get_note.return_value = MagicMock(fields=["Q"])
-    mock_repo.col.db.scalar.return_value = None
-    mock_repo.col.db.execute.return_value = []
 
     repo = DirectStatsRepository(anki_base=None)
     result = await repo.get_card_stats([2])
@@ -118,12 +129,10 @@ async def test_get_card_stats_with_fsrs_memory_state(mock_repo):
 async def test_get_card_stats_deck_missing(mock_repo):
     """When deck lookup returns None, deck_name is 'Unknown'."""
     card = _make_card(cid=501, nid=5, did=9999)
-    mock_repo.col.find_cards.return_value = [501]
+    _db(mock_repo, {5: [501]})
     mock_repo.col.get_card.return_value = card
     mock_repo.col.decks.get.return_value = None
     mock_repo.col.get_note.return_value = MagicMock(fields=["Q"])
-    mock_repo.col.db.scalar.return_value = None
-    mock_repo.col.db.execute.return_value = []
 
     repo = DirectStatsRepository(anki_base=None)
     result = await repo.get_card_stats([5])
@@ -135,12 +144,10 @@ async def test_get_card_stats_deck_missing(mock_repo):
 async def test_get_card_stats_note_fields_empty(mock_repo):
     """When note has empty fields list, front is None."""
     card = _make_card(cid=601, nid=6)
-    mock_repo.col.find_cards.return_value = [601]
+    _db(mock_repo, {6: [601]})
     mock_repo.col.get_card.return_value = card
     mock_repo.col.decks.get.return_value = {"name": "Default"}
     mock_repo.col.get_note.return_value = MagicMock(fields=[])
-    mock_repo.col.db.scalar.return_value = None
-    mock_repo.col.db.execute.return_value = []
 
     repo = DirectStatsRepository(anki_base=None)
     result = await repo.get_card_stats([6])
@@ -152,12 +159,10 @@ async def test_get_card_stats_note_fields_empty(mock_repo):
 async def test_get_card_stats_note_error_handled(mock_repo):
     """Exception when fetching note doesn't crash; front is None."""
     card = _make_card(cid=701, nid=7)
-    mock_repo.col.find_cards.return_value = [701]
+    _db(mock_repo, {7: [701]})
     mock_repo.col.get_card.return_value = card
     mock_repo.col.decks.get.return_value = {"name": "Default"}
     mock_repo.col.get_note.side_effect = Exception("Note not found")
-    mock_repo.col.db.scalar.return_value = None
-    mock_repo.col.db.execute.return_value = []
 
     repo = DirectStatsRepository(anki_base=None)
     result = await repo.get_card_stats([7])
@@ -166,35 +171,29 @@ async def test_get_card_stats_note_error_handled(mock_repo):
 
 
 @pytest.mark.asyncio
-async def test_get_card_stats_last_review_from_revlog(mock_repo):
-    """Last review time is extracted from revlog MAX(id)."""
+async def test_get_card_stats_last_review_and_average_from_revlog(mock_repo):
+    """Last review is the newest revlog id over all ratings; the average spans them all."""
     card = _make_card(cid=801, nid=8)
-    mock_repo.col.find_cards.return_value = [801]
+    _db(mock_repo, {8: [801]}, [(801, 1, 1, 1700000000000, 5000), (801, 3, 2, 1690000000000, 4001)])
     mock_repo.col.get_card.return_value = card
     mock_repo.col.decks.get.return_value = {"name": "Default"}
     mock_repo.col.get_note.return_value = MagicMock(fields=["Q"])
-    # MAX(id) from revlog (ms timestamp) -> divided by 1000
-    mock_repo.col.db.scalar.side_effect = [1700000000000, 5000]  # last_review, avg_time
-    mock_repo.col.db.execute.return_value = []  # answer_distribution
 
     repo = DirectStatsRepository(anki_base=None)
     result = await repo.get_card_stats([8])
 
     assert result[0].last_review == 1700000000  # ms -> seconds
+    assert result[0].average_time_ms == 3000  # int(9001 / 3)
 
 
 @pytest.mark.asyncio
 async def test_get_card_stats_answer_distribution(mock_repo):
     """Answer distribution is correctly built from revlog grouping."""
     card = _make_card(cid=901, nid=9)
-    mock_repo.col.find_cards.return_value = [901]
+    _db(mock_repo, {9: [901]}, [(901, 1, 2, 1, 0), (901, 3, 10, 2, 0), (901, 4, 5, 3, 0)])
     mock_repo.col.get_card.return_value = card
     mock_repo.col.decks.get.return_value = {"name": "Default"}
     mock_repo.col.get_note.return_value = MagicMock(fields=["Q"])
-    mock_repo.col.db.scalar.return_value = None
-
-    # answer_distribution query returns tuples (ease, count)
-    mock_repo.col.db.execute.return_value = [(1, 2), (3, 10), (4, 5)]
 
     repo = DirectStatsRepository(anki_base=None)
     result = await repo.get_card_stats([9])
@@ -207,16 +206,14 @@ async def test_get_card_stats_answer_distribution(mock_repo):
 
 @pytest.mark.asyncio
 async def test_get_card_stats_multiple_cards_per_note(mock_repo):
-    """A note with multiple cards returns stats for each card."""
+    """A note with multiple cards returns stats for each card; the note is read once."""
     card_a = _make_card(cid=1001, nid=10)
     card_b = _make_card(cid=1002, nid=10, lapses=1)
 
-    mock_repo.col.find_cards.return_value = [1001, 1002]
+    _db(mock_repo, {10: [1001, 1002]})
     mock_repo.col.get_card.side_effect = [card_a, card_b]
     mock_repo.col.decks.get.return_value = {"name": "Default"}
     mock_repo.col.get_note.return_value = MagicMock(fields=["Q"])
-    mock_repo.col.db.scalar.return_value = None
-    mock_repo.col.db.execute.return_value = []
 
     repo = DirectStatsRepository(anki_base=None)
     result = await repo.get_card_stats([10])
@@ -225,25 +222,41 @@ async def test_get_card_stats_multiple_cards_per_note(mock_repo):
     assert result[0].card_id == 1001
     assert result[1].card_id == 1002
     assert result[1].lapses == 1
+    assert mock_repo.col.get_note.call_count == 1
+    assert mock_repo.col.decks.get.call_count == 1
 
 
 @pytest.mark.asyncio
 async def test_get_card_stats_error_per_nid_handled(mock_repo):
     """Exception on one NID doesn't prevent others from being fetched."""
-    mock_repo.col.find_cards.side_effect = [Exception("bad nid"), [201]]
-
+    _db(mock_repo, {1: [101], 2: [201]})
     card = _make_card(cid=201, nid=2)
-    mock_repo.col.get_card.return_value = card
+    mock_repo.col.get_card.side_effect = [Exception("bad card"), card]
     mock_repo.col.decks.get.return_value = {"name": "Default"}
     mock_repo.col.get_note.return_value = MagicMock(fields=["Q2"])
-    mock_repo.col.db.scalar.return_value = None
-    mock_repo.col.db.execute.return_value = []
 
     repo = DirectStatsRepository(anki_base=None)
     result = await repo.get_card_stats([1, 2])
 
     assert len(result) == 1
     assert result[0].card_id == 201
+
+
+@pytest.mark.asyncio
+async def test_get_card_stats_a_failed_revlog_query_gives_defaults(mock_repo):
+    def all_(query, *args):
+        if query.startswith("SELECT nid, id FROM cards"):
+            return [(3, 301)]
+        raise RuntimeError("locked")
+
+    mock_repo.col.db.all.side_effect = all_
+    mock_repo.col.get_card.return_value = _make_card(cid=301, nid=3)
+    mock_repo.col.decks.get.return_value = {"name": "Default"}
+    mock_repo.col.get_note.return_value = MagicMock(fields=["Q"])
+
+    [s] = await DirectStatsRepository(anki_base=None).get_card_stats([3])
+
+    assert (s.last_review, s.average_time_ms, s.answer_distribution) == (None, 0, {})
 
 
 # ---------- get_review_history ----------
