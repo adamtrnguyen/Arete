@@ -2,6 +2,7 @@ import { App, Notice, requestUrl } from 'obsidian';
 import { spawn, ChildProcess } from 'child_process';
 import { AretePluginSettings } from '@domain/settings';
 import { resolvePythonCommand } from '@infrastructure/arete/PythonProcess';
+import { debugLog } from '@domain/debugLog';
 
 export class ServerManager {
 	app: App;
@@ -26,11 +27,11 @@ export class ServerManager {
 			const isRunning = await this.checkHealth();
 			if (isRunning) {
 				if (!forceRestart) {
-					console.log('[Arete] Server already running.');
+					debugLog('[Arete] Server already running.');
 					// No Notice here to avoid noise
 					return;
 				}
-				console.log('[Arete] Force restarting server...');
+				debugLog('[Arete] Force restarting server...');
 				await this.stop();
 				await new Promise((r) => setTimeout(r, 1000));
 			}
@@ -46,13 +47,13 @@ export class ServerManager {
 				while (attempts < maxAttempts) {
 					await new Promise((r) => setTimeout(r, 1000));
 					if (await this.checkHealth()) {
-						console.log('[Arete] Server is ready.');
+						debugLog('[Arete] Server is ready.');
 						new Notice('Arete Server started successfully!');
 						return;
 					}
 					attempts++;
 					if (attempts % 5 === 0) {
-						console.log(
+						debugLog(
 							`[Arete] Still waiting for server... (${attempts}/${maxAttempts})`,
 						);
 					}
@@ -78,7 +79,7 @@ export class ServerManager {
 				url: `http://127.0.0.1:${port}/shutdown`,
 				method: 'POST',
 			});
-			console.log('[Arete] Shutdown signal sent.');
+			debugLog('[Arete] Shutdown signal sent.');
 		} catch (e) {
 			// Server might already be dead
 		}
@@ -122,7 +123,7 @@ export class ServerManager {
 			args.push('--reload');
 		}
 
-		console.log(`[Arete] Spawning server: ${resolved.cmd} ${args.join(' ')}`);
+		debugLog(`[Arete] Spawning server: ${resolved.cmd} ${args.join(' ')}`);
 
 		// The server accepts only paths inside its configured vault (vault_paths.py on
 		// the backend). Name this vault, so it works without a config file too. An env
@@ -138,7 +139,7 @@ export class ServerManager {
 		});
 
 		this.serverProcess.stdout?.on('data', (data) => {
-			console.log(`[Arete Server] ${data.toString().trim()}`);
+			debugLog(`[Arete Server] ${data.toString().trim()}`);
 		});
 
 		this.serverProcess.stderr?.on('data', (data) => {

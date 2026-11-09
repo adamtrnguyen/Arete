@@ -4,6 +4,7 @@ import { promises as fsp } from 'fs';
 import * as path from 'path';
 import { AretePluginSettings } from '@domain/settings';
 import { resolvePythonCommand } from '@infrastructure/arete/PythonProcess';
+import { debugLog } from '@domain/debugLog';
 
 /** A log larger than this is cut to its last LOG_KEEP_BYTES when a run starts. */
 export const LOG_MAX_BYTES = 1024 * 1024;
@@ -183,7 +184,7 @@ export class SyncService {
 
 		const syncLog = new SyncLog(logPath);
 		const log = (msg: string) => {
-			console.log(msg);
+			debugLog(msg);
 			syncLog.write(msg);
 		};
 

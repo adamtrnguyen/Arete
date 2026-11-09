@@ -3,6 +3,7 @@ import { AretePluginSettings } from '@/domain/settings';
 import { CardStatsSource } from '@/domain/ports';
 
 import type { AnkiCardStats, ConceptStats, StatsNode, StatsCache } from '@/domain/stats';
+import { debugLog } from '@/domain/debugLog';
 
 export class StatsService {
 	app: App;
@@ -92,7 +93,7 @@ export class StatsService {
 		}
 
 		if (nidMap.size === 0) {
-			console.warn('[Arete] No linked Anki cards found in vault.');
+			debugLog('[Arete] No linked Anki cards found in vault.');
 			return [];
 		}
 

@@ -2,6 +2,7 @@ import Mustache from 'mustache';
 import { AnkiModelSource } from '@/domain/ports';
 import { clozeOrdinals, renderCloze } from '@/domain/cloze';
 import { App, Component, MarkdownRenderer } from 'obsidian';
+import { debugLog } from '@/domain/debugLog';
 
 interface ModelData {
 	css: string;
@@ -89,9 +90,9 @@ export class TemplateRenderer {
 	}
 
 	async preloadModel(modelName: string): Promise<void> {
-		console.log(`[Arete] Preloading model: ${modelName}`);
+		debugLog(`[Arete] Preloading model: ${modelName}`);
 		if (this.cache.has(modelName)) {
-			console.log(`[Arete] Model ${modelName} found in cache.`);
+			debugLog(`[Arete] Model ${modelName} found in cache.`);
 			return;
 		}
 
@@ -120,7 +121,7 @@ export class TemplateRenderer {
 		fields: Record<string, string>,
 		opts: { sourcePath: string; component: Component },
 	): Promise<{ html: string; css: string } | null> {
-		console.log(`[Arete] Render request for ${modelName} (${templateType})`);
+		debugLog(`[Arete] Render request for ${modelName} (${templateType})`);
 		if (!this.cache.has(modelName)) {
 			await this.preloadModel(modelName);
 		}
@@ -140,7 +141,7 @@ export class TemplateRenderer {
 		const cardTypeName = cardTypeNames[0];
 		const cardTemplates = data.templates[cardTypeName] as any; // Cast to any because TS Record<string, string> doesn't match nested object
 
-		console.log(`[Arete] Using Card Type: ${cardTypeName}`, cardTemplates);
+		debugLog(`[Arete] Using Card Type: ${cardTypeName}`, cardTemplates);
 
 		const rawTemplate = cardTemplates[templateType]; // 'Front' or 'Back'
 		if (!rawTemplate) {
@@ -205,8 +206,8 @@ export class TemplateRenderer {
 
 		Object.assign(view, renderedFields);
 
-		console.log('[Arete] Template Render View:', view);
-		console.log(`[Arete] Template raw (${templateType}):`, template);
+		debugLog('[Arete] Template Render View:', view);
+		debugLog(`[Arete] Template raw (${templateType}):`, template);
 
 		// Helper to force unescaped variables in template
 		const makeUnescaped = (tmpl: string) => {
@@ -231,7 +232,7 @@ export class TemplateRenderer {
 			// Unescape the main template
 			const finalTemplate = makeUnescaped(template);
 			const html = Mustache.render(finalTemplate, view);
-			console.log(`[Arete] Rendered HTML (${templateType}):`, html);
+			debugLog(`[Arete] Rendered HTML (${templateType}):`, html);
 			return { html, css: data.css };
 		} catch (e) {
 			console.error('Mustache render error', e);

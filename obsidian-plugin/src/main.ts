@@ -37,6 +37,7 @@ import {
 	createCardGutter,
 	highlightCardEffect,
 } from '@presentation/extensions/CardGutterExtension';
+import { debugLog, setDebugLogSwitch } from '@domain/debugLog';
 
 /**
  * Whether a note with this cached metadata can contribute to the dependency graph. The
@@ -76,11 +77,12 @@ export default class AretePlugin extends Plugin {
 	private savedUiState = '';
 
 	async onload() {
-		console.log('[Arete] Plugin Loading...');
+		setDebugLogSwitch(() => this.settings?.debug_mode === true);
+		debugLog('[Arete] Plugin Loading...');
 
 		try {
 			await this.loadSettings();
-			console.log('[Arete] Settings loaded:', this.settings);
+			debugLog('[Arete] Settings loaded:', this.settings);
 
 			// Initialize Services
 			this.areteClient = new AreteClient(this.settings);
@@ -113,7 +115,7 @@ export default class AretePlugin extends Plugin {
 				if (this.settings.execution_mode === 'server') {
 					await this.serverManager.start(true);
 				}
-				console.log('[Arete] Refreshing stats on startup...');
+				debugLog('[Arete] Refreshing stats on startup...');
 				this.statsService
 					.refreshStats()
 					.then((results) => this.onStatsRefreshed(results))
@@ -122,7 +124,7 @@ export default class AretePlugin extends Plugin {
 					});
 			});
 
-			console.log('[Arete] Services initialized');
+			debugLog('[Arete] Services initialized');
 
 			// Register Views
 			this.registerView(YAML_EDITOR_VIEW_TYPE, (leaf) => new CardYamlEditorView(leaf, this));
@@ -385,9 +387,7 @@ export default class AretePlugin extends Plugin {
 					const basePath = vaultAdapter.getBasePath ? vaultAdapter.getBasePath() : null;
 					if (basePath) {
 						const fullPath = path.join(basePath, file.path);
-						if (this.settings.debug_mode) {
-							console.log('[Arete] Sync on save triggered for:', file.path);
-						}
+						debugLog('[Arete] Sync on save triggered for:', file.path);
 						await this.runSync(false, fullPath, false);
 					}
 				}, this.settings.sync_on_save_delay);

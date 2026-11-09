@@ -22,6 +22,7 @@ import { AretePluginSettings } from '@/domain/settings';
 import { StatsService } from '@application/services/StatsService';
 import { TemplateRenderer } from '@application/services/TemplateRenderer';
 import { AreteClient } from '@infrastructure/arete/AreteClient';
+import { debugLog } from '@/domain/debugLog';
 
 /** What this view needs from the plugin (main.ts satisfies it; no import of main). */
 export interface YamlEditorHost {
@@ -483,7 +484,7 @@ export class CardYamlEditorView extends ItemView {
 				new Notice('Card not synced to Anki yet (No NID).');
 				return;
 			}
-			console.log('[Arete] Opening stats modal for NID:', nid);
+			debugLog('[Arete] Opening stats modal for NID:', nid);
 			const activeFile = this.app.workspace.getActiveFile();
 			if (activeFile && nid) {
 				const cache = this.plugin.statsService.getCache();

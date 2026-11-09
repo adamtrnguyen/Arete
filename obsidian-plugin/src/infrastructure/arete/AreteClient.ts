@@ -4,6 +4,7 @@ import { AretePluginSettings } from '@/domain/settings';
 import { resolvePythonCommand } from '@infrastructure/arete/PythonProcess';
 import { GraphExport, GraphSource } from '@/domain/graph/types';
 import { AnkiModelSource, CardStatsSource, CardSuspender } from '@/domain/ports';
+import { debugLog } from '@/domain/debugLog';
 
 export class AreteClient implements GraphSource, AnkiModelSource, CardStatsSource, CardSuspender {
 	private settings: AretePluginSettings;
@@ -25,7 +26,7 @@ export class AreteClient implements GraphSource, AnkiModelSource, CardStatsSourc
 	async invokeServer(endpoint: string, body: any = {}): Promise<any> {
 		const areteServerUrl = `http://127.0.0.1:${this.settings.server_port || 8777}`;
 
-		console.log(`[Arete] Server Invoke: ${endpoint}`, body);
+		debugLog(`[Arete] Server Invoke: ${endpoint}`, body);
 
 		// Inject Config Overrides
 		const payload = {
@@ -55,7 +56,7 @@ export class AreteClient implements GraphSource, AnkiModelSource, CardStatsSourc
 	}
 
 	async invokeCLI(endpoint: string, body: any): Promise<any> {
-		console.log(`[Arete] CLI Invoke: ${endpoint}`, body);
+		debugLog(`[Arete] CLI Invoke: ${endpoint}`, body);
 
 		// Map Endpoint to Arguments
 		const args: string[] = ['anki'];
@@ -112,7 +113,7 @@ export class AreteClient implements GraphSource, AnkiModelSource, CardStatsSourc
 			const resolved = resolvePythonCommand(this.settings);
 			const finalArgs = [...resolved.args, ...args];
 
-			console.log(`[Arete] Spawning: ${resolved.cmd} ${finalArgs.join(' ')}`);
+			debugLog(`[Arete] Spawning: ${resolved.cmd} ${finalArgs.join(' ')}`);
 			const child = spawn(resolved.cmd, finalArgs, { cwd: resolved.cwd, env: resolved.env });
 			child.once('error', (error) => {
 				reject(

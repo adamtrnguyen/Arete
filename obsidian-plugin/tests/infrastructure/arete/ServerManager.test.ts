@@ -3,6 +3,7 @@ import { App, Notice, requestUrl } from 'obsidian';
 import { spawn } from 'child_process';
 import { ServerManager } from '@infrastructure/arete/ServerManager';
 import { createMockChildProcess } from '../../test-setup';
+import { setDebugLogSwitch } from '@domain/debugLog';
 
 describe('ServerManager', () => {
 	let service: ServerManager;
@@ -189,7 +190,8 @@ describe('ServerManager', () => {
 			await startPromise;
 		});
 
-		test('logs stdout and stderr from server', async () => {
+		test('logs stdout (in debug mode) and stderr from server', async () => {
+			setDebugLogSwitch(() => true);
 			const mockChild = createMockChildProcess();
 			(spawn as jest.Mock).mockReturnValue(mockChild);
 			(requestUrl as jest.Mock).mockResolvedValue({ status: 500 });
@@ -204,6 +206,7 @@ describe('ServerManager', () => {
 
 			expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Server Logged info'));
 			expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('Server Logged error'));
+			setDebugLogSwitch(() => false);
 			// Cleanup
 			(requestUrl as jest.Mock).mockResolvedValue({ status: 200 });
 			await jest.advanceTimersByTimeAsync(1500);
