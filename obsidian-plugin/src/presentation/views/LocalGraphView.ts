@@ -8,7 +8,6 @@
 import { ItemView, WorkspaceLeaf, setIcon, TFile, Component } from 'obsidian';
 import * as d3 from 'd3';
 
-const ForceGraph3D = require('3d-force-graph');
 import { DependencyResolver } from '@/application/services/DependencyResolver';
 import { LocalGraphResult } from '@/domain/graph/types';
 import { CardRenderer } from '@/presentation/renderers/CardRenderer';
@@ -900,6 +899,10 @@ export class LocalGraphView extends ItemView {
 				type: l.type,
 			})),
 		};
+
+		// Required here, not at module top: it pulls in three.js, most of the bundle, which
+		// esbuild then evaluates on the first 3D render instead of at plugin load.
+		const ForceGraph3D = require('3d-force-graph');
 
 		// Create 3D graph
 		this.graph3D = ForceGraph3D()(container)

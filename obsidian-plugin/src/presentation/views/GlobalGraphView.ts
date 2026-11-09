@@ -11,7 +11,6 @@
 import { ItemView, WorkspaceLeaf, setIcon, TFile, Component } from 'obsidian';
 import * as d3 from 'd3';
 
-const ForceGraph3D = require('3d-force-graph');
 import { DependencyResolver } from '@/application/services/DependencyResolver';
 import { CardNode, GlobalGraphResult, DependencyEdge } from '@/domain/graph/types';
 
@@ -21,6 +20,15 @@ export interface GlobalGraphHost {
 }
 
 export const GLOBAL_GRAPH_VIEW_TYPE = 'arete-global-graph';
+
+/**
+ * `require('3d-force-graph')`, called on the first 3D render rather than at module top:
+ * the package pulls in three.js, most of the bundle, and esbuild evaluates it on the
+ * first call of this function instead of at plugin load.
+ */
+function loadForceGraph3D(): any {
+	return require('3d-force-graph');
+}
 
 // --- D3 node/link interfaces ---
 
@@ -835,6 +843,7 @@ export class GlobalGraphView extends ItemView {
 			this.graph3D = null;
 		}
 
+		const ForceGraph3D = loadForceGraph3D();
 		this.graph3D = ForceGraph3D()(this.graphContainer)
 			.width(width)
 			.height(height)
@@ -915,6 +924,7 @@ export class GlobalGraphView extends ItemView {
 			this.graph3D = null;
 		}
 
+		const ForceGraph3D = loadForceGraph3D();
 		this.graph3D = ForceGraph3D()(this.graphContainer)
 			.width(width)
 			.height(height)
