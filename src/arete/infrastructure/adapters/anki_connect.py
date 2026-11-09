@@ -4,6 +4,8 @@ import logging
 import platform
 import re
 import shutil
+from collections import Counter
+from dataclasses import dataclass, field
 from typing import Any
 
 import httpx
@@ -18,6 +20,33 @@ from arete.domain.constants import (
 from arete.domain.interfaces import AnkiBridge
 from arete.domain.models import AnkiCardStats, AnkiDeck, UpdateItem, WorkItem
 from arete.domain.note_types import map_note_type_fields
+
+# Writes sent in one multi request. Every write resets Anki's UI on its main thread, so
+# one request holds no more than a consumer batch.
+_WRITES_PER_REQUEST = 50
+
+# getDecks names the Default deck for a card whose deck id no longer exists, so a card
+# reported there is no proof that a changeDeck would change nothing.
+_UNPROVABLE_DECK = "Default"
+
+
+@dataclass
+class _NotePlan:
+    """One work item of a sync_notes batch: its result and the writes it still needs.
+
+    ``nid``/``info`` are set when the item updates an existing note: the target and its
+    notesInfo entry as read before any write of the batch. ``label`` is ``update``,
+    ``heal`` or ``create``; a healed or created note gets its cid after the writes.
+    """
+
+    item: WorkItem
+    result: UpdateItem
+    label: str = "update"
+    nid: int | None = None
+    info: dict = field(default_factory=dict)
+    retyped: bool = False
+    shared: bool = False  # another item of the batch updates the same note
+    writes: list[tuple[str, dict]] = field(default_factory=list)
 
 
 class AnkiConnectAdapter(AnkiBridge):
@@ -144,82 +173,248 @@ class AnkiConnectAdapter(AnkiBridge):
             except Exception as e:
                 self.logger.warning(f"Failed to ensure source field for '{model_name}': {e}")
 
+        # The held notes are read in one notesInfo per chunk. Each item then resolves its
+        # target (reconcile lookups, note-type change, addNote) concurrently, and the
+        # updates' writes go out together, the k-th write of every note in one request.
+        held = await self._read_notes(
+            [nid for i in work_items if (nid := self._nid_of(i.note)) is not None]
+        )
         sem = asyncio.Semaphore(SYNC_CONCURRENCY)
-        cid_wanted: list[tuple[UpdateItem, str]] = []
 
-        async def _bounded(item: WorkItem) -> UpdateItem:
+        async def _bounded(item: WorkItem) -> _NotePlan:
             async with sem:
-                return await self._sync_single_note(item, cid_wanted)
+                return await self._plan_note(item, held)
 
-        results = list(await asyncio.gather(*(_bounded(item) for item in work_items)))
-        await self._fill_first_cids(cid_wanted)
-        return results
+        plans = list(await asyncio.gather(*(_bounded(item) for item in work_items)))
 
-    async def _fill_first_cids(self, wanted: list[tuple[UpdateItem, str]]) -> None:
+        targets = Counter(p.nid for p in plans if p.nid is not None)
+        for plan in plans:
+            if plan.nid is not None:
+                plan.shared = targets[plan.nid] > 1
+                plan.writes = self._writes_for(plan)
+        await self._drop_moves_already_done(plans)
+        await self._run_writes(plans)
+        await self._fill_first_cids([p for p in plans if p.label != "update" and p.result.ok])
+        return [plan.result for plan in plans]
+
+    @staticmethod
+    def _nid_of(note: Any) -> int | None:
+        """The note id a card carries, or None; a malformed one fails in _plan_note."""
+        try:
+            return int(note.nid) if note.nid else None
+        except (TypeError, ValueError):
+            return None
+
+    async def _read_notes(self, nids: list[int]) -> dict[int, dict | Exception]:
+        """NotesInfo for each nid, one request per chunk; a failed chunk maps to its error.
+
+        A nid Anki does not hold maps to ``{}``, as the add-on answers.
+        """
+        held: dict[int, dict | Exception] = {}
+        unique = list(dict.fromkeys(nids))
+        for i in range(0, len(unique), CHUNK_SIZE):
+            chunk = unique[i : i + CHUNK_SIZE]
+            try:
+                infos = await self._invoke("notesInfo", notes=chunk)
+                if not isinstance(infos, list) or len(infos) != len(chunk):
+                    raise ValueError(f"notesInfo answered {infos!r:.80} for {len(chunk)} notes")
+                held.update(zip(chunk, infos, strict=True))
+            except Exception as e:
+                held.update((nid, e) for nid in chunk)
+        return held
+
+    def _failed(self, item: WorkItem, error: Exception) -> UpdateItem:
+        self.logger.error(f"ERR file={item.source_file} card={item.source_index} error={error}")
+        return UpdateItem(
+            source_file=item.source_file,
+            source_index=item.source_index,
+            new_nid=None,
+            new_cid=None,
+            ok=False,
+            error=str(error),
+            note=item.note,
+        )
+
+    async def _plan_note(self, item: WorkItem, held: dict[int, dict | Exception]) -> _NotePlan:
+        """Resolve one work item to the note it updates, or create it; writes come later."""
+        note = item.note
+        try:
+            html_fields = dict(note.fields)
+
+            if note.nid:
+                info = held[int(note.nid)]
+                if isinstance(info, Exception):
+                    raise info
+                if info.get("noteId"):
+                    return await self._plan_update(item, int(note.nid), info, "update")
+                self.logger.warning(
+                    f"[dangling-nid] {item.source_file.name} #{item.source_index}: "
+                    f"nid={note.nid} not in Anki; reconciling by ID tag / content"
+                )
+
+            return await self._add_or_heal_note(item, note, html_fields)
+
+        except Exception as e:
+            return _NotePlan(item=item, result=self._failed(item, e))
+
+    async def _plan_update(self, item: WorkItem, nid: int, info: dict, label: str) -> _NotePlan:
+        """Plan the update of an existing note; a note-type change is done here, first."""
+        note = item.note
+        retyped = info.get("modelName") not in (None, note.model)
+        if retyped:
+            await self._change_note_type(nid, info, note.model)
+        self.logger.debug(f"[{label}] {item.source_file} #{item.source_index} -> nid={nid}")
+        result = UpdateItem(
+            source_file=item.source_file,
+            source_index=item.source_index,
+            new_nid=str(nid),
+            new_cid=None,
+            ok=True,
+            note=note,
+        )
+        return _NotePlan(item=item, result=result, label=label, nid=nid, info=info, retyped=retyped)
+
+    def _writes_for(self, plan: _NotePlan) -> list[tuple[str, dict]]:
+        """The ordered writes that bring the note to the vault's fields, tags and deck.
+
+        ``updateNoteFields`` is left out only when every field the note type has already
+        holds exactly the string that would be sent (the add-on ignores a field the type
+        lacks). A shared or retyped plan sends it regardless: another write of the batch,
+        or the type change, makes ``info`` stale.
+        """
+        note, nid, info = plan.item.note, plan.nid, plan.info
+        writes: list[tuple[str, dict]] = []
+        fields = dict(note.fields)
+        if plan.shared or plan.retyped or self._fields_differ(info, fields):
+            writes.append(("updateNoteFields", {"note": {"id": nid, "fields": fields}}))
+
+        if "tags" in info:
+            current_tags = set(info["tags"])
+            new_tags = set(note.tags)
+            to_add = list(new_tags - current_tags)
+            to_remove = list(current_tags - new_tags)
+            if to_add:
+                writes.append(("addTags", {"notes": [nid], "tags": " ".join(to_add)}))
+            if to_remove:
+                writes.append(("removeTags", {"notes": [nid], "tags": " ".join(to_remove)}))
+
+        if "cards" in info:
+            writes.append(("changeDeck", {"cards": info["cards"], "deck": note.deck}))
+        else:
+            self.logger.warning(
+                f"[anki] Cannot move cards for nid={nid}. Info missing cards: {info}"
+            )
+        return writes
+
+    @staticmethod
+    def _fields_differ(info: dict, fields: dict) -> bool:
+        """True unless each sent field the note has already holds exactly that value."""
+        held = info.get("fields")
+        if not isinstance(held, dict):
+            return True
+        for name, value in fields.items():
+            if name not in held:
+                continue  # updateNoteFields skips a field the note type lacks
+            entry = held[name]
+            if not isinstance(entry, dict) or entry.get("value") != value:
+                return True
+        return False
+
+    async def _drop_moves_already_done(self, plans: list[_NotePlan]) -> None:
+        """Leave out changeDeck where getDecks shows every card already in the target deck.
+
+        A card in a filtered deck is reported there, so it is still moved home as before.
+        A plan whose ``info`` predates a note-type change, or that shares its note with
+        another item, keeps its move. When getDecks fails the moves are all sent.
+        """
+        checks: list[tuple[_NotePlan, list[int]]] = []
+        for plan in plans:
+            move = next((p for a, p in plan.writes if a == "changeDeck"), None)
+            if plan.shared or plan.retyped or not move or not move["cards"]:
+                continue
+            if move["deck"] != _UNPROVABLE_DECK:
+                checks.append((plan, [int(c) for c in move["cards"]]))
+        if not checks:
+            return
+        cids = list(dict.fromkeys(c for _, cards in checks for c in cards))
+        deck_of: dict[int, str] = {}
+        for i in range(0, len(cids), CHUNK_SIZE):
+            try:
+                reply = await self._invoke("getDecks", cards=cids[i : i + CHUNK_SIZE])
+                for deck_name, deck_cids in reply.items():
+                    deck_of.update((int(c), deck_name) for c in deck_cids)
+            except Exception as e:
+                self.logger.warning(f"[anki] getDecks failed; moving those cards anyway: {e}")
+        for plan, cards in checks:
+            deck = plan.item.note.deck
+            if all(deck_of.get(c) == deck for c in cards):
+                plan.writes = [w for w in plan.writes if w[0] != "changeDeck"]
+
+    async def _run_writes(self, plans: list[_NotePlan]) -> None:
+        """Send each note's writes in order, the k-th write of every note in one request.
+
+        A note whose write fails is marked failed and gets none of its later writes, as if
+        its writes had been sent one by one; other notes are not affected.
+        """
+        step = 0
+        while due := [p for p in plans if p.result.ok and step < len(p.writes)]:
+            for start in range(0, len(due), _WRITES_PER_REQUEST):
+                group = due[start : start + _WRITES_PER_REQUEST]
+                errors = await self._send_writes([p.writes[step] for p in group])
+                for plan, error in zip(group, errors, strict=True):
+                    if error is not None:
+                        plan.result = self._failed(plan.item, error)
+            step += 1
+
+    async def _send_writes(self, writes: list[tuple[str, dict]]) -> list[Exception | None]:
+        """Send writes in one request, a lone one as itself, and return each one's error."""
+        if len(writes) == 1:
+            action, params = writes[0]
+            try:
+                await self._invoke(action, **params)
+                return [None]
+            except Exception as e:
+                return [e]
+        actions = [{"action": a, "version": 6, "params": p} for a, p in writes]
+        try:
+            replies = await self._invoke("multi", actions=actions)
+            if not isinstance(replies, list) or len(replies) != len(writes):
+                raise ValueError(f"multi answered {replies!r:.80} for {len(writes)} actions")
+        except Exception as e:
+            return [e] * len(writes)
+        errors: list[Exception | None] = []
+        for reply in replies:
+            if not isinstance(reply, dict) or set(reply) != {"result", "error"}:
+                errors.append(ValueError(f"multi sub-reply is malformed: {reply!r:.80}"))
+            elif reply["error"] is not None:
+                errors.append(Exception(reply["error"]))
+            else:
+                errors.append(None)
+        return errors
+
+    async def _fill_first_cids(self, plans: list[_NotePlan]) -> None:
         """Set ``new_cid`` on created and healed notes from one notesInfo per chunk.
 
         It runs after every write of the batch, so the cid is the note's first card as
         Anki holds it then. A note whose notesInfo failed keeps ``new_cid=None``.
         """
-        if not wanted:
+        if not plans:
             return
-        nids = list(dict.fromkeys(int(result.new_nid or 0) for result, _ in wanted))
+        nids = list(dict.fromkeys(int(p.result.new_nid or 0) for p in plans))
         first_cid: dict[int, str] = {}
         for info in await self._notes_info_chunked(nids):
             if info and info.get("noteId") and info.get("cards"):
                 first_cid[int(info["noteId"])] = str(info["cards"][0])
-        for result, label in wanted:
+        for plan in plans:
+            result = plan.result
             nid = int(result.new_nid or 0)
             result.new_cid = first_cid.get(nid)
             if result.new_cid is None:
                 self.logger.warning(f"Failed to fetch CID for nid={nid}")
-            deck = f" deck={result.note.deck!r}" if label == "heal" and result.note else ""
+            deck = f" deck={plan.item.note.deck!r}" if plan.label == "heal" else ""
             self.logger.info(
-                f"[{label}] {result.source_file} #{result.source_index} -> nid={nid} "
+                f"[{plan.label}] {result.source_file} #{result.source_index} -> nid={nid} "
                 f"cid={result.new_cid}{deck}"
-            )
-
-    async def _sync_single_note(
-        self, item: WorkItem, cid_wanted: list[tuple[UpdateItem, str]]
-    ) -> UpdateItem:
-        """Sync a single work item, routing to update or add/heal paths.
-
-        A created or healed note is appended to ``cid_wanted``; its cid is read once per
-        batch, after the writes.
-        """
-        note = item.note
-        try:
-            html_fields = dict(note.fields)
-
-            target_nid = None
-            info = None
-            if note.nid:
-                info = await self._invoke("notesInfo", notes=[int(note.nid)])
-                if info and info[0].get("noteId"):
-                    target_nid = int(note.nid)
-                else:
-                    self.logger.warning(
-                        f"[dangling-nid] {item.source_file.name} #{item.source_index}: "
-                        f"nid={note.nid} not in Anki; reconciling by ID tag / content"
-                    )
-
-            if target_nid:
-                return await self._update_existing_note(item, note, html_fields, target_nid, info)
-            result, label = await self._add_or_heal_note(item, note, html_fields)
-            cid_wanted.append((result, label))
-            return result
-
-        except Exception as e:
-            msg = f"ERR file={item.source_file} card={item.source_index} error={e}"
-            self.logger.error(msg)
-            return UpdateItem(
-                source_file=item.source_file,
-                source_index=item.source_index,
-                new_nid=None,
-                new_cid=None,
-                ok=False,
-                error=str(e),
-                note=note,
             )
 
     async def _change_note_type(self, nid: int, info: dict, new_model: str) -> None:
@@ -244,53 +439,15 @@ class AnkiConnectAdapter(AnkiBridge):
         )
         self.logger.info(f"[anki] note {nid}: note type {info.get('modelName')} -> {new_model}")
 
-    async def _update_existing_note(
-        self, item: WorkItem, note: Any, html_fields: dict, target_nid: int, info: Any
-    ) -> UpdateItem:
-        """Update type, fields, tags, and deck for an existing note."""
-        if info and info[0].get("modelName") not in (None, note.model):
-            await self._change_note_type(target_nid, info[0], note.model)
-        await self._invoke("updateNoteFields", note={"id": target_nid, "fields": html_fields})
-
-        if info and "tags" in info[0]:
-            current_tags = set(info[0]["tags"])
-            new_tags = set(note.tags)
-            to_add = list(new_tags - current_tags)
-            to_remove = list(current_tags - new_tags)
-            if to_add:
-                await self._invoke("addTags", notes=[target_nid], tags=" ".join(to_add))
-            if to_remove:
-                await self._invoke("removeTags", notes=[target_nid], tags=" ".join(to_remove))
-
-        if info and "cards" in info[0]:
-            await self._invoke("changeDeck", cards=info[0]["cards"], deck=note.deck)
-        else:
-            self.logger.warning(
-                f"[anki] Cannot move cards for nid={target_nid}. Info missing cards: {info}"
-            )
-
-        self.logger.debug(f"[update] {item.source_file} #{item.source_index} -> nid={target_nid}")
-        return UpdateItem(
-            source_file=item.source_file,
-            source_index=item.source_index,
-            new_nid=str(target_nid),
-            new_cid=None,
-            ok=True,
-            note=note,
-        )
-
-    async def _add_or_heal_note(
-        self, item: WorkItem, note: Any, html_fields: dict
-    ) -> tuple[UpdateItem, str]:
-        """Add a new note or heal by matching existing content; the label names which."""
+    async def _add_or_heal_note(self, item: WorkItem, note: Any, html_fields: dict) -> _NotePlan:
+        """Add a new note or heal by matching existing content."""
         existing_nid, existing_info = await self._find_existing_note(note, html_fields)
 
         if existing_nid:
             # Reconcile: same treatment as a note with a valid nid -- fields, tags AND deck.
             # A twin that landed in the wrong deck is moved, never duplicated.
             info = existing_info or await self._invoke("notesInfo", notes=[existing_nid])
-            result = await self._update_existing_note(item, note, html_fields, existing_nid, info)
-            return result, "heal"
+            return await self._plan_update(item, existing_nid, info[0] if info else {}, "heal")
 
         params = {
             "note": {
@@ -314,7 +471,7 @@ class AnkiConnectAdapter(AnkiBridge):
             ok=True,
             note=note,
         )
-        return result, "create"
+        return _NotePlan(item=item, result=result, label="create")
 
     @staticmethod
     def _normalize_field(value: str) -> str:

@@ -483,12 +483,10 @@ async def test_sync_notes_update_existing_with_tags_and_move(adapter_localhost):
                         "error": None,
                     },
                 ),
+                httpx.Response(200, json={"result": {"OldDeck": [456]}, "error": None}),  # getDecks
                 httpx.Response(200, json={"result": None, "error": None}),  # updateNoteFields
                 httpx.Response(200, json={"result": None, "error": None}),  # addTags
                 httpx.Response(200, json={"result": None, "error": None}),  # removeTags
-                httpx.Response(
-                    200, json={"result": [{"cards": [456]}], "error": None}
-                ),  # cards move check
                 httpx.Response(200, json={"result": None, "error": None}),  # changeDeck
             ]
         )
@@ -509,6 +507,15 @@ async def test_sync_notes_update_existing_with_tags_and_move(adapter_localhost):
         res = await adapter_localhost.sync_notes([item])
         assert res[0].ok is True
         assert res[0].new_nid == "123"
+        actions = [json.loads(c.request.content)["action"] for c in respx.calls]
+        assert actions == [
+            "notesInfo",
+            "getDecks",
+            "updateNoteFields",
+            "addTags",
+            "removeTags",
+            "changeDeck",
+        ]
 
 
 @pytest.mark.asyncio
@@ -528,7 +535,7 @@ async def test_sync_notes_notes_info_missing_cards(adapter_localhost):
                 httpx.Response(200, json={"result": None, "error": None}),  # updateNoteFields
                 httpx.Response(
                     200, json={"result": [{"something_else": 1}], "error": None}
-                ),  # cards move check
+                ),  # changeDeck
             ]
         )
 
