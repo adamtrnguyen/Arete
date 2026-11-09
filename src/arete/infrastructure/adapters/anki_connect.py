@@ -781,7 +781,9 @@ class AnkiConnectAdapter(AnkiBridge):
                 self.logger.warning(
                     f"AnkiConnect timeout on '{action}' (attempt {attempt}/{_ATTEMPTS})"
                 )
-                await self._reset_client()
+                # The client stays open: it is shared with the requests in flight beside
+                # this one. The timed-out request's own connection closed when wait_for
+                # cancelled it.
                 if not resend_safe:
                     raise OutcomeUnknown(_unknown_text(action, "timed out")) from exc
                 if attempt == _ATTEMPTS:
@@ -796,12 +798,6 @@ class AnkiConnectAdapter(AnkiBridge):
             else:
                 return self._result_of(action, data, resend_safe)
             await asyncio.sleep(_RETRY_DELAY)
-
-    async def _reset_client(self) -> None:
-        """Reset the HTTP client to drop stale connections."""
-        if self._client is not None:
-            await self._client.aclose()
-            self._client = None
 
     def _result_of(self, action: str, data: Any, resend_safe: bool) -> Any:
         """The result of a reply. An error reply raises; so does a malformed one."""
