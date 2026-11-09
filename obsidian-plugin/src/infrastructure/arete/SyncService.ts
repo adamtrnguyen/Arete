@@ -1,8 +1,60 @@
 import { App, FileSystemAdapter, Notice, requestUrl } from 'obsidian';
 import { spawn } from 'child_process';
+import { promises as fsp } from 'fs';
 import * as path from 'path';
 import { AretePluginSettings } from '@domain/settings';
 import { resolvePythonCommand } from '@infrastructure/arete/PythonProcess';
+
+/** A log larger than this is cut to its last LOG_KEEP_BYTES when a run starts. */
+export const LOG_MAX_BYTES = 1024 * 1024;
+export const LOG_KEEP_BYTES = 256 * 1024;
+const LOG_FLUSH_MS = 250;
+
+/**
+ * The CLI sync log (`arete_plugin.log`), written off the UI thread. Lines are buffered
+ * and appended in order at most every LOG_FLUSH_MS; `flush()` writes the rest and
+ * resolves once it is on disk. A run first bounds the file's size.
+ */
+export class SyncLog {
+	private buffer: string[] = [];
+	private timer: ReturnType<typeof setTimeout> | null = null;
+	private writing: Promise<void>;
+
+	constructor(private logPath: string) {
+		this.writing = logPath ? this.bound() : Promise.resolve();
+	}
+
+	write(msg: string): void {
+		this.buffer.push(`[${new Date().toISOString()}] ${msg}\n`);
+		if (!this.timer) this.timer = setTimeout(() => void this.flush(), LOG_FLUSH_MS);
+	}
+
+	flush(): Promise<void> {
+		if (this.timer) clearTimeout(this.timer);
+		this.timer = null;
+		if (!this.logPath || this.buffer.length === 0) return this.writing;
+		const chunk = this.buffer.join('');
+		this.buffer = [];
+		this.writing = this.writing
+			.then(() => fsp.appendFile(this.logPath, chunk))
+			.catch((e) => console.error('Failed to write to log file', e));
+		return this.writing;
+	}
+
+	/** Cut an oversized log to its last LOG_KEEP_BYTES, starting at a line boundary. */
+	private async bound(): Promise<void> {
+		try {
+			const { size } = await fsp.stat(this.logPath);
+			if (size <= LOG_MAX_BYTES) return;
+			const content = await fsp.readFile(this.logPath);
+			const tail = content.subarray(content.length - LOG_KEEP_BYTES);
+			const lineStart = tail.indexOf(10) + 1; // after the first newline
+			await fsp.writeFile(this.logPath, tail.subarray(lineStart));
+		} catch {
+			// No log yet, or unreadable: appends report their own failures.
+		}
+	}
+}
 
 export class SyncService {
 	app: App;
@@ -129,16 +181,10 @@ export class SyncService {
 			(this.pluginManifest && this.pluginManifest.dir) || '.obsidian/plugins/arete';
 		const logPath = vaultPath ? path.join(vaultPath, pluginDir, 'arete_plugin.log') : '';
 
+		const syncLog = new SyncLog(logPath);
 		const log = (msg: string) => {
-			const timestamp = new Date().toISOString();
-			const line = `[${timestamp}] ${msg}\n`;
 			console.log(msg);
-			try {
-				const fs = require('fs');
-				fs.appendFileSync(logPath, line);
-			} catch (e) {
-				console.error('Failed to write to log file', e);
-			}
+			syncLog.write(msg);
 		};
 
 		log(`\n\n=== STARTING NEW SYNC RUN ===`);
@@ -220,6 +266,7 @@ export class SyncService {
 
 			child.on('close', (code) => {
 				log(`Process exited with code ${code}`);
+				void syncLog.flush();
 
 				if (code === 0) {
 					new Notice('arete sync completed successfully!');
@@ -246,11 +293,13 @@ export class SyncService {
 
 			child.on('error', (err) => {
 				log(`Process Error: ${err.message}`);
+				void syncLog.flush();
 				new Notice(`Failed to start: ${err.message}`);
 				updateStatusBar('error', err.message);
 			});
 		} catch (e: any) {
 			log(`Exception during spawn: ${e.message}`);
+			void syncLog.flush();
 			new Notice(`Exception: ${e.message}`);
 			updateStatusBar('error', e.message);
 		}

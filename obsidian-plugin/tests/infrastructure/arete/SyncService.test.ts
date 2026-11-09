@@ -3,9 +3,31 @@ import { App, Notice, requestUrl } from 'obsidian';
 import { spawn } from 'child_process';
 import * as fs from 'fs';
 import { createMockChildProcess } from '../../test-setup';
-import { SyncService } from '@infrastructure/arete/SyncService';
+import {
+	LOG_KEEP_BYTES,
+	LOG_MAX_BYTES,
+	SyncLog,
+	SyncService,
+} from '@infrastructure/arete/SyncService';
 import { AretePluginSettings } from '@domain/settings';
-import * as path from 'path';
+
+// The shared setup mocks fs with sync functions only; the sync log uses fs.promises.
+jest.mock('fs', () => ({
+	appendFileSync: jest.fn(),
+	readFileSync: jest.fn(),
+	writeFileSync: jest.fn(),
+	existsSync: jest.fn(),
+	promises: {
+		appendFile: jest.fn(),
+		stat: jest.fn(),
+		readFile: jest.fn(),
+		writeFile: jest.fn(),
+	},
+}));
+const fsp = fs.promises as unknown as Record<string, jest.Mock>;
+
+/** Let pending promise callbacks (the log's async writes) run. */
+const settle = () => new Promise((r) => setImmediate(r));
 
 describe('SyncService', () => {
 	let service: SyncService;
@@ -44,6 +66,9 @@ describe('SyncService', () => {
 		};
 
 		updateStatusBar = jest.fn();
+		fsp.appendFile.mockResolvedValue(undefined);
+		fsp.writeFile.mockResolvedValue(undefined);
+		fsp.stat.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
 
 		service = new SyncService(app, settings, { dir: 'test-plugin-dir' });
 	});
@@ -292,24 +317,104 @@ describe('SyncService', () => {
 		});
 
 		test('log writes failure (catch block)', async () => {
-			// fs is require'd inside the function, so we mock it on the globally available mock if possible,
-			// or just let it fail by giving it an invalid path (it's already handled by the catch)
-			// Actually, we can use the 'test-setup' to mock fs.
-			// fs is imported at top
-			jest.spyOn(fs, 'appendFileSync').mockImplementation(() => {
-				throw new Error('Disk full');
-			});
+			fsp.appendFile.mockRejectedValue(new Error('Disk full'));
 
 			const mockChild = createMockChildProcess();
 			(spawn as jest.Mock).mockReturnValue(mockChild);
 			const promise = service.runSync(false, null, false, updateStatusBar);
 			mockChild.emit('close', 0);
 			await promise;
+			await settle();
 
 			expect(console.error).toHaveBeenCalledWith(
 				expect.stringContaining('Failed to write to log file'),
 				expect.any(Error),
 			);
+		});
+	});
+
+	describe('CLI sync log', () => {
+		const logPath = '/mock/vault/path/test-plugin-dir/arete_plugin.log';
+
+		test('many output lines become one async append, never a sync write', async () => {
+			jest.spyOn(console, 'log').mockImplementation(() => undefined);
+			const mockChild = createMockChildProcess();
+			(spawn as jest.Mock).mockReturnValue(mockChild);
+			await service.runSync(false, null, false, updateStatusBar);
+
+			const lines = Array.from({ length: 500 }, (_, i) => `note ${i}`).join('\n');
+			mockChild.stdout.emit('data', Buffer.from(lines));
+			mockChild.emit('close', 0);
+			await settle();
+
+			expect(fs.appendFileSync).not.toHaveBeenCalled();
+			expect(fsp.appendFile).toHaveBeenCalledTimes(1);
+			const [pathArg, chunk] = fsp.appendFile.mock.calls[0];
+			expect(pathArg).toBe(logPath);
+			expect(chunk).toContain('STDOUT: note 0\n');
+			expect(chunk).toContain('STDOUT: note 499\n');
+		});
+
+		test('the tail of a failed run is on disk once the process closes', async () => {
+			const mockChild = createMockChildProcess();
+			(spawn as jest.Mock).mockReturnValue(mockChild);
+			jest.spyOn(console, 'error').mockImplementation(() => undefined);
+			await service.runSync(false, null, false, updateStatusBar);
+
+			mockChild.stderr.emit('data', 'Traceback: boom');
+			mockChild.emit('close', 1);
+			await settle();
+
+			const written = fsp.appendFile.mock.calls.map((c) => c[1]).join('');
+			expect(written).toContain('STDERR: Traceback: boom');
+			expect(written).toContain('Process exited with code 1');
+		});
+
+		test('a spawn error is written too', async () => {
+			const mockChild = createMockChildProcess();
+			(spawn as jest.Mock).mockReturnValue(mockChild);
+			await service.runSync(false, null, false, updateStatusBar);
+
+			mockChild.emit('error', new Error('ENOENT python3'));
+			await settle();
+
+			const written = fsp.appendFile.mock.calls.map((c) => c[1]).join('');
+			expect(written).toContain('Process Error: ENOENT python3');
+		});
+
+		test('an oversized log is cut to its tail, at a line start, before the run appends', async () => {
+			const lineCount = Math.ceil(LOG_MAX_BYTES / 20) + 1;
+			const old = Buffer.from(
+				Array.from({ length: lineCount }, (_, i) => `old line ${i}`.padEnd(19) + '\n').join(
+					'',
+				),
+			);
+			fsp.stat.mockResolvedValue({ size: old.length });
+			fsp.readFile.mockResolvedValue(old);
+
+			const log = new SyncLog(logPath);
+			log.write('new run');
+			await log.flush();
+
+			const kept: Buffer = fsp.writeFile.mock.calls[0][1];
+			expect(kept.length).toBeLessThanOrEqual(LOG_KEEP_BYTES);
+			expect(kept.length).toBeGreaterThan(LOG_KEEP_BYTES - 20);
+			expect(kept.toString()).toMatch(/^old line \d+ +\n/);
+			expect(kept.toString().endsWith(`old line ${lineCount - 1}`.padEnd(19) + '\n')).toBe(
+				true,
+			);
+			expect(fsp.writeFile.mock.invocationCallOrder[0]).toBeLessThan(
+				fsp.appendFile.mock.invocationCallOrder[0],
+			);
+		});
+
+		test('a log under the limit is left alone', async () => {
+			fsp.stat.mockResolvedValue({ size: 10 });
+			const log = new SyncLog(logPath);
+			log.write('line');
+			await log.flush();
+			expect(fsp.readFile).not.toHaveBeenCalled();
+			expect(fsp.writeFile).not.toHaveBeenCalled();
 		});
 	});
 });
