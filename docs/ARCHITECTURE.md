@@ -46,7 +46,7 @@ src/arete/
 │   │   ├── consts.py
 │   │   ├── fs.py                  iter_markdown_files, file_md5
 │   │   ├── logging.py             LogEntry, RunRecorder, setup_logging...
-│   │   ├── media.py               unique_media_name, build_filename_index, transform_images_in_text...
+│   │   ├── media.py               unique_media_name, build_filename_index, FilenameIndex...
 │   │   ├── text.py                normalize_filename, parse_frontmatter, UniqueKeyLoader...
 │   │   ├── yaml.py
 │   ├── card_reader.py             Application service for reading card data from vault markdown files
@@ -87,7 +87,7 @@ src/arete/
 |---|---|---|---|
 | `interface` | 7 | 1946 | application, composition |
 | `composition` | 2 | 178 | application, infrastructure, domain |
-| `application` | 25 | 4746 | domain (ports only) |
+| `application` | 25 | 4809 | domain (ports only) |
 | `infrastructure` | 7 | 2376 | domain |
 | `domain` | 8 | 697 | nothing in arete |
 

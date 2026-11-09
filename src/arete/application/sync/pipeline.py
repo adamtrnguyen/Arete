@@ -13,7 +13,7 @@ from arete.application.sync.parser import MarkdownParser
 from arete.application.sync.prune import PruneConfirm, PruneReport, prune_orphans
 from arete.application.sync.vault_service import VaultService
 from arete.application.utils.logging import RunRecorder
-from arete.application.utils.media import build_filename_index
+from arete.application.utils.media import FilenameIndex
 from arete.application.utils.text import parse_frontmatter, rebuild_markdown_with_frontmatter
 from arete.domain.constants import CONSUMER_BATCH_SIZE
 from arete.domain.interfaces import ContentCache, SyncPort
@@ -127,9 +127,9 @@ async def run_pipeline(
             failed_files.add(p)
             recorder.add_error(p, f"anki.nid {nid} is claimed by cards in several files", f"#{i}")
 
-    # -------- Stage 2: build media index --------
+    # -------- Stage 2: media index, walked on the first image lookup --------
     assert config.vault_root is not None  # Guaranteed by resolve_config
-    name_index = build_filename_index(config.vault_root, logger)
+    name_index = FilenameIndex(config.vault_root, logger)
 
     # -------- Stage 3: Producers + Consumer --------
     work_q: asyncio.Queue[WorkItem | None] = asyncio.Queue(maxsize=max(1, config.queue_size))

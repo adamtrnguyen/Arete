@@ -39,19 +39,80 @@ def _copy_to_anki_media(src: Path, anki_media_dir: Path, logger: logging.Logger)
         return None
 
 
+def _index_dir(top: str, idx: dict[str, list[Path]]) -> None:
+    """Add the files under `top` to `idx` in os.walk's top-down order, as resolved paths.
+
+    A regular file's resolved path is its resolved directory plus its name, so only a
+    symlink needs its own resolve() and is_file(). Symlinked directories are not entered.
+    """
+    try:
+        with os.scandir(top) as it:
+            entries = list(it)
+    except OSError:
+        return
+    real_dir: list[Path] = []  # `top` resolved, once, on its first regular file
+    subdirs: list[str] = []
+    for entry in entries:
+        if _is_dir(entry):
+            if not entry.is_symlink():
+                subdirs.append(entry.path)
+            continue
+        path = _resolved_file(entry, top, real_dir)
+        if path is not None:
+            idx.setdefault(entry.name, []).append(path)
+    for sub in subdirs:
+        _index_dir(sub, idx)
+
+
+def _is_dir(entry: os.DirEntry) -> bool:
+    try:
+        return entry.is_dir()
+    except OSError:
+        return False
+
+
+def _resolved_file(entry: os.DirEntry, top: str, real_dir: list[Path]) -> Path | None:
+    try:
+        if entry.is_symlink():
+            p = Path(entry.path)
+            return p.resolve() if p.is_file() else None
+        if not entry.is_file(follow_symlinks=False):
+            return None
+    except OSError:
+        return None
+    if not real_dir:
+        real_dir.append(Path(top).resolve())
+    return real_dir[0] / entry.name
+
+
 def build_filename_index(vault_root: Path, logger: logging.Logger) -> dict[str, list[Path]]:
     idx: dict[str, list[Path]] = {}
     for root in MEDIA_DIR_NAMES:
         base = vault_root / root
         if base.is_dir():
-            for dirpath, _, filenames in os.walk(base):
-                for f in filenames:
-                    p = Path(dirpath) / f
-                    if p.is_file():
-                        idx.setdefault(p.name, []).append(p.resolve())
+            _index_dir(str(base), idx)
 
     logger.debug(f"[media-index] entries={len(idx)}")
     return idx
+
+
+class FilenameIndex(dict[str, list[Path]]):
+    """The vault's attachment index, walked on the first image lookup that needs it.
+
+    A sync whose cards embed no image never walks the attachment folders.
+    """
+
+    def __init__(self, vault_root: Path, logger: logging.Logger):
+        """Hold what the walk needs; the walk itself waits for `ensure_built`."""
+        super().__init__()
+        self._vault_root = vault_root
+        self._logger = logger
+        self._built = False
+
+    def ensure_built(self) -> None:
+        if not self._built:
+            self._built = True
+            self.update(build_filename_index(self._vault_root, self._logger))
 
 
 def _resolve_candidate_paths(
@@ -68,6 +129,8 @@ def _resolve_candidate_paths(
     ]
 
     filename = p.name
+    if isinstance(name_index, FilenameIndex) and filename:
+        name_index.ensure_built()
     if name_index and filename:
         candidates.extend(name_index.get(filename, []))
 
