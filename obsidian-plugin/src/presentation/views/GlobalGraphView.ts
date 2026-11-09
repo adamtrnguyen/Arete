@@ -73,6 +73,21 @@ export class GlobalGraphView extends ItemView {
 	/** `graphData.cards` by id, rebuilt with `graphData`. */
 	private cardById = new Map<string, CardNode>();
 
+	/** Delay before a search keystroke or a pane resize is applied. */
+	private static readonly INPUT_DEBOUNCE_MS = 150;
+	/** Class of a file node's name label, the text the search dims. */
+	private static readonly FILE_LABEL_CLASS = 'arete-global-graph-node-label';
+	private searchTimer: ReturnType<typeof setTimeout> | null = null;
+	private resizeTimer: ReturnType<typeof setTimeout> | null = null;
+	/** The current 2D drawing's elements the search restyles; null when none is drawn. */
+	private searchTargets: {
+		nodeGroup: d3.Selection<any, GlobalNode, any, any>;
+		link: d3.Selection<any, GlobalLink, any, any>;
+		isFileMode: boolean;
+	} | null = null;
+	/** Fits the current drawing to a new pane size; null when nothing is drawn. */
+	private resizeViewport: (() => void) | null = null;
+
 	// Layout elements
 	private toolbarEl: HTMLElement;
 	private graphContainer: HTMLElement;
@@ -116,15 +131,16 @@ export class GlobalGraphView extends ItemView {
 		await this.loadData();
 		this.render();
 
-		// Re-render when the canvas changes size, including when a hidden tab is first shown:
-		// a render while hidden measures 0x0 and draws nothing.
+		// Follow the canvas size. A render while hidden measures 0x0 and draws nothing, so
+		// the first non-zero size renders; later sizes only resize the drawing (debounced),
+		// keeping the layout.
 		let lastSize = '';
 		const observer = new ResizeObserver(([entry]) => {
 			const { width, height } = entry.contentRect;
 			const size = `${Math.round(width)}x${Math.round(height)}`;
 			if (width === 0 || height === 0 || size === lastSize) return;
 			lastSize = size;
-			this.render();
+			this.onCanvasResize();
 		});
 		observer.observe(this.graphContainer);
 		this.register(() => observer.disconnect());
@@ -160,7 +176,11 @@ export class GlobalGraphView extends ItemView {
 		searchInput.value = this.searchQuery;
 		searchInput.addEventListener('input', () => {
 			this.searchQuery = searchInput.value.toLowerCase();
-			this.render();
+			if (this.searchTimer) clearTimeout(this.searchTimer);
+			this.searchTimer = setTimeout(() => {
+				this.searchTimer = null;
+				this.applySearch();
+			}, GlobalGraphView.INPUT_DEBOUNCE_MS);
 		});
 
 		// Separator
@@ -231,6 +251,42 @@ export class GlobalGraphView extends ItemView {
 			if (this.fitToView) this.fitToView();
 			else this.render();
 		});
+	}
+
+	// --- Search and resize ---
+
+	/**
+	 * Dim the 2D nodes and links that do not match the search, in place: the layout and
+	 * the simulation are left alone. The 3D views do not show the search.
+	 */
+	private applySearch(): void {
+		const t = this.searchTargets;
+		if (!t) return;
+		const nodes = t.nodeGroup.data();
+		const matching = t.isFileMode
+			? this.getMatchingFileIds(nodes as FileGraphNode[])
+			: this.getMatchingCardIds(nodes as CardGraphNode[]);
+		const dim = t.isFileMode ? 0.15 : 0.1;
+		const base = t.isFileMode ? 1 : 0.85;
+		const opacity = (d: GlobalNode) => (matching ? (matching.has(d.id) ? 1 : dim) : base);
+		t.link.attr('stroke-opacity', matching ? 0.1 : 0.4);
+		t.nodeGroup.select('circle').attr('opacity', opacity);
+		if (t.isFileMode) {
+			t.nodeGroup.select(`.${GlobalGraphView.FILE_LABEL_CLASS}`).attr('opacity', opacity);
+		}
+	}
+
+	/** Draw on the first usable size; afterwards resize the drawing, debounced. */
+	private onCanvasResize(): void {
+		if (!this.resizeViewport) {
+			this.render();
+			return;
+		}
+		if (this.resizeTimer) clearTimeout(this.resizeTimer);
+		this.resizeTimer = setTimeout(() => {
+			this.resizeTimer = null;
+			this.resizeViewport?.();
+		}, GlobalGraphView.INPUT_DEBOUNCE_MS);
 	}
 
 	// --- Main Render Dispatch ---
@@ -313,10 +369,7 @@ export class GlobalGraphView extends ItemView {
 			});
 		}
 
-		// Filter by search
-		const matchingIds = this.getMatchingFileIds(fileNodes);
-
-		this.renderD3(this.graphContainer, fileNodes, fileLinks, matchingIds);
+		this.renderD3(this.graphContainer, fileNodes, fileLinks);
 	}
 
 	// --- Card Mode (2D) ---
@@ -369,24 +422,16 @@ export class GlobalGraphView extends ItemView {
 			}
 		}
 
-		// Filter by search
-		const matchingIds = this.getMatchingCardIds(cardNodes);
-
-		this.renderD3(this.graphContainer, cardNodes, cardLinks, matchingIds);
+		this.renderD3(this.graphContainer, cardNodes, cardLinks);
 	}
 
 	// --- Unified D3 2D Renderer ---
 
-	private renderD3(
-		container: HTMLElement,
-		nodes: GlobalNode[],
-		links: GlobalLink[],
-		matchingIds: Set<string> | null,
-	): void {
+	private renderD3(container: HTMLElement, nodes: GlobalNode[], links: GlobalLink[]): void {
 		container.empty();
 
-		const width = container.clientWidth;
-		const height = container.clientHeight;
+		let width = container.clientWidth;
+		let height = container.clientHeight;
 		if (width === 0 || height === 0) {
 			// hidden; the ResizeObserver re-renders once it has a size
 			return;
@@ -398,6 +443,18 @@ export class GlobalGraphView extends ItemView {
 			.attr('width', '100%')
 			.attr('height', '100%')
 			.attr('viewBox', [0, 0, width, height]);
+
+		// A pane resize keeps the layout: map the viewport to the new size and fit to it.
+		// While the layout still runs, its end handler does the fit with the new size.
+		this.resizeViewport = () => {
+			if (container.clientWidth === 0 || container.clientHeight === 0) return;
+			width = container.clientWidth;
+			height = container.clientHeight;
+			svg.attr('viewBox', [0, 0, width, height]);
+			if (this.simulation && this.simulation.alpha() < this.simulation.alphaMin()) {
+				this.fitToView?.();
+			}
+		};
 
 		const g = svg.append('g');
 
@@ -476,10 +533,6 @@ export class GlobalGraphView extends ItemView {
 			.data(links)
 			.join('line')
 			.attr('stroke', 'var(--text-muted)')
-			.attr('stroke-opacity', () => {
-				if (matchingIds && matchingIds.size > 0) return 0.1;
-				return 0.4;
-			})
 			.attr('stroke-width', (d) => {
 				if (isFileMode) return Math.min(1 + d.weight * 0.5, 6);
 				return d.edgeType === 'requires' ? 1.5 : 0.8;
@@ -516,10 +569,12 @@ export class GlobalGraphView extends ItemView {
 
 		// Render nodes
 		if (isFileMode) {
-			this.renderFileNodes(nodeGroup, matchingIds);
+			this.renderFileNodes(nodeGroup);
 		} else {
-			this.renderCardNodes(nodeGroup, matchingIds);
+			this.renderCardNodes(nodeGroup);
 		}
+		this.searchTargets = { nodeGroup, link, isFileMode };
+		this.applySearch();
 
 		// Hover highlight: global-graph.css dims everything while the svg has
 		// `arete-hovering`, except elements marked `arete-connected`. Only the hovered
@@ -604,10 +659,7 @@ export class GlobalGraphView extends ItemView {
 		}
 	}
 
-	private renderFileNodes(
-		nodeGroup: d3.Selection<any, GlobalNode, any, any>,
-		matchingIds: Set<string> | null,
-	): void {
+	private renderFileNodes(nodeGroup: d3.Selection<any, GlobalNode, any, any>): void {
 		nodeGroup
 			.append('circle')
 			.attr('r', (d: any) => d.radius)
@@ -617,12 +669,6 @@ export class GlobalGraphView extends ItemView {
 			})
 			.attr('stroke', 'var(--background-primary)')
 			.attr('stroke-width', 2)
-			.attr('opacity', (d) => {
-				if (matchingIds && matchingIds.size > 0) {
-					return matchingIds.has(d.id) ? 1 : 0.15;
-				}
-				return 1;
-			})
 			.style('cursor', 'pointer');
 
 		// Labels
@@ -636,12 +682,7 @@ export class GlobalGraphView extends ItemView {
 			.attr('dx', (d: any) => d.radius + 4)
 			.attr('dy', 3)
 			.attr('fill', 'var(--text-muted)')
-			.attr('opacity', (d) => {
-				if (matchingIds && matchingIds.size > 0) {
-					return matchingIds.has(d.id) ? 1 : 0.15;
-				}
-				return 1;
-			})
+			.attr('class', GlobalGraphView.FILE_LABEL_CLASS)
 			.style('pointer-events', 'none');
 
 		// Card count badge
@@ -656,22 +697,13 @@ export class GlobalGraphView extends ItemView {
 			.style('pointer-events', 'none');
 	}
 
-	private renderCardNodes(
-		nodeGroup: d3.Selection<any, GlobalNode, any, any>,
-		matchingIds: Set<string> | null,
-	): void {
+	private renderCardNodes(nodeGroup: d3.Selection<any, GlobalNode, any, any>): void {
 		nodeGroup
 			.append('circle')
 			.attr('r', (d: any) => d.radius)
 			.attr('fill', (d: any) => `hsl(${d.fileHue}, 55%, 55%)`)
 			.attr('stroke', 'var(--background-primary)')
 			.attr('stroke-width', 1.5)
-			.attr('opacity', (d) => {
-				if (matchingIds && matchingIds.size > 0) {
-					return matchingIds.has(d.id) ? 1 : 0.1;
-				}
-				return 0.85;
-			})
 			.style('cursor', 'pointer');
 
 		// A card's label exists only while the card is hovered, so the svg does not carry
@@ -826,6 +858,15 @@ export class GlobalGraphView extends ItemView {
 				};
 				this.renderFileDetail(fileNode);
 			});
+		this.resizeViewport = () => this.resize3D();
+	}
+
+	/** Resize the 3D renderer to the canvas; the layout is kept. */
+	private resize3D(): void {
+		const width = this.graphContainer.clientWidth;
+		const height = this.graphContainer.clientHeight;
+		if (!this.graph3D || width === 0 || height === 0) return;
+		this.graph3D.width(width).height(height);
 	}
 
 	private renderCard3D(): void {
@@ -898,6 +939,7 @@ export class GlobalGraphView extends ItemView {
 				};
 				this.renderCardDetail(cardNode);
 			});
+		this.resizeViewport = () => this.resize3D();
 
 		// Clustering in 3D card mode
 		if (this.clusteringEnabled) {
@@ -1276,6 +1318,8 @@ export class GlobalGraphView extends ItemView {
 	private fitToView: (() => void) | null = null;
 
 	private stopSimulation(): void {
+		this.searchTargets = null;
+		this.resizeViewport = null;
 		if (this.simulation) {
 			this.simulation.stop();
 			this.simulation = null;
@@ -1297,6 +1341,8 @@ export class GlobalGraphView extends ItemView {
 	}
 
 	async onClose(): Promise<void> {
+		if (this.searchTimer) clearTimeout(this.searchTimer);
+		if (this.resizeTimer) clearTimeout(this.resizeTimer);
 		this.stopSimulation();
 		this.tooltipComponent.unload();
 	}
