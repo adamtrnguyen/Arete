@@ -166,3 +166,31 @@ def test_build_queue_missing_vault_root():
     response = client.post("/queue/build", json={})
     assert response.status_code == 400
     assert "No vault is configured" in response.json()["detail"]
+
+
+def test_stats_closes_its_anki_client(monkeypatch):
+    """Each /anki/stats request closes the HTTP client its AnkiConnect repository opened."""
+    import httpx
+
+    from arete.infrastructure.adapters.stats import connect_stats
+
+    opened: list[httpx.AsyncClient] = []
+
+    def answer(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"result": [], "error": None})
+
+    class RecordingClient(httpx.AsyncClient):
+        def __init__(self, **kwargs):
+            super().__init__(transport=httpx.MockTransport(answer), **kwargs)
+            opened.append(self)
+
+    monkeypatch.setattr(connect_stats.httpx, "AsyncClient", RecordingClient)
+
+    body = {"nids": [1], "backend": "ankiconnect", "anki_connect_url": "http://anki.test:1"}
+    for _ in range(5):
+        response = client.post("/anki/stats", json=body)
+        assert response.status_code == 200
+        assert response.json() == []
+
+    assert len(opened) == 5
+    assert [c for c in opened if not c.is_closed] == []

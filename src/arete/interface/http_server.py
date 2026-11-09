@@ -1,3 +1,4 @@
+import inspect
 import logging
 import os
 import signal
@@ -287,8 +288,14 @@ async def get_stats(req: StatsRequest):
         from arete.composition.factory import get_stats_service
 
         service = get_stats_service(config)
-        stats = await service.get_enriched_stats(req.nids)
-        return stats
+        try:
+            return await service.get_enriched_stats(req.nids)
+        finally:
+            # The stats port declares no close; a repository that holds an HTTP client
+            # exposes an async one, and each request's client is released here.
+            close = getattr(service.repo, "close", None)
+            if inspect.iscoroutinefunction(close):
+                await close()
     except Exception as e:
         logger.error(f"Stats fetch failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e)) from e
