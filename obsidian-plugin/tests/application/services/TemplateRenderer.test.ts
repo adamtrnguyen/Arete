@@ -183,4 +183,96 @@ describe('TemplateRenderer', () => {
 			'Q<br><span class="arete-type-answer" style="display:inline-block;min-width:10em;padding:2px 8px;border:1px solid #999;border-radius:4px;color:#888">type answer</span>',
 		);
 	});
+
+	describe('field rendering cost', () => {
+		const clozeModel = {
+			'Card 1': {
+				Front: '{{cloze:Text}}',
+				Back: '{{cloze:Text}}<br>{{Back Extra}}',
+			},
+		};
+		const fields = { Text: 'A {{c1::b}} c', 'Back Extra': 'E', Unused: 'U' };
+		const renderedValues = () =>
+			(MarkdownRenderer.render as jest.Mock).mock.calls.map((c) => c[1]).sort();
+
+		beforeEach(() => {
+			renderer.setMode('obsidian');
+			mockRepo.modelTemplates.mockResolvedValue(clozeModel);
+			(MarkdownRenderer.render as jest.Mock).mockImplementation(async (_a, val, el) => {
+				el.innerHTML = `<i>${val}</i>`;
+			});
+		});
+
+		it('renders only the fields the templates use, with the same output', async () => {
+			const front = await renderer.render('Cloze', 'Front', fields, opts);
+			expect(renderedValues()).toEqual(['A <span class="cloze">[...]</span> c']);
+			expect(front?.html).toBe('<i>A <span class="cloze">[...]</span> c</i>');
+
+			(MarkdownRenderer.render as jest.Mock).mockClear();
+			const back = await renderer.render('Cloze', 'Back', fields, opts);
+			expect(renderedValues()).toEqual(['A <span class="cloze">b</span> c', 'E']);
+			expect(back?.html).toBe('<i>A <span class="cloze">b</span> c</i><br><i>E</i>');
+		});
+
+		it('renders the front fields too when the back shows {{FrontSide}}', async () => {
+			mockRepo.modelTemplates.mockResolvedValue({
+				'Card 1': { Front: '{{Front}}', Back: '{{FrontSide}}<hr id=answer>{{Back}}' },
+			});
+			const back = await renderer.render(
+				'Basic',
+				'Back',
+				{ Front: 'Q', Back: 'A', Unused: 'U' },
+				opts,
+			);
+			expect(renderedValues()).toEqual(['A', 'Q']);
+			expect(back?.html).toBe('<i>Q</i><hr id=answer><i>A</i>');
+		});
+
+		it('starts every field render before any finishes', async () => {
+			mockRepo.modelTemplates.mockResolvedValue({
+				'Card 1': { Front: '{{A}}{{B}}{{C}}', Back: '' },
+			});
+			const finish: Array<() => void> = [];
+			(MarkdownRenderer.render as jest.Mock).mockImplementation(
+				(_a, val, el) =>
+					new Promise<void>((resolve) =>
+						finish.push(() => {
+							el.innerHTML = val;
+							resolve();
+						}),
+					),
+			);
+
+			const pending = renderer.render('Three', 'Front', { A: '1', B: '2', C: '3' }, opts);
+			await new Promise((r) => setImmediate(r));
+			expect(MarkdownRenderer.render).toHaveBeenCalledTimes(3);
+			finish.reverse().forEach((f) => f());
+			expect((await pending)?.html).toBe('123');
+		});
+
+		it('renders every field when a template does not parse', async () => {
+			mockRepo.modelTemplates.mockResolvedValue({
+				'Card 1': { Front: '{{#Open}}{{Text}}', Back: '' },
+			});
+			const result = await renderer.render(
+				'Broken',
+				'Front',
+				{ Text: 't', Other: 'o' },
+				opts,
+			);
+			expect(renderedValues()).toEqual(['o', 't']);
+			expect(result).toBeNull();
+		});
+
+		it('clearModelCache makes the next render fetch the note type again', async () => {
+			await renderer.render('Cloze', 'Front', fields, opts);
+			await renderer.render('Cloze', 'Front', fields, opts);
+			expect(mockRepo.modelTemplates).toHaveBeenCalledTimes(1);
+
+			renderer.clearModelCache();
+			await renderer.render('Cloze', 'Front', fields, opts);
+			expect(mockRepo.modelStyling).toHaveBeenCalledTimes(2);
+			expect(mockRepo.modelTemplates).toHaveBeenCalledTimes(2);
+		});
+	});
 });

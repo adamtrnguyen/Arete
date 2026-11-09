@@ -25,6 +25,37 @@ export class TemplateRenderer {
 		this.mode = mode;
 	}
 
+	/** Forget the loaded note types, so the next render fetches them from Anki again. */
+	clearModelCache(): void {
+		this.cache.clear();
+	}
+
+	/**
+	 * Every variable name the templates can look up, sections included, or null when a
+	 * template does not parse. Fields outside this set cannot change the rendered card.
+	 */
+	private static referencedNames(templates: string[]): Set<string> | null {
+		const names = new Set<string>();
+		const walk = (tokens: any[]) => {
+			for (const token of tokens) {
+				if (['name', '&', '#', '^'].includes(token[0])) {
+					const name = String(token[1]);
+					for (const n of [name, name.split('.')[0]]) {
+						names.add(n);
+						names.add(n.trim());
+					}
+				}
+				if (Array.isArray(token[4])) walk(token[4]);
+			}
+		};
+		try {
+			for (const tmpl of templates) walk(Mustache.parse(tmpl));
+		} catch {
+			return null;
+		}
+		return names;
+	}
+
 	/**
 	 * Rewrite Anki's field filters, which Mustache cannot evaluate ({{cloze:F}},
 	 * {{type:F}}, {{text:F}}), into plain variables whose values are computed here.
@@ -132,32 +163,41 @@ export class TemplateRenderer {
 		const renderedFields: Record<string, string> = {};
 
 		if (this.mode === 'obsidian') {
-			for (const key of Object.keys(fields)) {
-				const val = fields[key];
-				if (!val) {
-					renderedFields[key] = '';
-					continue;
-				}
-
-				// Create a dummy container to render into
-				const dummy = document.createElement('div');
-				dummy.style.display = 'none'; // Hide it
-				document.body.appendChild(dummy); // Attach to DOM for MathJax measurement
-
-				try {
-					// Use MarkdownRenderer to render the field value (handles MD + LaTeX)
-					await MarkdownRenderer.render(
-						this.app,
-						val,
-						dummy,
-						opts.sourcePath,
-						opts.component,
-					);
-					renderedFields[key] = dummy.innerHTML;
-				} finally {
-					document.body.removeChild(dummy); // Cleanup
-				}
+			// Render, all at once, only the fields the templates use: a cloze note's raw
+			// field is not rendered when only its {{cloze:...}} copy appears.
+			let used = TemplateRenderer.referencedNames([template]);
+			if (used?.has('FrontSide') && frontTemplate) {
+				used = TemplateRenderer.referencedNames([template, frontTemplate]);
 			}
+			const keys = Object.keys(fields).filter((key) => !used || used.has(key));
+			await Promise.all(
+				keys.map(async (key) => {
+					const val = fields[key];
+					if (!val) {
+						renderedFields[key] = '';
+						return;
+					}
+
+					// Create a dummy container to render into
+					const dummy = document.createElement('div');
+					dummy.style.display = 'none'; // Hide it
+					document.body.appendChild(dummy); // Attach to DOM for MathJax measurement
+
+					try {
+						// Use MarkdownRenderer to render the field value (handles MD + LaTeX)
+						await MarkdownRenderer.render(
+							this.app,
+							val,
+							dummy,
+							opts.sourcePath,
+							opts.component,
+						);
+						renderedFields[key] = dummy.innerHTML;
+					} finally {
+						document.body.removeChild(dummy); // Cleanup
+					}
+				}),
+			);
 		} else {
 			// Anki Mode: Pass raw fields
 			Object.assign(renderedFields, fields);

@@ -266,6 +266,15 @@ export default class AretePlugin extends Plugin {
 			},
 		});
 
+		this.addCommand({
+			id: 'arete-reload-note-types',
+			name: 'Reload Note Types (Card Preview)',
+			callback: () => {
+				this.templateRenderer.clearModelCache();
+				new Notice('Arete: note types will be fetched from Anki on the next preview.');
+			},
+		});
+
 		// 4. Settings
 		this.addSettingTab(new AreteSettingTab(this.app, this));
 

@@ -63,6 +63,18 @@ describe('AretePlugin Composition', () => {
 	});
 });
 
+describe('Reload Note Types command', () => {
+	test('drops the cached note types', async () => {
+		const app = new App();
+		const plugin = new AretePlugin(app, { dir: 'test-plugin-dir' } as any);
+		await plugin.onload();
+		const clear = jest.spyOn(plugin.templateRenderer, 'clearModelCache');
+
+		(global as any).registeredCommands['arete-reload-note-types'].callback();
+		expect(clear).toHaveBeenCalledTimes(1);
+	});
+});
+
 describe('AretePlugin.showCard (obsidian://arete)', () => {
 	let plugin: AretePlugin;
 	let app: App;
