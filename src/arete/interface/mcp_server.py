@@ -18,7 +18,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 from arete.application.config import AppConfig, resolve_config
 from arete.application.queue.service import QueueAlgo
 from arete.application.vault_paths import configured_vault_root, within_vault
-from arete.composition.factory import get_anki_bridge
+from arete.composition.factory import AnkiConnectAdapter, get_anki_bridge
 from arete.composition.orchestrator import execute_sync
 from arete.domain.interfaces import AnkiBridge
 
@@ -56,9 +56,14 @@ def create_server() -> MCPServer:  # noqa: C901
         return _state["config"]
 
     async def _bridge() -> AnkiBridge:
-        if "bridge" not in _state:
-            _state["bridge"] = await get_anki_bridge(_config())
-        return _state["bridge"]
+        if "bridge" in _state:
+            return _state["bridge"]
+        bridge = await get_anki_bridge(_config())
+        # Only an AnkiConnect bridge is kept. A direct one opens the collection file, which
+        # Anki may hold by the next call, so each call resolves the backend again.
+        if isinstance(bridge, AnkiConnectAdapter):
+            _state["bridge"] = bridge
+        return bridge
 
     # ------------------------------------------------------------------
     # Existing tools (migrated from raw Server)

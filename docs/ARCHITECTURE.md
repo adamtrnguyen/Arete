@@ -16,7 +16,7 @@ src/arete/
 │   ├── _common.py                 Shared utilities for all CLI submodules
 │   ├── anki_commands.py           Anki card management and debugging commands
 │   ├── cli.py                     Arete CLI — root commands and subgroup registration
-│   ├── http_server.py             lifespan, HealthResponse, health_check...
+│   ├── http_server.py             AnkiBridgePool, lifespan, HealthResponse...
 │   ├── mcp_server.py              Arete MCP Server
 │   ├── serve_commands.py          Server commands: daemon (HTTP) and MCP (stdio)
 │   ├── vault_commands.py          Vault maintenance commands: validate, fix, format
@@ -85,7 +85,7 @@ src/arete/
 
 | Layer | Modules | Lines | May import |
 |---|---|---|---|
-| `interface` | 7 | 1828 | application, composition |
+| `interface` | 7 | 1944 | application, composition |
 | `composition` | 2 | 178 | application, infrastructure, domain |
 | `application` | 25 | 4556 | domain (ports only) |
 | `infrastructure` | 7 | 2176 | domain |

@@ -294,3 +294,31 @@ def testfind_concept_file_subdirectory(tmp_path):
 def testfind_concept_file_not_found(tmp_path):
     result = find_concept_file(tmp_path, "Nonexistent")
     assert result is None
+
+
+# ------------------------------------------------------------------
+# the kept bridge
+# ------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_a_direct_bridge_is_not_kept_between_calls(mcp_server):
+    """With Anki closed at the first call, a later call must resolve again and see Anki."""
+    from arete.composition.factory import AnkiConnectAdapter
+
+    direct = AsyncMock()
+    direct.gui_browse.return_value = True
+    connect = AsyncMock(spec=AnkiConnectAdapter)
+    connect.gui_browse.return_value = True
+    with (
+        patch("arete.interface.mcp_server.resolve_config"),
+        patch("arete.interface.mcp_server.get_anki_bridge", new_callable=AsyncMock) as mock_get,
+    ):
+        mock_get.side_effect = [direct, connect]
+        await mcp_server.call_tool("browse_card", {"arete_id": "arete_A"})  # Anki closed
+        await mcp_server.call_tool("browse_card", {"arete_id": "arete_A"})  # Anki started
+        await mcp_server.call_tool("browse_card", {"arete_id": "arete_A"})  # kept
+
+    assert mock_get.await_count == 2
+    direct.gui_browse.assert_awaited_once()
+    assert connect.gui_browse.await_count == 2
