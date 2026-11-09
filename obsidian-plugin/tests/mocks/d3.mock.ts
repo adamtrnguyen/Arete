@@ -38,6 +38,16 @@ export const forceManyBody = jest.fn();
 export const forceCenter = jest.fn();
 export const forceCollide = jest.fn();
 
+const axisForce = () => {
+	const force: any = {};
+	force.x = jest.fn(() => force);
+	force.y = jest.fn(() => force);
+	force.strength = jest.fn(() => force);
+	return force;
+};
+export const forceX = jest.fn(axisForce);
+export const forceY = jest.fn(axisForce);
+
 export const zoomIdentity = {
 	translate: jest.fn(),
 	scale: jest.fn(),

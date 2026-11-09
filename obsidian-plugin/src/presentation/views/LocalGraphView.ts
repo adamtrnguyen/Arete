@@ -21,6 +21,41 @@ export interface LocalGraphHost {
 
 export const LOCAL_GRAPH_VIEW_TYPE = 'arete-local-graph';
 
+/** 3d-force-graph's kapsule call form: `ForceGraph3D()(element)`. */
+type ForceGraph3DFactory = () => (element: HTMLElement) => ForceGraph3DInstance;
+
+/**
+ * The 3d-force-graph instance methods this view calls; each setter returns the instance.
+ * The package's own typings import three's, which this project does not install.
+ */
+type ForceGraph3DInstance = {
+	[K in
+		| 'width'
+		| 'height'
+		| 'graphData'
+		| 'nodeLabel'
+		| 'nodeColor'
+		| 'nodeVal'
+		| 'linkColor'
+		| 'linkWidth'
+		| 'linkDirectionalArrowLength'
+		| 'linkDirectionalArrowRelPos'
+		| 'onNodeClick'
+		| 'onNodeHover'
+		| 'd3Force']: (...args: any[]) => ForceGraph3DInstance;
+} & { _destructor?: () => void };
+
+/**
+ * `require('3d-force-graph')`, called on the first 3D render rather than at module top:
+ * the package pulls in three.js, most of the bundle, and esbuild evaluates it on the
+ * first call of this function instead of at plugin load. The package is ESM-only, so the
+ * required value can be its namespace object (`{ default }`) or the function; take either.
+ */
+function loadForceGraph3D(): ForceGraph3DFactory {
+	const mod = require('3d-force-graph') as ForceGraph3DFactory | { default: ForceGraph3DFactory };
+	return 'default' in mod ? mod.default : mod;
+}
+
 interface GraphNode extends d3.SimulationNodeDatum {
 	id: string;
 	title: string;
@@ -930,9 +965,7 @@ export class LocalGraphView extends ItemView {
 			})),
 		};
 
-		// Required here, not at module top: it pulls in three.js, most of the bundle, which
-		// esbuild then evaluates on the first 3D render instead of at plugin load.
-		const ForceGraph3D = require('3d-force-graph');
+		const ForceGraph3D = loadForceGraph3D();
 
 		// Create 3D graph
 		this.graph3D = ForceGraph3D()(container)

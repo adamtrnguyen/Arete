@@ -1,5 +1,7 @@
-// Mock for 3d-force-graph to avoid ESM issues in Jest
-const ForceGraph3D = jest.fn().mockImplementation(() => {
+// Mock for 3d-force-graph, shaped like the real package under a bundler's require(): the
+// package is ESM-only, so require() yields a module namespace whose only key is `default`.
+// The default is a kapsule factory, used as ForceGraph3D()(element).
+const createInstance = () => {
 	const graphInstance = {
 		width: jest.fn().mockReturnThis(),
 		height: jest.fn().mockReturnThis(),
@@ -17,6 +19,8 @@ const ForceGraph3D = jest.fn().mockImplementation(() => {
 		_destructor: jest.fn(),
 	};
 	return graphInstance;
-});
+};
+
+const ForceGraph3D = jest.fn(() => jest.fn((_element: unknown) => createInstance()));
 
 export default ForceGraph3D;
