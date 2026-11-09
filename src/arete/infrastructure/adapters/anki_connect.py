@@ -60,6 +60,8 @@ class AnkiConnectAdapter(AnkiBridge):
         # Per-run reconcile index: model -> normalized first field -> [nid, ...] (sorted).
         # Built lazily, collection-wide, the first time a card without a usable nid shows up.
         self._content_index: dict[str, dict[str, list[int]]] = {}
+        # The build in flight per model, shared by every card that asks while it runs.
+        self._index_builds: dict[str, asyncio.Future[dict[str, list[int]]]] = {}
         self.use_windows_curl = False
         self._client: httpx.AsyncClient | None = None
         self._invoke_sem = asyncio.Semaphore(SYNC_CONCURRENCY)
@@ -549,11 +551,23 @@ class AnkiConnectAdapter(AnkiBridge):
         return matches[min(matches)]
 
     async def _content_index_for(self, model: str, first_field_name: str) -> dict[str, list[int]]:
-        """Build (once per run, per model) normalized first field -> sorted nids."""
+        """Build (once per run, per model) normalized first field -> sorted nids.
+
+        Callers that arrive while a build runs await that build instead of starting their
+        own. A failed build is shared by its waiters but not cached; the next caller retries.
+        """
         cached = self._content_index.get(model)
         if cached is not None:
             return cached
+        build = self._index_builds.get(model)
+        if build is None:
+            build = asyncio.ensure_future(self._build_content_index(model, first_field_name))
+            self._index_builds[model] = build
+            build.add_done_callback(lambda _, m=model: self._index_builds.pop(m, None))
+        # shield: one cancelled caller must not cancel the build the others wait on
+        return await asyncio.shield(build)
 
+    async def _build_content_index(self, model: str, first_field_name: str) -> dict[str, list[int]]:
         try:
             candidates = await self._invoke("findNotes", query=f'"note:{model}"')
         except Exception as e:

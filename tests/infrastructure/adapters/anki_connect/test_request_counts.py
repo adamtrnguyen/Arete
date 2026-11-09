@@ -316,3 +316,49 @@ async def test_random_batches_end_with_anki_as_the_vault_says(seed):
     for item, result in zip(items, results, strict=True):
         if result.ok:
             _assert_matches_vault(fake, item)
+
+
+# ---------------------------------------------------------------------------
+# Content index: one collection scan per model, however many new cards ask at once
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_concurrent_new_cards_share_one_content_index_build():
+    fake = FakeAnki()
+    for j in range(1200):
+        fake.add({"Front": f"old {j}"})
+    twin = fake.add({"Front": "q7"}, deck="Elsewhere")  # no tag: found by content only
+
+    results = await _sync(fake, [_item(i, tags=[]) for i in range(20)])
+
+    assert all(r.ok for r in results)
+    scans = [p for a, p in fake.log if a == "findNotes"]
+    assert scans == [{"query": '"note:Basic"'}]
+    assert fake.requests == {
+        "createDeck": 1,
+        "modelFieldNames": 1,
+        "findNotes": 1,
+        # ceil(1201 / 500) for the index, 1 for the healed twin, 1 for the new cids
+        "notesInfo": 3 + 1 + 1,
+        "addNote": 19,
+        "getDecks": 1,
+        "updateNoteFields": 1,
+        "changeDeck": 1,
+    }
+    assert results[7].new_nid == str(twin)
+
+
+@pytest.mark.asyncio
+async def test_a_failed_index_build_is_retried_by_the_next_batch():
+    fake = FakeAnki()
+    fake.fail = lambda action, params: "busy" if action == "findNotes" else None
+    adapter = _adapter(fake)
+
+    first = await adapter.sync_notes([_item(i, tags=[]) for i in range(3)])
+    fake.fail = lambda action, params: None
+    fake.reset_counts()
+    second = await adapter.sync_notes([_item(i, tags=[]) for i in range(3, 6)])
+
+    assert all(r.ok for r in first + second)
+    assert fake.requests["findNotes"] == 1  # retried once for the whole second batch
