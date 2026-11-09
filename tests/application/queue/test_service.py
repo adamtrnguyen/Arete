@@ -64,3 +64,18 @@ def test_one_request_builds_the_graph_once(tmp_path: Path, algo, enrich):
     assert [item.id for item in result.queue_items] == ["arete_A", "arete_B"]
     if enrich:
         assert [item.title for item in result.queue_items] == ["a", "b"]
+
+
+@pytest.mark.parametrize(
+    "module", ["arete.application.queue.service", "arete.domain.graph", "arete.interface.cli"]
+)
+def test_importing_the_queue_path_does_not_load_networkx(module):
+    """Every CLI command imports the queue service; networkx loads only for graph work."""
+    import subprocess
+    import sys
+
+    code = f"import sys, {module}; print('networkx' in sys.modules)"
+    out = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, check=True
+    ).stdout
+    assert out.strip() == "False"

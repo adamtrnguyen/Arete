@@ -9,13 +9,17 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
-
-import networkx as nx
+from typing import TYPE_CHECKING, Any
 
 from arete.application.utils.fs import iter_markdown_files
 from arete.application.utils.text import normalize_filename, parse_frontmatter
 from arete.domain.graph import CardNode, DependencyGraph
+
+if TYPE_CHECKING:
+    import networkx as nx
+
+# networkx is imported inside the functions that use it: every CLI command imports this
+# module through the queue service, and most of them never touch a graph.
 
 # ---------------------------------------------------------------------------
 # Result dataclasses
@@ -297,6 +301,8 @@ def detect_cycles(graph: DependencyGraph) -> list[list[str]]:
     Returns a list of strongly connected components (cycles).
     Each cycle is a list of card IDs that form a co-requisite group.
     """
+    import networkx as nx
+
     if nx.is_directed_acyclic_graph(graph._graph):
         return []
 
@@ -314,6 +320,8 @@ def find_isolated_nodes(graph: DependencyGraph) -> list[str]:
 
 def find_connected_components(graph: DependencyGraph) -> list[set[str]]:
     """Find connected components treating requires edges as undirected."""
+    import networkx as nx
+
     # Build a graph that includes all nodes from graph.nodes
     # (some may only be in graph.nodes dict, not in _graph)
     g = graph._graph.copy()
@@ -344,6 +352,8 @@ def topological_sort(
         Sorted list of card IDs (prerequisites before dependents)
 
     """
+    import networkx as nx
+
     # Filter to only requested cards that exist, keeping input order (a set here made
     # the result depend on the hash seed).
     valid_ids = list(dict.fromkeys(cid for cid in card_ids if cid in graph.nodes))
@@ -384,6 +394,8 @@ def topological_sort(
 
 def _component_depths(g: nx.DiGraph) -> dict[str, int]:
     """Longest-path depth of every node, with each cycle treated as a single node."""
+    import networkx as nx
+
     cond = nx.condensation(g)
     members = nx.get_node_attributes(cond, "members")
     comp_depth: dict[int, int] = {}

@@ -4,10 +4,22 @@ These types represent the structure of card dependencies
 without any persistence or resolution logic.
 """
 
-from dataclasses import dataclass, field
-from typing import Any
+from __future__ import annotations
 
-import networkx as nx
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    import networkx as nx
+
+
+def _new_digraph() -> nx.DiGraph:
+    """Return an empty graph, importing networkx on first use."""
+    # Not at module load: networkx costs every CLI start tens of milliseconds, and only
+    # graph work needs it.
+    import networkx as nx
+
+    return nx.DiGraph()
 
 
 @dataclass(frozen=True)
@@ -50,7 +62,7 @@ class DependencyGraph:
     # file -> (card id, effective deck) for every card mapping in the file, in file order.
     # Recorded by the vault build so a deck filter need not re-read the files.
     card_decks: dict[str, list[tuple[Any, str]]] = field(default_factory=dict, repr=False)
-    _graph: nx.DiGraph = field(default_factory=nx.DiGraph, repr=False)
+    _graph: nx.DiGraph = field(default_factory=_new_digraph, repr=False)
 
     @property
     def edge_count(self) -> int:
