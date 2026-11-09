@@ -74,3 +74,85 @@ describe('sync on save', () => {
 		expect(plugin.runSync).not.toHaveBeenCalled();
 	});
 });
+
+describe('dependency graph invalidation', () => {
+	const cardNote = { frontmatter: { arete: true, cards: [{ id: 'arete_A' }] } };
+	const plainNote = { frontmatter: { tags: ['x'] } };
+	const noFrontmatter = { sections: [] as unknown[] };
+
+	async function setup(cacheByPath: Record<string, unknown>) {
+		const loaded = await loadPlugin();
+		(loaded.app.metadataCache.getFileCache as jest.Mock).mockImplementation(
+			(f: { path: string }) => cacheByPath[f.path],
+		);
+		loaded.plugin.dependencyResolver.invalidate = jest.fn();
+		return loaded;
+	}
+
+	test('editing a note without cards keeps the graph', async () => {
+		const { plugin, vaultHandlers, metaHandlers } = await setup({
+			'plain.md': plainNote,
+			'bare.md': noFrontmatter,
+		});
+		vaultHandlers.modify({ path: 'plain.md' });
+		metaHandlers.changed({ path: 'plain.md' }, '', plainNote);
+		vaultHandlers.modify({ path: 'bare.md' });
+		metaHandlers.changed({ path: 'bare.md' }, '', noFrontmatter);
+		expect(plugin.dependencyResolver.invalidate).not.toHaveBeenCalled();
+	});
+
+	test('editing a card note drops the graph', async () => {
+		const { plugin, vaultHandlers } = await setup({ 'cards.md': cardNote });
+		vaultHandlers.modify({ path: 'cards.md' });
+		expect(plugin.dependencyResolver.invalidate).toHaveBeenCalled();
+	});
+
+	test('a note that just lost its cards drops the graph (cache still old at modify)', async () => {
+		const { plugin, vaultHandlers, metaHandlers } = await setup({ 'n.md': cardNote });
+		vaultHandlers.modify({ path: 'n.md' });
+		expect(plugin.dependencyResolver.invalidate).toHaveBeenCalledTimes(1);
+		metaHandlers.changed({ path: 'n.md' }, '', plainNote);
+		expect(plugin.dependencyResolver.invalidate).toHaveBeenCalledTimes(1);
+	});
+
+	test('a note that just gained cards drops the graph once re-parsed', async () => {
+		const { plugin, vaultHandlers, metaHandlers } = await setup({ 'n.md': plainNote });
+		vaultHandlers.modify({ path: 'n.md' });
+		expect(plugin.dependencyResolver.invalidate).not.toHaveBeenCalled();
+		metaHandlers.changed({ path: 'n.md' }, '', cardNote);
+		expect(plugin.dependencyResolver.invalidate).toHaveBeenCalledTimes(1);
+	});
+
+	test('an uncached note counts as possibly in the graph', async () => {
+		const { plugin, vaultHandlers } = await setup({});
+		vaultHandlers.modify({ path: 'new.md' });
+		expect(plugin.dependencyResolver.invalidate).toHaveBeenCalled();
+	});
+
+	test('non-markdown edits keep the graph', async () => {
+		const { plugin, vaultHandlers } = await setup({});
+		vaultHandlers.modify({ path: 'image.png' });
+		expect(plugin.dependencyResolver.invalidate).not.toHaveBeenCalled();
+	});
+
+	test('deleting a card note drops the graph; deleting a plain note does not', async () => {
+		const { plugin, metaHandlers } = await setup({});
+		metaHandlers.deleted({ path: 'plain.md' }, plainNote);
+		expect(plugin.dependencyResolver.invalidate).not.toHaveBeenCalled();
+		metaHandlers.deleted({ path: 'cards.md' }, cardNote);
+		expect(plugin.dependencyResolver.invalidate).toHaveBeenCalledTimes(1);
+		metaHandlers.deleted({ path: 'unknown.md' }, null);
+		expect(plugin.dependencyResolver.invalidate).toHaveBeenCalledTimes(2);
+	});
+
+	test('renaming a card note drops the graph; renaming a plain note does not', async () => {
+		const { plugin, vaultHandlers } = await setup({
+			'new-cards.md': cardNote,
+			'new-plain.md': plainNote,
+		});
+		vaultHandlers.rename({ path: 'new-plain.md' }, 'old-plain.md');
+		expect(plugin.dependencyResolver.invalidate).not.toHaveBeenCalled();
+		vaultHandlers.rename({ path: 'new-cards.md' }, 'old-cards.md');
+		expect(plugin.dependencyResolver.invalidate).toHaveBeenCalledTimes(1);
+	});
+});

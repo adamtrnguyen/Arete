@@ -5,6 +5,7 @@ import {
 	Plugin,
 	FileSystemAdapter,
 	TFile,
+	CachedMetadata,
 	editorInfoField,
 } from 'obsidian';
 import { EditorView } from '@codemirror/view';
@@ -36,6 +37,16 @@ import {
 	createCardGutter,
 	highlightCardEffect,
 } from '@presentation/extensions/CardGutterExtension';
+
+/**
+ * Whether a note with this cached metadata can contribute to the dependency graph. The
+ * graph is built from notes with `arete`/`cards` frontmatter; an unknown cache counts.
+ */
+function mayAffectGraph(cache: CachedMetadata | null | undefined): boolean {
+	if (!cache) return true;
+	const fm = cache.frontmatter;
+	return !!fm && (fm.arete !== undefined || fm.cards !== undefined);
+}
 
 export default class AretePlugin extends Plugin {
 	settings: AretePluginSettings;
@@ -314,10 +325,39 @@ export default class AretePlugin extends Plugin {
 			),
 		);
 
-		// 7. Sync on Save (Debounced). Any markdown edit may change deps: drop the graph.
+		// 7. Drop the cached dependency graph when a note that is, or was, in it changes.
+		// At `modify` the metadata cache still holds the previous content, so `modify`
+		// covers a note that had cards and `changed` covers a note that has them now.
+		this.registerEvent(
+			this.app.metadataCache.on('changed', (_file, _data, cache) => {
+				if (mayAffectGraph(cache)) this.dependencyResolver?.invalidate();
+			}),
+		);
+		this.registerEvent(
+			this.app.metadataCache.on('deleted', (file, prevCache) => {
+				if (file.path.endsWith('.md') && mayAffectGraph(prevCache)) {
+					this.dependencyResolver?.invalidate();
+				}
+			}),
+		);
+		this.registerEvent(
+			this.app.vault.on('rename', (file, oldPath) => {
+				if (!file.path.endsWith('.md') && !oldPath.endsWith('.md')) return;
+				if (mayAffectGraph(this.app.metadataCache.getFileCache(file as TFile))) {
+					this.dependencyResolver?.invalidate();
+				}
+			}),
+		);
+
+		// 8. Sync on Save (Debounced).
 		this.registerEvent(
 			this.app.vault.on('modify', (file) => {
-				if (file.path.endsWith('.md')) this.dependencyResolver?.invalidate();
+				if (
+					file.path.endsWith('.md') &&
+					mayAffectGraph(this.app.metadataCache.getFileCache(file as TFile))
+				) {
+					this.dependencyResolver?.invalidate();
+				}
 				if (!this.settings.sync_on_save) return;
 				if (!file.path.endsWith('.md')) return;
 
