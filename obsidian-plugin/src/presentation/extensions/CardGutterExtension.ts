@@ -1,5 +1,5 @@
 import { EditorView, gutter, GutterMarker, Decoration, DecorationSet } from '@codemirror/view';
-import { RangeSetBuilder, StateField, StateEffect } from '@codemirror/state';
+import { RangeSet, RangeSetBuilder, StateField, StateEffect } from '@codemirror/state';
 import { Notice } from 'obsidian';
 import type { AnkiCardStats } from '@/domain/stats';
 import { CardVisualsService } from '@/application/services/CardVisualsService';
@@ -20,6 +20,15 @@ class SkipToBottomMarker extends GutterMarker {
 		super();
 		this.targetLine = targetLine;
 		this.view = view;
+	}
+
+	// CodeMirror keeps the existing DOM when this returns true.
+	eq(other: GutterMarker): boolean {
+		return (
+			other instanceof SkipToBottomMarker &&
+			other.targetLine === this.targetLine &&
+			other.view === this.view
+		);
 	}
 
 	toDOM() {
@@ -79,6 +88,24 @@ class CardGutterMarker extends GutterMarker {
 		this.algorithm = algorithm;
 		this.isSynced = isSynced;
 		this.onClick = onClick;
+	}
+
+	// CodeMirror keeps the existing DOM (and its listeners) when this returns true, so
+	// every data field is compared. `stats` is compared by reference: the stats cache
+	// replaces a card's object on refresh and never mutates it. `onClick` is left out
+	// because it only forwards `index` to the gutter's click callback.
+	eq(other: GutterMarker): boolean {
+		return (
+			other instanceof CardGutterMarker &&
+			other.index === this.index &&
+			other.isStart === this.isStart &&
+			other.isEnd === this.isEnd &&
+			other.lineIndex === this.lineIndex &&
+			other.totalLines === this.totalLines &&
+			other.stats === this.stats &&
+			other.algorithm === this.algorithm &&
+			other.isSynced === this.isSynced
+		);
 	}
 
 	toDOM() {
@@ -258,6 +285,15 @@ export function createCardGutter(
 	) => AnkiCardStats | null = () => null,
 	algorithm: 'fsrs' | 'sm2' = 'fsrs',
 ) {
+	// CodeMirror calls `markers` on every view update (cursor move, scroll, focus,
+	// keystroke). The marker set is rebuilt only when the parse result or a card's stats
+	// object changed; otherwise the previous set is returned and CodeMirror skips the
+	// gutter DOM. One entry per editor view, since the extension is shared by all editors.
+	const cache = new WeakMap<
+		EditorView,
+		{ result: ParseResult; stats: (AnkiCardStats | null)[]; markers: RangeSet<GutterMarker> }
+	>();
+
 	return [
 		cardRangesField,
 		cardHighlightField,
@@ -265,6 +301,21 @@ export function createCardGutter(
 			class: 'arete-card-gutter',
 			markers: (view) => {
 				const result = view.state.field(cardRangesField);
+				// Stats are looked up once per card, and on every call, so a stats refresh
+				// shows at the next view update as it would without the cache.
+				const cardStats = result.ranges.map((range) =>
+					range.nid || range.cid ? getCardStats(range.nid, range.cid, view) : null,
+				);
+				const cached = cache.get(view);
+				if (
+					cached &&
+					cached.result === result &&
+					cached.stats.length === cardStats.length &&
+					cached.stats.every((s, i) => s === cardStats[i])
+				) {
+					return cached.markers;
+				}
+
 				const builder = new RangeSetBuilder<GutterMarker>();
 
 				if (result.hasCards && result.frontmatterEndLine !== null) {
@@ -276,7 +327,8 @@ export function createCardGutter(
 					);
 				}
 
-				for (const range of result.ranges) {
+				result.ranges.forEach((range, rangeIndex) => {
+					const stats = cardStats[rangeIndex];
 					for (let lineNum = range.startLine; lineNum <= range.endLine; lineNum++) {
 						if (lineNum >= view.state.doc.lines) break;
 
@@ -285,12 +337,6 @@ export function createCardGutter(
 						const isEnd = lineNum === range.endLine;
 						const totalLines = range.endLine - range.startLine + 1;
 						const lineIndex = lineNum - range.startLine;
-
-						// Try to get stats using CID or NID
-						let stats = null;
-						if (range.nid || range.cid) {
-							stats = getCardStats(range.nid, range.cid, view);
-						}
 
 						builder.add(
 							line.from,
@@ -308,9 +354,11 @@ export function createCardGutter(
 							),
 						);
 					}
-				}
+				});
 
-				return builder.finish();
+				const markers = builder.finish();
+				cache.set(view, { result, stats: cardStats, markers });
+				return markers;
 			},
 		}),
 	];
