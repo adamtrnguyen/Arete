@@ -414,3 +414,61 @@ async def test_close_with_client(repo):
     repo._client = AsyncMock()
     await repo.close()
     assert repo._client is None
+
+
+def _deck_config_server(configs: dict, failing: set[str] | None = None):
+    """A stand-in for the add-on: getDeckConfig, also inside multi; counts requests."""
+    sent: list[str] = []
+    failing = failing or set()
+
+    def answer(action, params, version=6):
+        if params["deck"] in failing:
+            return {"result": None, "error": "boom"}
+        result = configs.get(params["deck"], False)
+        return result if version <= 4 else {"result": result, "error": None}
+
+    async def invoke(action, **params):
+        sent.append(action)
+        if action == "multi":
+            return [
+                answer(a["action"], a["params"], a.get("version", 4)) for a in params["actions"]
+            ]
+        reply = answer(action, params)
+        if reply["error"]:
+            raise RuntimeError(f"AnkiConnect error: {reply['error']}")
+        return reply["result"]
+
+    return invoke, sent
+
+
+@pytest.mark.asyncio
+async def test_get_deck_params_reads_every_deck_in_one_request(repo):
+    configs = {f"D{i}": {"fsrs": {"desiredRetention": (80 + i) / 100, "w": [i]}} for i in range(6)}
+    repo._invoke, sent = _deck_config_server(configs)
+
+    result = await repo.get_deck_params([*configs, "Missing"])
+
+    assert sent == ["multi"]
+    assert result["D3"] == {"desired_retention": 0.83, "weights": [3], "sm2_retention": 0.9}
+    assert result["Missing"] == {"desired_retention": 0.9, "weights": [], "sm2_retention": 0.9}
+
+
+@pytest.mark.asyncio
+async def test_get_deck_params_a_failing_deck_gets_defaults_alone(repo):
+    configs = {"A": {"fsrs": {"desiredRetention": 0.7, "w": [1]}}, "B": {"fsrs": {}}}
+    repo._invoke, _ = _deck_config_server(configs, failing={"B"})
+
+    result = await repo.get_deck_params(["A", "B"])
+
+    assert result["A"]["desired_retention"] == 0.7
+    assert result["B"] == {"desired_retention": 0.9, "weights": [], "sm2_retention": 0.9}
+
+
+@pytest.mark.asyncio
+async def test_get_deck_params_a_failed_multi_gives_every_deck_defaults(repo):
+    repo._invoke = AsyncMock(side_effect=RuntimeError("down"))
+
+    result = await repo.get_deck_params(["A", "B"])
+
+    assert set(result) == {"A", "B"}
+    assert all(p["desired_retention"] == 0.9 for p in result.values())

@@ -164,14 +164,36 @@ class ConnectStatsRepository(StatsRepository):
     async def get_deck_params(self, deck_names: list[str]) -> dict[str, dict]:
         """Fetch FSRS parameters for the given decks via AnkiConnect.
 
-        Falls back to defaults if the custom action isn't available.
+        Falls back to defaults if the custom action isn't available. Every deck is read
+        in one request (a multi when there are several); a deck whose read fails gets the
+        defaults without affecting the others.
         """
         params: dict[str, dict] = {}
+        names = list(dict.fromkeys(deck_names))
+        replies: list[Any] = []
+        try:
+            if len(names) == 1:
+                replies = [await self._invoke("getDeckConfig", deck=names[0])]
+            elif names:
+                actions = [
+                    {"action": "getDeckConfig", "version": 6, "params": {"deck": name}}
+                    for name in names
+                ]
+                multi = await self._invoke("multi", actions=actions)
+                if not isinstance(multi, list) or len(multi) != len(names):
+                    raise RuntimeError(f"multi answered {multi!r:.80} for {len(names)} decks")
+                for reply in multi:
+                    error = reply.get("error") if isinstance(reply, dict) else "malformed reply"
+                    replies.append(
+                        RuntimeError(f"AnkiConnect error: {error}") if error else reply["result"]
+                    )
+        except Exception as e:
+            replies = [e] * len(names)
 
-        for deck_name in deck_names:
+        for deck_name, deck_config in zip(names, replies, strict=True):
             try:
-                # Try to get deck config via AnkiConnect
-                deck_config = await self._invoke("getDeckConfig", deck=deck_name)
+                if isinstance(deck_config, Exception):
+                    raise deck_config
                 if deck_config:
                     fsrs = deck_config.get("fsrs", {})
                     default_retention = fsrs.get("desiredRetention", 0.9)
