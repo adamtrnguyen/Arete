@@ -242,7 +242,7 @@ async def test_a_card_reported_in_default_or_another_deck_is_moved():
     results = await _sync(fake, [in_default, queued])
 
     assert all(r.ok for r in results)
-    assert fake.sub_actions == {"changeDeck": 2}
+    assert fake.sub_actions == {"createDeck": 2, "changeDeck": 2}  # two decks, one multi
     assert fake.card_deck[fake.notes[nid]["cards"][0]] == "D"
 
 
@@ -362,3 +362,53 @@ async def test_a_failed_index_build_is_retried_by_the_next_batch():
 
     assert all(r.ok for r in first + second)
     assert fake.requests["findNotes"] == 1  # retried once for the whole second batch
+
+
+# ---------------------------------------------------------------------------
+# Batch setup: decks in one request, nothing created twice by concurrent batches
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_concurrent_batches_create_each_deck_and_check_each_type_once():
+    import asyncio
+
+    fake = FakeAnki()
+    fake.models["Basic"].remove("_obsidian_source")
+    adapter = _adapter(fake)
+
+    batches = [[_item(10 * b + i, deck="Shared") for i in range(3)] for b in range(4)]
+    results = await asyncio.gather(*(adapter.sync_notes(batch) for batch in batches))
+
+    assert all(r.ok for batch in results for r in batch)
+    assert fake.requests["createDeck"] == 1
+    assert fake.requests["modelFieldNames"] == 1
+    assert fake.requests["modelFieldAdd"] == 1
+
+
+@pytest.mark.asyncio
+async def test_a_batch_creates_its_decks_in_one_request():
+    fake = FakeAnki()
+    items = [_item(i, deck=f"Deck{i % 5}") for i in range(N)]
+
+    results = await _sync(fake, items)
+
+    assert all(r.ok for r in results)
+    assert fake.requests["createDeck"] == 0
+    assert fake.sub_actions["createDeck"] == 5
+    assert {fake.card_deck[c] for c in fake.card_deck} == {f"Deck{i}" for i in range(5)}
+
+
+@pytest.mark.asyncio
+async def test_a_deck_that_failed_is_retried_and_the_others_are_kept():
+    fake = FakeAnki()
+    adapter = _adapter(fake)
+    fake.fail = lambda action, params: (
+        "bad name" if action == "createDeck" and params["deck"] == "B" else None
+    )
+
+    assert await adapter._ensure_decks({"A", "B", "C"}) == {"A": True, "B": False, "C": True}
+    fake.fail = lambda action, params: None
+    fake.reset_counts()
+    assert await adapter._ensure_decks({"A", "B", "C"}) == {"A": True, "B": True, "C": True}
+    assert fake.log == [("createDeck", {"deck": "B"})]

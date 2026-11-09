@@ -62,6 +62,9 @@ class AnkiConnectAdapter(AnkiBridge):
         self._content_index: dict[str, dict[str, list[int]]] = {}
         # The build in flight per model, shared by every card that asks while it runs.
         self._index_builds: dict[str, asyncio.Future[dict[str, list[int]]]] = {}
+        # Deck creations and source-field checks in flight, shared by concurrent batches.
+        self._deck_flights: dict[str, asyncio.Future[dict[str, bool]]] = {}
+        self._field_flights: dict[str, asyncio.Future[bool]] = {}
         self.use_windows_curl = False
         self._client: httpx.AsyncClient | None = None
         self._invoke_sem = asyncio.Semaphore(SYNC_CONCURRENCY)
@@ -124,21 +127,60 @@ class AnkiConnectAdapter(AnkiBridge):
 
     async def ensure_deck(self, deck: AnkiDeck | str) -> bool:
         name = deck.name if isinstance(deck, AnkiDeck) else deck
-        if name in self._known_decks:
-            return True
-        try:
-            await self._invoke("createDeck", deck=name)
-            self._known_decks.add(name)
-            return True
-        except Exception as e:
-            self.logger.error(f"Failed to ensure deck '{name}': {e}")
-            return False
+        return (await self._ensure_decks({name}))[name]
+
+    async def _ensure_decks(self, names: set[str]) -> dict[str, bool]:
+        """CreateDeck every name not yet known, all in one request; True where it exists.
+
+        A name already being created by a concurrent caller is awaited, not sent again.
+        """
+        todo = sorted(
+            n for n in names if n not in self._known_decks and n not in self._deck_flights
+        )
+        if todo:
+            flight = asyncio.ensure_future(self._create_decks(todo))
+            for name in todo:
+                self._deck_flights[name] = flight
+
+            def _land(_: object, landed: tuple[str, ...] = tuple(todo)) -> None:
+                for name in landed:
+                    self._deck_flights.pop(name, None)
+
+            flight.add_done_callback(_land)
+
+        ok: dict[str, bool] = {}
+        for name in names:
+            flight = self._deck_flights.get(name)
+            if name in self._known_decks or flight is None:
+                ok[name] = name in self._known_decks
+            else:
+                ok[name] = (await asyncio.shield(flight)).get(name, False)
+        return ok
+
+    async def _create_decks(self, names: list[str]) -> dict[str, bool]:
+        errors = await self._send_writes([("createDeck", {"deck": name}) for name in names])
+        for name, error in zip(names, errors, strict=True):
+            if error is None:
+                self._known_decks.add(name)
+            else:
+                self.logger.error(f"Failed to ensure deck '{name}': {error}")
+        return {name: error is None for name, error in zip(names, errors, strict=True)}
 
     async def ensure_model_has_source_field(self, model_name: str) -> bool:
-        """Add the _obsidian_source field to the note model if it lacks one."""
+        """Add the _obsidian_source field to the note model if it lacks one.
+
+        A check already running for the model, from a concurrent caller, is awaited.
+        """
         if model_name in self._source_field_ok:
             return True
+        flight = self._field_flights.get(model_name)
+        if flight is None:
+            flight = asyncio.ensure_future(self._add_source_field(model_name))
+            self._field_flights[model_name] = flight
+            flight.add_done_callback(lambda _, m=model_name: self._field_flights.pop(m, None))
+        return await asyncio.shield(flight)
 
+    async def _add_source_field(self, model_name: str) -> bool:
         try:
             # Get current model fields
             fields = await self._invoke("modelFieldNames", modelName=model_name)
@@ -158,22 +200,16 @@ class AnkiConnectAdapter(AnkiBridge):
             return False
 
     async def sync_notes(self, work_items: list[WorkItem]) -> list[UpdateItem]:
-        # Batch preparation: Ensure decks and models exist once per batch
-        unique_decks = {item.note.deck for item in work_items}
+        # Batch preparation: the batch's decks in one request, its note types concurrently.
+        # A failure is logged here; the items it affects fail on their own writes.
         unique_models = {item.note.model for item in work_items}
-
-        for deck_name in unique_decks:
-            if not await self.ensure_deck(deck_name):
-                # We could fail the whole batch, or just mark them as failed later.
-                # For now, failures in ensure_deck will be caught by individual item try-blocks
-                # But it's better to log here.
+        decks_ok, _ = await asyncio.gather(
+            self._ensure_decks({item.note.deck for item in work_items}),
+            asyncio.gather(*(self.ensure_model_has_source_field(m) for m in unique_models)),
+        )
+        for deck_name, ok in decks_ok.items():
+            if not ok:
                 self.logger.warning(f"Failed to ensure deck '{deck_name}' for batch")
-
-        for model_name in unique_models:
-            try:
-                await self.ensure_model_has_source_field(model_name)
-            except Exception as e:
-                self.logger.warning(f"Failed to ensure source field for '{model_name}': {e}")
 
         # The held notes are read in one notesInfo per chunk. Each item then resolves its
         # target (reconcile lookups, note-type change, addNote) concurrently, and the

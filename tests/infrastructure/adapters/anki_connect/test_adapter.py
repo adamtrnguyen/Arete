@@ -471,7 +471,7 @@ async def test_sync_does_not_convert_a_note_of_the_same_type(adapter, sample_not
 async def test_sync_notes_update_existing_with_tags_and_move(adapter_localhost):
     """Full update path: fields, tags add/remove, deck move."""
     with (
-        patch.object(adapter_localhost, "ensure_deck", return_value=True),
+        patch.object(adapter_localhost, "_ensure_decks", return_value={"NewDeck": True}),
         patch.object(adapter_localhost, "ensure_model_has_source_field", return_value=True),
     ):
         respx.post("http://localhost:8765").mock(
@@ -523,7 +523,7 @@ async def test_sync_notes_update_existing_with_tags_and_move(adapter_localhost):
 async def test_sync_notes_notes_info_missing_cards(adapter_localhost):
     """Update path when notesInfo has no cards key for deck move."""
     with (
-        patch.object(adapter_localhost, "ensure_deck", return_value=True),
+        patch.object(adapter_localhost, "_ensure_decks", return_value={"NewDeck": True}),
         patch.object(adapter_localhost, "ensure_model_has_source_field", return_value=True),
     ):
         respx.post("http://localhost:8765").mock(
