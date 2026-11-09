@@ -140,6 +140,8 @@ def build_graph(vault_root: Path) -> DependencyGraph:
     for md_path in iter_markdown_files(vault_root):
         try:
             text = md_path.read_text(encoding="utf-8")
+            if not _may_hold_cards(text):
+                continue
             meta, _ = parse_frontmatter(text)
 
             if not meta or "__yaml_error__" in meta:
@@ -223,6 +225,44 @@ def build_graph(vault_root: Path) -> DependencyGraph:
                     add_edge(card_id, target_id)
 
     return graph
+
+
+def _frontmatter_slice(text: str) -> str | None:
+    """The text `parse_frontmatter` hands to YAML, found by string search alone.
+
+    Bounds follow `parse_frontmatter`: after a leading BOM, the first line stripped is
+    `---`, and the block ends at the first later line that is `---` once right-stripped.
+    Returns "" when the text has no opening line (the parser reads nothing), and None when
+    the closing line is missing, so the caller leaves that case to the parser.
+    """
+    text = text.lstrip("﻿")
+    first_end = text.find("\n")
+    first_line = text if first_end == -1 else text[:first_end]
+    if first_line.strip() != "---":
+        return ""
+    if first_end == -1:
+        return None
+    # A closing line starts with `---` in column 0, so only those lines are candidates.
+    pos = first_end
+    while (pos := text.find("\n---", pos)) != -1:
+        line_end = text.find("\n", pos + 1)
+        line = text[pos + 1 :] if line_end == -1 else text[pos + 1 : line_end]
+        if line.rstrip() == "---":
+            return text[first_end + 1 : pos]
+        pos += 1
+    return None
+
+
+def _may_hold_cards(text: str) -> bool:
+    """False only for a note whose frontmatter cannot set the `arete` key.
+
+    In every YAML spelling of the key (plain, quoted, `arete :`) the word is in the
+    frontmatter, except a double-quoted key with escapes, which needs a backslash there.
+    Sync's test, `"arete:" in text`, is narrower: it misses `"arete": true`. Only the
+    frontmatter is searched, so math in a note's body does not force a parse.
+    """
+    fm = _frontmatter_slice(text)
+    return fm is None or "arete" in fm or "\\" in fm
 
 
 @dataclass

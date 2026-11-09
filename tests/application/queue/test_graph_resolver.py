@@ -4,6 +4,8 @@ import pathlib
 from pathlib import Path
 
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from arete.application.queue.builder import build_simple_queue
 from arete.application.queue.graph_resolver import (
@@ -819,3 +821,100 @@ def test_export_graph_is_what_the_plugin_draws(tmp_path: Path):
     assert out.requires == [["arete_A", "arete_M"]]  # scalar folder/name ref resolves
     assert out.related == []  # bare `Intro` names two files: reported, not guessed
     assert any("ambiguous" in r for r in out.unresolved_refs["arete_A"])
+
+
+class TestBuildGraphSkipsNotesWithoutCards:
+    """A note whose frontmatter cannot set the `arete` key is not YAML-parsed."""
+
+    def test_every_spelling_of_the_arete_key_is_still_read(self, tmp_path: Path):
+        card = "cards:\n  - id: arete_{0}\n    Front: q\n    Back: a\n---\n$\\alpha$\n"
+        (tmp_path / "plain.md").write_text("---\narete: true\n" + card.format("P"))
+        (tmp_path / "dq.md").write_text('---\n"arete": true\n' + card.format("D"))
+        (tmp_path / "sq.md").write_text("---\n'arete': true\n" + card.format("S"))
+        (tmp_path / "sp.md").write_text("---\narete : true\n" + card.format("W"))
+        (tmp_path / "esc.md").write_text('---\n"\\x61rete": true\n' + card.format("E"))
+        (tmp_path / "bom.md").write_text("\ufeff---\r\narete: true\n" + card.format("B"))
+
+        graph = build_graph(tmp_path)
+
+        assert set(graph.nodes) == {
+            "arete_P",
+            "arete_D",
+            "arete_S",
+            "arete_W",
+            "arete_E",
+            "arete_B",
+        }
+
+    def test_math_in_the_body_does_not_force_a_parse(self, tmp_path: Path, monkeypatch):
+        from arete.application.queue import graph_resolver
+
+        (tmp_path / "math.md").write_text("---\ntags: [x]\n---\n$\\alpha$ and arete\n")
+        (tmp_path / "none.md").write_text("# no frontmatter, $\\beta$\n")
+        (tmp_path / "fm.md").write_text('---\ntitle: "a\\tb"\n---\nbody\n')
+        parsed: list[str] = []
+        real = graph_resolver.parse_frontmatter
+        monkeypatch.setattr(
+            graph_resolver, "parse_frontmatter", lambda t: parsed.append(t) or real(t)
+        )
+
+        build_graph(tmp_path)
+
+        # Only the note with a backslash in its frontmatter is parsed.
+        assert [t.splitlines()[1] for t in parsed] == ['title: "a\\tb"']
+
+    def test_an_undecodable_file_is_still_reported(self, tmp_path: Path):
+        (tmp_path / "bad.md").write_bytes(b"\xff\xfe not utf-8")
+        assert [p for p, _ in build_graph(tmp_path).skipped_files] == [str(tmp_path / "bad.md")]
+
+
+_FM_LINES = st.sampled_from(
+    [
+        "---",
+        "--- ",
+        "---\r",
+        " ---",
+        "----",
+        "  ---",
+        "",
+        "arete: true",
+        '"arete": true',
+        "'arete': true",
+        "arete : true",
+        '"\\x61rete": true',
+        "cards: []",
+        "tags: [a]",
+        "x: |",
+        "  indented",
+        "- item",
+        "just text",
+        "$\\alpha$",
+        "\tkey: v",
+        "\x0c",
+    ]
+)
+
+
+@given(lines=st.lists(_FM_LINES, max_size=8), bom=st.booleans())
+@settings(max_examples=500, deadline=None)
+def test_the_pre_check_never_skips_a_note_the_parser_would_accept(lines, bom):
+    """The slice has the parser's bounds, and a skipped note never parses to `arete: true`."""
+    from arete.application.queue.graph_resolver import _frontmatter_slice, _may_hold_cards
+    from arete.application.utils.text import parse_frontmatter
+
+    text = ("\ufeff" if bom else "") + "\n".join(lines)
+    meta, body = parse_frontmatter(text)
+    fm = _frontmatter_slice(text)
+    split = text.lstrip("﻿").split("\n")
+    if split[0].strip() != "---":
+        assert fm == "" and meta == {}
+    elif fm is None:
+        assert meta == {} and body == text.lstrip("﻿")  # the parser found no closing line
+    elif isinstance(meta, dict) and "__yaml_error__" in meta:
+        assert body == text.lstrip("﻿")  # a YAML error hands back the whole text
+    else:
+        # The parser's body starts right after the closing line the slice stops at.
+        closing = 1 if split[1].rstrip() == "---" else 2 + fm.count("\n")
+        assert body == "\n".join(split[closing + 1 :])
+    if not _may_hold_cards(text):
+        assert not (isinstance(meta, dict) and meta.get("arete") is True)
