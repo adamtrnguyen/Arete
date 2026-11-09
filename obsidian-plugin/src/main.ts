@@ -55,7 +55,8 @@ export default class AretePlugin extends Plugin {
 	// Centralized context: filePath -> cardId
 	private activeCardContext: Map<string, string> = new Map();
 
-	private syncOnSaveTimeout: ReturnType<typeof setTimeout> | null = null;
+	// One sync-on-save timer per note, so editing B within the delay does not cancel A.
+	private syncOnSaveTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
 
 	async onload() {
 		console.log('[Arete] Plugin Loading...');
@@ -320,13 +321,12 @@ export default class AretePlugin extends Plugin {
 				if (!this.settings.sync_on_save) return;
 				if (!file.path.endsWith('.md')) return;
 
-				// Clear existing timeout
-				if (this.syncOnSaveTimeout) {
-					clearTimeout(this.syncOnSaveTimeout);
-				}
+				// Debounce per path: a later save of the same note restarts its own timer only.
+				const pending = this.syncOnSaveTimers.get(file.path);
+				if (pending) clearTimeout(pending);
 
-				// Debounce sync
-				this.syncOnSaveTimeout = setTimeout(async () => {
+				const timer = setTimeout(async () => {
+					this.syncOnSaveTimers.delete(file.path);
 					const vaultAdapter = this.app.vault.adapter as FileSystemAdapter;
 					const basePath = vaultAdapter.getBasePath ? vaultAdapter.getBasePath() : null;
 					if (basePath) {
@@ -337,6 +337,7 @@ export default class AretePlugin extends Plugin {
 						await this.runSync(false, fullPath, false);
 					}
 				}, this.settings.sync_on_save_delay);
+				this.syncOnSaveTimers.set(file.path, timer);
 			}),
 		);
 	}
@@ -497,6 +498,8 @@ export default class AretePlugin extends Plugin {
 	}
 
 	onunload() {
+		for (const timer of this.syncOnSaveTimers.values()) clearTimeout(timer);
+		this.syncOnSaveTimers.clear();
 		if (this.statusBarItem) {
 			this.statusBarItem.empty();
 		}
