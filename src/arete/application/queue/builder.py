@@ -6,6 +6,7 @@ Builds ordered study queues by:
 3. Topologically sorting for proper learning order
 """
 
+import heapq
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -221,15 +222,15 @@ def _dynamic_frontier_order(
     # Build a deterministic topological order (lexical ties) for reachability DP.
     topo_order: list[str] = []
     topo_degree = dict(in_degree)
-    topo_ready = sorted([cid for cid in valid if topo_degree[cid] == 0])
+    topo_ready = [cid for cid in valid if topo_degree[cid] == 0]
+    heapq.heapify(topo_ready)
     while topo_ready:
-        node = topo_ready.pop(0)
+        node = heapq.heappop(topo_ready)
         topo_order.append(node)
-        for dep in sorted(dependents[node]):
+        for dep in dependents[node]:
             topo_degree[dep] -= 1
             if topo_degree[dep] == 0:
-                topo_ready.append(dep)
-        topo_ready.sort()
+                heapq.heappush(topo_ready, dep)
 
     # due_reach[node] = due cards that this node can unlock downstream (including itself if due)
     due_reach: dict[str, set[str]] = {cid: set() for cid in valid}
@@ -239,10 +240,6 @@ def _dynamic_frontier_order(
             reach.update(due_reach[dep])
         due_reach[node] = reach
 
-    remaining = dict(in_degree)
-    ready = [cid for cid in valid if remaining[cid] == 0]
-    ordered: list[str] = []
-
     def score(card_id: str) -> float:
         unlock_score = float(len(due_reach[card_id]))
         weak_score = _weakness_score(card_id, card_stats)
@@ -250,15 +247,21 @@ def _dynamic_frontier_order(
         due_bonus = 0.25 if card_id in due_set else 0.0
         return (2.0 * unlock_score) + weak_score + prereq_bonus + due_bonus
 
+    # A card's score is fixed for the whole walk, so a heap keyed (-score, id) pops the
+    # same card a full re-sort of the ready list would put first, ties by id included.
+    remaining = dict(in_degree)
+    ready = [(-score(cid), cid) for cid in valid if remaining[cid] == 0]
+    heapq.heapify(ready)
+    ordered: list[str] = []
+
     while ready:
-        ready.sort(key=lambda cid: (-score(cid), cid))
-        node = ready.pop(0)
+        _, node = heapq.heappop(ready)
         ordered.append(node)
 
         for dep in dependents[node]:
             remaining[dep] -= 1
             if remaining[dep] == 0:
-                ready.append(dep)
+                heapq.heappush(ready, (-score(dep), dep))
 
     return ordered
 
