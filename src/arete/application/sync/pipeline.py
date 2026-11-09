@@ -3,7 +3,7 @@ import json
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 
 from tqdm import tqdm
 
@@ -18,6 +18,26 @@ from arete.application.utils.text import parse_frontmatter, rebuild_markdown_wit
 from arete.domain.constants import CONSUMER_BATCH_SIZE
 from arete.domain.interfaces import ContentCache, SyncPort
 from arete.domain.models import UpdateItem, WorkItem
+
+
+@runtime_checkable
+class _BatchingCache(Protocol):
+    def set_notes(self, rows: list[tuple[Path, int, str, str]]) -> None: ...
+
+
+def _record_synced_cards(cache: ContentCache, rows: list[tuple[Path, int, str, str]]) -> None:
+    """Record cards Anki has accepted, one transaction per consumer batch.
+
+    Called only after the bridge returned, with ok rows only. A crash before the commit
+    loses the rows, so those cards are checked again next sync; nothing is recorded early.
+    """
+    if not rows:
+        return
+    if isinstance(cache, _BatchingCache):
+        cache.set_notes(rows)
+        return
+    for row in rows:
+        cache.set_note(*row)
 
 
 @dataclass
@@ -190,6 +210,7 @@ async def run_pipeline(
                         batch_updates = await anki_bridge.sync_notes(batch)
 
                 async with updates_lock:
+                    synced_rows: list[tuple[Path, int, str, str]] = []
                     for u in batch_updates:
                         updates.append(u)
                         if u.ok:
@@ -206,11 +227,13 @@ async def run_pipeline(
                                 # run re-sends the card as new.
                                 u.note.nid = u.new_nid or u.note.nid
                                 u.note.cid = u.new_cid or u.note.cid
-                                cache.set_note(
-                                    u.source_file,
-                                    u.source_index,
-                                    u.note.content_hash,
-                                    json.dumps(u.note.to_dict()),
+                                synced_rows.append(
+                                    (
+                                        u.source_file,
+                                        u.source_index,
+                                        u.note.content_hash,
+                                        json.dumps(u.note.to_dict()),
+                                    )
                                 )
                         else:
                             recorder.cards_failed += 1
@@ -218,6 +241,7 @@ async def run_pipeline(
                             recorder.add_error(
                                 u.source_file, f"Sync fail: {u.error}", f"#{u.source_index}"
                             )
+                    _record_synced_cards(cache, synced_rows)
             except Exception as e:
                 logger.error(f"[consumer-error] {e}")
                 for wi in batch:

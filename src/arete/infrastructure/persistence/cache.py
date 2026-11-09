@@ -2,6 +2,7 @@ import json
 import logging
 import sqlite3
 import threading
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
@@ -86,6 +87,21 @@ class ContentCache:
                 (str(md_path), card_index, content_hash, note_json),
             )
             self._conn.commit()
+
+    def set_notes(self, rows: Iterable[tuple[Path, int, str, str]]) -> None:
+        """Write many (path, index, hash, note_json) rows in one transaction.
+
+        All rows are written or, if any write fails, none: a failure can only leave
+        cards unrecorded, so the next sync checks them again.
+        """
+        params = [(str(p), idx, h, nj) for p, idx, h, nj in rows]
+        if not params:
+            return
+        with self._lock, self._conn:
+            self._conn.executemany(
+                "INSERT OR REPLACE INTO cards (path, idx, hash, note_json) VALUES (?, ?, ?, ?)",
+                params,
+            )
 
     def get_file_meta_by_stat(
         self, md_path: Path, mtime: float, size: int
