@@ -12,13 +12,12 @@ import httpx
 
 from arete.domain.constants import (
     CHUNK_SIZE,
-    FSRS_DIFFICULTY_SCALE,
     REQUEST_TIMEOUT,
     RESPONSIVENESS_TIMEOUT,
     SYNC_CONCURRENCY,
 )
 from arete.domain.interfaces import AnkiBridge
-from arete.domain.models import AnkiCardStats, AnkiDeck, UpdateItem, WorkItem
+from arete.domain.models import AnkiDeck, UpdateItem, WorkItem
 from arete.domain.note_types import map_note_type_fields
 
 # Writes sent in one multi request. Every write resets Anki's UI on its main thread, so
@@ -812,77 +811,6 @@ class AnkiConnectAdapter(AnkiBridge):
         ]
 
         return LearningStats(total_cards=len(all_cids), problematic_notes=notes)
-
-    async def get_card_stats(self, nids: list[int]) -> list[AnkiCardStats]:
-        """Fetch stats via AnkiConnect."""
-        if not nids:
-            return []
-
-        all_stats: list[AnkiCardStats] = []
-        for i in range(0, len(nids), CHUNK_SIZE):
-            chunk = nids[i : i + CHUNK_SIZE]
-            try:
-                chunk_stats = await self._fetch_stats_chunk(chunk)
-                all_stats.extend(chunk_stats)
-            except Exception as e:
-                self.logger.error(f"Failed to fetch card stats chunk: {e}")
-        return all_stats
-
-    async def _fetch_stats_chunk(self, chunk: list[int]) -> list[AnkiCardStats]:
-        """Fetch card stats for a single chunk of NIDs."""
-        query = " OR ".join([f"nid:{n}" for n in chunk])
-        card_ids = await self._invoke("findCards", query=query)
-        if not card_ids:
-            return []
-
-        infos = await self._invoke("cardsInfo", cards=card_ids)
-        fsrs_map = await self._fetch_fsrs_map(card_ids)
-
-        return [self._build_card_stat(info, fsrs_map) for info in infos]
-
-    async def _fetch_fsrs_map(self, card_ids: list[int]) -> dict[int, float]:
-        """Fetch FSRS difficulty scores, returning empty dict on failure."""
-        try:
-            fsrs_results = await self._invoke("getFSRSStats", cards=card_ids)
-            if not fsrs_results or not isinstance(fsrs_results, list):
-                return {}
-            return {
-                item["cardId"]: item["difficulty"] / FSRS_DIFFICULTY_SCALE
-                for item in fsrs_results
-                if "cardId" in item and "difficulty" in item and item["difficulty"] is not None
-            }
-        except Exception as e:
-            self.logger.warning(f"[fsrs] getFSRSStats unavailable, difficulties empty: {e}")
-            return {}
-
-    @staticmethod
-    def _build_card_stat(info: dict[str, Any], fsrs_map: dict[int, float]) -> AnkiCardStats:
-        """Build an AnkiCardStats from a single cardsInfo entry."""
-        cid = info.get("cardId", 0)
-        difficulty = fsrs_map.get(cid)
-        if difficulty is None and info.get("difficulty") is not None:
-            # S1: same 0-1 scale as the getFSRSStats path above (raw is Anki's 1-10).
-            difficulty = info["difficulty"] / FSRS_DIFFICULTY_SCALE
-
-        front = None
-        fields = info.get("fields", {})
-        if fields:
-            first_key = next(iter(fields))
-            front = fields[first_key].get("value")
-
-        return AnkiCardStats(
-            card_id=cid,
-            note_id=info.get("note", 0),
-            lapses=info.get("lapses", 0),
-            ease=info.get("factor", 0),
-            difficulty=difficulty,
-            deck_name=info.get("deckName", "Unknown"),
-            interval=info.get("interval", 0),
-            due=info.get("due", 0),
-            reps=info.get("reps", 0),
-            average_time=0,
-            front=front,
-        )
 
     async def suspend_cards(self, cids: list[int]) -> bool:
         if not cids:

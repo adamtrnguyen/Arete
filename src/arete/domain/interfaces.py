@@ -11,7 +11,7 @@ from abc import abstractmethod
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
-from .models import AnkiCardStats, UpdateItem, WorkItem
+from .models import UpdateItem, WorkItem
 
 
 @runtime_checkable
@@ -124,12 +124,10 @@ class QueuePort(Protocol):
 
 @runtime_checkable
 class CardStatsPort(Protocol):
-    """Read-only review history. Used by the stats services and the card editor."""
+    """Read-only learning statistics. Used by the learning-insights service.
 
-    @abstractmethod
-    async def get_card_stats(self, nids: list[int]) -> list[AnkiCardStats]:
-        """Fetch detailed statistics for a list of Note IDs."""
-        pass
+    Per-card statistics come from the StatsRepository port (domain/stats/ports.py).
+    """
 
     @abstractmethod
     async def get_learning_insights(self, lapse_threshold: int = 3) -> Any:

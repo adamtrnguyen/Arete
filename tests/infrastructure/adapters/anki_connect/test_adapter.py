@@ -2,7 +2,7 @@
 
 Covers: sync_notes, ensure_deck, ensure_model, is_responsive, _invoke,
         get_model_styling, get_model_templates, gui_browse,
-        get_card_stats, suspend_cards, get_deck_names, get_notes_in_deck,
+        suspend_cards, get_deck_names, get_notes_in_deck,
         delete_notes, delete_decks, get_due_cards, map_nids_to_arete_ids,
         get_card_ids_for_arete_ids, create_topo_deck, WSL detection, curl bridge,
         source field, env override.

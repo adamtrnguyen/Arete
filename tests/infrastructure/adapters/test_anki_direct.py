@@ -412,55 +412,6 @@ async def test_model_not_found_returns_empty(adapter, mock_repo, method, expecte
 
 
 # ---------------------------------------------------------------------------
-# get_card_stats
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_get_card_stats_success(adapter, mock_repo):
-    """Normal path: fetch stats for a single NID."""
-    mock_card = MagicMock()
-    mock_card.id = 1001
-    mock_card.nid = 500
-    mock_card.lapses = 2
-    mock_card.factor = 2500
-    mock_card.ivl = 30
-    mock_card.due = 1700000000
-    mock_card.reps = 10
-    mock_card.did = 1
-    mock_card.memory_state = None  # no FSRS
-
-    mock_deck = {"name": "TestDeck"}
-    mock_repo.col.find_cards.return_value = [1001]
-    mock_repo.col.get_card.return_value = mock_card
-    mock_repo.col.decks.get.return_value = mock_deck
-
-    mock_note = MagicMock()
-    mock_note.fields = ["Front text"]
-    mock_repo.col.get_note.return_value = mock_note
-
-    stats = await adapter.get_card_stats([500])
-
-    assert len(stats) == 1
-    s = stats[0]
-    assert s.card_id == 1001
-    assert s.note_id == 500
-    assert s.lapses == 2
-    assert s.ease == 2500
-    assert s.deck_name == "TestDeck"
-    assert s.front == "Front text"
-    assert s.difficulty is None
-
-
-@pytest.mark.asyncio
-async def test_get_card_stats_exception_returns_empty(adapter, mock_repo):
-    """When get_card raises, return empty list (card-level exception handling)."""
-    mock_repo.col.find_cards.side_effect = Exception("Card fail")
-    res = await adapter.get_card_stats([999])
-    assert res == []
-
-
-# ---------------------------------------------------------------------------
 # suspend_cards
 # ---------------------------------------------------------------------------
 

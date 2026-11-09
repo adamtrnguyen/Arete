@@ -13,8 +13,7 @@ from arete.domain.constants import (
     MAX_PROBLEMATIC_NOTES,
 )
 from arete.domain.interfaces import AnkiBridge
-from arete.domain.models import AnkiCardStats, AnkiDeck, UpdateItem, WorkItem
-from arete.infrastructure.anki.fsrs import fsrs_state_of
+from arete.domain.models import AnkiDeck, UpdateItem, WorkItem
 from arete.infrastructure.anki.repository import AnkiRepository
 
 if TYPE_CHECKING:  # importing these eagerly cycles inside the anki package
@@ -325,58 +324,6 @@ class AnkiDirectAdapter(AnkiBridge):
             total_cards=total_cards,
             problematic_notes=problematic_notes[:MAX_PROBLEMATIC_NOTES],
         )
-
-    async def get_card_stats(self, nids: list[int]) -> list[AnkiCardStats]:
-        """Direct DB implementation of fetching card stats."""
-        stats_list = []
-        if not nids:
-            return []
-
-        # We probably want to chunk this if nids is huge, but start simple.
-        with AnkiRepository(self.anki_base) as repo:
-            if not repo.col:
-                return []
-
-            for nid in nids:
-                try:
-                    # A note can have multiple cards
-                    # We need to find cards for this note.
-                    # Use col.find_cards(f"nid:{nid}")
-                    cids = repo.col.find_cards(f"nid:{nid}")
-
-                    for cid in cids:
-                        card = repo.col.get_card(cid)
-                        deck = repo.col.decks.get(card.did)
-                        deck_name = deck["name"] if deck else "Unknown"
-
-                        state = fsrs_state_of(card)
-                        difficulty = state.difficulty if state else None
-
-                        try:
-                            note = repo.col.get_note(card.nid)
-                            front = note.fields[0]  # Approximated front
-                        except Exception:
-                            front = None
-
-                        stats_list.append(
-                            AnkiCardStats(
-                                card_id=card.id,
-                                note_id=card.nid,
-                                lapses=card.lapses,
-                                ease=card.factor,
-                                difficulty=difficulty,
-                                deck_name=deck_name,
-                                interval=card.ivl,
-                                due=card.due,
-                                reps=card.reps,
-                                average_time=0,  # Not easily available?
-                                front=front,
-                            )
-                        )
-                except Exception as e:
-                    self.logger.warning(f"Failed to fetch stats for nid={nid}: {e}")
-
-        return stats_list
 
     async def suspend_cards(self, cids: list[int]) -> bool:
         """Suspend cards via Direct DB (queue=-1)."""

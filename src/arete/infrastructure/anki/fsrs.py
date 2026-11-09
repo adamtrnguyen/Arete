@@ -1,8 +1,7 @@
 """FSRS memory state of an Anki card, in the domain's units.
 
 The domain contract (FsrsMemoryState) is difficulty normalised to 0-1; Anki stores
-1-10. Both direct-DB readers (AnkiDirectAdapter, DirectStatsRepository) go through
-here so they cannot drift apart again.
+1-10. The direct-DB stats reader (DirectStatsRepository) converts through here.
 """
 
 from __future__ import annotations
