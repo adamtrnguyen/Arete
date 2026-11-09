@@ -14,7 +14,7 @@ from arete.application.sync.prune import PruneConfirm, PruneReport, prune_orphan
 from arete.application.sync.vault_service import VaultService
 from arete.application.utils.logging import RunRecorder
 from arete.application.utils.media import FilenameIndex
-from arete.application.utils.text import parse_frontmatter, rebuild_markdown_with_frontmatter
+from arete.application.utils.text import rebuild_markdown_with_frontmatter
 from arete.domain.constants import CONSUMER_BATCH_SIZE
 from arete.domain.interfaces import ContentCache, SyncPort
 from arete.domain.models import UpdateItem, WorkItem
@@ -91,7 +91,7 @@ async def run_pipeline(
             # Rewrite the file so the parser sees the new id: fields
             try:
                 text = path.read_text(encoding="utf-8")
-                _, body = parse_frontmatter(text)
+                _, body = vault_service.parse(path, text)
                 new_text = rebuild_markdown_with_frontmatter(meta, body)
                 if config.dry_run:
                     logger.info(f"[dry-run] would assign {assigned} new IDs in {path.name}")
@@ -99,7 +99,7 @@ async def run_pipeline(
                     path.write_text(new_text, encoding="utf-8")
                     logger.info(f"[id] Assigned {assigned} new IDs in {path.name}")
                 # Re-parse so downstream stages see the updated meta
-                new_meta, _ = parse_frontmatter(new_text)
+                new_meta, _ = vault_service.parse(path, new_text)
                 updated_compatible.append((path, new_meta, True))
             except Exception as e:
                 logger.error(f"[id-error] Failed to rewrite {path}: {e}")

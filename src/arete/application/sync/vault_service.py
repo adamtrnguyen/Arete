@@ -1,3 +1,4 @@
+import copy
 import hashlib
 import logging
 from collections import defaultdict
@@ -37,6 +38,21 @@ class VaultService:
         self.unreadable: list[tuple[Path, str]] = []
         # Plain notes read by this scan: (path, mtime, size) at the stat before the read.
         self._not_arete: list[tuple[Path, float, int]] = []
+        # This run's frontmatter parses by path: (text, untouched meta, body).
+        self._parsed: dict[Path, tuple[str, dict[str, Any], str]] = {}
+
+    def parse(self, md_path: Path, text: str) -> tuple[dict[str, Any], str]:
+        """parse_frontmatter(text), reusing this run's parse of the same text of this file.
+
+        The caller owns the meta it gets and may change it: a reused parse is a deep copy.
+        Every stage still reads the file itself, so an edit made during the sync is seen.
+        """
+        hit = self._parsed.get(md_path)
+        if hit is not None and hit[0] == text:
+            return copy.deepcopy(hit[1]), hit[2]
+        meta, body = parse_frontmatter(text)
+        self._parsed[md_path] = (text, copy.deepcopy(meta), body)
+        return meta, body
 
     def scan_for_compatible_files(self) -> Iterable[tuple[Path, dict[str, Any], bool]]:
         """Iterate over all markdown files in the vault, check them for validity.
@@ -48,6 +64,7 @@ class VaultService:
         """
         self.unreadable = []
         self._not_arete = []
+        self._parsed = {}
         for p in iter_markdown_files(self.root):
             ok, _, reason, meta, is_fresh = self._quick_check_file(p)
             if not ok and reason and reason.startswith(UNREADABLE_REASONS):
@@ -127,7 +144,7 @@ class VaultService:
             self._not_arete.append((md_file, mtime, size))
             return (False, 0, "not_arete_file", None, True)
 
-        meta, _body = parse_frontmatter(text)
+        meta, _body = self.parse(md_file, text)
         if not meta or "__yaml_error__" in meta:
             return (False, 0, "no_or_bad_yaml", None, True)
         if meta.get("arete") is not True:
@@ -166,7 +183,7 @@ class VaultService:
         for md_path in paths:
             try:
                 text = md_path.read_text(encoding="utf-8")
-                meta, _ = parse_frontmatter(text)
+                meta, _ = self.parse(md_path, text)
                 if not meta or "__yaml_error__" in meta:
                     continue
                 st = md_path.stat()
@@ -186,7 +203,7 @@ class VaultService:
         for md_path, meta, _is_fresh in self.scan_for_compatible_files():
             try:
                 text = md_path.read_text(encoding="utf-8")
-                _meta, body = parse_frontmatter(text)
+                _meta, body = self.parse(md_path, text)
 
                 # Rebuild using our dumper (which now uses |-)
                 new_text = rebuild_markdown_with_frontmatter(meta, body)
@@ -213,7 +230,7 @@ class VaultService:
         for md_path, ups in by_file.items():
             try:
                 text = md_path.read_text(encoding="utf-8")
-                meta, body = parse_frontmatter(text)
+                meta, body = self.parse(md_path, text)
                 if not meta or "__yaml_error__" in meta:
                     continue
                 cards = meta.get("cards", [])
