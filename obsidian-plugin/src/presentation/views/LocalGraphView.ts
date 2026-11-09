@@ -70,7 +70,10 @@ export class LocalGraphView extends ItemView {
 	 * and hover tooltips). A child of tooltipComponent, unloaded when the drawing goes.
 	 */
 	private drawingComponent: Component | null = null;
-	/** Hover tooltips of the current drawing by node id, rendered on first hover. */
+	/**
+	 * Hover tooltips of the current drawing, rendered on first hover, keyed by node id and
+	 * the title they were rendered from, so a changed title is rendered afresh.
+	 */
 	private tooltipCache = new Map<string, HTMLElement>();
 
 	constructor(leaf: WorkspaceLeaf, plugin: LocalGraphHost) {
@@ -747,7 +750,8 @@ export class LocalGraphView extends ItemView {
 						// Populate tooltip. A node's tooltip is rendered on its first hover in
 						// this drawing and reattached on later ones.
 						this.tooltipContainer.empty();
-						const cached = this.tooltipCache.get(d.id);
+						const cacheKey = JSON.stringify([d.id, d.title]);
+						const cached = this.tooltipCache.get(cacheKey);
 						if (cached) {
 							this.tooltipContainer.appendChild(cached);
 							return;
@@ -755,7 +759,7 @@ export class LocalGraphView extends ItemView {
 						const cardDiv = this.tooltipContainer.createDiv({
 							cls: 'arete-card-preview',
 						});
-						this.tooltipCache.set(d.id, cardDiv);
+						this.tooltipCache.set(cacheKey, cardDiv);
 						cardDiv.style.width = '300px';
 						cardDiv.style.maxHeight = '300px';
 						cardDiv.style.overflow = 'auto';

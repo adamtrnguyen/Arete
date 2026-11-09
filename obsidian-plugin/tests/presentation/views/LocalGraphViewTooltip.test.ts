@@ -134,6 +134,24 @@ describe('LocalGraphView rendered markdown', () => {
 		expect(liveChildren(view.tooltipComponent)).toBe(3);
 	});
 
+	it('renders afresh when the same node shows a different title', async () => {
+		view.renderD3Graph(element('div'), [node], []);
+		await d3.mockHandlers.mouseover({ pageX: 0, pageY: 0 }, node);
+		await d3.mockHandlers.mouseover({ pageX: 0, pageY: 0 }, { ...node, title: 'edited' });
+		expect((MarkdownRenderer.render as jest.Mock).mock.calls.map((c) => c[1])).toEqual([
+			node.title,
+			'edited',
+		]);
+	});
+
+	it('unloads the drawing’s components when the view closes', async () => {
+		view.renderD3Graph(element('div'), [node], []);
+		for (let j = 0; j < 4; j++) await d3.mockHandlers.mouseover({ pageX: 0, pageY: 0 }, node);
+		expect(liveChildren(view.tooltipComponent)).toBe(2);
+		await view.onClose();
+		expect(liveChildren(view.tooltipComponent)).toBe(0);
+	});
+
 	it('releases the drawing’s components when an empty message replaces it', async () => {
 		view.renderD3Graph(element('div'), [node], []);
 		await d3.mockHandlers.mouseover({ pageX: 0, pageY: 0 }, node);
