@@ -155,6 +155,7 @@ def build_graph(vault_root: Path) -> DependencyGraph:
             by_basename.setdefault(normalize_filename(md_path.stem), []).append(fkey)
             rel = md_path.relative_to(vault_root).with_suffix("").as_posix()
             by_relpath[normalize_filename(rel)] = fkey
+            graph.card_decks[fkey] = _card_decks(meta, cards)
 
             for card in cards:
                 if not isinstance(card, dict):
@@ -414,19 +415,18 @@ def filter_graph_by_deck(graph: DependencyGraph, deck: str) -> DependencyGraph:
     """
     keep_ids: set[str] = set()
 
-    # Each file is parsed once; a card's deck comes from its own frontmatter entry.
+    # Decks come from the build. A file the graph holds no record for (a graph built by
+    # hand) is read and parsed here, once.
     for fpath in sorted({node.file_path for node in graph.nodes.values()}):
         try:
-            text = Path(fpath).read_text(encoding="utf-8")
-            meta, _ = parse_frontmatter(text)
-            file_deck = str((meta or {}).get("deck") or "")
+            entries = graph.card_decks.get(fpath)
+            if entries is None:
+                text = Path(fpath).read_text(encoding="utf-8")
+                meta, _ = parse_frontmatter(text)
+                entries = _card_decks(meta, (meta or {}).get("cards", []))
             # Exact deck or subdeck, never a substring ("Math" must not keep "Applied
             # Mathematics"), and the card's own deck wins over the file's, as in sync (G4).
-            for card in (meta or {}).get("cards", []):
-                if not isinstance(card, dict):
-                    continue
-                cid = card.get("id")
-                effective = str(card.get("deck") or file_deck)
+            for cid, effective in entries:
                 if cid in graph.nodes and _in_deck(effective, deck):
                     keep_ids.add(cid)
         except Exception as e:
@@ -451,6 +451,16 @@ def filter_graph_by_deck(graph: DependencyGraph, deck: str) -> DependencyGraph:
             filtered.add_unresolved(cid, ref)
 
     return filtered
+
+
+def _card_decks(meta: Any, cards: Any) -> list[tuple[Any, str]]:
+    """(card id, effective deck) for each card mapping: the card's deck, else the file's."""
+    file_deck = str((meta or {}).get("deck") or "")
+    return [
+        (card.get("id"), str(card.get("deck") or file_deck))
+        for card in cards
+        if isinstance(card, dict)
+    ]
 
 
 def _in_deck(card_deck: str, deck: str) -> bool:

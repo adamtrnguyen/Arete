@@ -691,6 +691,46 @@ class TestDeckFilter:
         health = check_graph_health(_deck_vault(tmp_path), deck_filter="Math")
         assert "arete_M1" not in [e.card_id for e in health.isolated_nodes]
 
+    def test_filter_reuses_the_decks_the_build_read(self, tmp_path, monkeypatch):
+        """The build already parsed every Arete file; the filter must not parse them again."""
+        from arete.application.queue import graph_resolver
+
+        graph = build_graph(_deck_vault(tmp_path))
+        parses: list[str] = []
+        real = graph_resolver.parse_frontmatter
+        monkeypatch.setattr(
+            graph_resolver, "parse_frontmatter", lambda t: parses.append(t) or real(t)
+        )
+
+        filtered = filter_graph_by_deck(graph, "Math")
+
+        assert parses == []
+        assert set(filtered.nodes) == {"arete_M1", "arete_H1"}
+
+    def test_a_hand_built_graph_still_reads_decks_from_its_files(self, tmp_path):
+        """A graph without recorded decks falls back to the files its nodes name."""
+        built = build_graph(_deck_vault(tmp_path))
+        graph = DependencyGraph()
+        for node in built.nodes.values():
+            graph.add_node(node)
+
+        assert set(filter_graph_by_deck(graph, "Math").nodes) == {"arete_M1", "arete_H1"}
+
+    def test_a_duplicate_id_matches_on_either_cards_deck(self, tmp_path):
+        """The first card keeps the id; a duplicate in another file still lends its deck."""
+        (tmp_path / "a.md").write_text(
+            "---\narete: true\ndeck: Math\ncards:\n"
+            "  - id: arete_X\n    Front: q\n  - id: arete_A\n    Front: q\n---\n"
+        )
+        (tmp_path / "b.md").write_text(
+            "---\narete: true\ndeck: Bio\ncards:\n"
+            "  - id: arete_X\n    Front: q\n  - id: arete_B\n    Front: q\n---\n"
+        )
+        graph = build_graph(tmp_path)
+
+        assert set(filter_graph_by_deck(graph, "Bio").nodes) == {"arete_X", "arete_B"}
+        assert set(filter_graph_by_deck(graph, "Math").nodes) == {"arete_X", "arete_A"}
+
 
 class TestSilentGraphProblemsAreReported:
     """G5-G7 (2026-09-25): references and ids that vanished without a word."""

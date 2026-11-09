@@ -5,6 +5,7 @@ without any persistence or resolution logic.
 """
 
 from dataclasses import dataclass, field
+from typing import Any
 
 import networkx as nx
 
@@ -46,6 +47,9 @@ class DependencyGraph:
     unresolved_refs: dict[str, list[str]] = field(default_factory=dict)  # id → [unresolved refs]
     skipped_files: list[tuple[str, str]] = field(default_factory=list)  # (path, error) not parsed
     duplicate_ids: dict[str, list[str]] = field(default_factory=dict)  # id -> files using it
+    # file -> (card id, effective deck) for every card mapping in the file, in file order.
+    # Recorded by the vault build so a deck filter need not re-read the files.
+    card_decks: dict[str, list[tuple[Any, str]]] = field(default_factory=dict, repr=False)
     _graph: nx.DiGraph = field(default_factory=nx.DiGraph, repr=False)
 
     @property
