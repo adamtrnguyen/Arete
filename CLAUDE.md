@@ -1,5 +1,19 @@
 # CLAUDE.md — Arete
 
+## Invariants
+
+These hold for every change. One marked "not yet" is a bug to fix, never a design choice.
+Each invariant gets a test that fails when it breaks; its status changes only with that test.
+
+| # | Invariant | Holds today |
+|---|---|---|
+| 1 | **Obsidian is ground truth.** After any sync, Anki's fields, tags, deck and note type for a card id equal the vault's. An edit made in Anki is overwritten. | Not yet (Open work) |
+| 2 | **The Arete id is the identity.** A card is found by its id, whichever backend runs. | Not yet: AnkiConnect only (Open work) |
+| 3 | **Both backends behave the same.** Whether Anki is open changes how Arete reaches the collection, never what it does. | Not yet (Open work) |
+| 4 | **Arete never touches scheduling.** Review history, due dates and suspension belong to Anki. | Unverified |
+| 5 | **A sync writes only ids into the vault.** The Arete id, the note id and the card id. | Unverified |
+| 6 | **Nothing is deleted without confirmation.** | Documented (`docs/ARCHITECTURE.md`), unverified |
+
 ## Overview
 
 Arete is a one-way sync tool: Obsidian → Anki. Obsidian is the source of truth. It parses YAML frontmatter from markdown files, syncs cards to Anki, and builds dependency-aware study queues.
