@@ -209,3 +209,198 @@ describe('DashboardView shell', () => {
 		expect(inlineStyled(el)).toEqual([]);
 	});
 });
+
+describe('DashboardView overview', () => {
+	const cls = (w: { classes: string[] }) => w.classes.join(' ');
+	const byClass = (root: any, c: string) => walk(root).filter((w) => w.classes.includes(c));
+
+	function renderNode(over: Partial<StatsNode>, depth = 0) {
+		const m = mount();
+		const el = createMockElement('div');
+		m.view.renderDeckNode(el, node({ title: 'Math', deckName: 'Math', ...over }), depth);
+		return { ...m, el };
+	}
+
+	it('gives a deck header a class and indents it with the only inline style', () => {
+		const { el } = renderNode({}, 2);
+		const [header] = byClass(el, 'arete-deck-header');
+		expect(header).toBeDefined();
+		expect(header.el.style).toEqual({ paddingLeft: '40px' });
+		const others = inlineStyled(el).filter((w) => w.el !== header.el);
+		expect(others).toEqual([]);
+	});
+
+	it('flags each deck figure from the shared cut-offs', () => {
+		const { el } = renderNode({
+			difficulty: 0.75,
+			stability: 5,
+			retrievability: 0.8,
+			lapses: 3,
+		});
+		const flags = Object.fromEntries(
+			byClass(el, 'arete-deck-stat').map((w) => [
+				w.classes.find((c) => c.startsWith('mod-') && !/warning|error/.test(c)),
+				w.classes.filter((c) => c === 'mod-warning' || c === 'mod-error'),
+			]),
+		);
+		expect(flags).toEqual({
+			'mod-count': [],
+			'mod-difficulty': ['mod-warning'],
+			'mod-stability': ['mod-warning'],
+			'mod-retrievability': ['mod-error'],
+			'mod-lapses': ['mod-error'],
+		});
+	});
+
+	it('leaves healthy figures unflagged and shows a dash for missing ones', () => {
+		const { el } = renderNode({
+			difficulty: 0.3,
+			stability: 30,
+			retrievability: 0.95,
+			lapses: 0,
+		});
+		expect(byClass(el, 'arete-deck-stat').flatMap((w) => w.classes)).not.toEqual(
+			expect.arrayContaining(['mod-warning']),
+		);
+		const missing = renderNode({});
+		expect(texts(missing.el)).toEqual(expect.arrayContaining(['-']));
+	});
+
+	it('tints a deck with issues and badges the count with mod-error', () => {
+		const { el } = renderNode({ problematicCount: 2 });
+		const [header] = byClass(el, 'arete-deck-header');
+		expect(header.el.addClass).toHaveBeenCalledWith('mod-error');
+		const badge = walk(el).find((w) => w.text === '2 issues')!;
+		expect(cls(badge)).toBe('arete-badge mod-error');
+		expect(badge.el.style).toEqual({});
+	});
+
+	it('uses lowercase figure suffixes', () => {
+		const { el } = renderNode({
+			difficulty: 0.5,
+			stability: 10,
+			retrievability: 0.9,
+			lapses: 1,
+			count: 3,
+		});
+		expect(texts(el)).toEqual(
+			expect.arrayContaining(['3 cards', '5.0 D', '10.0d stab', '90% ret', '1 laps']),
+		);
+	});
+
+	describe('card rows', () => {
+		const stat = (over = {}) => ({
+			cardId: 7,
+			noteId: 7,
+			lapses: 4,
+			ease: 2500,
+			difficulty: 0.95,
+			stability: 5,
+			retrievability: 0.5,
+			intervalGrowth: 1.5,
+			deckName: 'Math',
+			interval: 1,
+			due: 0,
+			reps: 3,
+			averageTime: 1,
+			front: '<b>What?</b>',
+			...over,
+		});
+
+		function renderList(card: any) {
+			const m = mount({ concepts: { 'Note.md': {} } });
+			const el = createMockElement('div');
+			m.view.renderCardList(el, { filePath: 'Note.md', cardStats: { 7: card } } as any);
+			return { ...m, el };
+		}
+
+		it('hovers with :hover, not mouse handlers', () => {
+			const { el } = renderList(stat());
+			const [row] = byClass(el, 'arete-card-row');
+			const [q] = byClass(el, 'arete-card-question').filter((w) =>
+				w.classes.includes('arete-clickable'),
+			);
+			for (const w of [row, q, ...byClass(el, 'arete-card-stats-group')]) {
+				expect(w.el.addEventListener).not.toHaveBeenCalled();
+			}
+		});
+
+		it('sets no inline style on any row element', () => {
+			const { el } = renderList(stat({ isOverlearning: true }));
+			expect(inlineStyled(el)).toEqual([]);
+		});
+
+		it('flags the columns from the shared cut-offs', () => {
+			const { el } = renderList(stat());
+			const cols = Object.fromEntries(
+				byClass(el, 'arete-card-col')
+					.filter((w) => w.text !== undefined && w.classes.length > 0)
+					.slice(6) // the six header cells come first
+					.map((w) => [
+						w.classes.find((c) =>
+							/^mod-(difficulty|stability|growth|retrievability|lapses|flags)$/.test(
+								c,
+							),
+						),
+						w.classes.filter((c) => /^mod-(success|warning|error)$/.test(c)),
+					]),
+			);
+			expect(cols).toEqual({
+				'mod-difficulty': ['mod-error'], // 0.95 >= 0.9
+				'mod-stability': ['mod-warning'], // 5 < 7
+				'mod-growth': ['mod-success'], // 1.5 >= 1.2
+				'mod-retrievability': ['mod-error'], // 0.5 < 0.85
+				'mod-lapses': ['mod-error'], // 4 >= 3
+				'mod-flags': [],
+			});
+		});
+
+		it('follows the lapse threshold in settings', () => {
+			const lenient = mount({
+				concepts: { 'Note.md': {} },
+				plugin: {
+					settings: {
+						...DEFAULT_SETTINGS,
+						stats_lapse_threshold: 6,
+						ui_expanded_decks: [],
+						ui_expanded_concepts: [],
+					},
+				},
+			});
+			const el = createMockElement('div');
+			lenient.view.renderCardList(el, {
+				filePath: 'Note.md',
+				cardStats: { 7: stat() },
+			} as any);
+			const lapses = byClass(el, 'arete-card-col')
+				.filter((w) => w.classes.includes('mod-lapses'))
+				.pop()!;
+			expect(lapses.classes).toContain('mod-warning');
+			expect(lapses.classes).not.toContain('mod-error');
+		});
+
+		it('shows overlearning with a zap icon and a tooltip, not the text OL', () => {
+			const { el, rec } = renderList(stat({ isOverlearning: true }));
+			expect(rec.icons.map((i) => i.icon)).toContain('zap');
+			expect(rec.tooltips.map((t) => t.text)).toContain('Overlearning detected');
+			expect(texts(el)).not.toContain('OL');
+		});
+
+		it('sets tooltips with setTooltip and sentence case headers', () => {
+			const { el, rec } = renderList(stat());
+			expect(rec.tooltips.map((t) => t.text)).toEqual(
+				expect.arrayContaining(['What?', 'Flags, such as overlearning']),
+			);
+			expect(texts(el)).toEqual(expect.arrayContaining(['Card question']));
+			expect(texts(el)).not.toContain('Card Question');
+		});
+
+		it('opens the stats modal with the plugin settings on a stats click', () => {
+			const { el } = renderList(stat());
+			const [group] = byClass(el, 'arete-card-stats-group');
+			const e = { stopPropagation: jest.fn() };
+			expect(() => group.el.onclick(e)).not.toThrow();
+			expect(e.stopPropagation).toHaveBeenCalled();
+		});
+	});
+});

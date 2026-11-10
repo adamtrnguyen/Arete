@@ -7,8 +7,17 @@ import {
 	Notice,
 	MarkdownView,
 	TFile,
+	setTooltip,
 } from 'obsidian';
-import { ConceptStats, StatsNode, difficultyOutOfTen, uniqueCardStats } from '@/domain/stats';
+import {
+	ConceptStats,
+	StatsNode,
+	difficultyOutOfTen,
+	metricStates,
+	uniqueCardStats,
+} from '@/domain/stats';
+import type { MetricState } from '@/domain/stats';
+import { flagClass } from '@/presentation/cardStateClass';
 import { CardStatsModal } from '@/presentation/modals/CardStatsModal';
 import { BrokenReference, LinkCheckerService } from '@application/services/LinkCheckerService';
 import { AretePluginSettings } from '@/domain/settings';
@@ -205,17 +214,13 @@ export class DashboardView extends ItemView {
 
 	renderDeckNode(container: HTMLElement, node: StatsNode, depth: number) {
 		const deckContainer = container.createDiv();
-		const header = deckContainer.createDiv();
-		header.style.padding = `8px 16px 8px ${8 + depth * 16}px`;
-		header.style.cursor = 'pointer';
-		header.style.display = 'flex';
-		header.style.alignItems = 'center';
-		header.style.borderBottom = '1px solid var(--background-modifier-border)';
+		const header = deckContainer.createDiv({ cls: 'arete-deck-header' });
+		// The indent grows with the depth, so it is the one runtime-computed style.
+		header.style.paddingLeft = `${8 + depth * 16}px`;
 		// Highlight if issues
-		if (node.problematicCount > 0) header.style.background = 'rgba(var(--color-red-rgb), 0.05)';
+		if (node.problematicCount > 0) header.addClass('mod-error');
 
-		const icon = header.createSpan();
-		icon.style.marginRight = '8px';
+		const icon = header.createSpan({ cls: 'arete-deck-icon' });
 		// If leaf, key is filePath, else deckName. Expanded set keys match this logic.
 		const expansionKey = node.isLeaf ? node.filePath : node.deckName;
 
@@ -223,81 +228,66 @@ export class DashboardView extends ItemView {
 			setIcon(icon, this.expandedDecks.has(expansionKey) ? 'chevron-down' : 'chevron-right');
 		} else {
 			setIcon(icon, 'file-text');
-			icon.style.color = 'var(--text-muted)';
+			icon.addClass('mod-leaf');
 		}
 
-		const title = header.createSpan({ text: node.title });
-		title.style.fontWeight = '600';
-		if (node.isLeaf) title.style.fontWeight = 'normal';
+		const title = header.createSpan({ text: node.title, cls: 'arete-deck-title' });
+		if (node.isLeaf) title.addClass('mod-leaf');
 
 		const statsContainer = header.createDiv({ cls: 'arete-deck-stats' });
-		statsContainer.style.marginLeft = 'auto';
-		statsContainer.style.display = 'flex';
-		statsContainer.style.gap = '20px';
-		statsContainer.style.fontSize = '0.9em';
-		statsContainer.style.color = 'var(--text-muted)';
+
+		// A deck row judges its averages and its lapse total with the same cut-offs as a card.
+		const states = metricStates(
+			{
+				lapses: node.lapses,
+				difficulty: node.difficulty,
+				stability: node.stability,
+				retrievability: node.retrievability,
+			},
+			this.plugin.settings,
+		);
+		const stat = (text: string, column: string, state?: MetricState) => {
+			const span = statsContainer.createSpan({
+				text,
+				cls: `arete-deck-stat mod-${column}`,
+			});
+			const flag = state ? flagClass(state) : null;
+			if (flag) span.addClass(flag);
+		};
 
 		// 0. Card Count
-		const countSpan = statsContainer.createSpan({ text: `${node.count} cards` });
-		countSpan.style.width = '80px';
-		countSpan.style.whiteSpace = 'nowrap';
-		countSpan.style.textAlign = 'right';
+		stat(`${node.count} cards`, 'count');
 
-		// 1. Difficulty (Avg)
-		const diffSpan = statsContainer.createSpan();
-		diffSpan.style.width = '70px';
-		diffSpan.style.whiteSpace = 'nowrap';
-		diffSpan.style.textAlign = 'right';
-		if (node.difficulty != null) {
-			// difficulty is stored 0..1; scale only to display it
-			diffSpan.textContent = `${difficultyOutOfTen(node.difficulty).toFixed(1)} D`;
-			if (node.difficulty > 0.6) diffSpan.style.color = 'var(--color-orange)';
-		} else {
-			diffSpan.textContent = '-';
-		}
+		// 1. Difficulty (Avg), stored 0..1; scale only to display it
+		stat(
+			node.difficulty != null ? `${difficultyOutOfTen(node.difficulty).toFixed(1)} D` : '-',
+			'difficulty',
+			states.difficulty,
+		);
 
 		// 1b. Stability (Avg)
-		const stabSpan = statsContainer.createSpan();
-		stabSpan.style.width = '90px';
-		stabSpan.style.whiteSpace = 'nowrap';
-		stabSpan.style.textAlign = 'right';
-		if (node.stability != null) {
-			stabSpan.textContent = `${node.stability.toFixed(1)}d Stab`;
-			if (node.stability < 7) stabSpan.style.color = 'var(--color-orange)';
-		} else {
-			stabSpan.textContent = '-';
-		}
+		stat(
+			node.stability != null ? `${node.stability.toFixed(1)}d stab` : '-',
+			'stability',
+			states.stability,
+		);
 
 		// 1c. Retrievability (Avg)
-		const retSpan = statsContainer.createSpan();
-		retSpan.style.width = '70px';
-		retSpan.style.whiteSpace = 'nowrap';
-		retSpan.style.textAlign = 'right';
-		if (node.retrievability != null) {
-			retSpan.textContent = `${(node.retrievability * 100).toFixed(0)}% Ret`;
-			if (node.retrievability < 0.85) retSpan.style.color = 'var(--color-red)';
-		} else {
-			retSpan.textContent = '-';
-		}
+		stat(
+			node.retrievability != null ? `${(node.retrievability * 100).toFixed(0)}% ret` : '-',
+			'retrievability',
+			states.retrievability,
+		);
 
 		// 2. Lapses
-		const lapseSpan = statsContainer.createSpan({ text: `${node.lapses} laps` });
-		lapseSpan.style.width = '60px';
-		lapseSpan.style.whiteSpace = 'nowrap';
-		lapseSpan.style.textAlign = 'right';
-		if (node.lapses > 0) lapseSpan.style.color = 'var(--text-error)';
+		stat(`${node.lapses} laps`, 'lapses', states.lapses);
 
 		// 3. Score (Issues)
 		if (node.problematicCount > 0) {
-			const scoreBadge = statsContainer.createSpan({
+			statsContainer.createSpan({
 				text: `${node.problematicCount} issues`,
+				cls: 'arete-badge mod-error',
 			});
-			scoreBadge.style.background = 'var(--color-red)';
-			scoreBadge.style.color = 'var(--text-on-accent)';
-			scoreBadge.style.padding = '2px 6px';
-			scoreBadge.style.borderRadius = '4px';
-			scoreBadge.style.fontSize = '0.8em';
-			scoreBadge.style.marginLeft = '10px';
 		}
 
 		// Children go in their own element, so a toggle rebuilds only this subtree.
@@ -366,61 +356,28 @@ export class DashboardView extends ItemView {
 	}
 
 	renderCardList(container: HTMLElement, concept: ConceptStats) {
-		const cardList = container.createDiv();
-		cardList.style.background = 'var(--background-primary-alt)';
-		cardList.style.borderBottom = '1px solid var(--background-modifier-border)';
-		cardList.style.borderRadius = '4px';
-		cardList.style.marginBottom = '8px';
+		const cardList = container.createDiv({ cls: 'arete-card-list' });
 
 		const cards = uniqueCardStats(concept.cardStats);
 
 		if (cards.length === 0) {
-			cardList.createDiv({ text: 'No card stats synced.' }).style.padding = '8px 32px';
+			cardList.createDiv({ text: 'No card stats synced.', cls: 'arete-card-list-empty' });
 		} else {
 			// Header
-			const header = cardList.createDiv();
-			header.style.display = 'flex';
-			header.style.padding = '4px 8px 4px 12px';
-			header.style.fontSize = '0.75em';
-			header.style.color = 'var(--text-muted)';
-			header.style.borderBottom = '1px solid var(--background-modifier-border)';
-
-			const h1 = header.createSpan({ text: 'Card Question' });
-			h1.style.flex = '1';
-			const h2 = header.createSpan({ text: 'Diff' });
-			h2.style.width = '50px';
-			const hStab = header.createSpan({ text: 'Stab' });
-			hStab.style.width = '50px';
-			const hGain = header.createSpan({ text: 'Gain' });
-			hGain.style.width = '40px';
-			const hRet = header.createSpan({ text: 'Ret' });
-			hRet.style.width = '50px';
-			const h3 = header.createSpan({ text: 'Lapses' });
-			h3.style.width = '60px';
-			const hFlags = header.createSpan({ text: '!' });
-			hFlags.style.width = '20px';
-			hFlags.style.textAlign = 'center';
-			hFlags.title = 'Flags (e.g. Overlearning)';
+			const header = cardList.createDiv({ cls: 'arete-card-list-header' });
+			header.createSpan({ text: 'Card question', cls: 'arete-card-question' });
+			header.createSpan({ text: 'Diff', cls: 'arete-card-col mod-difficulty' });
+			header.createSpan({ text: 'Stab', cls: 'arete-card-col mod-stability' });
+			header.createSpan({ text: 'Gain', cls: 'arete-card-col mod-growth' });
+			header.createSpan({ text: 'Ret', cls: 'arete-card-col mod-retrievability' });
+			header.createSpan({ text: 'Lapses', cls: 'arete-card-col mod-lapses' });
+			const hFlags = header.createSpan({ text: '!', cls: 'arete-card-col mod-flags' });
+			setTooltip(hFlags, 'Flags, such as overlearning');
 
 			cards
 				.sort((a, b) => b.lapses - a.lapses)
 				.forEach((card) => {
-					const cRow = cardList.createDiv();
-					cRow.style.display = 'flex';
-					cRow.style.alignItems = 'center';
-					cRow.style.padding = '4px 8px 4px 12px';
-					cRow.style.fontSize = '0.8em';
-					cRow.style.borderBottom = '1px solid var(--background-modifier-border)';
-
-					// Hover effect
-					cRow.addEventListener(
-						'mouseenter',
-						() => (cRow.style.backgroundColor = 'var(--background-modifier-hover)'),
-					);
-					cRow.addEventListener(
-						'mouseleave',
-						() => (cRow.style.backgroundColor = 'transparent'),
-					);
+					const cRow = cardList.createDiv({ cls: 'arete-card-row' });
 
 					cRow.onclick = (e) => {
 						e.stopPropagation();
@@ -431,22 +388,11 @@ export class DashboardView extends ItemView {
 						const frontText = card.front
 							? card.front.replace(/<[^>]*>?/gm, '')
 							: `#${card.cardId}`;
-						const qSpan = cRow.createSpan({ text: frontText, cls: 'arete-clickable' });
-						qSpan.title = frontText;
-						qSpan.style.flex = '1';
-						qSpan.style.whiteSpace = 'nowrap';
-						qSpan.style.overflow = 'hidden';
-						qSpan.style.textOverflow = 'ellipsis';
-						qSpan.style.cursor = 'pointer';
-
-						qSpan.addEventListener(
-							'mouseenter',
-							() => (qSpan.style.textDecoration = 'underline'),
-						);
-						qSpan.addEventListener(
-							'mouseleave',
-							() => (qSpan.style.textDecoration = 'none'),
-						);
+						const qSpan = cRow.createSpan({
+							text: frontText,
+							cls: 'arete-card-question arete-clickable',
+						});
+						setTooltip(qSpan, frontText);
 
 						qSpan.onclick = (e) => {
 							e.stopPropagation();
@@ -455,90 +401,68 @@ export class DashboardView extends ItemView {
 
 						// --- Stats Group (Click for Modal) ---
 						const sGroup = cRow.createDiv({ cls: 'arete-card-stats-group' });
-						sGroup.style.display = 'flex';
-						sGroup.style.alignItems = 'center';
-						sGroup.style.cursor = 'help';
-
-						sGroup.addEventListener(
-							'mouseenter',
-							() => (sGroup.style.background = 'var(--background-modifier-hover)'),
-						);
-						sGroup.addEventListener(
-							'mouseleave',
-							() => (sGroup.style.background = 'transparent'),
-						);
 
 						sGroup.onclick = (e) => {
 							e.stopPropagation();
-							new CardStatsModal(this.plugin.app, card).open();
+							new CardStatsModal(this.plugin.app, card, this.plugin.settings).open();
 						};
 
-						// 1. Difficulty
-						const dSpan = sGroup.createSpan();
-						dSpan.style.width = '50px';
-						dSpan.style.textAlign = 'right';
-						if (card.difficulty) {
-							// difficulty is stored 0..1; scale only to display it
-							dSpan.textContent = difficultyOutOfTen(card.difficulty).toFixed(1);
-							if (card.difficulty > 0.7) dSpan.style.color = 'var(--color-orange)';
-						} else {
-							dSpan.textContent = '-';
-						}
+						const states = metricStates(card, this.plugin.settings);
+						const col = (column: string, text: string, flag?: string | null) => {
+							const span = sGroup.createSpan({
+								text,
+								cls: `arete-card-col mod-${column}`,
+							});
+							if (flag) span.addClass(flag);
+							return span;
+						};
+
+						// 1. Difficulty, stored 0..1; scale only to display it
+						col(
+							'difficulty',
+							card.difficulty ? difficultyOutOfTen(card.difficulty).toFixed(1) : '-',
+							card.difficulty ? flagClass(states.difficulty) : null,
+						);
 
 						// 2. Stability
-						const stSpan = sGroup.createSpan();
-						stSpan.style.width = '50px';
-						stSpan.style.textAlign = 'right';
-						if (card.stability) {
-							stSpan.textContent = card.stability.toFixed(0);
-						} else {
-							stSpan.textContent = '-';
-						}
+						col(
+							'stability',
+							card.stability ? card.stability.toFixed(0) : '-',
+							card.stability ? flagClass(states.stability) : null,
+						);
 
-						// 3. Interval Growth
-						const growthSpan = sGroup.createSpan();
-						growthSpan.style.width = '50px';
-						growthSpan.style.textAlign = 'right';
-						if (card.intervalGrowth != null) {
-							growthSpan.textContent = `x${card.intervalGrowth.toFixed(1)}`;
-							if (card.intervalGrowth < 1.0)
-								growthSpan.style.color = 'var(--color-red)';
-							else growthSpan.style.color = 'var(--color-green)';
-						} else {
-							growthSpan.textContent = '-';
-						}
+						// 3. Interval growth: green unless it is below the cut-off
+						col(
+							'growth',
+							card.intervalGrowth != null
+								? `x${card.intervalGrowth.toFixed(1)}`
+								: '-',
+							card.intervalGrowth != null
+								? (flagClass(states.intervalGrowth) ?? 'mod-success')
+								: null,
+						);
 
 						// 4. Retrievability
-						const rSpan = sGroup.createSpan();
-						rSpan.style.width = '50px';
-						rSpan.style.textAlign = 'right';
-						if (card.retrievability) {
-							rSpan.textContent = `${(card.retrievability * 100).toFixed(0)}%`;
-							if (card.retrievability < 0.85) rSpan.style.color = 'var(--color-red)';
-						} else {
-							rSpan.textContent = '-';
-						}
+						col(
+							'retrievability',
+							card.retrievability
+								? `${(card.retrievability * 100).toFixed(0)}%`
+								: '-',
+							card.retrievability ? flagClass(states.retrievability) : null,
+						);
 
 						// 5. Lapses
-						const lSpan = sGroup.createSpan();
-						lSpan.style.width = '60px'; // Matching header
-						lSpan.style.textAlign = 'right';
-						lSpan.textContent = card.lapses.toString();
-						if (card.lapses > 5) lSpan.style.color = 'var(--color-red)';
+						col('lapses', card.lapses.toString(), flagClass(states.lapses));
 
 						// 6. Flags
-						const fSpan = sGroup.createSpan();
-						fSpan.style.width = '20px';
-						fSpan.style.textAlign = 'center';
+						const fSpan = col('flags', '');
 						if (card.isOverlearning) {
-							fSpan.textContent = 'OL';
-							fSpan.style.fontSize = '0.7em';
-							fSpan.style.fontWeight = 'bold';
-							fSpan.style.color = 'var(--color-blue)';
-							fSpan.title = 'Overlearning Detected';
+							setIcon(fSpan, 'zap');
+							fSpan.addClass('mod-overlearning');
+							setTooltip(fSpan, 'Overlearning detected');
 						}
 					} catch (e) {
-						console.error('Error rendering card row', e);
+						console.error('[Arete] Failed to render a card row:', e);
 					}
 				});
 		}

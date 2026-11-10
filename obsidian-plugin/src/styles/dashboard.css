@@ -98,6 +98,190 @@
 	margin-top: var(--size-4-4);
 }
 
+/* Badges */
+.arete-badge {
+	padding: var(--size-2-1) var(--size-2-2);
+	border-radius: var(--radius-s);
+	background: var(--background-modifier-border);
+	font-size: var(--font-ui-smaller);
+}
+
+.arete-badge.mod-error {
+	background: var(--color-red);
+	color: var(--text-on-accent);
+}
+
+.arete-badge.mod-accent {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+}
+
+.arete-clickable {
+	cursor: var(--cursor-link);
+}
+
+/* Overview: deck rows */
+.arete-deck-header {
+	display: flex;
+	align-items: center;
+	padding: var(--size-4-2) var(--size-4-4);
+	border-bottom: var(--border-width) solid var(--background-modifier-border);
+	cursor: var(--cursor);
+}
+
+.arete-deck-header.mod-error {
+	background: color-mix(in oklch, var(--color-red) 5%, transparent);
+}
+
+.arete-deck-icon {
+	margin-right: var(--size-4-2);
+}
+
+.arete-deck-icon.mod-leaf {
+	color: var(--text-muted);
+}
+
+.arete-deck-title {
+	font-weight: var(--font-semibold);
+}
+
+.arete-deck-title.mod-leaf {
+	font-weight: var(--font-normal);
+}
+
+.arete-deck-stats {
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-5);
+	margin-left: auto;
+	font-size: var(--font-ui-small);
+	color: var(--text-muted);
+}
+
+.arete-deck-stats .arete-badge {
+	margin-left: var(--size-4-2);
+}
+
+.arete-deck-stat {
+	white-space: nowrap;
+	text-align: right;
+}
+
+.arete-deck-stat.mod-count {
+	width: calc(var(--size-4-1) * 20);
+}
+
+.arete-deck-stat.mod-difficulty,
+.arete-deck-stat.mod-retrievability {
+	width: calc(var(--size-4-1) * 17.5);
+}
+
+.arete-deck-stat.mod-stability {
+	width: calc(var(--size-4-1) * 22.5);
+}
+
+.arete-deck-stat.mod-lapses {
+	width: calc(var(--size-4-1) * 15);
+}
+
+.arete-deck-stat.mod-warning {
+	color: var(--text-warning);
+}
+
+.arete-deck-stat.mod-error {
+	color: var(--text-error);
+}
+
+/* Overview: a file's card list */
+.arete-card-list {
+	background: var(--background-primary-alt);
+	border-bottom: var(--border-width) solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
+	margin-bottom: var(--size-4-2);
+}
+
+.arete-card-list-empty {
+	padding: var(--size-4-2) var(--size-4-8);
+}
+
+.arete-card-list-header,
+.arete-card-row {
+	display: flex;
+	align-items: center;
+	padding: var(--size-2-2) var(--size-4-2) var(--size-2-2) var(--size-4-3);
+	border-bottom: var(--border-width) solid var(--background-modifier-border);
+}
+
+.arete-card-list-header {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+}
+
+.arete-card-row {
+	font-size: var(--font-ui-smaller);
+	cursor: var(--cursor);
+}
+
+.arete-card-row:hover {
+	background: var(--background-modifier-hover);
+}
+
+.arete-card-question {
+	flex: 1;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.arete-card-question.arete-clickable:hover {
+	text-decoration: underline;
+}
+
+.arete-card-stats-group {
+	display: flex;
+	align-items: center;
+	cursor: var(--cursor);
+}
+
+.arete-card-stats-group:hover {
+	background: var(--background-modifier-hover);
+}
+
+.arete-card-col {
+	width: calc(var(--size-4-1) * 12.5);
+	text-align: right;
+}
+
+.arete-card-col.mod-lapses {
+	width: calc(var(--size-4-1) * 15);
+}
+
+.arete-card-col.mod-flags {
+	width: var(--size-4-5);
+	text-align: center;
+}
+
+.arete-card-col.mod-success {
+	color: var(--text-success);
+}
+
+.arete-card-col.mod-warning {
+	color: var(--text-warning);
+}
+
+.arete-card-col.mod-error {
+	color: var(--text-error);
+}
+
+.arete-card-col.mod-overlearning {
+	color: var(--color-blue);
+}
+
+.arete-card-col.mod-overlearning svg {
+	width: var(--icon-xs);
+	height: var(--icon-xs);
+}
+
 /* Leech Table */
 .arete-leech-table th {
 	padding: 8px;
