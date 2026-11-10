@@ -76,9 +76,9 @@ class SyncPort(Protocol):
 
     @abstractmethod
     async def get_notes_in_deck(self, deck_name: str) -> dict[str, int]:
-        """Return mapping of {obsidian_nid: anki_nid} for all notes in a deck.
+        """Every note in the deck, keyed by its note id as a string.
 
-        Used by the prune stage to identify orphaned cards.
+        Prune reads the values to find the notes the vault no longer claims.
         """
         pass
 

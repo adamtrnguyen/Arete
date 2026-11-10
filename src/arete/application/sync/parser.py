@@ -60,25 +60,15 @@ class MarkdownParser:
         md_path: Path,
         idx: int,
     ) -> tuple[str | None, str | None]:
-        """Reject provably-invalid Anki ids so sync can't hijack the wrong note.
+        """``(nid, cid)``, or ``(None, None)`` when ``nid`` is shared by another card in the file.
 
-        ``anki.nid``/``anki.cid`` are written by Arete after a sync and are not
-        meant to be authored by hand. One situation is impossible in a real Anki
-        collection and therefore indicates fabricated/copy-pasted metadata: a
-        ``nid`` shared by more than one card in the same file (a note id
-        identifies exactly one note).
+        A note id identifies one note, so a shared nid is fabricated or copy-pasted. The card
+        is then matched by its arete id instead of overwriting an unrelated note. Logs a
+        warning; never rewrites the file.
 
-        When detected, the suspect nid is discarded (returning ``None``) and a
-        warning is logged, so the card is matched by its arete id / content
-        (created fresh or healed) rather than overwriting an unrelated note. We
-        never rewrite the user's file here; Arete persists a real nid on the
-        next successful sync as it normally does.
-
-        Note: ``nid == cid`` is NOT a fabrication signal. For single-card note
-        types Anki assigns the first card's id equal to the note id, so the two
-        coincide for the large majority of normal notes (~80%+ of a real vault)
-        and equality must be trusted — stripping it would re-create the note as
-        a duplicate on the next sync of an edited card.
+        ``nid == cid`` is not a fabrication signal: Anki gives a single-card note's first card
+        the note's id, so most real notes have it. Stripping it would re-create the note as a
+        duplicate.
         """
         if nid and nid in duplicate_nids:
             self.logger.warning(
@@ -132,7 +122,7 @@ class MarkdownParser:
                                 cached_note = AnkiNote.from_dict(json.loads(note_json))
                                 # The entry is only written after Anki accepted the note,
                                 # so an unchanged file has nothing to send; prune still
-                                # needs it (C3 in docs/history/sync-render-stats-fixes.md).
+                                # needs it.
                                 inventory.append({"nid": cached_note.nid, "deck": cached_note.deck})
                                 continue
                         except Exception as e:
@@ -223,8 +213,8 @@ class MarkdownParser:
                 nid, cid = self._validate_card_ids(nid, cid, duplicate_nids, md_path, idx)
 
                 # 3) Deck
-                # D1: `card.get("deck", file_deck)` returned "" for `deck: ''`, which then
-                # fell through to Default instead of the file's deck.
+                # `or`, not a get() default: an empty `deck: ''` on a card takes the file's
+                # deck, not Default.
                 deck_this = sanitize(card.get("deck") or deck_frontmatter or "")
                 if not deck_this:
                     deck_this = self.default_deck
@@ -232,8 +222,7 @@ class MarkdownParser:
                         f"[info] {md_path} card#{idx}: no deck set, using default: {deck_this}"
                     )
 
-                # NEW: Track as valid inventory for Prune Mode
-                # We must record the deck even if NID is missing (to protect the deck from deletion)
+                # Prune inventory: record the deck even without a nid, so prune keeps the deck.
                 inventory.append({"nid": nid, "deck": deck_this})
 
                 if nid and nid in self.contested_nids:
@@ -273,8 +262,8 @@ class MarkdownParser:
                 # Dedupe while preserving order (file/card overlap, arete ID)
                 card_tags = list(dict.fromkeys(card_tags))
 
-                # 5) Calculate hash check over what Anki will receive -- the per-card tags
-                # included (C4: hashing only the file tags hid every card-level tag edit).
+                # 5) Hash what Anki will receive, the per-card tags included, so a card-level
+                # tag edit changes the hash.
                 content_hash = card_content_hash(model, deck_this, card_tags, fields, nid, cid)
 
                 cached_hash = cache.get_hash(md_path, idx)

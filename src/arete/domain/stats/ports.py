@@ -19,39 +19,15 @@ class StatsRepository(ABC):
 
     @abstractmethod
     async def get_card_stats(self, nids: list[int]) -> list[CardStatsAggregate]:
-        """Fetch comprehensive stats for cards belonging to the given note IDs.
-
-        Args:
-            nids: List of Anki note IDs.
-
-        Returns:
-            List of CardStatsAggregate objects with FSRS data populated if available.
-
-        """
+        """Stats for every card of the notes `nids`, with FSRS data when Anki has it."""
         pass
 
     @abstractmethod
     async def get_review_history(self, cids: list[int]) -> list[ReviewEntry]:
-        """Fetch review history for the given card IDs.
-
-        Args:
-            cids: List of Anki card IDs.
-
-        Returns:
-            List of ReviewEntry objects, sorted by review_time ascending.
-
-        """
+        """Review log entries for the cards `cids`, oldest first."""
         pass
 
     @abstractmethod
     async def get_deck_params(self, deck_names: list[str]) -> dict[str, dict]:
-        """Fetch FSRS parameters (desired retention, weights) for the given decks.
-
-        Args:
-            deck_names: List of deck names to fetch parameters for.
-
-        Returns:
-            Dictionary mapping deck names to their FSRS parameters.
-
-        """
+        """FSRS parameters (desired retention, weights) per deck name."""
         pass

@@ -266,7 +266,7 @@ class DirectStatsRepository(StatsRepository):
                 total[1] += time_sum or 0
                 total[2] = max(total[2], newest or 0)
             for cid, (count, time_sum, newest) in totals.items():
-                # AVG(time) is the float mean, truncated by int() as the per-card query was
+                # The mean review time, truncated by int().
                 mean = time_sum / count if count else 0
                 out[cid] = (
                     dists[cid],

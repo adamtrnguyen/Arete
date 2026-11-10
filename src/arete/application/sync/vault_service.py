@@ -244,8 +244,8 @@ class VaultService:
 
                         if anki_block:
                             card_data["anki"] = anki_block
-                # FORCE FIX: If we are ignoring cache (force sync), always mark as changed
-                # to trigger a rewrite with normalized YAML (|- block style).
+                # A forced sync (ignore_cache) always rewrites the file, which normalizes
+                # its YAML (|- block style).
                 if self.ignore_cache:
                     changed = True
 

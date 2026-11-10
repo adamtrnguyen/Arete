@@ -147,15 +147,9 @@ class AnkiDirectAdapter(AnkiBridge):
     async def get_due_cards(
         self, deck_name: str | None = None, include_new: bool = False
     ) -> list[int]:
-        """Get cards due today (and optionally new cards) from Anki.
+        """Note ids (not card ids) with a card due today, or new when `include_new`.
 
-        Args:
-            deck_name: Optional deck name (supports nested, e.g., "Math::Calculus")
-            include_new: If True, also include new (unreviewed) cards.
-
-        Returns:
-            List of Anki note IDs (nids)
-
+        `deck_name` limits the search with Anki's `deck:` filter.
         """
         with AnkiRepository(self.anki_base) as repo:
             if not repo.col:
@@ -168,14 +162,7 @@ class AnkiDirectAdapter(AnkiBridge):
             return nids
 
     async def map_nids_to_arete_ids(self, nids: list[int]) -> list[str]:
-        """Map Anki note IDs to Arete card IDs.
-
-        Looks for Arete ID in note tags (arete_XXX pattern).
-
-        Returns:
-            List of Arete IDs
-
-        """
+        """The first `arete_` tag of each note in `nids`; a note without one is skipped."""
         arete_ids: list[str] = []
 
         with AnkiRepository(self.anki_base) as repo:
@@ -196,29 +183,10 @@ class AnkiDirectAdapter(AnkiBridge):
         return arete_ids
 
     async def get_notes_in_deck(self, deck_name: str) -> dict[str, int]:
-        # Enable Pruning support!
+        """Every note in the deck, keyed by its note id as a string."""
         with AnkiRepository(self.anki_base) as repo:
             if repo.col:
-                # Find direct notes
-                # query: "deck:name"
                 nids = repo.find_notes(f'"deck:{deck_name}"')
-                # We need to map back to obsidian source ID/hash?
-                # Arete pruning relies on local state usually, or metadata in fields.
-                # AnkiConnect implementation fetches fields.
-                # For direct implementation, we can iterate nids and get fields.
-                # WARNING: This might be slow for huge decks.
-                # For now implementing basic NID list return might not be enough.
-                # Interface expects dict {obsidian_id: nid}?
-                # Interfaces doc says: "Return mapping of {obsidian_nid: anki_nid}"?
-                # Actually PruningService uses this to find what IS in Anki vs what SHOULD be.
-                # If we store obsidian ID in a field (e.g. source id), we can map it.
-                # Existing logic might rely on content match.
-
-                # Let's verify interface doc or usage.
-                # Interface says: "Return mapping of {obsidian_nid: anki_nid}"
-                # If Anki notes don't have obsidian_nid stored, this is hard.
-                # But typically obsidian_nid IS the anki_nid.
-                # So maybe it returns {str(nid): nid}?
                 return {str(nid): nid for nid in nids}
 
         return {}
@@ -450,24 +418,8 @@ class AnkiDirectAdapter(AnkiBridge):
             if not repo.col:
                 return []
 
-            # Efficiently find cards
-            # Search query: "tag:arete_ID1 OR tag:arete_ID2 ..."
-            # But this is messy if list is huge.
-            # Max query length check?
-            # Better: find_cards("tag:arete_ID") for each ID? Slow.
-            # Best: Iterate IDs and search individually? Or chunk.
-
-            # Actually, `arete_ID` is a tag.
-            # So `tag:arete_ID` uniquely identifies cards for that note.
-            # A note might have multiple cards. We usually want "Card 1" or all cards.
-            # Let's get ALL cards for these tags.
-
-            # BUT topological sort output is `card_id` (Arete ID).
-            # In Arete, "card_id" usually maps to a NOTE ID (or specific card if using ID+Type).
-            # The `arete_XXX` string is on the Note as a tag.
-            # So searching `tag:arete_XXX` gives us CIDs for that note.
-
-            # We must preserve order.
+            # The Arete id is a tag on the note, so `tag:<id>` finds every card of that
+            # note. One search per id keeps the input order.
 
             seen: set[int] = set()
             for aid in arete_ids:

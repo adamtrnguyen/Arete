@@ -108,32 +108,11 @@ async def build_study_queue(  # noqa: PLR0913
     reschedule: bool = True,
     enrich: bool = True,
 ) -> QueueOrchestratorResult:
-    """Orchestrate the full queue-building workflow.
+    """Fetch due cards, map them to Arete ids, build the queue, and create the filtered deck.
 
-    Steps:
-        1. Fetch due cards from Anki
-        2. Map NIDs to Arete IDs
-        3. Build the dependency queue (static, dynamic, or simple)
-        4. Optionally enrich with graph metadata (titles, files)
-        5. Optionally create the filtered deck in Anki
-
-    Args:
-        anki: Anki queue port (caller provides; factory is not our concern)
-        vault_root: Path to the Obsidian vault
-        deck: Optional deck name filter for due cards
-        depth: Prerequisite search depth
-        max_cards: Maximum cards in queue
-        include_new: Include new (unreviewed) cards
-        cross_deck: Pull prerequisites from other decks
-        algo: Queue algorithm ("static", "dynamic", or "simple")
-        dry_run: If True, skip deck creation
-        deck_name: Name for the filtered deck
-        reschedule: Whether to reschedule cards in the filtered deck
-        enrich: Whether to enrich queue items with graph metadata
-
-    Returns:
-        QueueOrchestratorResult with everything interfaces need to display
-
+    `algo` is "static", "dynamic" or "simple" (the same traversal as "static").
+    `cross_deck` pulls prerequisites from other decks; `enrich` adds titles and files from
+    the graph; `dry_run` creates no deck. The result holds everything an interface shows.
     """
     result = QueueOrchestratorResult(algo=algo, dry_run=dry_run)
 
@@ -169,8 +148,7 @@ async def build_study_queue(  # noqa: PLR0913
             graph=graph,
         )
     else:
-        # "static" and "simple" were two names for the same traversal: the weak/strong
-        # split that separated them was never configured, so it never split anything.
+        # "static" and "simple" name the same traversal.
         build_result = build_simple_queue(
             vault_root=vault_root,
             due_card_ids=valid_ids,

@@ -32,9 +32,7 @@ class MathPreprocessor(Preprocessor):
         self.counter: int = 0
         self.placeholders: dict[str, str] = {}
 
-        # MathJax delimiters. Anki renders these; the old "[$]...[/$]" (apy/LaTeX)
-        # alternative was never selectable -- markdown_to_anki_html has one caller
-        # and it never passed a mode.
+        # MathJax delimiters, which Anki renders.
         self.fmt_display: str = r"\[{math}\]"
         self.fmt_inline: str = r"\({math}\)"
 

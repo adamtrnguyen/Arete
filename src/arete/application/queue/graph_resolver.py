@@ -130,7 +130,7 @@ def build_graph(vault_root: Path) -> DependencyGraph:
     graph = DependencyGraph()
 
     # First pass: collect all cards and index them BY FILE. A basename can name more
-    # than one file (math/Intro.md, bio/Intro.md), so it maps to files, not cards (G5).
+    # than one file (math/Intro.md, bio/Intro.md), so it maps to files, not cards.
     file_cards: dict[str, list[str]] = {}  # file path -> card ids
     by_basename: dict[str, list[str]] = {}  # NFC basename -> file paths
     by_relpath: dict[str, str] = {}  # NFC vault-relative path without .md -> file path
@@ -183,7 +183,7 @@ def build_graph(vault_root: Path) -> DependencyGraph:
                     line_number=line_number,
                 )
                 if card_id in graph.nodes:
-                    # Keep the first card and record the duplicate; never overwrite (G7).
+                    # Keep the first card and record the duplicate; never overwrite.
                     first = graph.nodes[card_id].file_path
                     files = graph.duplicate_ids.setdefault(card_id, [first])
                     files.append(str(md_path))
@@ -217,7 +217,7 @@ def build_graph(vault_root: Path) -> DependencyGraph:
             for ref in refs:
                 for target_id in _resolve_reference(ref, card_id, index, graph):
                     # A note-level ref never points at the card's own file. Compared by
-                    # FILE, not basename: bio/Intro requiring math/Intro is a real edge (G5).
+                    # FILE, not basename: bio/Intro requiring math/Intro is a real edge.
                     if target_id == card_id or (
                         not ref.startswith("arete_") and card_file.get(target_id) == own_file
                     ):
@@ -274,7 +274,7 @@ class _FileIndex:
 
 
 def _as_refs(value: Any, card_id: str, graph: DependencyGraph) -> list[str]:
-    """Normalize a `requires`/`related` value to a list of string refs (G6).
+    """Normalize a `requires`/`related` value to a list of string refs.
 
     A scalar (`requires: Algebra`) counts as a one-item list and an int (`[2024]`, as YAML
     reads it) as its string. Anything that cannot be a reference is reported.
@@ -301,7 +301,7 @@ def _resolve_reference(
 
     - arete_XXX: that card.
     - basename: all cards in the ONE file with that name. When several files share it,
-      nothing is guessed: the ref is reported as ambiguous (G5).
+      nothing is guessed: the ref is reported as ambiguous.
     - folder/basename: all cards in the file at that vault-relative path, which is how to
       pick one of several namesakes.
 
@@ -379,23 +379,15 @@ def topological_sort(
     graph: DependencyGraph,
     card_ids: list[str],
 ) -> list[str]:
-    """Topologically sort a subset of cards based on requires edges.
+    """`card_ids` that are in `graph`, prerequisites before dependents.
 
-    Cards without prerequisites come first.
-    If cycles exist, they are treated as a group (arbitrary order within).
-
-    Args:
-        graph: The dependency graph
-        card_ids: Cards to sort
-
-    Returns:
-        Sorted list of card IDs (prerequisites before dependents)
-
+    A cycle is kept together as one group; inside it, cards are ordered by depth in the
+    vault graph, then by input order. Ids not in the graph are dropped.
     """
     import networkx as nx
 
-    # Filter to only requested cards that exist, keeping input order (a set here made
-    # the result depend on the hash seed).
+    # Filter to only requested cards that exist, keeping input order: iterating a set
+    # would make the result depend on the hash seed.
     valid_ids = list(dict.fromkeys(cid for cid in card_ids if cid in graph.nodes))
     valid_set = set(valid_ids)
 
@@ -409,7 +401,7 @@ def topological_sort(
 
     # Depth = longest path from any root, a proxy for "how advanced is this concept"
     # (correlates with chapter order). Computed over strongly connected components, so a
-    # cycle elsewhere in the vault no longer switches the tiebreaker off.
+    # cycle elsewhere in the vault does not switch the tiebreaker off.
     depth = _component_depths(graph._graph)
     # Secondary tiebreaker: input order (preserves Anki scheduling among equals).
     id_order = {cid: i for i, cid in enumerate(valid_ids)}
@@ -419,7 +411,7 @@ def topological_sort(
 
     # Collapse each cycle into one group: groups are sorted by dependency, so a cycle
     # cannot reorder prerequisites outside it, and only the cards inside a cycle are
-    # ordered by the tiebreaker alone (G1 in docs/history/queue-and-graph-fixes.md).
+    # ordered by the tiebreaker alone.
     cond = nx.condensation(sub)
     members = nx.get_node_attributes(cond, "members")
     if any(len(m) > 1 for m in members.values()):
@@ -451,19 +443,11 @@ def _component_depths(g: nx.DiGraph) -> dict[str, int]:
 
 
 def filter_graph_by_deck(graph: DependencyGraph, deck: str) -> DependencyGraph:
-    """Filter a dependency graph to only include cards matching a deck.
+    """A new graph holding only the cards in `deck` or one of its subdecks.
 
     A card's deck is its own ``deck:`` when set, else the file's -- the rule sync uses.
-    It matches when it is ``deck`` or a subdeck of it (``deck::...``), as Anki's
-    ``deck:`` search does. Edges and unresolved refs are carried over for matching nodes.
-
-    Args:
-        graph: The full dependency graph.
-        deck: Deck name; its subdecks match too.
-
-    Returns:
-        A new DependencyGraph containing only the matching nodes.
-
+    It matches when it is ``deck`` or ``deck::...``, as Anki's ``deck:`` search does.
+    Edges and unresolved refs are carried over for matching nodes.
     """
     keep_ids: set[str] = set()
 
@@ -477,7 +461,7 @@ def filter_graph_by_deck(graph: DependencyGraph, deck: str) -> DependencyGraph:
                 meta, _ = parse_frontmatter(text)
                 entries = _card_decks(meta, (meta or {}).get("cards", []))
             # Exact deck or subdeck, never a substring ("Math" must not keep "Applied
-            # Mathematics"), and the card's own deck wins over the file's, as in sync (G4).
+            # Mathematics"), and the card's own deck wins over the file's, as in sync.
             for cid, effective in entries:
                 if cid in graph.nodes and _in_deck(effective, deck):
                     keep_ids.add(cid)
@@ -523,16 +507,9 @@ def check_graph_health(
     vault_root: Path,
     deck_filter: str | None = None,
 ) -> GraphHealthResult:
-    """Build the dependency graph and run all health checks.
+    """Build the vault graph and report cycles, isolated cards, unresolved refs and counts.
 
-    Args:
-        vault_root: Path to the vault root directory.
-        deck_filter: Optional deck (and its subdecks) to restrict the report to.
-
-    Returns:
-        A :class:`GraphHealthResult` with cycles, isolated nodes,
-        unresolved refs, and summary counts.
-
+    `deck_filter` restricts the report to that deck and its subdecks.
     """
     full = build_graph(vault_root)
     skipped = [f"{path}: {err}" for path, err in full.skipped_files]
@@ -541,7 +518,7 @@ def check_graph_health(
     scope = set(graph.nodes)
 
     # Analyse the full graph and report only what touches the chosen deck: on the
-    # filtered graph a card whose prerequisite sits in another deck looks isolated (G8).
+    # filtered graph a card whose prerequisite sits in another deck looks isolated.
     cycles_raw = [c for c in detect_cycles(full) if scope & set(c)]
     isolated_ids = [cid for cid in find_isolated_nodes(full) if cid in scope]
     components = find_connected_components(graph)
@@ -615,19 +592,9 @@ def get_subgraph_for_files(
     vault_root: Path,
     file_paths: list[str],
 ) -> SubgraphResult:
-    """Build a dependency subgraph for a batch of files.
+    """The cards in `file_paths`, their edges outside the batch, and the cycles touching it.
 
-    Returns all cards in the given files with their deps, plus edges
-    to/from cards outside the batch (external deps).
-
-    Args:
-        vault_root: Path to the vault root directory.
-        file_paths: Absolute paths to markdown files.
-
-    Returns:
-        A :class:`SubgraphResult` with batch nodes, external deps,
-        and batch-relevant cycles.
-
+    `file_paths` are absolute.
     """
     graph = build_graph(vault_root)
     paths_set = set(file_paths)

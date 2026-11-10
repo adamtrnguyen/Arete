@@ -62,8 +62,7 @@ class AnkiRepository:
             last_profile = meta.get("last_loaded_profile_name")
 
             if not last_profile:
-                # Fallback to first non-global profile?
-                # For now let's error if ambiguous
+                # No profile is guessed: an ambiguous collection is an error.
                 raise ValueError("Could not determine last loaded profile.")
 
             self.profile_name = last_profile
@@ -76,7 +75,7 @@ class AnkiRepository:
         """Enter context manager and open the Anki collection."""
         path = self._resolve_collection_path()
 
-        # Save CWD because Anki changes it (legacy behavior)
+        # Save CWD: opening a Collection changes it.
         self._saved_cwd = os.getcwd()
 
         try:

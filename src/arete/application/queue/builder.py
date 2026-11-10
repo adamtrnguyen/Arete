@@ -25,23 +25,11 @@ def build_simple_queue(
     max_cards: int = DEFAULT_MAX_QUEUE_SIZE,
     graph: DependencyGraph | None = None,
 ) -> "QueueBuildResult":
-    """Build a simple study queue from due cards.
+    """Due cards plus their prerequisites within `depth` hops, each queue topologically sorted.
 
-    Collects prerequisites up to depth, then topological sort.
-
-    Args:
-        vault_root: Path to the Obsidian vault
-        due_card_ids: List of Arete IDs that are due for review
-        depth: How many prerequisite levels to include
-        max_cards: Queue size bound. Due cards are never dropped; prerequisites fill
-            the space left, nearest to a due card first, and the rest are reported in
-            `dropped_prereqs`.
-        graph: The vault graph, when the caller has already built it. Built from
-            `vault_root` otherwise.
-
-    Returns:
-        QueueBuildResult with ordered queues and diagnostics
-
+    `max_cards` bounds the queue. Due cards are never dropped; prerequisites fill the space
+    left, nearest to a due card first, and the rest are reported in `dropped_prereqs`.
+    `graph` is built from `vault_root` when the caller passes none.
     """
     from arete.application.queue.graph_resolver import detect_cycles
 
@@ -70,7 +58,7 @@ def build_simple_queue(
         distance.pop(due_id, None)
 
     # The cap keeps the nearest prerequisites (ties by id, for a stable result) and
-    # reports the rest as dropped. See docs/history/queue-and-graph-fixes.md (G3).
+    # reports the rest as dropped.
     by_nearness = sorted(distance, key=lambda cid: (distance[cid], cid))
     room = max(0, max_cards - len(due_card_ids))
     prereq_list, dropped_prereqs = by_nearness[:room], by_nearness[room:]
@@ -111,17 +99,11 @@ def build_dynamic_queue(
     card_stats: dict[str, dict] | None = None,
     graph: DependencyGraph | None = None,
 ) -> QueueBuildResult:
-    """Build a queue using a dynamic ready-frontier ordering heuristic.
+    """The cards of `build_simple_queue`, reordered by a ready frontier.
 
-    Layered on top of build_simple_queue:
-    - Reuse dependency discovery
-    - Order candidates by a ready-frontier policy that prioritizes:
-      1) Cards that unlock more due descendants
-      2) Weaker cards -- only when the caller supplies card_stats
-      3) Deterministic lexical tie-breaks
-
-    `graph` is the vault graph when the caller has already built it; it is built from
-    `vault_root` otherwise, once for both passes.
+    Among cards whose prerequisites are placed, the next is the highest score: the due
+    descendants it unlocks, plus its weakness when `card_stats` is given; ties by id.
+    `graph` is built from `vault_root` when the caller passes none, once for both passes.
     """
     if graph is None:
         graph = build_graph(vault_root)
@@ -161,8 +143,7 @@ def _collect_prereqs(graph: DependencyGraph, card_id: str, depth: int) -> dict[s
     """Prerequisites within `depth` hops of `card_id`, mapped to their shortest distance.
 
     Breadth-first, so a card reached first by a long path is still expanded from its
-    shortest one and its own prerequisites inside the limit are kept (G2 in
-    docs/history/queue-and-graph-fixes.md).
+    shortest one and its own prerequisites inside the limit are kept.
     """
     distance: dict[str, int] = {card_id: 0}
     frontier = [card_id]

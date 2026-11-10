@@ -135,7 +135,7 @@ class MetricsCalculator:
         # Use last 10 reviews
         recent = reviews[-10:]
 
-        # Prefer stability values if available (User's preferred definition)
+        # Stability values when the reviews carry them.
         stabilities = [r.stability for r in recent if r.stability is not None]
 
         if len(stabilities) >= 2:
@@ -143,8 +143,8 @@ class MetricsCalculator:
             variance = sum((s - mean) ** 2 for s in stabilities) / len(stabilities)
             return variance
 
-        # Fallback to interval variance (normalized) if stability history is missing
-        # We normalize by dividing by mean interval to make it scale-independent
+        # Without stability history: the raw variance of the intervals. It is not
+        # normalized, so it is on a different scale from the stability variance.
         intervals = [r.interval for r in recent]
         if len(intervals) < 2:
             return None
@@ -153,14 +153,6 @@ class MetricsCalculator:
         if mean == 0:
             return 0.0
         variance = sum((i - mean) ** 2 for i in intervals) / len(intervals)
-
-        # Return coefficient of variation squared or similar metric?
-        # For now raw variance of intervals might be huge.
-        # Let's return std dev / mean (Coefficient of Variation) * 10 or something
-        # user wants "S Var" which matches stability scale.
-        # Without stability, this metric is weak.
-        # But user agreed to "fix volatility".
-        # Let's leave it as is for now or use interval growth variance?
         return variance
 
     def _compute_schedule_adherence(self, card: CardStatsAggregate) -> float | None:
