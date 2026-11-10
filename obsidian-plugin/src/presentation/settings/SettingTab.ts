@@ -1,9 +1,8 @@
-import { App, Notice, Plugin, PluginSettingTab, Setting } from 'obsidian';
+import { App, Plugin, PluginSettingTab, Setting } from 'obsidian';
 import { CheckResultHost, CheckResultModal } from '@presentation/modals/CheckResultModal';
 import { AretePluginSettings } from '@/domain/settings';
 import { StatsCache } from '@/domain/stats';
 import { TemplateRenderer } from '@application/services/TemplateRenderer';
-import { ServerManager } from '@infrastructure/arete/ServerManager';
 import { GraphService } from '@application/services/GraphService';
 
 /** What the settings tab needs from the plugin (main.ts satisfies it; no import of main). */
@@ -12,7 +11,6 @@ export type SettingsHost = Plugin &
 		settings: AretePluginSettings;
 		statsCache: StatsCache;
 		templateRenderer: TemplateRenderer;
-		serverManager: ServerManager;
 		graphService: GraphService;
 		saveSettings(): Promise<void>;
 		testConfig(): Promise<void>;
@@ -160,70 +158,6 @@ export class AreteSettingTab extends PluginSettingTab {
 					await this.plugin.testConfig();
 				}),
 			);
-
-		new Setting(containerEl).setName('Execution mode').setHeading();
-
-		new Setting(containerEl)
-			.setName('Mode')
-			.setDesc(
-				'CLI spawns a process for each sync. Server keeps a faster background process running.',
-			)
-			.addDropdown((dropdown) =>
-				dropdown
-					.addOption('cli', 'CLI (run once)')
-					.addOption('server', 'Server (background)')
-					.setValue(this.plugin.settings.execution_mode)
-					.onChange(async (value: 'cli' | 'server') => {
-						const previousMode = this.plugin.settings.execution_mode;
-						this.plugin.settings.execution_mode = value;
-						await this.plugin.saveSettings();
-
-						if (value === 'server' && previousMode === 'cli') {
-							this.plugin.serverManager.start();
-						} else if (value === 'cli' && previousMode === 'server') {
-							this.plugin.serverManager.stop();
-						}
-
-						this.display(); // Re-render defaults
-					}),
-			);
-
-		if (this.plugin.settings.execution_mode === 'server') {
-			new Setting(containerEl)
-				.setName('Server port')
-				.setDesc('Port for the Arete persistent server.')
-				.addText((text) =>
-					text.setValue(this.plugin.settings.server_port.toString()).onChange((value) => {
-						const port = parseInt(value);
-						if (!isNaN(port)) {
-							this.plugin.settings.server_port = port;
-							this.saveSoon();
-						}
-					}),
-				);
-
-			new Setting(containerEl)
-				.setName('Auto-reload')
-				.setDesc(
-					'Automatically reload the server when code changes. (Requires Arete source/dev install).',
-				)
-				.addToggle((toggle) =>
-					toggle.setValue(this.plugin.settings.server_reload).onChange(async (value) => {
-						this.plugin.settings.server_reload = value;
-						await this.plugin.saveSettings();
-						new Notice('Server restart required to apply reload setting.');
-					}),
-				);
-
-			new Setting(containerEl)
-				.setName('Restart server')
-				.setDesc('Stop and start the Arete server immediately.')
-				.addButton((button) =>
-					button.setButtonText('Restart').onClick(async () => {
-						await this.plugin.serverManager.restart();
-					}),
-				);
-		}
 
 		new Setting(containerEl).setName('Anki connection').setHeading();
 

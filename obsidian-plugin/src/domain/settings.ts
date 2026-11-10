@@ -24,11 +24,6 @@ export interface AretePluginSettings {
 	graph_coloring_enabled: boolean;
 	graph_tag_prefix: string;
 
-	// Execution Mode
-	execution_mode: 'cli' | 'server';
-	server_port: number;
-	server_reload: boolean;
-
 	project_root: string;
 }
 
@@ -56,11 +51,6 @@ export const DEFAULT_SETTINGS: AretePluginSettings = {
 	// Graph Coloring
 	graph_coloring_enabled: false,
 	graph_tag_prefix: 'arete/retention',
-
-	// Execution Mode
-	execution_mode: 'cli',
-	server_port: 8777,
-	server_reload: false,
 
 	project_root: '',
 };

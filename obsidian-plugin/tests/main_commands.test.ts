@@ -483,12 +483,11 @@ describe('AretePlugin commands, views and status bar', () => {
 	});
 
 	describe('onunload', () => {
-		test('stops the server, kills Arete processes and clears pending sync-on-save timers', () => {
+		test('kills Arete processes and clears pending sync-on-save timers', () => {
 			jest.useFakeTimers();
 			try {
 				const fired = jest.fn();
 				(plugin as any).syncOnSaveTimers.set('A.md', setTimeout(fired, 1000));
-				plugin.serverManager.stop = jest.fn();
 				const dispose = jest.spyOn(plugin.areteClient, 'dispose');
 
 				plugin.onunload();
@@ -496,7 +495,6 @@ describe('AretePlugin commands, views and status bar', () => {
 
 				expect(fired).not.toHaveBeenCalled();
 				expect((plugin as any).syncOnSaveTimers.size).toBe(0);
-				expect(plugin.serverManager.stop).toHaveBeenCalled();
 				expect(dispose).toHaveBeenCalledTimes(1);
 				expect(plugin.checkService.dispose).toHaveBeenCalledTimes(1);
 				expect(plugin.syncService.dispose).toHaveBeenCalledTimes(1);

@@ -1,5 +1,5 @@
 import '../../test-setup';
-import { App, Notice, Setting, requestUrl } from 'obsidian';
+import { App, Setting, requestUrl } from 'obsidian';
 import { AreteSettingTab } from '@presentation/settings/SettingTab';
 import { DEFAULT_SETTINGS } from '@domain/settings';
 
@@ -20,11 +20,6 @@ describe('AreteSettingTab: what each control writes and triggers', () => {
 			testConfig: jest.fn().mockResolvedValue(undefined),
 			testAnkiConnect: jest.fn().mockResolvedValue(undefined),
 			templateRenderer: { setMode: jest.fn() },
-			serverManager: {
-				start: jest.fn(),
-				stop: jest.fn(),
-				restart: jest.fn().mockResolvedValue(undefined),
-			},
 			graphService: { clearAllTags: jest.fn().mockResolvedValue(undefined) },
 		};
 		tab = new AreteSettingTab(app, plugin);
@@ -50,7 +45,6 @@ describe('AreteSettingTab: what each control writes and triggers', () => {
 		it('shows the base sections and hides the conditional settings by default', () => {
 			plugin.settings.debug_mode = false;
 			plugin.settings.sync_on_save = false;
-			plugin.settings.execution_mode = 'cli';
 			plugin.settings.graph_coloring_enabled = false;
 			render();
 
@@ -58,16 +52,12 @@ describe('AreteSettingTab: what each control writes and triggers', () => {
 			expect(headingRows()).toEqual([
 				'Sync',
 				'Python environment',
-				'Execution mode',
 				'Anki connection',
 				'Card health analysis',
 				'Graph of forgetting',
 			]);
 			for (const hidden of [
 				'Debounce delay (ms)',
-				'Server port',
-				'Auto-reload',
-				'Restart server',
 				'Tag prefix',
 				'Clear all tags',
 				'Sample check modal',
@@ -79,15 +69,11 @@ describe('AreteSettingTab: what each control writes and triggers', () => {
 		it('shows each conditional setting when its switch is on', () => {
 			plugin.settings.debug_mode = true;
 			plugin.settings.sync_on_save = true;
-			plugin.settings.execution_mode = 'server';
 			plugin.settings.graph_coloring_enabled = true;
 			render();
 
 			for (const shown of [
 				'Debounce delay (ms)',
-				'Server port',
-				'Auto-reload',
-				'Restart server',
 				'Tag prefix',
 				'Clear all tags',
 				'Sample check modal',
@@ -229,67 +215,18 @@ describe('AreteSettingTab: what each control writes and triggers', () => {
 		});
 	});
 
-	describe('execution mode', () => {
-		it('cli to server starts the server', async () => {
-			plugin.settings.execution_mode = 'cli';
-			render();
-			await byName('Mode').mockDropdown._onChange('server');
-			expect(plugin.settings.execution_mode).toBe('server');
-			expect(plugin.serverManager.start).toHaveBeenCalledTimes(1);
-			expect(plugin.serverManager.stop).not.toHaveBeenCalled();
-			expect(names()).toContain('Server port');
-		});
-
-		it('server to cli stops the server', async () => {
-			plugin.settings.execution_mode = 'server';
-			render();
-			await byName('Mode').mockDropdown._onChange('cli');
-			expect(plugin.settings.execution_mode).toBe('cli');
-			expect(plugin.serverManager.stop).toHaveBeenCalledTimes(1);
-			expect(plugin.serverManager.start).not.toHaveBeenCalled();
-		});
-
-		it('re-selecting the current mode starts and stops nothing', async () => {
-			plugin.settings.execution_mode = 'server';
-			render();
-			await byName('Mode').mockDropdown._onChange('server');
-			expect(plugin.serverManager.start).not.toHaveBeenCalled();
-			expect(plugin.serverManager.stop).not.toHaveBeenCalled();
-		});
-
-		it('server port accepts a number and ignores text', async () => {
-			plugin.settings.execution_mode = 'server';
-			plugin.settings.server_port = 8777;
-			render();
-			const text = byName('Server port').mockText;
-			expect(text.setValue).toHaveBeenCalledWith('8777');
-
-			text._onChange('9001');
-			expect(plugin.settings.server_port).toBe(9001);
-			tab.hide();
-			expect(plugin.saveSettings).toHaveBeenCalledTimes(1);
-
-			plugin.saveSettings.mockClear();
-			text._onChange('abc');
-			expect(plugin.settings.server_port).toBe(9001);
-			tab.hide();
-			expect(plugin.saveSettings).not.toHaveBeenCalled();
-		});
-
-		it('auto-reload saves and warns that a restart is needed', async () => {
-			plugin.settings.execution_mode = 'server';
-			render();
-			await byName('Auto-reload').mockToggle._onChange(true);
-			expect(plugin.settings.server_reload).toBe(true);
-			expect(Notice).toHaveBeenCalledWith('Server restart required to apply reload setting.');
-		});
-
-		it('restart button restarts the server', async () => {
-			plugin.settings.execution_mode = 'server';
-			render();
-			await byName('Restart server').mockButton._onClick();
-			expect(plugin.serverManager.restart).toHaveBeenCalledTimes(1);
-		});
+	it('offers no execution mode, server port or server restart', () => {
+		plugin.settings.debug_mode = true;
+		render();
+		for (const gone of [
+			'Execution mode',
+			'Mode',
+			'Server port',
+			'Auto-reload',
+			'Restart server',
+		]) {
+			expect(names()).not.toContain(gone);
+		}
 	});
 
 	describe('AnkiConnect test button', () => {

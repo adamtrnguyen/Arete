@@ -29,7 +29,6 @@ import { StatsCache, ConceptStats } from '@/domain/stats';
 import { GraphService } from '@application/services/GraphService';
 import { LinkCheckerService } from '@application/services/LinkCheckerService';
 import { LeechService } from '@application/services/LeechService';
-import { ServerManager } from '@infrastructure/arete/ServerManager';
 import { AreteClient } from '@infrastructure/arete/AreteClient';
 
 import { LocalGraphView, LOCAL_GRAPH_VIEW_TYPE } from '@presentation/views/LocalGraphView';
@@ -68,7 +67,6 @@ export default class AretePlugin extends Plugin {
 	graphService: GraphService;
 	linkCheckerService: LinkCheckerService;
 	leechService: LeechService;
-	serverManager: ServerManager;
 	dependencyResolver: DependencyResolver;
 	areteClient: AreteClient;
 	templateRenderer: TemplateRenderer;
@@ -113,16 +111,10 @@ export default class AretePlugin extends Plugin {
 			// Initialize New Dashboard Services
 			this.linkCheckerService = new LinkCheckerService(this.app, this.checkService);
 			this.leechService = new LeechService(this.areteClient);
-			this.serverManager = new ServerManager(this.app, this.settings);
 			this.dependencyResolver = new DependencyResolver(this.areteClient, vaultRoot);
 
-			// Start the server once the layout is ready, then refresh stats. A server already
-			// running is restarted: /health reports only a version, so the plugin cannot tell
-			// whether it serves this vault with the configured Python and project root.
-			this.app.workspace.onLayoutReady(async () => {
-				if (this.settings.execution_mode === 'server') {
-					await this.serverManager.start(true);
-				}
+			// Refresh stats once the layout is ready, so startup does not wait on Python.
+			this.app.workspace.onLayoutReady(() => {
 				debugLog('[Arete] Refreshing stats on startup...');
 				this.statsService
 					.refreshStats()
@@ -567,9 +559,6 @@ export default class AretePlugin extends Plugin {
 		if (this.uiStateSaveTimer) void this.flushUiState();
 		if (this.statusBarItem) {
 			this.statusBarItem.empty();
-		}
-		if (this.serverManager) {
-			this.serverManager.stop();
 		}
 		// No `arete` process outlives the plugin; a call in flight rejects.
 		this.areteClient?.dispose();

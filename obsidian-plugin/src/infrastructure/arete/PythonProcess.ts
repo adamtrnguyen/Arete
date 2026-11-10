@@ -11,8 +11,8 @@ export interface PythonCommand {
 
 /**
  * Resolves the Python executable, arguments, environment, and working directory
- * from plugin settings. Shared across AreteClient, CheckService, ServerManager,
- * and SyncService to eliminate duplicated spawn setup logic.
+ * from plugin settings. Shared across AreteClient, CheckService and SyncService, so one
+ * place decides how Arete is started.
  */
 export function resolvePythonCommand(
 	settings: AretePluginSettings,

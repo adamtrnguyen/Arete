@@ -1,5 +1,5 @@
 import '../../test-setup';
-import { App, Notice, requestUrl } from 'obsidian';
+import { App, Notice } from 'obsidian';
 import { spawn } from 'child_process';
 import * as fs from 'fs';
 import { createMockChildProcess } from '../../test-setup';
@@ -59,10 +59,7 @@ describe('SyncService', () => {
 			ui_expanded_decks: [],
 			ui_expanded_concepts: [],
 			last_sync_time: null,
-			execution_mode: 'cli',
-			server_port: 8777,
 			project_root: '',
-			server_reload: false,
 		};
 
 		updateStatusBar = jest.fn();
@@ -133,75 +130,8 @@ describe('SyncService', () => {
 		expect(updateStatusBar).not.toHaveBeenCalled();
 	});
 
-	describe('runSyncServer', () => {
+	describe('runSync - error cases', () => {
 		beforeEach(() => {
-			service.settings.execution_mode = 'server';
-		});
-
-		test('successful server sync', async () => {
-			(requestUrl as jest.Mock).mockResolvedValue({
-				status: 200,
-				json: { success: true, total_imported: 5 },
-			});
-
-			await service.runSync(false, null, false, updateStatusBar);
-
-			expect(updateStatusBar).toHaveBeenCalledWith('success');
-			expect(requestUrl).toHaveBeenCalledWith(
-				expect.objectContaining({
-					method: 'POST',
-					url: 'http://127.0.0.1:8777/sync',
-				}),
-			);
-		});
-
-		test('an unconfirmed prune says what it found and that nothing was deleted', async () => {
-			(requestUrl as jest.Mock).mockResolvedValue({
-				status: 200,
-				json: {
-					success: true,
-					total_imported: 0,
-					prune: { status: 'unconfirmed', note_count: 3, deck_count: 1 },
-				},
-			});
-
-			await service.runSync(true, null, false, updateStatusBar);
-
-			expect(Notice).toHaveBeenCalledWith(
-				expect.stringContaining(
-					'3 Arete notes and 1 decks would be deleted. Nothing was deleted',
-				),
-				15000,
-			);
-		});
-
-		test('server sync with errors', async () => {
-			(requestUrl as jest.Mock).mockResolvedValue({
-				status: 200,
-				json: { success: false, total_errors: 3 },
-			});
-
-			await service.runSync(false, null, false, updateStatusBar);
-			expect(updateStatusBar).toHaveBeenCalledWith('error', 'Sync Errors');
-		});
-
-		test('server connection refused', async () => {
-			(requestUrl as jest.Mock).mockRejectedValue(new Error('Connection refused'));
-
-			await service.runSync(false, null, false, updateStatusBar);
-			expect(updateStatusBar).toHaveBeenCalledWith('error', 'Connection Failed');
-		});
-
-		test('server non-200 response', async () => {
-			(requestUrl as jest.Mock).mockResolvedValue({ status: 500 });
-			await service.runSync(false, null, false, updateStatusBar);
-			expect(updateStatusBar).toHaveBeenCalledWith('error', 'HTTP 500');
-		});
-	});
-
-	describe('runSyncCLI - error cases', () => {
-		beforeEach(() => {
-			service.settings.execution_mode = 'cli';
 			jest.spyOn(console, 'error').mockImplementation(() => {
 				/* ignore console errors in tests */
 			});
@@ -324,14 +254,6 @@ describe('SyncService', () => {
 				expect.arrayContaining(['--verbose']),
 				expect.any(Object),
 			);
-		});
-
-		test('runSyncServer generic error handling', async () => {
-			service.settings.execution_mode = 'server';
-			(requestUrl as jest.Mock).mockRejectedValue(new Error('Random sync error'));
-
-			await service.runSync(false, null, false, updateStatusBar);
-			expect(updateStatusBar).toHaveBeenCalledWith('error', 'Connection Failed');
 		});
 
 		test('log writes failure (catch block)', async () => {

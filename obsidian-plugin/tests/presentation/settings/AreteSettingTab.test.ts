@@ -107,7 +107,6 @@ describe('AreteSettingTab Interaction Tests', () => {
 		expect(headings).toEqual([
 			'Sync',
 			'Python environment',
-			'Execution mode',
 			'Anki connection',
 			'Card health analysis',
 			'Graph of forgetting',

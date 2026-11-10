@@ -929,7 +929,7 @@ export class CardYamlEditorView extends ItemView {
 					new Notice('Failed to open Anki browser.');
 				}
 			} catch (e) {
-				new Notice('Failed to open Anki browser. Check if the server/CLI is accessible.');
+				new Notice('Could not open the Anki browser, check that Anki is running.');
 			}
 		} else {
 			new Notice('Card is not yet synced to Anki (no NID found).');

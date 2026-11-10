@@ -695,9 +695,7 @@ describe('CardYamlEditorView: Anki links and warnings', () => {
 		const { view } = makeView([{ id: 'a', anki: { nid: 99 } }], { areteClient: { browse } });
 		await view.loadCards();
 		await view.openInAnki(0);
-		expect(notices()).toEqual([
-			'Failed to open Anki browser. Check if the server/CLI is accessible.',
-		]);
+		expect(notices()).toEqual(['Could not open the Anki browser, check that Anki is running.']);
 	});
 
 	it('does not call Anki for a card that was never synced', async () => {

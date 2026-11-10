@@ -44,7 +44,7 @@ view holds its own cut-off. A bar or dot shows the worst state of its card.
 | # | Rule | Why | Enforced by |
 |---|---|---|---|
 | B1 | Keep logic in Python; the plugin draws what Python resolved. | `CONTRIBUTING.md`; PL1. | review |
-| B2 | Python is reached through the classes in `infrastructure/arete` (`AreteClient`, `SyncService`, `ServerManager`, `CheckService`), each spawning through `resolvePythonCommand`. | One place decides interpreter, cwd and env. | review |
+| B2 | Python is reached only through the `arete` CLI, by the classes in `infrastructure/arete` (`AreteClient`, `SyncService`, `CheckService`), each spawning through `resolvePythonCommand`. One process per call; no server. | One place decides interpreter, cwd and env. | review |
 | B3 | Every `arete` command line the plugin spawns names a command and options registered in `src/arete/interface/`. Change a command on both sides in one commit. A command the plugin parses prints one JSON value on stdout and nothing else; logs go to stderr. | The command lines are a contract. | jest `cliCommands` |
 | B4 | A failure logs `console.error('[Arete] …', err)` with the error object and shows a notice the user can act on (N6). | The console keeps the stack; the notice tells the user. | review |
 
@@ -56,7 +56,7 @@ view holds its own cut-off. A bar or dot shows the worst state of its card.
 | C2 | Put window/document listeners in `registerDomEvent` and intervals in `registerInterval`. | Freed on unload. | ESLint |
 | C3 | Keep every timer in a field and clear it in `onClose`/`onunload`. Debounce per key when several sources share a handler. | A stale timer fires against a dead view. | review |
 | C4 | Disconnect observers through `this.register(...)`. Give `MarkdownRenderer.render` a child `Component` per drawing or preview, and unload it when replaced. Destroy a 3D graph when its drawing is replaced. | Rendered children and WebGL loops outlive their drawing otherwise. | review |
-| C5 | `onload` awaits only `loadSettings()`; server start and stats refresh run in `onLayoutReady`. | Startup does not wait on Python. | review |
+| C5 | `onload` awaits only `loadSettings()`; the stats refresh runs in `onLayoutReady`. | Startup does not wait on Python. | jest `main_startup` |
 | C6 | Start every `arete` process through a service's `AreteProcesses`; `onunload` calls each service's `dispose()`, which kills what is running and refuses new starts. | No Python process outlives the plugin. | jest (`main_commands` onunload) |
 
 ### Rendering and performance

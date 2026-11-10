@@ -1,4 +1,4 @@
-import { App, FileSystemAdapter, Notice, requestUrl } from 'obsidian';
+import { App, FileSystemAdapter, Notice } from 'obsidian';
 import { promises as fsp } from 'fs';
 import * as path from 'path';
 import { AretePluginSettings } from '@domain/settings';
@@ -77,103 +77,11 @@ export class SyncService {
 		this.processes.killAll();
 	}
 
+	/** Run `arete sync` on the vault or on one file; progress goes to the log and status bar. */
 	async runSync(
 		prune = false,
 		targetPath: string | null = null,
 		force = false,
-		updateStatusBar: (state: 'idle' | 'syncing' | 'error' | 'success', msg?: string) => void,
-	) {
-		if (this.settings.execution_mode === 'server') {
-			await this.runSyncServer(prune, targetPath, force, updateStatusBar);
-		} else {
-			await this.runSyncCLI(prune, targetPath, force, updateStatusBar);
-		}
-	}
-
-	// ─────────────────────────────────────────────────────────────
-	// STRATEGY 1: SERVER MODE (HTTP)
-	// ─────────────────────────────────────────────────────────────
-	async runSyncServer(
-		prune: boolean,
-		targetPath: string | null,
-		force: boolean,
-		updateStatusBar: (state: 'idle' | 'syncing' | 'error' | 'success', msg?: string) => void,
-	) {
-		updateStatusBar('syncing');
-		new Notice(targetPath ? 'Syncing file via server...' : 'Starting sync via server...');
-
-		const vaultConfig = this.app.vault.adapter as FileSystemAdapter;
-		const vaultPath = vaultConfig.getBasePath ? vaultConfig.getBasePath() : '';
-
-		const port = this.settings.server_port || 8777;
-		const url = `http://127.0.0.1:${port}/sync`;
-
-		// Build Payload
-		const payload = {
-			vault_root: vaultPath,
-			file_path: targetPath, // If null, server treats as whole vault sync if root_input is not set?
-			// Wait, server logic: overrides['root_input'] = req.file_path.
-			// If file_path is null, root_input is None -> resolved to CWD or vault_root.
-			// So we should pass vaultPath as vault_root, and file_path only if specific.
-			backend: this.settings.backend === 'auto' ? null : this.settings.backend,
-			force: force ? true : null,
-			prune: prune ? true : null,
-			clear_cache: force ? true : null, // Force implies clear cache often
-			anki_connect_url: this.settings.anki_connect_url,
-			workers: this.settings.workers,
-		};
-
-		try {
-			const response = await requestUrl({
-				url: url,
-				method: 'POST',
-				body: JSON.stringify(payload),
-				contentType: 'application/json',
-			});
-
-			if (response.status === 200) {
-				const stats = response.json;
-				const pr = stats.prune;
-				if (pr && pr.status === 'unconfirmed') {
-					// The server never deletes without confirm_prune; say what it found.
-					new Notice(
-						`Prune preview: ${pr.note_count} Arete notes and ${pr.deck_count} decks ` +
-							'would be deleted. Nothing was deleted. Run "arete sync --prune" in a ' +
-							'terminal to review and confirm.',
-						15000,
-					);
-				}
-				if (stats.success) {
-					new Notice(`Sync complete, ${stats.total_imported} notes imported.`);
-					updateStatusBar('success');
-				} else {
-					new Notice(`Sync finished with ${stats.total_errors} errors.`);
-					updateStatusBar('error', 'Sync Errors');
-				}
-			} else {
-				new Notice(`Server error: HTTP ${response.status}.`);
-				updateStatusBar('error', `HTTP ${response.status}`);
-			}
-		} catch (e: any) {
-			console.error('[Arete] Server sync failed', e);
-			if (e.message && e.message.includes('Connection refused')) {
-				new Notice(
-					'The Arete server is not running, switch to CLI mode or start the server.',
-				);
-			} else {
-				new Notice(`Sync failed: ${e.message}`);
-			}
-			updateStatusBar('error', 'Connection Failed');
-		}
-	}
-
-	// ─────────────────────────────────────────────────────────────
-	// STRATEGY 2: CLI MODE (SUBPROCESS)
-	// ─────────────────────────────────────────────────────────────
-	async runSyncCLI(
-		prune: boolean,
-		targetPath: string | null,
-		force: boolean,
 		updateStatusBar: (state: 'idle' | 'syncing' | 'error' | 'success', msg?: string) => void,
 	) {
 		updateStatusBar('syncing');
