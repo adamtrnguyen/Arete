@@ -20,8 +20,8 @@ import aqt
 
 anki_version = tuple(int(segment) for segment in aqt.appVersion.split("."))
 
-if anki_version < (23, 10):
-    raise Exception("Minimum Anki version supported: 23.10")
+if anki_version < (26, 8, 1):
+    raise Exception("Minimum Anki version supported: 26.8.1")
 
 import base64
 import glob
