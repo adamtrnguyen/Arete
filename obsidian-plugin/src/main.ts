@@ -685,6 +685,10 @@ export default class AretePlugin extends Plugin {
 		await this.checkService.testConfig();
 	}
 
+	async testAnkiConnect() {
+		await this.checkService.testAnkiConnect();
+	}
+
 	async loadSettings() {
 		const data = await this.loadData();
 		// Keep only current settings, so keys from removed features are not saved back.

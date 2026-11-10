@@ -1,4 +1,4 @@
-import { App, Notice, Plugin, PluginSettingTab, requestUrl, Setting } from 'obsidian';
+import { App, Notice, Plugin, PluginSettingTab, Setting } from 'obsidian';
 import { CheckResultHost, CheckResultModal } from '@presentation/modals/CheckResultModal';
 import { AretePluginSettings } from '@/domain/settings';
 import { StatsCache } from '@/domain/stats';
@@ -16,29 +16,46 @@ export type SettingsHost = Plugin &
 		graphService: GraphService;
 		saveSettings(): Promise<void>;
 		testConfig(): Promise<void>;
+		testAnkiConnect(): Promise<void>;
 	};
+
+/** Quiet period after the last keystroke in a text field before the settings are saved. */
+const TEXT_SAVE_DELAY_MS = 500;
 
 export class AreteSettingTab extends PluginSettingTab {
 	plugin: SettingsHost;
+	private textSaveTimer: ReturnType<typeof setTimeout> | null = null;
 
 	constructor(app: App, plugin: SettingsHost) {
 		super(app, plugin);
 		this.plugin = plugin;
 	}
 
+	/** Save once typing in a text field has paused; a burst of keystrokes writes once. */
+	private saveSoon(): void {
+		if (this.textSaveTimer) clearTimeout(this.textSaveTimer);
+		this.textSaveTimer = setTimeout(() => void this.flushSave(), TEXT_SAVE_DELAY_MS);
+	}
+
+	/** Write a pending text-field change now. */
+	private async flushSave(): Promise<void> {
+		if (!this.textSaveTimer) return;
+		clearTimeout(this.textSaveTimer);
+		this.textSaveTimer = null;
+		await this.plugin.saveSettings();
+	}
+
+	hide(): void {
+		void this.flushSave();
+	}
+
 	display(): void {
 		const { containerEl } = this;
 		containerEl.empty();
 
-		containerEl.createEl('h2', { text: 'Arete Settings' });
-
-		// ═══════════════════════════════════════════════════════════════════
-		// GENERAL
-		// ═══════════════════════════════════════════════════════════════════
-		containerEl.createEl('h3', { text: 'General' });
-
+		// General settings come first, under no heading.
 		new Setting(containerEl)
-			.setName('Debug Mode')
+			.setName('Debug mode')
 			.setDesc('Enable verbose logging and extra output.')
 			.addToggle((toggle) =>
 				toggle.setValue(this.plugin.settings.debug_mode).onChange(async (value) => {
@@ -49,12 +66,12 @@ export class AreteSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
-			.setName('Preview Renderer')
+			.setName('Preview renderer')
 			.setDesc('"Obsidian" renders Markdown/LaTeX (Recommended). "Anki" passes raw text.')
 			.addDropdown((dropdown) =>
 				dropdown
 					.addOption('obsidian', 'Obsidian (Markdown + LaTeX)')
-					.addOption('anki', 'Anki (Raw HTML/Text)')
+					.addOption('anki', 'Anki (raw HTML/text)')
 					.setValue(this.plugin.settings.renderer_mode)
 					.onChange(async (value) => {
 						this.plugin.settings.renderer_mode = value as 'obsidian' | 'anki';
@@ -63,13 +80,10 @@ export class AreteSettingTab extends PluginSettingTab {
 					}),
 			);
 
-		// ═══════════════════════════════════════════════════════════════════
-		// SYNC OPTIONS
-		// ═══════════════════════════════════════════════════════════════════
-		containerEl.createEl('h3', { text: 'Sync Options' });
+		new Setting(containerEl).setName('Sync').setHeading();
 
 		new Setting(containerEl)
-			.setName('Sync on Save')
+			.setName('Sync on save')
 			.setDesc('Automatically sync the current file when you save (debounced).')
 			.addToggle((toggle) =>
 				toggle.setValue(this.plugin.settings.sync_on_save).onChange(async (value) => {
@@ -80,7 +94,7 @@ export class AreteSettingTab extends PluginSettingTab {
 
 		if (this.plugin.settings.sync_on_save) {
 			new Setting(containerEl)
-				.setName('Debounce Delay (ms)')
+				.setName('Debounce delay (ms)')
 				.setDesc('Wait this long after last edit before syncing.')
 				.addSlider((slider) =>
 					slider
@@ -94,26 +108,23 @@ export class AreteSettingTab extends PluginSettingTab {
 				);
 		}
 
-		// ═══════════════════════════════════════════════════════════════════
-		// PYTHON ENVIRONMENT
-		// ═══════════════════════════════════════════════════════════════════
-		containerEl.createEl('h3', { text: 'Python Environment' });
+		new Setting(containerEl).setName('Python environment').setHeading();
 
 		new Setting(containerEl)
-			.setName('Python Executable')
+			.setName('Python executable')
 			.setDesc('Path to python3 or arete executable')
 			.addText((text) =>
 				text
 					.setPlaceholder('python3')
 					.setValue(this.plugin.settings.python_path)
-					.onChange(async (value) => {
+					.onChange((value) => {
 						this.plugin.settings.python_path = value;
-						await this.plugin.saveSettings();
+						this.saveSoon();
 					}),
 			);
 
 		new Setting(containerEl)
-			.setName('Project Root')
+			.setName('Project root')
 			.setDesc(
 				'Absolute path to the Arete project root (containing pyproject.toml). Required for "uv run".',
 			)
@@ -121,14 +132,14 @@ export class AreteSettingTab extends PluginSettingTab {
 				text
 					.setPlaceholder('/path/to/arete')
 					.setValue(this.plugin.settings.project_root)
-					.onChange(async (value) => {
+					.onChange((value) => {
 						this.plugin.settings.project_root = value;
-						await this.plugin.saveSettings();
+						this.saveSoon();
 					}),
 			);
 
 		new Setting(containerEl)
-			.setName('Parallel Workers')
+			.setName('Parallel workers')
 			.setDesc('Number of sync workers. Higher is faster but may stress Anki.')
 			.addSlider((slider) =>
 				slider
@@ -142,28 +153,25 @@ export class AreteSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
-			.setName('Test Configuration')
-			.setDesc('Verify Python executable is valid.')
+			.setName('Test configuration')
+			.setDesc('Verify that the Python executable is valid.')
 			.addButton((button) =>
 				button.setButtonText('Test').onClick(async () => {
 					await this.plugin.testConfig();
 				}),
 			);
 
-		// ═══════════════════════════════════════════════════════════════════
-		// EXECUTION MODE
-		// ═══════════════════════════════════════════════════════════════════
-		containerEl.createEl('h3', { text: 'Execution Mode' });
+		new Setting(containerEl).setName('Execution mode').setHeading();
 
 		new Setting(containerEl)
 			.setName('Mode')
 			.setDesc(
-				'CLI (Classic) spawns a process for each sync. Server (Faster) keeps a background process running.',
+				'CLI spawns a process for each sync. Server keeps a faster background process running.',
 			)
 			.addDropdown((dropdown) =>
 				dropdown
-					.addOption('cli', 'CLI (Run Once)')
-					.addOption('server', 'Server (Background)')
+					.addOption('cli', 'CLI (run once)')
+					.addOption('server', 'Server (background)')
 					.setValue(this.plugin.settings.execution_mode)
 					.onChange(async (value: 'cli' | 'server') => {
 						const previousMode = this.plugin.settings.execution_mode;
@@ -182,22 +190,20 @@ export class AreteSettingTab extends PluginSettingTab {
 
 		if (this.plugin.settings.execution_mode === 'server') {
 			new Setting(containerEl)
-				.setName('Server Port')
+				.setName('Server port')
 				.setDesc('Port for the Arete persistent server.')
 				.addText((text) =>
-					text
-						.setValue(this.plugin.settings.server_port.toString())
-						.onChange(async (value) => {
-							const port = parseInt(value);
-							if (!isNaN(port)) {
-								this.plugin.settings.server_port = port;
-								await this.plugin.saveSettings();
-							}
-						}),
+					text.setValue(this.plugin.settings.server_port.toString()).onChange((value) => {
+						const port = parseInt(value);
+						if (!isNaN(port)) {
+							this.plugin.settings.server_port = port;
+							this.saveSoon();
+						}
+					}),
 				);
 
 			new Setting(containerEl)
-				.setName('Auto-Reload')
+				.setName('Auto-reload')
 				.setDesc(
 					'Automatically reload the server when code changes. (Requires Arete source/dev install).',
 				)
@@ -210,7 +216,7 @@ export class AreteSettingTab extends PluginSettingTab {
 				);
 
 			new Setting(containerEl)
-				.setName('Restart Server')
+				.setName('Restart server')
 				.setDesc('Stop and start the Arete server immediately.')
 				.addButton((button) =>
 					button.setButtonText('Restart').onClick(async () => {
@@ -219,19 +225,16 @@ export class AreteSettingTab extends PluginSettingTab {
 				);
 		}
 
-		// ═══════════════════════════════════════════════════════════════════
-		// ANKI CONNECTION
-		// ═══════════════════════════════════════════════════════════════════
-		containerEl.createEl('h3', { text: 'Anki Connection' });
+		new Setting(containerEl).setName('Anki connection').setHeading();
 
 		new Setting(containerEl)
 			.setName('Backend')
 			.setDesc('Sync driver for Anki.')
 			.addDropdown((dropdown) =>
 				dropdown
-					.addOption('auto', 'Auto (Recommended)')
+					.addOption('auto', 'Auto (recommended)')
 					.addOption('direct', 'Direct (Anki database, requires Anki closed)')
-					.addOption('ankiconnect', 'AnkiConnect (Requires Anki running)')
+					.addOption('ankiconnect', 'AnkiConnect (requires Anki running)')
 					.setValue(this.plugin.settings.backend)
 					.onChange(async (value: 'auto' | 'direct' | 'ankiconnect') => {
 						this.plugin.settings.backend = value;
@@ -246,48 +249,31 @@ export class AreteSettingTab extends PluginSettingTab {
 				text
 					.setPlaceholder('http://localhost:8765')
 					.setValue(this.plugin.settings.anki_connect_url)
-					.onChange(async (value) => {
+					.onChange((value) => {
 						this.plugin.settings.anki_connect_url = value;
-						await this.plugin.saveSettings();
+						this.saveSoon();
 					}),
 			)
 			.addButton((button) =>
 				button.setButtonText('Test').onClick(async () => {
-					try {
-						const response = await requestUrl({
-							url: this.plugin.settings.anki_connect_url,
-							method: 'POST',
-							body: JSON.stringify({ action: 'version', version: 6 }),
-							contentType: 'application/json',
-						});
-						if (response.json?.result) {
-							new Notice(`✅ AnkiConnect v${response.json.result} connected!`, 3000);
-						} else {
-							new Notice('⚠️ AnkiConnect responded but version unknown', 5000);
-						}
-					} catch (e) {
-						new Notice('❌ Cannot connect to AnkiConnect. Is Anki running?', 8000);
-					}
+					await this.plugin.testAnkiConnect();
 				}),
 			);
 
 		new Setting(containerEl)
-			.setName('Media Directory')
+			.setName('Media directory')
 			.setDesc('Custom path for Anki media uploads (optional)')
 			.addText((text) =>
 				text
 					.setPlaceholder('/path/to/Anki/collection.media')
 					.setValue(this.plugin.settings.anki_media_dir)
-					.onChange(async (value) => {
+					.onChange((value) => {
 						this.plugin.settings.anki_media_dir = value;
-						await this.plugin.saveSettings();
+						this.saveSoon();
 					}),
 			);
 
-		// ═══════════════════════════════════════════════════════════════════
-		// CARD HEALTH ANALYSIS
-		// ═══════════════════════════════════════════════════════════════════
-		containerEl.createEl('h3', { text: 'Card Health Analysis' });
+		new Setting(containerEl).setName('Card health analysis').setHeading();
 
 		new Setting(containerEl)
 			.setName('Algorithm')
@@ -295,7 +281,7 @@ export class AreteSettingTab extends PluginSettingTab {
 			.addDropdown((dropdown) =>
 				dropdown
 					.addOption('sm2', 'Classic (SM-2)')
-					.addOption('fsrs', 'FSRS (New Scheduler)')
+					.addOption('fsrs', 'FSRS (new scheduler)')
 					.setValue(this.plugin.settings.stats_algorithm)
 					.onChange(async (value: 'sm2' | 'fsrs') => {
 						this.plugin.settings.stats_algorithm = value;
@@ -306,7 +292,7 @@ export class AreteSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
-			.setName('Lapse Threshold')
+			.setName('Lapse threshold')
 			.setDesc('Cards with this many lapses are marked problematic.')
 			.addSlider((slider) =>
 				slider
@@ -321,8 +307,8 @@ export class AreteSettingTab extends PluginSettingTab {
 
 		if (this.plugin.settings.stats_algorithm === 'sm2') {
 			new Setting(containerEl)
-				.setName('Ease Threshold (%)')
-				.setDesc('Cards with ease below this are in "Ease Hell". Default: 250%')
+				.setName('Ease threshold (%)')
+				.setDesc('Cards with ease below this are in "ease hell". Default: 250%')
 				.addSlider((slider) =>
 					slider
 						.setLimits(130, 300, 10)
@@ -335,7 +321,7 @@ export class AreteSettingTab extends PluginSettingTab {
 				);
 		} else {
 			new Setting(containerEl)
-				.setName('Difficulty Threshold (FSRS)')
+				.setName('Difficulty threshold (FSRS)')
 				.setDesc('Cards with difficulty above this (0-100%) are problematic.')
 				.addSlider((slider) =>
 					slider
@@ -349,13 +335,10 @@ export class AreteSettingTab extends PluginSettingTab {
 				);
 		}
 
-		// ═══════════════════════════════════════════════════════════════════
-		// GRAPH OF FORGETTING
-		// ═══════════════════════════════════════════════════════════════════
-		containerEl.createEl('h3', { text: 'Graph of Forgetting' });
+		new Setting(containerEl).setName('Graph of forgetting').setHeading();
 
 		new Setting(containerEl)
-			.setName('Enable Graph Coloring')
+			.setName('Enable graph coloring')
 			.setDesc(
 				'Automatically add status tags (#arete/retention/...) to notes based on Anki stats.',
 			)
@@ -371,24 +354,24 @@ export class AreteSettingTab extends PluginSettingTab {
 
 		if (this.plugin.settings.graph_coloring_enabled) {
 			new Setting(containerEl)
-				.setName('Tag Prefix')
+				.setName('Tag prefix')
 				.setDesc('Prefix for retention tags. Examples: high, med, low will be appended.')
 				.addText((text) =>
 					text
 						.setPlaceholder('arete/retention')
 						.setValue(this.plugin.settings.graph_tag_prefix)
-						.onChange(async (value) => {
+						.onChange((value) => {
 							this.plugin.settings.graph_tag_prefix = value;
-							await this.plugin.saveSettings();
+							this.saveSoon();
 						}),
 				);
 
 			new Setting(containerEl)
-				.setName('Clear All Tags')
+				.setName('Clear all tags')
 				.setDesc('Remove all Arete retention tags from all files.')
 				.addButton((button) =>
 					button
-						.setButtonText('Clear Tags')
+						.setButtonText('Clear tags')
 						.setWarning()
 						.onClick(async () => {
 							if (confirm('Are you sure you want to remove all retention tags?')) {
@@ -398,15 +381,12 @@ export class AreteSettingTab extends PluginSettingTab {
 				);
 		}
 
-		// ═══════════════════════════════════════════════════════════════════
-		// DEBUG (Conditional)
-		// ═══════════════════════════════════════════════════════════════════
 		if (this.plugin.settings.debug_mode) {
-			containerEl.createEl('h3', { text: 'Debug' });
+			new Setting(containerEl).setName('Debug').setHeading();
 
 			new Setting(containerEl)
-				.setName('Sample Check Modal')
-				.setDesc('Opens a sample result modal for testing.')
+				.setName('Sample check modal')
+				.setDesc('Open a sample result modal for testing.')
 				.addButton((button) =>
 					button.setButtonText('Open').onClick(() => {
 						new CheckResultModal(
@@ -418,49 +398,5 @@ export class AreteSettingTab extends PluginSettingTab {
 					}),
 				);
 		}
-
-		// ═══════════════════════════════════════════════════════════════════
-		// HOTKEYS
-		// ═══════════════════════════════════════════════════════════════════
-		containerEl.createEl('h3', { text: 'Hotkeys' });
-		containerEl.createEl('p', {
-			text: 'Click Configure to open Obsidian Hotkey settings.',
-			cls: 'setting-item-description',
-		});
-
-		const commands = [
-			{ id: 'obsidian-2-anki:arete-sync', name: 'Sync' },
-			{ id: 'obsidian-2-anki:arete-sync-current-file', name: 'Sync Current File' },
-			{ id: 'obsidian-2-anki:arete-sync-prune', name: 'Sync (Prune Deleted Cards)' },
-			{ id: 'obsidian-2-anki:arete-sync-force-all', name: 'Sync (Force Re-upload All)' },
-		];
-
-		commands.forEach((cmd) => {
-			const command = (this.app as any).commands.findCommand(cmd.id);
-			if (!command) return;
-
-			const hotkeys = command.hotkeys || [];
-			const hotkeyStr =
-				hotkeys
-					.map((h: any) => {
-						const mods = h.modifiers.join('+');
-						return `${mods}+${h.key}`;
-					})
-					.join(', ') || 'No hotkey set';
-
-			new Setting(containerEl)
-				.setName(cmd.name)
-				.setDesc(`Current: ${hotkeyStr}`)
-				.addButton((button) =>
-					button.setButtonText('Configure').onClick(() => {
-						(this.app as any).setting.openTabById('hotkeys');
-						const hotkeysTab = (this.app as any).setting.activeTab;
-						if (hotkeysTab && hotkeysTab.searchComponent) {
-							hotkeysTab.searchComponent.setValue('arete');
-							hotkeysTab.updateHotkeyVisibility();
-						}
-					}),
-				);
-		});
 	}
 }

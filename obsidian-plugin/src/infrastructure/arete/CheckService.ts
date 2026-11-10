@@ -1,4 +1,4 @@
-import { App, Notice } from 'obsidian';
+import { App, Notice, requestUrl } from 'obsidian';
 import { spawn, exec } from 'child_process';
 import { AretePluginSettings } from '@domain/settings';
 import { resolvePythonCommand } from '@infrastructure/arete/PythonProcess';
@@ -100,5 +100,25 @@ export class CheckService implements FileChecker {
 				}
 			},
 		);
+	}
+
+	/** Ask AnkiConnect for its version and tell the user whether it answered. */
+	async testAnkiConnect() {
+		try {
+			const response = await requestUrl({
+				url: this.settings.anki_connect_url,
+				method: 'POST',
+				body: JSON.stringify({ action: 'version', version: 6 }),
+				contentType: 'application/json',
+			});
+			if (response.json?.result) {
+				new Notice(`AnkiConnect v${response.json.result} is connected.`, 3000);
+			} else {
+				new Notice('AnkiConnect responded, but its version is unknown.', 5000);
+			}
+		} catch (e) {
+			console.error('[Arete] AnkiConnect test failed:', e);
+			new Notice('Cannot connect to AnkiConnect, check that Anki is running.', 8000);
+		}
 	}
 }

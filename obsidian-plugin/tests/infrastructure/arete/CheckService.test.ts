@@ -1,5 +1,5 @@
 import '../../test-setup';
-import { App, Notice } from 'obsidian';
+import { App, Notice, requestUrl } from 'obsidian';
 import { spawn, exec } from 'child_process';
 import { createMockChildProcess } from '../../test-setup';
 import { CheckService } from '@infrastructure/arete/CheckService';
@@ -123,5 +123,39 @@ describe('CheckService', () => {
 		expect(Notice).toHaveBeenCalledWith(
 			expect.stringContaining('The Python executable setting is empty'),
 		);
+	});
+
+	describe('testAnkiConnect', () => {
+		beforeEach(() => {
+			service.settings.anki_connect_url = 'http://localhost:8765';
+		});
+
+		test('reports the version AnkiConnect answers with', async () => {
+			(requestUrl as jest.Mock).mockResolvedValue({ json: { result: 6 } });
+			await service.testAnkiConnect();
+			expect(requestUrl).toHaveBeenCalledWith(
+				expect.objectContaining({ url: 'http://localhost:8765', method: 'POST' }),
+			);
+			expect(Notice).toHaveBeenCalledWith('AnkiConnect v6 is connected.', 3000);
+		});
+
+		test('says so when the answer carries no version', async () => {
+			(requestUrl as jest.Mock).mockResolvedValue({ json: {} });
+			await service.testAnkiConnect();
+			expect(Notice).toHaveBeenCalledWith(
+				'AnkiConnect responded, but its version is unknown.',
+				5000,
+			);
+		});
+
+		test('says so when nothing answers, without an emoji prefix', async () => {
+			jest.spyOn(console, 'error').mockImplementation(() => undefined);
+			(requestUrl as jest.Mock).mockRejectedValue(new Error('refused'));
+			await service.testAnkiConnect();
+			expect(Notice).toHaveBeenCalledWith(
+				'Cannot connect to AnkiConnect, check that Anki is running.',
+				8000,
+			);
+		});
 	});
 });

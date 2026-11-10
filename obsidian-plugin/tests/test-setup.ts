@@ -135,6 +135,7 @@ export const createMockSetting = (): any => {
 	const mock: any = {
 		setName: jest.fn().mockReturnThis(),
 		setDesc: jest.fn().mockReturnThis(),
+		setHeading: jest.fn().mockReturnThis(),
 		addText: jest.fn().mockImplementation((cb: any) => {
 			const mockText: any = {
 				setPlaceholder: jest.fn().mockReturnThis(),
