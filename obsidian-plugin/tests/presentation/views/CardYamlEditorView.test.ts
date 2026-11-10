@@ -2,10 +2,12 @@ import { App, Component } from 'obsidian';
 import { CardYamlEditorView } from '@/presentation/views/CardYamlEditorView';
 import { renderCardPreviewFrame } from '@/presentation/renderers/CardPreviewFrame';
 import { CardRenderer } from '@/presentation/renderers/CardRenderer';
+import { CardStatsModal } from '@/presentation/modals/CardStatsModal';
 import { createMockElement } from '../../test-setup';
 
 jest.mock('@/presentation/renderers/CardPreviewFrame');
 jest.mock('@/presentation/renderers/CardRenderer');
+jest.mock('@/presentation/modals/CardStatsModal');
 
 describe('CardYamlEditorView preview', () => {
 	let view: any;
@@ -293,6 +295,22 @@ describe('CardYamlEditorView toolbar', () => {
 		const texts = (setTooltip as jest.Mock).mock.calls.map((c) => c[1]);
 		expect(texts).toContain('SM-2 ease: 250%');
 		expect(texts).toContain('Lapses: 2');
+	});
+
+	it('opens the card stats modal with the user thresholds', () => {
+		const stats = { difficulty: 0.5, lapses: 4, due: 0 };
+		view.plugin.settings = { stats_algorithm: 'fsrs', stats_lapse_threshold: 10 };
+		view.cards = [{ Front: 'F', anki: { nid: 7 }, id: 'arete_1' }];
+		view.plugin.statsService = {
+			getCache: () => ({ concepts: { 'N.md': { cardStats: { 7: stats } } } }),
+		};
+		view.renderToolbar();
+
+		buttons()
+			.find((b) => b.icon === 'bar-chart-2')
+			.clickHandler();
+
+		expect(CardStatsModal).toHaveBeenCalledWith(view.app, stats, view.plugin.settings);
 	});
 
 	describe('badge colours follow the card-state cut-offs, as the gutter does', () => {

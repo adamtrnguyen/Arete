@@ -483,7 +483,7 @@ export class CardYamlEditorView extends ItemView {
 					const cardStats = conceptStats.cardStats?.[nid];
 
 					if (cardStats) {
-						new CardStatsModal(this.app, cardStats).open();
+						new CardStatsModal(this.app, cardStats, this.plugin.settings).open();
 					} else {
 						new Notice('No stats data available for this specific card.');
 					}
