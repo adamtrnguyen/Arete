@@ -60,3 +60,13 @@ export function resolvePythonCommand(
 
 	return { cmd, args, env, cwd };
 }
+
+/** The single JSON value an `arete` command prints, or an error that quotes what it printed. */
+export function parseJsonStdout(stdout: string, command: string): any {
+	try {
+		return JSON.parse(stdout);
+	} catch {
+		const preview = stdout.trim().substring(0, 200);
+		throw new Error(`${command} printed something other than JSON: "${preview}"`);
+	}
+}

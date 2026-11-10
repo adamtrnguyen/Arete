@@ -35,12 +35,12 @@ describe('debugLog', () => {
 		expect(log).toHaveBeenCalledWith('shown', { a: 1 });
 	});
 
-	test('plugin load and a server request log nothing with debug_mode off', async () => {
+	test('plugin load and a CLI call log nothing with debug_mode off', async () => {
 		const plugin = new AretePlugin(new App(), { dir: 'test-plugin-dir' } as any);
 		plugin.loadData = jest.fn().mockResolvedValue({ debug_mode: false });
 		await plugin.onload();
-		await new AreteClient({ ...DEFAULT_SETTINGS, execution_mode: 'cli' })
-			.invokeCLI('/anki/unknown', { nids: [1, 2, 3] })
+		await new AreteClient({ ...DEFAULT_SETTINGS })
+			.getCardStats([1, 2, 3])
 			.catch((): void => undefined);
 		expect(log).not.toHaveBeenCalled();
 	});

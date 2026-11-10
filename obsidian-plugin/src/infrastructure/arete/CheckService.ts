@@ -1,7 +1,7 @@
 import { App, Notice, requestUrl } from 'obsidian';
 import { spawn, exec } from 'child_process';
 import { AretePluginSettings } from '@domain/settings';
-import { resolvePythonCommand } from '@infrastructure/arete/PythonProcess';
+import { parseJsonStdout, resolvePythonCommand } from '@infrastructure/arete/PythonProcess';
 import { FileChecker } from '@/domain/ports';
 
 export class CheckService implements FileChecker {
@@ -25,29 +25,14 @@ export class CheckService implements FileChecker {
 			child.stdout.on('data', (d) => (stdout += d.toString()));
 			child.stderr.on('data', (d) => (stderr += d.toString()));
 
+			// `vault check --json` prints its JSON on a failed check too, so any exit code
+			// with JSON on stdout is a result.
 			child.on('close', (_code) => {
 				try {
-					const res = JSON.parse(stdout);
-					resolve(res);
+					resolve(parseJsonStdout(stdout, 'arete vault check'));
 				} catch (e) {
-					console.error('[Arete] Failed to parse check output', stdout);
 					console.error('[Arete] Check stderr:', stderr);
-
-					// Fallback: Try to extract JSON from stdout (in case of log spew)
-					try {
-						const jsonMatch = stdout.match(/\{[\s\S]*\}/);
-						if (jsonMatch) {
-							const res = JSON.parse(jsonMatch[0]);
-							resolve(res);
-							return;
-						}
-					} catch (e2) {
-						// Fallback failed
-					}
-
-					const preview = stdout.trim().substring(0, 200);
-					const errPreview = stderr.trim().substring(0, 200);
-					reject(new Error(`Parse Error. Stdout: "${preview}" Stderr: "${errPreview}"`));
+					reject(e);
 				}
 			});
 

@@ -45,7 +45,7 @@ view holds its own cut-off. A bar or dot shows the worst state of its card.
 |---|---|---|---|
 | B1 | Keep logic in Python; the plugin draws what Python resolved. | `CONTRIBUTING.md`; PL1. | review |
 | B2 | Python is reached through the classes in `infrastructure/arete` (`AreteClient`, `SyncService`, `ServerManager`, `CheckService`), each spawning through `resolvePythonCommand`. | One place decides interpreter, cwd and env. | review |
-| B3 | Every HTTP path the plugin calls exists in `src/arete/interface/http_server.py`. Change a route on both sides in one commit. | The routes are a contract. | jest `httpRoutes` |
+| B3 | Every `arete` command line the plugin spawns names a command and options registered in `src/arete/interface/`. Change a command on both sides in one commit. A command the plugin parses prints one JSON value on stdout and nothing else; logs go to stderr. | The command lines are a contract. | jest `cliCommands` |
 | B4 | A failure logs `console.error('[Arete] …', err)` with the error object and shows a notice the user can act on (N6). | The console keeps the stack; the notice tells the user. | review |
 
 ### Lifecycle

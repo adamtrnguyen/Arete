@@ -95,7 +95,9 @@ export default class AretePlugin extends Plugin {
 			debugLog('[Arete] Settings loaded:', this.settings);
 
 			// Initialize Services
-			this.areteClient = new AreteClient(this.settings);
+			const vaultAdapter = this.app.vault.adapter as FileSystemAdapter;
+			const vaultRoot = vaultAdapter.getBasePath ? vaultAdapter.getBasePath() : '';
+			this.areteClient = new AreteClient(this.settings, vaultRoot);
 			this.templateRenderer = new TemplateRenderer(this.app, this.areteClient);
 			this.templateRenderer.setMode(this.settings.renderer_mode);
 			this.syncService = new SyncService(this.app, this.settings, this.manifest);
@@ -112,11 +114,7 @@ export default class AretePlugin extends Plugin {
 			this.linkCheckerService = new LinkCheckerService(this.app, this.checkService);
 			this.leechService = new LeechService(this.areteClient);
 			this.serverManager = new ServerManager(this.app, this.settings);
-			const vaultAdapter = this.app.vault.adapter as FileSystemAdapter;
-			this.dependencyResolver = new DependencyResolver(
-				this.areteClient,
-				vaultAdapter.getBasePath ? vaultAdapter.getBasePath() : '',
-			);
+			this.dependencyResolver = new DependencyResolver(this.areteClient, vaultRoot);
 
 			// Start the server once the layout is ready, then refresh stats. A server already
 			// running is restarted: /health reports only a version, so the plugin cannot tell

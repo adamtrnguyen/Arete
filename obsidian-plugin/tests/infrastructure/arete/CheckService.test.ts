@@ -34,7 +34,19 @@ describe('CheckService', () => {
 			expect(result).toEqual({ issues: [] });
 		});
 
-		test('extracts JSON from messy output (fallback)', async () => {
+		test('a failed check exits 1 and its JSON is still the result', async () => {
+			const mockChild = createMockChildProcess();
+			(spawn as jest.Mock).mockReturnValue(mockChild);
+
+			const promise = service.getCheckResult('missing.md');
+			mockChild.stdout.emit('data', '{"ok": false, "errors": [{"line": 0}]}');
+			mockChild.emit('close', 1);
+
+			await expect(promise).resolves.toEqual({ ok: false, errors: [{ line: 0 }] });
+		});
+
+		test('rejects output with anything around the JSON, quoting it', async () => {
+			jest.spyOn(console, 'error').mockImplementation(() => undefined);
 			const mockChild = createMockChildProcess();
 			(spawn as jest.Mock).mockReturnValue(mockChild);
 
@@ -42,19 +54,9 @@ describe('CheckService', () => {
 			mockChild.stdout.emit('data', 'DEBUG: noise\n{"issues": ["err"]}\nINFO: noise');
 			mockChild.emit('close', 0);
 
-			const result = await promise;
-			expect(result).toEqual({ issues: ['err'] });
-		});
-
-		test('rejects on invalid JSON', async () => {
-			const mockChild = createMockChildProcess();
-			(spawn as jest.Mock).mockReturnValue(mockChild);
-
-			const promise = service.getCheckResult('test.md');
-			mockChild.stdout.emit('data', 'Invalid output');
-			mockChild.emit('close', 0);
-
-			await expect(promise).rejects.toThrow('Parse Error');
+			await expect(promise).rejects.toThrow(
+				'arete vault check printed something other than JSON: "DEBUG: noise',
+			);
 		});
 
 		test('rejects on spawn error', async () => {

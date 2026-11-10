@@ -1,318 +1,259 @@
 import '../../test-setup';
-import { AreteClient } from '@infrastructure/arete/AreteClient';
-import { requestUrl } from 'obsidian';
 import { spawn } from 'child_process';
+import { AreteClient } from '@infrastructure/arete/AreteClient';
 import { createMockChildProcess } from '../../test-setup';
 
-describe('AreteClient', () => {
-	let client: AreteClient;
+describe('AreteClient: one `arete` process per call, JSON on stdout', () => {
 	let settings: any;
+	let client: AreteClient;
 
 	beforeEach(() => {
 		jest.clearAllMocks();
 		settings = {
-			server_port: 8777,
-			execution_mode: 'server',
-			backend: 'auto',
-			anki_connect_url: 'http://localhost:8765',
+			backend: 'ankiconnect',
+			anki_connect_url: 'http://anki:8765',
+			python_path: 'python3',
+			project_root: '/project',
 		};
-		client = new AreteClient(settings);
+		client = new AreteClient(settings, '/v');
 	});
 
-	describe('invokeServer', () => {
-		test('successful server invocation', async () => {
-			(requestUrl as jest.Mock).mockResolvedValue({
-				status: 200,
-				json: { result: 'ok' },
-			});
+	/** The next spawned process; `reply` makes it print `stdout` and exit with `code`. */
+	const cli = () => {
+		const child = createMockChildProcess();
+		(spawn as jest.Mock).mockReturnValueOnce(child);
+		return child;
+	};
+	const reply = (child: any, stdout: string, code = 0) => {
+		child.stdout.emit('data', stdout);
+		child.emit('close', code);
+	};
+	/** The arguments after the interpreter's `-m arete`. */
+	const areteArgs = (call = 0) => {
+		const args = (spawn as jest.Mock).mock.calls[call][1] as string[];
+		return args.slice(args.indexOf('arete') + 1);
+	};
+	const BACKEND = ['--backend', 'ankiconnect', '--anki-connect-url', 'http://anki:8765'];
 
-			const result = await client.invokeServer('/test', { data: 123 });
+	describe('arguments', () => {
+		it('getCardStats passes the note ids as JSON', async () => {
+			const child = cli();
+			const promise = client.getCardStats([1, 2]);
+			reply(child, '[{"card_id": 1}]');
+			await expect(promise).resolves.toEqual([{ card_id: 1 }]);
+			expect(areteArgs()).toEqual(['anki', 'stats', '--nids', '[1,2]', ...BACKEND]);
+		});
 
-			expect(requestUrl).toHaveBeenCalledWith(
-				expect.objectContaining({
-					url: 'http://127.0.0.1:8777/test',
-					method: 'POST',
-					body: JSON.stringify({
-						data: 123,
-						backend: 'auto',
-						anki_connect_url: 'http://localhost:8765',
-					}),
+		it('suspend and unsuspend pass the card ids and return the verdict', async () => {
+			let child = cli();
+			let promise = client.suspendCards([4, 5]);
+			reply(child, '{"ok": true}');
+			await expect(promise).resolves.toBe(true);
+			expect(areteArgs(0)).toEqual(['anki', 'suspend', '--cids', '[4,5]', ...BACKEND]);
+
+			child = cli();
+			promise = client.unsuspendCards([6]);
+			reply(child, '{"ok": false}');
+			await expect(promise).resolves.toBe(false);
+			expect(areteArgs(1)).toEqual(['anki', 'unsuspend', '--cids', '[6]', ...BACKEND]);
+		});
+
+		it('browse passes the query', async () => {
+			const child = cli();
+			const promise = client.browse('nid:123');
+			reply(child, '{"ok": true}');
+			await expect(promise).resolves.toBe(true);
+			expect(areteArgs()).toEqual(['anki', 'browse', '--query', 'nid:123', ...BACKEND]);
+		});
+
+		it('model styling returns the css, or an empty string when there is none', async () => {
+			let child = cli();
+			let promise = client.modelStyling('Basic (and reversed)');
+			reply(child, '{"css": ".c{}"}');
+			await expect(promise).resolves.toBe('.c{}');
+			expect(areteArgs()).toEqual(['anki', 'model-css', 'Basic (and reversed)', ...BACKEND]);
+
+			child = cli();
+			promise = client.modelStyling('Basic');
+			reply(child, '{}');
+			await expect(promise).resolves.toBe('');
+		});
+
+		it('model templates returns what the CLI printed', async () => {
+			const child = cli();
+			const promise = client.modelTemplates('Basic');
+			reply(child, '{"Card 1": {"Front": "F", "Back": "B"}}');
+			await expect(promise).resolves.toEqual({ 'Card 1': { Front: 'F', Back: 'B' } });
+			expect(areteArgs()).toEqual(['anki', 'model-templates', 'Basic', ...BACKEND]);
+		});
+
+		it('fetchGraph runs `graph export <vault>` with no backend flags', async () => {
+			const child = cli();
+			const promise = client.fetchGraph('/my vault');
+			reply(child, '{"nodes": []}');
+			await expect(promise).resolves.toEqual({ nodes: [] });
+			expect(areteArgs()).toEqual(['graph', 'export', '/my vault']);
+		});
+
+		it('getDeckNames returns the decks, or none when the call fails', async () => {
+			let child = cli();
+			let promise = client.getDeckNames();
+			reply(child, '{"decks": ["Default", "Math"]}');
+			await expect(promise).resolves.toEqual(['Default', 'Math']);
+			expect(areteArgs()).toEqual(['anki', 'decks', ...BACKEND]);
+
+			jest.spyOn(console, 'error').mockImplementation(() => undefined);
+			child = cli();
+			promise = client.getDeckNames();
+			reply(child, '', 1);
+			await expect(promise).resolves.toEqual([]);
+		});
+
+		it('buildStudyQueue plans a queue for the vault and maps the reply', async () => {
+			const child = cli();
+			const promise = client.buildStudyQueue('Math', 3, 25);
+			reply(
+				child,
+				JSON.stringify({
+					deck: 'Math',
+					due_count: 4,
+					total_with_prereqs: 6,
+					queue: [
+						{ position: 1, id: 'a', title: 'A', file: 'a.md', is_prereq: true },
+						{ position: 2, id: 'b', title: 'B', file: 'b.md', is_prereq: false },
+					],
 				}),
 			);
-			expect(result).toEqual({ result: 'ok' });
+			await expect(promise).resolves.toEqual({
+				deck: 'Math',
+				dueCount: 4,
+				totalWithPrereqs: 6,
+				queue: [
+					{ position: 1, id: 'a', title: 'A', file: 'a.md', isPrereq: true },
+					{ position: 2, id: 'b', title: 'B', file: 'b.md', isPrereq: false },
+				],
+			});
+			expect(areteArgs()).toEqual([
+				'queue',
+				'/v',
+				'--dry-run',
+				'--json',
+				'--depth',
+				'3',
+				'--max-cards',
+				'25',
+				'--deck',
+				'Math',
+				...BACKEND,
+			]);
 		});
 
-		test('successful invoke in server mode', async () => {
-			settings.execution_mode = 'server';
-			(requestUrl as jest.Mock).mockResolvedValue({
-				status: 200,
-				json: { result: 'ok' },
+		it('buildStudyQueue sends no deck for all decks and fills defaults for an empty reply', async () => {
+			const child = cli();
+			const promise = client.buildStudyQueue(null, 2, 50);
+			reply(child, '{}');
+			await expect(promise).resolves.toEqual({
+				deck: 'All Decks',
+				dueCount: 0,
+				totalWithPrereqs: 0,
+				queue: [],
 			});
-
-			const result = await client.invoke('/test', { data: 456 });
-
-			expect(result).toEqual({ result: 'ok' });
+			expect(areteArgs()).not.toContain('--deck');
 		});
 
-		test('server error handling (status 400)', async () => {
-			(requestUrl as jest.Mock).mockResolvedValue({
-				status: 400,
-				text: 'Bad Request',
-				throw: false,
-			});
-
-			await expect(client.invokeServer('/test')).rejects.toThrow(
-				'Server returned 400: Bad Request',
+		it('buildStudyQueue rejects when the CLI fails', async () => {
+			const child = cli();
+			const promise = client.buildStudyQueue(null, 2, 50);
+			child.stderr.emit('data', 'No vault root configured.');
+			reply(child, '', 1);
+			await expect(promise).rejects.toThrow(
+				'arete queue /v failed (exit 1): No vault root configured.',
 			);
+		});
+
+		it('buildStudyQueue without a vault folder spawns nothing', async () => {
+			await expect(new AreteClient(settings).buildStudyQueue(null, 2, 50)).rejects.toThrow(
+				'Cannot determine the vault path.',
+			);
+			expect(spawn).not.toHaveBeenCalled();
+		});
+
+		it('createQueueDeck passes the ids in order and reports a refusal as false', async () => {
+			let child = cli();
+			let promise = client.createQueueDeck(['arete_B', 'arete_A']);
+			reply(child, '{"ok": true, "message": "Created"}');
+			await expect(promise).resolves.toBe(true);
+			expect(areteArgs()).toEqual([
+				'anki',
+				'queue-deck',
+				'--ids',
+				'["arete_B","arete_A"]',
+				...BACKEND,
+			]);
+
+			child = cli();
+			promise = client.createQueueDeck(['arete_B']);
+			reply(child, '{"ok": false, "message": "No matching Anki cards found."}');
+			await expect(promise).resolves.toBe(false);
+		});
+
+		it('omits --backend for auto and --anki-connect-url when it is empty', async () => {
+			settings.backend = 'auto';
+			settings.anki_connect_url = '';
+			const child = cli();
+			const promise = client.getCardStats([]);
+			reply(child, '[]');
+			await promise;
+			expect(areteArgs()).toEqual(['anki', 'stats', '--nids', '[]']);
+		});
+
+		it('spawns in the project root with the interpreter from the settings', async () => {
+			const child = cli();
+			const promise = client.fetchGraph('/v');
+			reply(child, '{}');
+			await promise;
+			const [cmd, args, opts] = (spawn as jest.Mock).mock.calls[0];
+			expect(cmd).toBe('python3');
+			expect(args.slice(0, 2)).toEqual(['-m', 'arete']);
+			expect(opts.cwd).toBe('/project');
 		});
 	});
 
-	describe('invokeCLI', () => {
-		beforeEach(() => {
-			settings.execution_mode = 'cli';
-			settings.python_path = 'python3';
-		});
-
-		test('cli invocation for suspendCards', async () => {
-			const mockChild = createMockChildProcess();
-			(spawn as jest.Mock).mockReturnValue(mockChild);
-
-			const promise = client.suspendCards([1, 2, 3]);
-
-			// Simulate CLI output
-			mockChild.stdout.emit('data', JSON.stringify({ ok: true }));
-			mockChild.emit('close', 0);
-
-			const result = await promise;
-			expect(result).toBe(true);
-			expect(spawn).toHaveBeenCalledWith(
-				'python3',
-				expect.arrayContaining(['-m', 'arete', 'anki', 'suspend', '--cids', '[1,2,3]']),
-				expect.any(Object),
+	describe('stdout is JSON only', () => {
+		it('output with anything around the JSON is an error that quotes it', async () => {
+			const child = cli();
+			const promise = client.fetchGraph('/v');
+			reply(child, 'warning: slow\n{"ok": true}\n');
+			await expect(promise).rejects.toThrow(
+				'arete graph export printed something other than JSON: "warning: slow',
 			);
 		});
 
-		test('cli invocation for unsuspendCards', async () => {
-			const mockChild = createMockChildProcess();
-			(spawn as jest.Mock).mockReturnValue(mockChild);
-
-			const promise = client.unsuspendCards([4, 5]);
-			mockChild.stdout.emit('data', JSON.stringify({ ok: true }));
-			mockChild.emit('close', 0);
-
-			const result = await promise;
-			expect(result).toBe(true);
-			expect(spawn).toHaveBeenCalledWith(
-				'python3',
-				expect.arrayContaining(['unsuspend', '--cids', '[4,5]']),
-				expect.any(Object),
+		it('empty output is an error', async () => {
+			const child = cli();
+			const promise = client.getCardStats([1]);
+			reply(child, '');
+			await expect(promise).rejects.toThrow(
+				'arete anki stats printed something other than JSON',
 			);
 		});
 
-		test('cli invocation for browse', async () => {
-			const mockChild = createMockChildProcess();
-			(spawn as jest.Mock).mockReturnValue(mockChild);
-
-			const promise = client.browse('deck:Default');
-			mockChild.stdout.emit('data', JSON.stringify({ ok: true }));
-			mockChild.emit('close', 0);
-
-			const result = await promise;
-			expect(result).toBe(true);
-			expect(spawn).toHaveBeenCalledWith(
-				'python3',
-				expect.arrayContaining(['browse', '--query', 'deck:Default']),
-				expect.any(Object),
-			);
+		it('a non-zero exit rejects with the command, the code and stderr', async () => {
+			const child = cli();
+			const promise = client.suspendCards([1]);
+			child.stderr.emit('data', 'boom\n');
+			reply(child, '', 3);
+			await expect(promise).rejects.toThrow('arete anki suspend failed (exit 3): boom');
 		});
 
-		test('cli invocation for browse failure', async () => {
-			const mockChild = createMockChildProcess();
-			(spawn as jest.Mock).mockReturnValue(mockChild);
-
-			const promise = client.browse('deck:Default');
-			mockChild.stdout.emit('data', JSON.stringify({ ok: false }));
-			mockChild.emit('close', 0);
-
-			const result = await promise;
-			expect(result).toBe(false);
-		});
-
-		test('unsupported endpoint error', async () => {
-			await expect(client.invokeCLI('/invalid', {})).rejects.toThrow(
-				'CLI Endpoint not supported: /invalid',
-			);
-		});
-
-		test('cli invocation for stats with JSON fallback', async () => {
-			const mockChild = createMockChildProcess();
-			(spawn as jest.Mock).mockReturnValue(mockChild);
-
-			const promise = client.invokeCLI('/anki/stats', { nids: [100] });
-
-			// Simulate messy CLI output with logs and JSON
-			mockChild.stdout.emit('data', 'DEBUG: some log\n{"result": "success"}\nINFO: done');
-			mockChild.emit('close', 0);
-
-			const result = await promise;
-			expect(result).toEqual({ result: 'success' });
-			expect(spawn).toHaveBeenCalledWith(
-				'python3',
-				expect.arrayContaining(['stats', '--nids', '[100]']),
-				expect.any(Object),
-			);
-		});
-
-		test('cli invocation with specific backend', async () => {
-			settings.backend = 'direct';
-			const mockChild = createMockChildProcess();
-			(spawn as jest.Mock).mockReturnValue(mockChild);
-
-			const promise = client.invokeCLI('/anki/stats', { nids: [100] });
-			mockChild.stdout.emit('data', '{}');
-			mockChild.emit('close', 0);
-
-			await promise;
-			expect(spawn).toHaveBeenCalledWith(
-				'python3',
-				expect.arrayContaining(['--backend', 'direct']),
-				expect.any(Object),
-			);
-		});
-
-		test('cli failure handling', async () => {
-			const mockChild = createMockChildProcess();
-			(spawn as jest.Mock).mockReturnValue(mockChild);
-
-			const promise = client.invokeCLI('/anki/stats', { nids: [100] });
-
-			mockChild.stderr.emit('data', 'Critical Error');
-			mockChild.emit('close', 1);
-
-			await expect(promise).rejects.toThrow('CLI Error (1): Critical Error');
-		});
-
-		test('rejects spawn errors with the configured project path', async () => {
-			settings.project_root = '/missing/project';
-			const child = createMockChildProcess();
-			(spawn as jest.Mock).mockReturnValue(child);
-			const promise = client.modelStyling('Basic');
+		it('a process that cannot start rejects with the interpreter and project', async () => {
+			const child = cli();
+			const promise = client.fetchGraph('/v');
 			child.emit('error', new Error('spawn python3 ENOENT'));
 			child.emit('close', -2);
 			await expect(promise).rejects.toThrow(
-				'Could not start Arete (python3, project: /missing/project): spawn python3 ENOENT',
+				'Could not start Arete (python3, project: /project): spawn python3 ENOENT',
 			);
-		});
-
-		test('cli failure handling in JSON fallback parsing', async () => {
-			const mockChild = createMockChildProcess();
-			(spawn as jest.Mock).mockReturnValue(mockChild);
-
-			const promise = client.invokeCLI('/anki/stats', { nids: [100] });
-
-			// Brackets exist but content is invalid JSON
-			mockChild.stdout.emit('data', 'some logs { invalid json } more logs');
-			mockChild.emit('close', 0);
-
-			const result = await promise;
-			// Should return the raw output since JSON parsing failed
-			expect(result).toEqual({ output: 'some logs { invalid json } more logs' });
-		});
-
-		test('cli endpoint mapping for model templates', async () => {
-			const mockChild = createMockChildProcess();
-			(spawn as jest.Mock).mockReturnValue(mockChild);
-
-			const promise = client.modelTemplates('Basic');
-
-			mockChild.stdout.emit('data', '{}');
-			mockChild.emit('close', 0);
-
-			await promise;
-			expect(spawn).toHaveBeenCalledWith(
-				'python3',
-				expect.arrayContaining(['model-templates', 'Basic']),
-				expect.any(Object),
-			);
-		});
-	});
-
-	describe('modelStyling', () => {
-		test('server mode styling fetch', async () => {
-			settings.execution_mode = 'server';
-			(requestUrl as jest.Mock).mockResolvedValue({
-				status: 200,
-				json: { css: 'body { color: red; }' },
-			});
-
-			const css = await client.modelStyling('Basic');
-			expect(css).toBe('body { color: red; }');
-		});
-
-		test('server mode styling fetch error (status 500)', async () => {
-			settings.execution_mode = 'server';
-			(requestUrl as jest.Mock).mockResolvedValue({
-				status: 500,
-				json: null,
-			});
-
-			const css = await client.modelStyling('Basic');
-			expect(css).toBe('');
-		});
-
-		test('cli mode styling fetch', async () => {
-			settings.execution_mode = 'cli';
-			const mockChild = createMockChildProcess();
-			(spawn as jest.Mock).mockReturnValue(mockChild);
-
-			const promise = client.modelStyling('Basic');
-			mockChild.stdout.emit('data', JSON.stringify({ css: 'body { color: blue; }' }));
-			mockChild.emit('close', 0);
-
-			const css = await promise;
-			expect(css).toBe('body { color: blue; }');
-			expect(spawn).toHaveBeenCalledWith(
-				expect.any(String),
-				expect.arrayContaining(['model-css', 'Basic']),
-				expect.any(Object),
-			);
-		});
-	});
-
-	describe('modelTemplates', () => {
-		test('server mode templates fetch', async () => {
-			settings.execution_mode = 'server';
-			(requestUrl as jest.Mock).mockResolvedValue({
-				status: 200,
-				json: { Basic: { Front: '{{Front}}', Back: '{{Back}}' } },
-			});
-
-			const templates = await client.modelTemplates('Basic');
-			expect(templates).toEqual({ Basic: { Front: '{{Front}}', Back: '{{Back}}' } });
-		});
-
-		test('server mode templates fetch error (status 404)', async () => {
-			settings.execution_mode = 'server';
-			(requestUrl as jest.Mock).mockResolvedValue({
-				status: 404,
-				json: null,
-			});
-
-			const templates = await client.modelTemplates('Basic');
-			expect(templates).toEqual({});
-		});
-
-		test('cli mode templates fetch', async () => {
-			settings.execution_mode = 'cli';
-			const mockChild = createMockChildProcess();
-			(spawn as jest.Mock).mockReturnValue(mockChild);
-
-			const promise = client.modelTemplates('Basic');
-			mockChild.stdout.emit('data', JSON.stringify({ Basic: { Front: 'F', Back: 'B' } }));
-			mockChild.emit('close', 0);
-
-			const templates = await promise;
-			expect(templates).toEqual({ Basic: { Front: 'F', Back: 'B' } });
 		});
 	});
 });
