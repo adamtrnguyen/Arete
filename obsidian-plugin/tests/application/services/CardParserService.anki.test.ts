@@ -66,7 +66,9 @@ describe('CardParserService.parseCards: reading anki ids', () => {
 		expect(parse).toHaveBeenCalledTimes(2);
 	});
 
-	it('falls back to the text when parseYaml throws, accepting quoted keys and values', () => {
+	// The ids come from the parsed mapping alone. Each block below spells ids in its
+	// text, so a parser that searched the text would find them.
+	it('gives a card whose YAML does not parse no ids, and still its range', () => {
 		parse.mockImplementation(() => {
 			throw new Error('bad yaml');
 		});
@@ -74,37 +76,44 @@ describe('CardParserService.parseCards: reading anki ids', () => {
 
 		const { ranges } = CardParserService.parseCards(text);
 
-		expect(ranges[0].nid).toBe(111);
-		expect(ranges[0].cid).toBe(222);
+		expect(ranges).toHaveLength(1);
+		expect([ranges[0].nid, ranges[0].cid]).toEqual([null, null]);
 	});
 
 	it.each([
 		['null', null],
 		['a string', 'x'],
 		['an object without anki', { Front: 'q' }],
+		['a flat nid beside the fields', { Front: 'q', nid: 7, cid: 8 }],
 		['anki set to null', { anki: null }],
 		['anki set to a string', { anki: 'x' }],
+		['anki set to a list', { anki: [7, 8] }],
 		['anki set to an empty mapping', { anki: {} }],
-	])('falls back to the text when parseYaml returns %s', (_name, parsed) => {
+	])('gives no ids when parseYaml returns %s', (_name, parsed) => {
 		parse.mockReturnValue(parsed);
 		const text = note(...block(['anki:', '  nid: 7', '  cid: 8']));
 		const { ranges } = CardParserService.parseCards(text);
-		expect([ranges[0].nid, ranges[0].cid]).toEqual([7, 8]);
+		expect([ranges[0].nid, ranges[0].cid]).toEqual([null, null]);
 	});
 
-	it('takes the id the mapping lacks from the text, and keeps the one it has', () => {
+	it('reads the id the mapping has and leaves the one it lacks null', () => {
 		parse.mockReturnValue({ anki: { nid: 5 } });
 		const text = note(...block(['anki:', '  nid: 999', '  cid: 6']));
 		const { ranges } = CardParserService.parseCards(text);
-		// nid comes from the parsed mapping, not the text; cid only the text has
-		expect([ranges[0].nid, ranges[0].cid]).toEqual([5, 6]);
+		expect([ranges[0].nid, ranges[0].cid]).toEqual([5, null]);
 	});
 
-	it('ignores a parsed id that is not a number and reads the text instead', () => {
-		parse.mockReturnValue({ anki: { nid: 'abc', cid: {} } });
+	it.each([
+		['a word', 'abc'],
+		['a mapping', {}],
+		['a fraction', 1.5],
+		['a negative number as text', '-3'],
+		['a number past the safe integer range', 2 ** 60],
+	])('gives no id for %s', (_name, raw) => {
+		parse.mockReturnValue({ anki: { nid: raw, cid: raw } });
 		const text = note(...block(['anki:', '  nid: 12', '  cid: 34']));
 		const { ranges } = CardParserService.parseCards(text);
-		expect([ranges[0].nid, ranges[0].cid]).toEqual([12, 34]);
+		expect([ranges[0].nid, ranges[0].cid]).toEqual([null, null]);
 	});
 
 	it('leaves both ids null for a card that was never synced', () => {

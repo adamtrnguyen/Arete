@@ -114,71 +114,14 @@ export class CardParserService {
 					}
 
 					const block = docLines.slice(startLine, endLine + 1).join('\n');
-					let nid: number | null = null;
-					let cid: number | null = null;
-
-					try {
-						// Attempt precise extraction with parseYaml
-						// We normalize the block to be a valid single-mapping YAML
-						// Replace the list dash with a space of the SAME width, so every
-						// key keeps its column. Collapsing "  - " to " " left `model` at
-						// indent 1 and its siblings at 4, and parseYaml then returned a
-						// partial object with no `anki` key instead of throwing, so the
-						// card silently lost its note id and showed no stats.
-						const cleanBlock = block.replace(/^(\s*)-/, '$1 ');
-						const data = parseYaml(cleanBlock);
-						if (data && typeof data === 'object') {
-							// Check if 'anki' property exists and is an object (not null/array)
-							let ankiBlock: any = {};
-							if (
-								'anki' in data &&
-								typeof data.anki === 'object' &&
-								data.anki !== null
-							) {
-								ankiBlock = data.anki;
-							}
-
-							const rawNid = ankiBlock.nid;
-							const rawCid = ankiBlock.cid;
-
-							if (rawNid !== undefined && rawNid !== null) {
-								const parsed =
-									typeof rawNid === 'string'
-										? parseInt(rawNid, 10)
-										: Number(rawNid);
-								if (!isNaN(parsed)) nid = parsed;
-							}
-							if (rawCid !== undefined && rawCid !== null) {
-								const parsed =
-									typeof rawCid === 'string'
-										? parseInt(rawCid, 10)
-										: Number(rawCid);
-								if (!isNaN(parsed)) cid = parsed;
-							}
-						}
-					} catch (e) {
-						// parseYaml threw; the regex below is the fallback.
-					}
-
-					if (nid === null || cid === null) {
-						// Also reached when parseYaml returns an object without `anki`,
-						// which it does for any block it cannot fully understand.
-						if (nid === null) {
-							const m = block.match(/['"]?nid['"]?\s*:\s*['"]?(\d+)/);
-							if (m) nid = parseInt(m[1]);
-						}
-						if (cid === null) {
-							const m = block.match(/['"]?cid['"]?\s*:\s*['"]?(\d+)/);
-							if (m) cid = parseInt(m[1]);
-						}
-					}
+					const { nid, cid } = this.ankiIds(block);
 
 					ranges.push({
 						index: ranges.length,
 						startLine,
 						endLine: this.findLastContentLine(docLines, startLine, endLine),
-						nid: isNaN(Number(nid)) ? null : nid,
-						cid: isNaN(Number(cid)) ? null : cid,
+						nid,
+						cid,
 					});
 					i = endLine;
 				}
@@ -192,6 +135,35 @@ export class CardParserService {
 			frontmatterEndLine,
 			hasCards: ranges.length > 0,
 		};
+	}
+
+	/**
+	 * The Anki note id and card id of one card block, read from its `anki:` mapping
+	 * with the YAML loader. A block that is not valid YAML, or has no `anki` mapping,
+	 * has no ids: the card shows no stats until its YAML parses.
+	 */
+	private static ankiIds(block: string): { nid: number | null; cid: number | null } {
+		let anki: unknown;
+		try {
+			// The list dash becomes a space of the same width, so every key keeps its
+			// column and the block is one mapping.
+			const data: unknown = parseYaml(block.replace(/^(\s*)-/, '$1 '));
+			anki = data && typeof data === 'object' ? (data as { anki?: unknown }).anki : null;
+		} catch {
+			return { nid: null, cid: null };
+		}
+		if (!anki || typeof anki !== 'object' || Array.isArray(anki)) {
+			return { nid: null, cid: null };
+		}
+		const ids = anki as { nid?: unknown; cid?: unknown };
+		return { nid: this.ankiId(ids.nid), cid: this.ankiId(ids.cid) };
+	}
+
+	/** An id as YAML holds it: a number, or a string of digits when it was quoted. */
+	private static ankiId(raw: unknown): number | null {
+		if (typeof raw === 'number') return Number.isSafeInteger(raw) ? raw : null;
+		if (typeof raw === 'string' && /^\d+$/.test(raw.trim())) return Number(raw.trim());
+		return null;
 	}
 
 	/**

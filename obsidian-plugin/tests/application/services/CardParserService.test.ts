@@ -1,20 +1,9 @@
 import { CardParserService } from '@/application/services/CardParserService';
 import { card, noteYaml } from '../../factories';
 
-// Mock Obsidian's parseYaml since it's not available in Node/Jest environment
+// parseYaml is Obsidian's; a real YAML loader stands in for it.
 jest.mock('obsidian', () => ({
-	parseYaml: jest.fn((text: string) => {
-		// Very basic YAML parser simulation for testing
-		const data: any = {};
-		const lines = text.split('\n');
-		for (const line of lines) {
-			const nidMatch = line.match(/['"]?(?:nid|NID)['"]?\s*:\s*['"]?(\d+)/i);
-			if (nidMatch) data.nid = nidMatch[1];
-			const cidMatch = line.match(/['"]?(?:cid|CID)['"]?\s*:\s*['"]?(\d+)/i);
-			if (cidMatch) data.cid = cidMatch[1];
-		}
-		return data;
-	}),
+	parseYaml: (text: string) => jest.requireActual('js-yaml').load(text),
 }));
 
 describe('CardParserService', () => {

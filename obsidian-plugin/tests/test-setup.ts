@@ -411,6 +411,8 @@ jest.mock('obsidian', () => {
 		},
 		WorkspaceLeaf: class {},
 		requestUrl: jest.fn(),
+		// A real YAML loader, so a test parses the YAML it writes.
+		parseYaml: (text: string) => jest.requireActual('js-yaml').load(text),
 	};
 });
 

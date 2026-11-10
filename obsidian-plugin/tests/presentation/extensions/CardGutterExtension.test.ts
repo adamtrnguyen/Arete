@@ -15,10 +15,8 @@ jest.mock('obsidian', () => ({
 	Notice: jest.fn(),
 	setIcon: jest.fn(),
 	setTooltip: jest.fn(),
-	// parseYaml is unavailable under jest; CardParserService falls back to its regex.
-	parseYaml: () => {
-		throw new Error('parseYaml unavailable');
-	},
+	// parseYaml is Obsidian's; a real YAML loader stands in for it.
+	parseYaml: (text: string) => jest.requireActual('js-yaml').load(text),
 }));
 
 import { EditorState, RangeSet, TransactionSpec } from '@codemirror/state';
