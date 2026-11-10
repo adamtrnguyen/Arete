@@ -71,17 +71,29 @@ def test_fix_unfixable_yaml_prints_both_lines_and_leaves_the_file_alone(tmp_path
     assert note.read_text(encoding="utf-8") == text
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="vault fix warns 'validation errors' for a note without frontmatter, "
-    "which vault check accepts as valid",
-)
 def test_fix_plain_markdown_is_not_flagged_as_invalid(tmp_path):
     note = tmp_path / "plain.md"
     note.write_text("# Just Markdown\n", encoding="utf-8")
     result = runner.invoke(app, ["vault", "fix", str(note)])
     assert result.exit_code == 0
     assert "cannot be auto-fixed" not in result.stdout
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "# Just Markdown\n",
+        "---\nkey: : value\n---\n",
+        "---\narete: true\ndeck: D\ncards:\n  - Front: A\n    Back: B\n---\n",
+    ],
+    ids=["plain", "bad-yaml", "valid"],
+)
+def test_fix_and_check_agree_on_whether_a_note_is_valid(tmp_path, text):
+    note = tmp_path / "n.md"
+    note.write_text(text, encoding="utf-8")
+    checked = runner.invoke(app, ["vault", "check", str(note)])
+    fixed = runner.invoke(app, ["vault", "fix", str(note)])
+    assert (checked.exit_code == 0) == ("cannot be auto-fixed" not in fixed.stdout)
 
 
 # --- format ---
