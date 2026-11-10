@@ -200,12 +200,12 @@ class VaultService:
                 new_text = rebuild_markdown_with_frontmatter(meta, body)
 
                 if new_text != text:
-                    count += 1
                     if dry_run:
                         self.logger.info(f"[dry-run] Would format {md_path.name}")
                     else:
                         md_path.write_text(new_text, encoding="utf-8")
                         self.logger.debug(f"[format] {md_path.name}: normalized YAML")
+                    count += 1
             except Exception as e:
                 self.logger.error(f"[error] formatting {md_path.name}: {e}")
 

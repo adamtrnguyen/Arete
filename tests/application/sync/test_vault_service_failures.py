@@ -153,10 +153,6 @@ def test_format_vault_logs_an_unwritable_file_and_formats_the_others(vault, cach
     assert "|-" in open_.read_text(encoding="utf-8")
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="format_vault counts a file before writing it, so a failed write is reported as formatted",
-)
 @pytest.mark.skipif(os.geteuid() == 0, reason="root ignores file modes")
 def test_format_vault_count_excludes_files_that_could_not_be_written(vault, cache):
     messy = '---\narete: true\ndeck: D\ncards:\n  - Front: "A"\n    Back: "x\\ny"\n---\nbody\n'
