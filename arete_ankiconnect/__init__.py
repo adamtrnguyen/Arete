@@ -37,6 +37,7 @@ import os
 import os.path
 import platform
 import re
+import threading
 import time
 import unicodedata
 
@@ -65,6 +66,11 @@ from .web import format_exception_reply, format_success_reply
 int_time = getattr(anki.utils, "int_time", None) or anki.utils.intTime
 field_checksum = getattr(anki.utils, "field_checksum", None) or anki.utils.fieldChecksum
 
+# A burst of write actions gets one UI refresh, this long after its last write.
+REFRESH_DELAY_MS = 250
+# While writes keep coming, a pending refresh still runs at least this often.
+REFRESH_MAX_WAIT_S = 2.0
+
 
 
 
@@ -77,6 +83,9 @@ class AnkiConnect:
     def __init__(self):
         self.log = None
         self.timer = None
+        self.refreshTimer = None
+        self.refreshPendingSince = 0.0
+        self.refreshing = False
         self.actions = self.buildActionTable()
         self.server = web.WebServer(self.handler)
 
@@ -242,7 +251,42 @@ class AnkiConnect:
         raise Exception("template was not found in {}: {}".format(model["name"], templateName))
 
     def startEditing(self):
-        self.window().requireReset()
+        self.scheduleRefresh()
+
+    def scheduleRefresh(self):
+        """Refresh Anki's UI once after a burst of writes, instead of once per write.
+
+        Write actions change the collection directly, which no Anki screen hears about,
+        so mw.reset() tells them all (deck list, overview, reviewer, Browser, undo
+        menu). It runs REFRESH_DELAY_MS after the last write, from its own single-shot
+        timer on the main thread: requests that arrive meanwhile restart the timer, a
+        pending refresh is never held back longer than REFRESH_MAX_WAIT_S, and nothing
+        modal that a refresh opens can block the request timer.
+        """
+        if threading.current_thread() is not threading.main_thread():
+            self.window().taskman.run_on_main(self.scheduleRefresh)
+            return
+        if self.refreshTimer is None:
+            self.refreshTimer = QTimer(self.window())
+            self.refreshTimer.setSingleShot(True)
+            self.refreshTimer.timeout.connect(self.refreshUi)
+        now = time.monotonic()
+        if not self.refreshTimer.isActive():
+            self.refreshPendingSince = now
+        elif now - self.refreshPendingSince >= REFRESH_MAX_WAIT_S:
+            return
+        self.refreshTimer.start(REFRESH_DELAY_MS)
+
+    def refreshUi(self):
+        if self.refreshing:
+            # A refresh is still on the stack (inside a dialog it opened); try later.
+            self.scheduleRefresh()
+            return
+        self.refreshing = True
+        try:
+            self.window().reset()
+        finally:
+            self.refreshing = False
 
     def stopEditing(self):
         if self.collection() is not None:
@@ -999,7 +1043,6 @@ class AnkiConnect:
                 note.addTag(replace_with_tag)
                 note.flush()
 
-        self.window().requireReset()
         self.window().progress.finish()
         self.window().reset()
 
@@ -1015,7 +1058,6 @@ class AnkiConnect:
                 note.addTag(replace_with_tag)
                 note.flush()
 
-        self.window().requireReset()
         self.window().progress.finish()
         self.window().reset()
 
@@ -1782,7 +1824,7 @@ class AnkiConnect:
         for model in self.collection().models.all():
             if self.collection().models.useCount(model) == 0:
                 self.collection().models.rem(model)
-        self.window().requireReset()
+        self.scheduleRefresh()
 
     @util.api()
     def cardsToNotes(self, cards):
