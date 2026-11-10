@@ -59,7 +59,7 @@ describe('GlobalGraphView hover highlight', () => {
 			false,
 		]);
 		expect(connected(links.nodes()[0])).toBe(false);
-		// The old mouseout wrote opacity 1 / 0.4 everywhere, erasing the search dimming.
+		// Mouseout writes no opacity, so the search dimming stays.
 		expect(d3.attrLog.filter((a: string) => a.includes('opacity'))).toEqual([]);
 	});
 });

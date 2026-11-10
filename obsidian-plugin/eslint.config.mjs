@@ -97,7 +97,7 @@ const aretePlugin = {
 };
 
 export default defineConfig([
-	// Lint only TypeScript sources (preserves the old `--ext .ts` scope);
+	// Lint only TypeScript sources (the `--ext .ts` scope);
 	// never lint build output, deps, coverage, or JS/MJS build helpers.
 	{ ignores: ['node_modules/', 'coverage/', '**/*.js', '**/*.cjs', '**/*.mjs'] },
 
@@ -107,7 +107,7 @@ export default defineConfig([
 	// typescript-eslint recommended (replaces plugin:@typescript-eslint/recommended)
 	...tseslint.configs.recommended,
 
-	// Project rules + node globals (was env: { node: true })
+	// Project rules + node globals (env: { node: true })
 	{
 		files: ['**/*.ts'],
 		languageOptions: {

@@ -515,7 +515,7 @@ export class GlobalGraphView extends ItemView {
 		this.simulation = sim;
 
 		// Zoom to the laid-out nodes. A few hundred files spread far past the pane, so an
-		// unfitted graph showed one corner; the old "Fit to View" button only re-rendered.
+		// unfitted graph shows one corner; "Fit to View" zooms to the nodes, it does not re-render.
 		this.fitToView = () => {
 			const placed = (nodes as any[]).filter((n) => Number.isFinite(n.x));
 			if (placed.length === 0) return;

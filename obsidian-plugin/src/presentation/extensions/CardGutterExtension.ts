@@ -72,7 +72,7 @@ class SkipToBottomMarker extends GutterMarker {
 	}
 }
 
-/** A difficulty or lapse figure. `ok` shows green only for difficulty, as before. */
+/** A difficulty or lapse figure. `ok` shows green only for difficulty. */
 function statSpan(text: string, state: MetricState, okIsSuccess: boolean): HTMLElement {
 	const span = document.createElement('span');
 	span.className = 'arete-gutter-stat';

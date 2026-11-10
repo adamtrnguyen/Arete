@@ -23,7 +23,7 @@ const FILES = [
 
 const CALL = /\b(?:console\.(?:log|warn|error|info|debug)|debugLog)\(\s*(['"`])([^'"`]{0,24})/g;
 
-describe('log prefix (G2)', () => {
+describe('log prefix', () => {
 	test.each(FILES)(
 		'%s starts every literal console and debugLog message with [Arete]',
 		(file) => {

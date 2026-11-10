@@ -19,7 +19,7 @@ describe('TemplateRenderer', () => {
 
 		// Setup default mocks for repo
 		mockRepo.modelStyling.mockResolvedValue('.card { color: black; }');
-		// Return a nested structure as expected now
+		// Return a nested structure as the repository returns it
 		mockRepo.modelTemplates.mockResolvedValue({
 			'Card 1': {
 				Front: '{{Front}}',
