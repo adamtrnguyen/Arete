@@ -504,20 +504,27 @@ export class DashboardView extends ItemView {
 			setTooltip(frontDiv, leech.front);
 			frontDiv.onclick = () => this.goToCard(leech.filePath, leech.front);
 
-			// Diff/Ease (use 'issue' precalc or raw)
+			const states = metricStates(
+				{ lapses: leech.lapses, difficulty: leech.difficulty, ease: leech.ease },
+				this.plugin.settings,
+			);
+
+			// Diff/Ease (use 'issue' precalc or raw), flagged like the metric it shows
 			const cellDiff = row.createEl('td');
 			cellDiff.textContent = leech.ease
 				? `${(leech.ease / 10).toFixed(0)}% ease`
 				: leech.difficulty != null
 					? `${difficultyOutOfTen(leech.difficulty).toFixed(1)} diff`
 					: '-';
+			const diffFlag = flagClass(
+				leech.ease ? states.ease : leech.difficulty != null ? states.difficulty : 'none',
+			);
+			if (diffFlag) cellDiff.addClass(diffFlag);
 
 			// Lapses
 			const cellLapses = row.createEl('td');
 			cellLapses.textContent = leech.lapses.toString();
-			const lapseFlag = flagClass(
-				metricStates({ lapses: leech.lapses }, this.plugin.settings).lapses,
-			);
+			const lapseFlag = flagClass(states.lapses);
 			if (lapseFlag) cellLapses.addClass(lapseFlag);
 
 			// Actions

@@ -134,6 +134,21 @@ describe('DashboardView actions', () => {
 			expect(rec.tooltips.map((t) => t.text)).toContain('<b>Front</b> text');
 		});
 
+		it('flags the difficulty cell with the shared cut-offs, as every other view does', async () => {
+			plugin.leechService.getLeeches.mockReturnValue([
+				leech({ cardId: 12, difficulty: 0.73, lapses: 0 }),
+				leech({ cardId: 13, difficulty: 0.92, lapses: 0 }),
+				leech({ cardId: 14, difficulty: 0.4, lapses: 0 }),
+			]);
+			const root = el('div');
+
+			await view.renderLeeches(root);
+
+			const rows = all(root, (n) => n.tag === 'tr').slice(1);
+			const flag = (i: number) => rows[i].children[1].addClass.mock.calls[0]?.[0];
+			expect([flag(0), flag(1), flag(2)]).toEqual(['mod-warning', 'mod-error', undefined]);
+		});
+
 		it('Suspend marks the row done when Anki accepts it', async () => {
 			plugin.leechService.getLeeches.mockReturnValue([leech()]);
 			plugin.leechService.suspendCard.mockResolvedValue(true);
