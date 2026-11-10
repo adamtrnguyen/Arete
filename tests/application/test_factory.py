@@ -98,32 +98,56 @@ async def test_get_anki_bridge_direct_uses_anki_base():
 # ---------- get_stats_repo ----------
 
 
-def test_get_stats_repo_ankiconnect():
+@pytest.mark.asyncio
+async def test_get_stats_repo_ankiconnect():
     """When backend='ankiconnect', returns ConnectStatsRepository."""
     config = _make_config(backend="ankiconnect", anki_connect_url="http://127.0.0.1:8765")
-    repo = get_stats_repo(config)
+    repo = await get_stats_repo(config)
     assert isinstance(repo, ConnectStatsRepository)
     assert repo.url == "http://127.0.0.1:8765"
 
 
-def test_get_stats_repo_direct():
+@pytest.mark.asyncio
+async def test_get_stats_repo_direct():
     """When backend='direct', returns DirectStatsRepository."""
     config = _make_config(backend="direct", anki_base=Path("/fake/anki"))
-    repo = get_stats_repo(config)
+    repo = await get_stats_repo(config)
     assert isinstance(repo, DirectStatsRepository)
 
 
-def test_get_stats_repo_auto_defaults_to_direct():
-    """When backend='auto' (not ankiconnect), returns DirectStatsRepository."""
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("answers", "expected"), [(True, ConnectStatsRepository), (False, DirectStatsRepository)]
+)
+async def test_get_stats_repo_auto_uses_ankiconnect_when_anki_answers(answers, expected):
+    """With Anki open the collection is held, so auto must go through the add-on."""
     config = _make_config(backend="auto")
-    repo = get_stats_repo(config)
-    assert isinstance(repo, DirectStatsRepository)
+    with patch.object(
+        AnkiConnectAdapter, "is_responsive", new_callable=AsyncMock, return_value=answers
+    ):
+        repo = await get_stats_repo(config)
+    assert isinstance(repo, expected)
 
 
-def test_get_stats_repo_ankiconnect_none_url_uses_default():
+@pytest.mark.asyncio
+@pytest.mark.parametrize("backend", ["auto", "ankiconnect", "direct"])
+@pytest.mark.parametrize("answers", [True, False])
+async def test_the_stats_reach_anki_the_way_the_bridge_does(backend, answers):
+    config = _make_config(backend=backend)
+    with patch.object(
+        AnkiConnectAdapter, "is_responsive", new_callable=AsyncMock, return_value=answers
+    ):
+        bridge = await get_anki_bridge(config)
+        repo = await get_stats_repo(config)
+    over_connect = isinstance(bridge, AnkiConnectAdapter)
+    assert isinstance(repo, ConnectStatsRepository) == over_connect
+
+
+@pytest.mark.asyncio
+async def test_get_stats_repo_ankiconnect_none_url_uses_default():
     """When backend='ankiconnect' and URL is None, uses default localhost."""
     config = _make_config(backend="ankiconnect", anki_connect_url=None)
-    repo = get_stats_repo(config)
+    repo = await get_stats_repo(config)
     assert isinstance(repo, ConnectStatsRepository)
     assert repo.url == "http://localhost:8765"
 

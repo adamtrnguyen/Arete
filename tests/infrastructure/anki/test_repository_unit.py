@@ -60,3 +60,38 @@ def test_context_manager(mock_col, repo):
         # Exit
         mock_instance.close.assert_called_once()
         assert r.col is None
+
+
+def test_a_collection_another_process_holds_names_the_way_out(tmp_path):
+    """As with Anki open: the hint says Anki holds it, and how to reach it; no guess at why."""
+    import subprocess
+    import sys
+
+    from tests.e2e.conftest import PROFILE, make_anki_base
+
+    base = make_anki_base(tmp_path / "anki")
+    path = base / PROFILE / "collection.anki2"
+    holder = subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            "import sys\nfrom anki.collection import Collection\n"
+            f"c = Collection({str(path)!r})\nprint('open', flush=True)\nsys.stdin.read()\n",
+        ],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        assert holder.stdout is not None and holder.stdout.readline().strip() == "open"
+        with pytest.raises(OSError) as refused:
+            with AnkiRepository(base):
+                pass
+    finally:
+        holder.kill()
+        holder.wait(timeout=10)
+
+    text = str(refused.value)
+    assert "Anki is running and holds the collection" in text
+    assert "backend auto or ankiconnect" in text
+    assert "did not answer" not in text

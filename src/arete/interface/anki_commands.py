@@ -103,7 +103,7 @@ def anki_stats(
 
         from arete.composition.factory import get_stats_service
 
-        service = get_stats_service(config)
+        service = await get_stats_service(config)
         return await service.get_enriched_stats(nids_list)
 
     with stdout_to_stderr():

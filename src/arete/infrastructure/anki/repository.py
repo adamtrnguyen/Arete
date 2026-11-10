@@ -79,11 +79,12 @@ class AnkiRepository:
             os.chdir(self._saved_cwd)
             hint = ""
             if "already open" in str(e):
-                # Anki holds the collection, so the direct backend cannot write it. The
-                # auto backend lands here when AnkiConnect did not answer within 2 s.
+                # Anki holds the collection, so it cannot be opened here: with backend
+                # `direct`, or with `auto` when the add-on did not answer in time.
                 hint = (
-                    " Anki is running but AnkiConnect did not answer: check the arete add-on"
-                    " is enabled, or close Anki."
+                    " Anki is running and holds the collection. Close Anki, or reach it"
+                    " through the arete AnkiConnect add-on (backend auto or ankiconnect,"
+                    " with the add-on enabled)."
                 )
             raise OSError(f"Could not open Anki collection at {path}: {e}.{hint}") from e
 
