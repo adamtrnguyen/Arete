@@ -283,20 +283,59 @@
 }
 
 /* Leech Table */
+.arete-leech-table {
+	width: 100%;
+	border-collapse: collapse;
+}
+
 .arete-leech-table th {
-	padding: 8px;
-	border-bottom: 2px solid var(--background-modifier-border);
+	text-align: left;
+	padding: var(--size-4-2);
+	border-bottom: var(--size-2-1) solid var(--background-modifier-border);
 	color: var(--text-muted);
-	font-size: 0.8em;
+	font-size: var(--font-ui-smaller);
 	text-transform: uppercase;
 }
 
 .arete-leech-table td {
-	font-size: 0.9em;
+	font-size: var(--font-ui-small);
+}
+
+.arete-leech-table tbody tr {
+	border-bottom: var(--border-width) solid var(--background-modifier-border);
 }
 
 .arete-leech-table tr:hover {
 	background: var(--background-primary-alt);
+}
+
+.arete-leech-table tr.is-suspended {
+	opacity: 0.5;
+}
+
+.arete-leech-table td.mod-warning {
+	color: var(--text-warning);
+}
+
+.arete-leech-table td.mod-error {
+	color: var(--text-error);
+}
+
+.arete-leech-cell-front {
+	padding: var(--size-4-2);
+}
+
+.arete-leech-front {
+	max-width: calc(var(--size-4-1) * 75);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-weight: var(--font-medium);
+}
+
+.arete-leech-actions {
+	display: flex;
+	gap: var(--size-4-2);
 }
 
 /* Card stats modal. Widths are multiples of --size-4-1 (4px). */

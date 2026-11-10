@@ -1,5 +1,6 @@
 import {
 	App,
+	ButtonComponent,
 	ExtraButtonComponent,
 	ItemView,
 	WorkspaceLeaf,
@@ -478,68 +479,58 @@ export class DashboardView extends ItemView {
 		}
 
 		const table = container.createEl('table', { cls: 'arete-leech-table' });
-		table.style.width = '100%';
-		table.style.borderCollapse = 'collapse';
 
 		const thead = table.createEl('thead');
 		const headerRow = thead.createEl('tr');
-		['Card (Front)', 'Difficulty', 'Lapses', 'Actions'].forEach((text) => {
-			headerRow.createEl('th', { text }).style.textAlign = 'left';
+		['Card (front)', 'Difficulty', 'Lapses', 'Actions'].forEach((text) => {
+			headerRow.createEl('th', { text });
 		});
 
 		const tbody = table.createEl('tbody');
 		leeches.forEach((leech) => {
 			const row = tbody.createEl('tr');
-			row.style.borderBottom = '1px solid var(--background-modifier-border)';
 
 			// Front
-			const cellFront = row.createEl('td');
-			cellFront.style.padding = '8px';
+			const cellFront = row.createEl('td', { cls: 'arete-leech-cell-front' });
 			// Truncate
-			const frontDiv = cellFront.createDiv();
-			frontDiv.style.maxWidth = '300px';
-			frontDiv.style.overflow = 'hidden';
-			frontDiv.style.textOverflow = 'ellipsis';
-			frontDiv.style.whiteSpace = 'nowrap';
-			frontDiv.style.cursor = 'pointer';
-			frontDiv.style.fontWeight = '500';
+			const frontDiv = cellFront.createDiv({ cls: 'arete-leech-front arete-clickable' });
 			frontDiv.textContent = leech.front.replace(/<[^>]*>?/gm, '');
-			frontDiv.title = leech.front;
+			setTooltip(frontDiv, leech.front);
 			frontDiv.onclick = () => this.goToCard(leech.filePath, leech.front);
 
 			// Diff/Ease (use 'issue' precalc or raw)
 			const cellDiff = row.createEl('td');
 			cellDiff.textContent = leech.ease
-				? `${(leech.ease / 10).toFixed(0)}% Ease`
+				? `${(leech.ease / 10).toFixed(0)}% ease`
 				: leech.difficulty != null
-					? `${difficultyOutOfTen(leech.difficulty).toFixed(1)} Diff`
+					? `${difficultyOutOfTen(leech.difficulty).toFixed(1)} diff`
 					: '-';
 
 			// Lapses
 			const cellLapses = row.createEl('td');
 			cellLapses.textContent = leech.lapses.toString();
-			if (leech.lapses > 10) cellLapses.style.color = 'var(--color-red)';
+			const lapseFlag = flagClass(
+				metricStates({ lapses: leech.lapses }, this.plugin.settings).lapses,
+			);
+			if (lapseFlag) cellLapses.addClass(lapseFlag);
 
 			// Actions
-			const cellActions = row.createEl('td');
-			cellActions.style.display = 'flex';
-			cellActions.style.gap = '0.5rem';
+			const cellActions = row.createEl('td', { cls: 'arete-leech-actions' });
 
-			const btnSuspend = cellActions.createEl('button', { text: 'Suspend' });
-			btnSuspend.style.fontSize = '0.8em';
-			btnSuspend.onclick = async () => {
-				btnSuspend.textContent = '...';
+			const btnSuspend = new ButtonComponent(cellActions).setButtonText('Suspend');
+			btnSuspend.onClick(async () => {
+				btnSuspend.setButtonText('...');
 				const success = await this.plugin.leechService.suspendCard(leech.cardId);
 				if (success) {
 					new Notice('Card suspended.');
-					row.style.opacity = '0.5';
-					btnSuspend.textContent = 'Suspended';
-					btnSuspend.disabled = true;
+					row.addClass('is-suspended');
+					btnSuspend.setButtonText('Suspended');
+					btnSuspend.setDisabled(true);
 				} else {
 					new Notice('Failed to suspend card.');
-					btnSuspend.textContent = 'Suspend';
+					btnSuspend.setButtonText('Suspend');
 				}
-			};
+			});
 		});
 	}
 

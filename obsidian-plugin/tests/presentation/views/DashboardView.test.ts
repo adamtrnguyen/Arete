@@ -404,3 +404,85 @@ describe('DashboardView overview', () => {
 		});
 	});
 });
+
+describe('DashboardView leeches', () => {
+	const leech = (over = {}) => ({
+		front: '<i>Define a port</i>',
+		cardId: 11,
+		filePath: 'Note.md',
+		lapses: 4,
+		ease: 0,
+		difficulty: 0.95,
+		...over,
+	});
+
+	async function renderLeeches(leeches: any[], suspend = jest.fn().mockResolvedValue(true)) {
+		const m = mount({
+			plugin: { leechService: { getLeeches: jest.fn(() => leeches), suspendCard: suspend } },
+		});
+		const el = createMockElement('div');
+		await m.view.renderLeeches(el);
+		return { ...m, el, suspend };
+	}
+
+	it('builds the table with classes and no inline style', async () => {
+		const { el } = await renderLeeches([leech(), leech({ cardId: 12, lapses: 1 })]);
+		expect(inlineStyled(el)).toEqual([]);
+		const classes = walk(el).flatMap((w) => w.classes);
+		expect(classes).toEqual(
+			expect.arrayContaining([
+				'arete-leech-table',
+				'arete-leech-front',
+				'arete-leech-actions',
+			]),
+		);
+	});
+
+	it('writes the column headers in sentence case', async () => {
+		const { el } = await renderLeeches([leech()]);
+		expect(texts(el)).toEqual(
+			expect.arrayContaining(['Card (front)', 'Difficulty', 'Lapses', 'Actions']),
+		);
+		expect(texts(el)).not.toContain('Card (Front)');
+	});
+
+	it('flags lapses with the shared cut-offs', async () => {
+		const { el } = await renderLeeches([
+			leech({ lapses: 0 }),
+			leech({ lapses: 2 }),
+			leech({ lapses: 3 }),
+		]);
+		const tds = walk(el).filter((w) => w.tag === 'td');
+		const lapseCells = tds.filter((w) => /^[0-9]$/.test(w.el.textContent ?? ''));
+		const flags = lapseCells.map((w) => (w.el.addClass.mock.calls[0] ?? [null])[0]);
+		expect(flags).toEqual([null, 'mod-warning', 'mod-error']);
+	});
+
+	it('sets the tooltip with setTooltip and shows the front without markup', async () => {
+		const { el, rec } = await renderLeeches([leech()]);
+		expect(rec.tooltips.map((t) => t.text)).toContain('<i>Define a port</i>');
+		const front = walk(el).find((w) => w.classes.includes('arete-leech-front'))!;
+		expect(front.el.textContent).toBe('Define a port');
+		expect(front.el.title).toBeUndefined();
+	});
+
+	it('suspends through a ButtonComponent and marks the row is-suspended', async () => {
+		const { rec, suspend, el } = await renderLeeches([leech()]);
+		expect(rec.buttons).toHaveLength(1);
+		expect(rec.buttons[0].text).toBe('Suspend');
+		await rec.buttons[0].onClick!();
+		expect(suspend).toHaveBeenCalledWith(11);
+		expect(rec.buttons[0].text).toBe('Suspended');
+		expect(rec.buttons[0].disabled).toBe(true);
+		const row = walk(el).find((w) => w.tag === 'tr' && w.el.addClass.mock.calls.length)!;
+		expect(row.el.addClass).toHaveBeenCalledWith('is-suspended');
+		expect(row.el.style).toEqual({});
+	});
+
+	it('restores the button when suspending fails', async () => {
+		const { rec } = await renderLeeches([leech()], jest.fn().mockResolvedValue(false));
+		await rec.buttons[0].onClick!();
+		expect(rec.buttons[0].text).toBe('Suspend');
+		expect(rec.buttons[0].disabled).toBe(false);
+	});
+});
