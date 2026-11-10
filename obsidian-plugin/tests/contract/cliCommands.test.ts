@@ -67,14 +67,9 @@ function parseParams(block: string): Command {
 	return cmd;
 }
 
-/**
- * The command tree the Typer apps register: `cli.py` and the `*_commands.py` modules it
- * mounts. The server modules are not read; the plugin spawns no server.
- */
+/** The command tree the Typer apps register: `cli.py` and the `*_commands.py` modules it mounts. */
 function readCli(): Cli {
-	const files = fs
-		.readdirSync(iface)
-		.filter((f) => f === 'cli.py' || (f.endsWith('_commands.py') && f !== 'serve_commands.py'));
+	const files = fs.readdirSync(iface).filter((f) => f === 'cli.py' || f.endsWith('_commands.py'));
 	const sources = files.map((f) => fs.readFileSync(path.join(iface, f), 'utf8'));
 	const all = sources.join('\n');
 
@@ -89,7 +84,7 @@ function readCli(): Cli {
 		commands: new Map(),
 	};
 	// The parameters run to the `)` that ends the signature: the one followed by `:` and a
-	// newline, so `def mcp():` does not swallow the next function's parameters.
+	// newline, so `def init():` does not swallow the next function's parameters.
 	const decorated =
 		/@(\w+)\.(command|callback)\(([^)]*)\)\s*\ndef (\w+)\(((?:[^)]|\)(?!(?:\s*->[^:\n]*)?:\s*\n))*)\)(?:\s*->[^:\n]*)?:\s*\n/g;
 	for (const m of all.matchAll(decorated)) {
@@ -195,11 +190,6 @@ describe('plugin command lines against the registered CLI', () => {
 	const cli = readCli();
 
 	beforeEach(() => jest.clearAllMocks());
-
-	test('only the CLI sources are read', () => {
-		expect(cli.commands.has('serve daemon')).toBe(false);
-		expect(cli.commands.has('serve mcp')).toBe(false);
-	});
 
 	test('the Typer sources still parse into commands', () => {
 		for (const name of ['sync', 'queue', 'anki stats', 'graph export', 'vault check']) {
