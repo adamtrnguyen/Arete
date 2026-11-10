@@ -190,6 +190,7 @@ export const createMockSetting = (): any => {
 		addButton: jest.fn().mockImplementation((cb: any) => {
 			const mockButton: any = {
 				setButtonText: jest.fn().mockReturnThis(),
+				setWarning: jest.fn().mockReturnThis(),
 				onClick: jest.fn().mockImplementation((ocb: any) => {
 					mockButton._onClick = ocb;
 					return mockButton;
