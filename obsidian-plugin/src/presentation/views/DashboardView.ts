@@ -42,6 +42,12 @@ export interface DashboardHost {
 
 export const DASHBOARD_VIEW_TYPE = 'arete-stats-view';
 
+const INTEGRITY_TYPE_LABEL: Record<BrokenReference['type'], string> = {
+	link: 'Broken link',
+	image: 'Broken image',
+	'invalid-yaml': 'Invalid YAML',
+};
+
 type DashboardTab = 'overview' | 'leeches' | 'integrity' | 'queue-builder';
 
 export class DashboardView extends ItemView {
@@ -536,32 +542,25 @@ export class DashboardView extends ItemView {
 
 	// --- 3. INTEGRITY TAB ---
 	renderIntegrity(container: HTMLElement) {
-		const actionArea = container.createDiv();
-		actionArea.style.padding = '1rem';
-		actionArea.style.background = 'var(--background-secondary-alt)';
-		actionArea.style.marginBottom = '1rem';
-		actionArea.style.borderRadius = '8px';
-		actionArea.style.textAlign = 'center';
+		const actionArea = container.createDiv({ cls: 'arete-integrity-actions' });
 
-		const desc = actionArea.createDiv();
-		desc.style.marginBottom = '1rem';
-		desc.style.color = 'var(--text-muted)';
-		desc.style.fontSize = '0.9em';
-		desc.innerHTML = `
-			<p style="margin-bottom: 0.5rem;">Scans your synced files to find <b>broken image embeds</b> and <b>invalid YAML</b>.</p>
-			<p style="margin: 0;">Use this to ensure your Anki cards don't have broken media or syntax errors.</p>
-		`;
-
-		const checkBtn = actionArea.createEl('button', {
-			cls: 'mod-cta',
-			text: 'Run Integrity Check',
+		const desc = actionArea.createDiv({ cls: 'arete-integrity-desc' });
+		const scans = desc.createEl('p');
+		scans.createSpan({ text: 'Scans your synced files to find ' });
+		scans.createEl('strong', { text: 'broken image embeds' });
+		scans.createSpan({ text: ' and ' });
+		scans.createEl('strong', { text: 'invalid YAML' });
+		scans.createSpan({ text: '.' });
+		desc.createEl('p', {
+			text: "Use this to ensure your Anki cards don't have broken media or syntax errors.",
 		});
-		if (this.isScanning) {
-			checkBtn.disabled = true;
-			checkBtn.textContent = 'Scanning Vault...';
-		}
 
-		checkBtn.onclick = async () => {
+		const checkBtn = new ButtonComponent(actionArea)
+			.setButtonText(this.isScanning ? 'Scanning vault...' : 'Run integrity check')
+			.setCta()
+			.setDisabled(this.isScanning);
+
+		checkBtn.onClick(async () => {
 			this.isScanning = true;
 			this.render(); // Update button state
 			try {
@@ -571,13 +570,13 @@ export class DashboardView extends ItemView {
 				this.brokenRefs = await this.plugin.linkCheckerService.checkIntegrity(targetFiles);
 				new Notice(`Integrity check complete. Found ${this.brokenRefs.length} issues.`);
 			} catch (e) {
-				console.error(e);
+				console.error('[Arete] Integrity check failed:', e);
 				new Notice('Integrity check failed.');
 			} finally {
 				this.isScanning = false;
 				this.render();
 			}
-		};
+		});
 
 		if (this.brokenRefs) {
 			if (this.brokenRefs.length === 0) {
@@ -586,73 +585,61 @@ export class DashboardView extends ItemView {
 				const list = container.createDiv();
 
 				this.brokenRefs.forEach((ref) => {
-					const item = list.createDiv();
-					item.style.padding = '0.5rem';
-					item.style.borderBottom = '1px solid var(--background-modifier-border)';
-					item.style.display = 'flex';
-					item.style.justifyContent = 'space-between';
-					item.style.alignItems = 'center';
+					const item = list.createDiv({ cls: 'arete-integrity-item' });
 
 					const left = item.createDiv();
 					const fileLink = left.createSpan({
 						text: ref.sourceFile.basename,
-						cls: 'arete-clickable',
+						cls: 'arete-integrity-file arete-clickable',
 					});
-					fileLink.style.fontWeight = 'bold';
 					fileLink.onclick = () => this.app.workspace.getLeaf().openFile(ref.sourceFile);
 
 					left.createSpan({ text: ` → ` });
-					const targetSpan = left.createSpan({ text: ref.linkPath });
-					targetSpan.style.color = 'var(--color-red)';
+					const targetSpan = left.createSpan({
+						text: ref.linkPath,
+						cls: 'arete-integrity-target',
+					});
 					// Tooltip for original text (debug aid)
-					targetSpan.title = `Original text: "${ref.linkText}"`;
+					setTooltip(targetSpan, `Original text: "${ref.linkText}"`);
 
-					const right = item.createDiv();
-					right.style.display = 'flex';
-					right.style.alignItems = 'center';
-					right.style.gap = '8px';
+					const right = item.createDiv({ cls: 'arete-integrity-meta' });
 
 					// Show original text if it differs significantly from linkPath
 					if (ref.type === 'invalid-yaml' && ref.errorMessage) {
-						const errSpan = right.createSpan({ text: ref.errorMessage });
-						errSpan.style.fontSize = '0.8em';
-						errSpan.style.color = 'var(--color-red)';
-						errSpan.style.marginRight = '8px';
+						right.createSpan({
+							text: ref.errorMessage,
+							cls: 'arete-integrity-error',
+						});
 					} else if (
 						ref.type !== 'invalid-yaml' &&
 						ref.linkText !== `[[${ref.linkPath}]]` &&
 						ref.linkText !== ref.linkPath
 					) {
-						const span = right.createSpan({ text: `"${ref.linkText}"` });
-						span.style.fontSize = '0.8em';
-						span.style.color = 'var(--text-muted)';
+						right.createSpan({
+							text: `"${ref.linkText}"`,
+							cls: 'arete-integrity-text',
+						});
 					}
 
-					const typeBadge = right.createSpan({ text: ref.type.toUpperCase() });
-					typeBadge.style.fontSize = '0.7em';
-					typeBadge.style.padding = '2px 4px';
-					typeBadge.style.borderRadius = '4px';
+					const typeBadge = right.createSpan({
+						text: INTEGRITY_TYPE_LABEL[ref.type],
+						cls: 'arete-badge',
+					});
 
 					if (ref.type === 'invalid-yaml') {
-						typeBadge.style.background = 'var(--color-red)';
-						typeBadge.style.color = 'var(--text-on-accent)';
-						typeBadge.title =
+						typeBadge.addClass('mod-error');
+						setTooltip(
+							typeBadge,
 							ref.errorMessage ||
-							'Obsidian failed to parse frontmatter. Check for syntax errors.';
-					} else {
-						typeBadge.style.background = 'var(--background-modifier-border)';
+								'Obsidian failed to parse frontmatter. Check for syntax errors.',
+						);
 					}
 
-					// Navigation Badge/Button
-					const gotoBtn = right.createSpan({ cls: 'arete-icon-btn' });
-					setIcon(gotoBtn, 'external-link');
-					gotoBtn.title = 'Go to location';
-					gotoBtn.style.cursor = 'pointer';
-					gotoBtn.style.marginLeft = '8px';
-					gotoBtn.onclick = (e) => {
-						e.stopPropagation();
-						this.goToIssue(ref.sourceFile, ref.linkText);
-					};
+					// Navigation button
+					new ExtraButtonComponent(right)
+						.setIcon('external-link')
+						.setTooltip('Go to location')
+						.onClick(() => this.goToIssue(ref.sourceFile, ref.linkText));
 				});
 			}
 		}

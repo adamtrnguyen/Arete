@@ -338,6 +338,61 @@
 	gap: var(--size-4-2);
 }
 
+/* Integrity tab */
+.arete-integrity-actions {
+	padding: var(--size-4-4);
+	background: var(--background-secondary-alt);
+	margin-bottom: var(--size-4-4);
+	border-radius: var(--radius-m);
+	text-align: center;
+}
+
+.arete-integrity-desc {
+	margin-bottom: var(--size-4-4);
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+}
+
+.arete-integrity-desc p {
+	margin: 0;
+}
+
+.arete-integrity-desc p:first-child {
+	margin-bottom: var(--size-4-2);
+}
+
+.arete-integrity-item {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: var(--size-4-2);
+	border-bottom: var(--border-width) solid var(--background-modifier-border);
+}
+
+.arete-integrity-meta {
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-2);
+}
+
+.arete-integrity-file {
+	font-weight: var(--font-bold);
+}
+
+.arete-integrity-target,
+.arete-integrity-error {
+	color: var(--text-error);
+}
+
+.arete-integrity-error,
+.arete-integrity-text {
+	font-size: var(--font-ui-smaller);
+}
+
+.arete-integrity-text {
+	color: var(--text-muted);
+}
+
 /* Card stats modal. Widths are multiples of --size-4-1 (4px). */
 .arete-stats-layout {
 	display: flex;

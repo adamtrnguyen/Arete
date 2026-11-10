@@ -486,3 +486,104 @@ describe('DashboardView leeches', () => {
 		expect(rec.buttons[0].disabled).toBe(false);
 	});
 });
+
+describe('DashboardView integrity', () => {
+	const ref = (over = {}) => ({
+		sourceFile: { basename: 'Note' },
+		linkText: '![[pic.png]]',
+		linkPath: 'pic.png',
+		type: 'image',
+		position: null as null,
+		...over,
+	});
+
+	function renderIntegrity(over: { refs?: any[] | null; scanning?: boolean } = {}) {
+		const m = mount();
+		m.view.app = {
+			vault: { getMarkdownFiles: jest.fn(() => [{}, {}]) },
+			workspace: { getLeaf: jest.fn() },
+		};
+		m.view.brokenRefs = over.refs ?? null;
+		m.view.isScanning = over.scanning ?? false;
+		const el = createMockElement('div');
+		m.view.renderIntegrity(el);
+		return { ...m, el };
+	}
+
+	it('explains the scan with elements, not innerHTML, and sets no inline style', () => {
+		const { el } = renderIntegrity({
+			refs: [ref(), ref({ type: 'invalid-yaml', errorMessage: 'bad' })],
+		});
+		expect(inlineStyled(el)).toEqual([]);
+		const strong = walk(el)
+			.filter((w) => w.tag === 'strong')
+			.map((w) => w.text);
+		expect(strong).toEqual(['broken image embeds', 'invalid YAML']);
+		expect(walk(el).every((w) => w.el.innerHTML === undefined)).toBe(true);
+	});
+
+	it('runs the check from a call-to-action ButtonComponent', async () => {
+		const { rec, view, plugin } = renderIntegrity();
+		expect(rec.buttons).toHaveLength(1);
+		expect(rec.buttons[0]).toMatchObject({
+			text: 'Run integrity check',
+			cta: true,
+			disabled: false,
+		});
+		const render = jest.spyOn(view, 'render').mockResolvedValue(undefined);
+		plugin.linkCheckerService.checkIntegrity.mockResolvedValue([ref()]);
+		await rec.buttons[0].onClick!();
+		expect(plugin.linkCheckerService.checkIntegrity).toHaveBeenCalledWith([{}, {}]);
+		expect(view.brokenRefs).toHaveLength(1);
+		expect(view.isScanning).toBe(false);
+		expect(render).toHaveBeenCalledTimes(2);
+	});
+
+	it('disables the button and says so while scanning', () => {
+		const { rec } = renderIntegrity({ scanning: true });
+		expect(rec.buttons[0]).toMatchObject({ text: 'Scanning vault...', disabled: true });
+	});
+
+	it('logs a failed check with the [Arete] prefix and keeps the notice plain', async () => {
+		const { rec, view, plugin } = renderIntegrity();
+		jest.spyOn(view, 'render').mockResolvedValue(undefined);
+		const error = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+		const failure = new Error('boom');
+		plugin.linkCheckerService.checkIntegrity.mockRejectedValue(failure);
+		await rec.buttons[0].onClick!();
+		expect(error).toHaveBeenCalledWith('[Arete] Integrity check failed:', failure);
+		error.mockRestore();
+	});
+
+	it('labels badges in sentence case and flags invalid YAML with mod-error', () => {
+		const { el, rec } = renderIntegrity({
+			refs: [
+				ref(),
+				ref({ type: 'link' }),
+				ref({ type: 'invalid-yaml', errorMessage: 'bad' }),
+			],
+		});
+		const badges = walk(el).filter((w) => w.classes.includes('arete-badge'));
+		expect(badges.map((b) => b.text)).toEqual(['Broken image', 'Broken link', 'Invalid YAML']);
+		expect(badges.map((b) => b.classes.includes('mod-error'))).toEqual([false, false, true]);
+		expect(rec.tooltips.map((t) => t.text)).toContain('bad');
+	});
+
+	it('goes to the location through an ExtraButtonComponent with a tooltip', () => {
+		const { rec, view } = renderIntegrity({ refs: [ref()] });
+		expect(rec.extraButtons).toHaveLength(1);
+		expect(rec.extraButtons[0]).toMatchObject({
+			icon: 'external-link',
+			tooltip: 'Go to location',
+		});
+		const go = jest.spyOn(view, 'goToIssue').mockResolvedValue(undefined);
+		rec.extraButtons[0].onClick!();
+		expect(go).toHaveBeenCalledWith({ basename: 'Note' }, '![[pic.png]]');
+	});
+
+	it('shows the success state when nothing is broken', () => {
+		const { el, rec } = renderIntegrity({ refs: [] });
+		expect(walk(el).some((w) => w.classes.includes('arete-success-state'))).toBe(true);
+		expect(rec.icons.map((i) => i.icon)).toContain('check-circle');
+	});
+});
