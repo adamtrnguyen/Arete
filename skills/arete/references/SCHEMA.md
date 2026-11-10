@@ -54,7 +54,10 @@ Reserved keys: `model, deck, tags, id, deps, anki`
 
 ## Key Rules
 
-- **IDs**: `arete_` prefix + 26-char ULID. Auto-generated on first sync. Do not fabricate.
+- **IDs**: `arete_` prefix + 26-char ULID. Auto-generated on first sync. Do not fabricate. The same id on two cards is refused: neither syncs.
+- **Sync overwrites Anki.** Every sync sets the fields, deck, tags and note type of a card's Anki note to the vault's, except the tags `leech` and `marked`, which stay.
+- **Finding the note**: by `anki.nid`, then by the Arete id tag, then by the first field. A card whose first field already exists in the same deck and note type is refused.
+- **Tags** are stored as Anki stores them: a tag with a space becomes two tags.
 - **anki.nid / anki.cid**: Written by Arete after sync. Never manually create or modify these.
 - **Deck**: Must be specified at file level or card level. Use `::` for nesting.
 - **Changing `model`** on a synced card converts its Anki note in place: same cards, review history kept. Fields carry over by name, then `Front`↔`Text` and `Back`↔`Back Extra`. Anki counts this as a schema change, so its next AnkiWeb sync may ask for a one-way full upload.

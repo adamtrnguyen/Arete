@@ -2,7 +2,7 @@
 
 How to write `cards:` so a card renders the same in Obsidian and in Anki. Schema lives in
 `SCHEMA.md`; this file is the **style**. Rules marked 📏 were measured against
-arete's converter on 2026-09-25.
+arete's converter.
 
 ## The shape
 
@@ -25,7 +25,7 @@ cards:
 |---|---|
 | **Question field first** (`Front`, or `Text` for Cloze), then answer fields, then `deps` | Scans top-down like the card. |
 | **`id` and `anki` last, and only Arete writes them** | Arete appends them on first sync. |
-| **`Back Extra` holds citations and asides**, not the answer | Anki shows it under the answer, smaller. |
+| **`Back Extra` holds citations and asides**, not the answer | It is the extra field of the Cloze note type. |
 | **Multi-line value → `\|-` block** | Keeps backslashes and quotes literal. |
 
 ## Line breaks 📏
@@ -55,9 +55,7 @@ In a `|-` block **every character is literal**. Write LaTeX exactly as in a note
 | a real line break | `\n` typed as two characters | the literal text `\n` |
 | `"quoted"` inside code | `\"quoted\"` | backslashes in the card |
 
-Double escaping is what an import produces when it writes YAML by string-pasting (one
-real vault had 19 notes with it, up to 8 backslashes deep). In a double-quoted scalar (`"..."`) YAML
-does interpret `\\` and `\n` — another reason to prefer `|-`.
+In a double-quoted scalar (`"..."`) YAML does interpret `\\` and `\n`, another reason to prefer `|-`.
 
 ## Math
 
@@ -79,7 +77,7 @@ does interpret `\\` and `\n` — another reason to prefer `|-`.
 ```
 
 - **`{{cN::answer}}` or `{{cN::answer::hint}}`.** Same `N` = hidden together on one card.
-- **A deletion ends at the first `}}`.** 📏 `{{c1::$e^{x^{2}}$}}` is cut to `$e^{x^{2`; write `{{c1::$e^{x^{2} }$}}` (space between the braces). Anki's own parser has the same rule (recalled, not measured).
+- **A deletion ends at the first `}}`.** 📏 `{{c1::$e^{x^{2}}$}}` is cut to `$e^{x^{2`; write `{{c1::$e^{x^{2} }$}}` (space between the braces). Anki's cloze renderer cuts at the first `}}` too (checked against the bundled `anki` library).
 - The Card Editor preview shows the lowest `cN`.
 
 ## Dependencies
