@@ -36,6 +36,7 @@ from typing import Any
 import anki
 import anki._backend
 import anki.collection
+import anki.exporting
 import anki.lang
 import anki.notes
 import anki.utils
@@ -82,6 +83,7 @@ def _addon_class() -> type:
         "util": util,
         "Card": Card,
         "Note": Note,
+        "AnkiPackageExporter": anki.exporting.AnkiPackageExporter,
         "NotFoundError": NotFoundError,
         "MODEL_CLOZE": MODEL_CLOZE,
         "base64": base64,
@@ -99,7 +101,7 @@ def _addon_class() -> type:
 
 
 class _Window:
-    """The part of `aqt.mw` the add-on's collection actions reach: the collection and a reset."""
+    """The part of `aqt.mw` the add-on's collection actions reach: the collection, a reset, a progress bar."""
 
     def __init__(self, col: Collection):
         self.col = col
@@ -109,6 +111,20 @@ class _Window:
 
     def maybeReset(self) -> None:
         """Anki redraws its UI here; there is no UI."""
+
+    def reset(self) -> None:
+        """Anki redraws its UI here; there is no UI."""
+
+    @property
+    def progress(self) -> _Window:
+        """`mw.progress.start()` and `finish()` show a busy cursor; there is no UI."""
+        return self
+
+    def start(self) -> None:
+        """A busy cursor; there is no UI."""
+
+    def finish(self) -> None:
+        """A busy cursor; there is no UI."""
 
 
 _I18N: list[Any] = []
