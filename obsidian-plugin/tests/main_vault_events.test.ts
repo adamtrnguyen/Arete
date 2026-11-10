@@ -1,5 +1,5 @@
 import './test-setup';
-import { App } from 'obsidian';
+import { App, Notice } from 'obsidian';
 import AretePlugin from '@/main';
 
 jest.mock('@infrastructure/arete/SyncService');
@@ -38,9 +38,14 @@ describe('sync on save', () => {
 		const loaded = await loadPlugin();
 		loaded.plugin.settings.sync_on_save = true;
 		loaded.plugin.settings.sync_on_save_delay = 1000;
-		loaded.plugin.runSync = jest.fn().mockResolvedValue(undefined);
+		(loaded.plugin.syncService.runSync as jest.Mock).mockResolvedValue('success');
+		loaded.plugin.saveData = jest.fn().mockResolvedValue(undefined);
 		return loaded;
 	}
+
+	/** The (prune, target, force) of every sync the plugin started. */
+	const started = (plugin: AretePlugin) =>
+		(plugin.syncService.runSync as jest.Mock).mock.calls.map((c) => c.slice(0, 3));
 
 	test('saving A then B within the delay syncs both', async () => {
 		const { plugin, vaultHandlers } = await setup();
@@ -49,9 +54,10 @@ describe('sync on save', () => {
 		vaultHandlers.modify({ path: 'B.md' });
 		await jest.advanceTimersByTimeAsync(1000);
 
-		expect(plugin.runSync).toHaveBeenCalledTimes(2);
-		expect(plugin.runSync).toHaveBeenCalledWith(false, '/vault/A.md', false);
-		expect(plugin.runSync).toHaveBeenCalledWith(false, '/vault/B.md', false);
+		expect(started(plugin)).toEqual([
+			[false, '/vault/A.md', false],
+			[false, '/vault/B.md', false],
+		]);
 	});
 
 	test('repeated saves of one note sync it once', async () => {
@@ -61,7 +67,7 @@ describe('sync on save', () => {
 		vaultHandlers.modify({ path: 'A.md' });
 		await jest.advanceTimersByTimeAsync(2000);
 
-		expect(plugin.runSync).toHaveBeenCalledTimes(1);
+		expect(started(plugin)).toHaveLength(1);
 	});
 
 	test('no sync fires after unload', async () => {
@@ -71,7 +77,42 @@ describe('sync on save', () => {
 		plugin.onunload();
 		await jest.advanceTimersByTimeAsync(5000);
 
-		expect(plugin.runSync).not.toHaveBeenCalled();
+		expect(started(plugin)).toEqual([]);
+	});
+
+	test('a save during a running sync waits for it, then syncs once', async () => {
+		const { plugin, vaultHandlers } = await setup();
+		let finish!: (outcome: string) => void;
+		(plugin.syncService.runSync as jest.Mock).mockImplementationOnce(
+			() => new Promise((resolve) => (finish = resolve)),
+		);
+		void plugin.runSync();
+		vaultHandlers.modify({ path: 'A.md' });
+		vaultHandlers.modify({ path: 'B.md' });
+		await jest.advanceTimersByTimeAsync(2000);
+
+		expect(started(plugin)).toEqual([[false, null, false]]);
+		finish('success');
+		await jest.advanceTimersByTimeAsync(0);
+
+		expect(started(plugin)).toEqual([
+			[false, null, false],
+			[false, null, false],
+		]);
+	});
+
+	test('a manual sync during a running sync starts nothing and says so', async () => {
+		const { plugin } = await setup();
+		let finish!: (outcome: string) => void;
+		(plugin.syncService.runSync as jest.Mock).mockImplementationOnce(
+			() => new Promise((resolve) => (finish = resolve)),
+		);
+		void plugin.runSync();
+		await plugin.runSync(true);
+
+		expect(started(plugin)).toEqual([[false, null, false]]);
+		expect(Notice).toHaveBeenCalledWith('A sync is already running.');
+		finish('success');
 	});
 });
 

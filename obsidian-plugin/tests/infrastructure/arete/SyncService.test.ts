@@ -4,8 +4,10 @@ import { spawn } from 'child_process';
 import * as fs from 'fs';
 import { createMockChildProcess } from '../../test-setup';
 import {
+	isSyncLockHeld,
 	LOG_KEEP_BYTES,
 	LOG_MAX_BYTES,
+	SYNC_LOCK_EXIT_CODE,
 	SyncLog,
 	SyncService,
 } from '@infrastructure/arete/SyncService';
@@ -128,6 +130,57 @@ describe('SyncService', () => {
 		expect(mockChild.kill).toHaveBeenCalledTimes(1);
 		expect(Notice).not.toHaveBeenCalled();
 		expect(updateStatusBar).not.toHaveBeenCalled();
+	});
+
+	test('runSync resolves once the process has exited, with how it ended', async () => {
+		const mockChild = createMockChildProcess();
+		(spawn as jest.Mock).mockReturnValue(mockChild);
+		let outcome: string | undefined;
+
+		const run = service.runSync(false, null, false, updateStatusBar).then((o) => (outcome = o));
+		await settle();
+		expect(outcome).toBeUndefined();
+		mockChild.emit('close', 0);
+		await run;
+
+		expect(outcome).toBe('success');
+	});
+
+	test('a sync stopped by dispose shows nothing, also when uv exits with a code', async () => {
+		const mockChild = createMockChildProcess();
+		(spawn as jest.Mock).mockReturnValue(mockChild);
+		const run = service.runSync(false, null, false, updateStatusBar);
+		(Notice as unknown as jest.Mock).mockClear();
+		updateStatusBar.mockClear();
+
+		service.dispose();
+		mockChild.emit('close', 143, null);
+
+		expect(await run).toBe('stopped');
+		expect(Notice).not.toHaveBeenCalled();
+		expect(updateStatusBar).not.toHaveBeenCalled();
+	});
+
+	describe('another sync holds the lock', () => {
+		test('the lock exit is reported as a running sync, not as a failure', async () => {
+			const mockChild = createMockChildProcess();
+			(spawn as jest.Mock).mockReturnValue(mockChild);
+			const run = service.runSync(false, null, false, updateStatusBar);
+
+			mockChild.stderr.emit('data', 'Another sync is running (pid 123); try again later.\n');
+			mockChild.emit('close', SYNC_LOCK_EXIT_CODE);
+
+			expect(await run).toBe('busy');
+			expect(Notice).toHaveBeenLastCalledWith('A sync is already running.');
+			expect(updateStatusBar).not.toHaveBeenCalledWith('error');
+			expect(updateStatusBar).toHaveBeenLastCalledWith('idle');
+		});
+
+		test('isSyncLockHeld needs both the exit code and the message', () => {
+			expect(isSyncLockHeld(75, 'ERROR: another sync is running')).toBe(true);
+			expect(isSyncLockHeld(75, 'something else')).toBe(false);
+			expect(isSyncLockHeld(1, 'another sync is running')).toBe(false);
+		});
 	});
 
 	describe('runSync - error cases', () => {
@@ -280,11 +333,12 @@ describe('SyncService', () => {
 			jest.spyOn(console, 'log').mockImplementation(() => undefined);
 			const mockChild = createMockChildProcess();
 			(spawn as jest.Mock).mockReturnValue(mockChild);
-			await service.runSync(false, null, false, updateStatusBar);
+			const run = service.runSync(false, null, false, updateStatusBar);
 
 			const lines = Array.from({ length: 500 }, (_, i) => `note ${i}`).join('\n');
 			mockChild.stdout.emit('data', Buffer.from(lines));
 			mockChild.emit('close', 0);
+			await run;
 			await settle();
 
 			expect(fs.appendFileSync).not.toHaveBeenCalled();
@@ -299,10 +353,11 @@ describe('SyncService', () => {
 			const mockChild = createMockChildProcess();
 			(spawn as jest.Mock).mockReturnValue(mockChild);
 			jest.spyOn(console, 'error').mockImplementation(() => undefined);
-			await service.runSync(false, null, false, updateStatusBar);
+			const run = service.runSync(false, null, false, updateStatusBar);
 
 			mockChild.stderr.emit('data', 'Traceback: boom');
 			mockChild.emit('close', 1);
+			await run;
 			await settle();
 
 			const written = fsp.appendFile.mock.calls.map((c) => c[1]).join('');
@@ -313,9 +368,10 @@ describe('SyncService', () => {
 		test('a spawn error is written too', async () => {
 			const mockChild = createMockChildProcess();
 			(spawn as jest.Mock).mockReturnValue(mockChild);
-			await service.runSync(false, null, false, updateStatusBar);
+			const run = service.runSync(false, null, false, updateStatusBar);
 
 			mockChild.emit('error', new Error('ENOENT python3'));
+			await run;
 			await settle();
 
 			const written = fsp.appendFile.mock.calls.map((c) => c[1]).join('');

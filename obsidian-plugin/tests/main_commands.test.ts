@@ -103,8 +103,18 @@ describe('AretePlugin commands, views and status bar', () => {
 	});
 
 	describe('runSync / runCheck', () => {
+		test('a failed sync leaves last_sync_time alone', async () => {
+			(plugin.syncService.runSync as jest.Mock).mockResolvedValue('failed');
+			plugin.settings.last_sync_time = 5;
+
+			await plugin.runSync();
+
+			expect(plugin.settings.last_sync_time).toBe(5);
+			expect(plugin.saveData).not.toHaveBeenCalled();
+		});
+
 		test('runSync forwards its arguments to SyncService and stamps last_sync_time', async () => {
-			(plugin.syncService.runSync as jest.Mock).mockResolvedValue(undefined);
+			(plugin.syncService.runSync as jest.Mock).mockResolvedValue('success');
 			jest.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000);
 
 			await plugin.runSync(true, '/v/x.md', true);

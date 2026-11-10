@@ -37,6 +37,8 @@ describe('AretePlugin Composition', () => {
 		// runSync delegation
 		await commands['arete-sync'].callback();
 		expect(plugin.syncService.runSync).toHaveBeenCalled();
+		// One sync at a time: let the first finish before the next command.
+		await new Promise((r) => setImmediate(r));
 
 		// prune delegation
 		await commands['arete-sync-prune'].callback();

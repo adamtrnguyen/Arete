@@ -21,7 +21,8 @@ import { CardYamlEditorView, YAML_EDITOR_VIEW_TYPE } from '@presentation/views/C
 import { DashboardView, DASHBOARD_VIEW_TYPE } from '@presentation/views/DashboardView';
 import { AreteSettingTab } from '@presentation/settings/SettingTab';
 import { CheckResultModal } from '@presentation/modals/CheckResultModal';
-import { SyncService } from '@infrastructure/arete/SyncService';
+import { SyncService, SyncStatus } from '@infrastructure/arete/SyncService';
+import { SyncRequest, SyncScheduler } from '@application/services/SyncScheduler';
 import { CheckService } from '@infrastructure/arete/CheckService';
 import { TemplateRenderer } from '@application/services/TemplateRenderer';
 import { StatsService } from '@application/services/StatsService';
@@ -70,6 +71,13 @@ export default class AretePlugin extends Plugin {
 	dependencyResolver: DependencyResolver;
 	areteClient: AreteClient;
 	templateRenderer: TemplateRenderer;
+
+	// One sync at a time; saves made during a sync become one follow-up.
+	private syncScheduler = new SyncScheduler({
+		run: (request) => this.executeSync(request),
+		busy: () => new Notice('A sync is already running.'),
+		queueChanged: () => this.updateStatusBar('syncing'),
+	});
 
 	// Centralized context: filePath -> cardId
 	private activeCardContext: Map<string, string> = new Map();
@@ -387,7 +395,7 @@ export default class AretePlugin extends Plugin {
 					if (basePath) {
 						const fullPath = path.join(basePath, file.path);
 						debugLog('[Arete] Sync on save triggered for:', file.path);
-						await this.runSync(false, fullPath, false);
+						await this.syncScheduler.requestSave(fullPath);
 					}
 				}, this.settings.sync_on_save_delay);
 				this.syncOnSaveTimers.set(file.path, timer);
@@ -561,12 +569,13 @@ export default class AretePlugin extends Plugin {
 			this.statusBarItem.empty();
 		}
 		// No `arete` process outlives the plugin; a call in flight rejects.
+		this.syncScheduler.dispose();
 		this.areteClient?.dispose();
 		this.checkService?.dispose();
 		this.syncService?.dispose();
 	}
 
-	updateStatusBar(state: 'idle' | 'syncing' | 'error' | 'success', msg?: string) {
+	updateStatusBar(state: SyncStatus, msg?: string) {
 		if (!this.statusBarItem) return;
 		this.statusBarItem.empty();
 		if (this.statusBarResetTimer) {
@@ -588,9 +597,15 @@ export default class AretePlugin extends Plugin {
 		}
 
 		if (state === 'syncing') {
-			this.setStatusBar('refresh-cw', 'Syncing...');
+			const queued = this.syncScheduler.isQueued;
+			this.setStatusBar('refresh-cw', queued ? 'Syncing... (1 queued)' : 'Syncing...');
+			setTooltip(
+				this.statusBarItem,
+				queued ? 'A sync is running. Another runs when it finishes.' : 'A sync is running.',
+			);
 		} else if (state === 'success') {
 			this.setStatusBar('check', 'Synced');
+			setTooltip(this.statusBarItem, 'Click to sync to Anki');
 			this.statusBarResetTimer = setTimeout(() => {
 				this.statusBarResetTimer = null;
 				this.updateStatusBar('idle');
@@ -643,10 +658,20 @@ export default class AretePlugin extends Plugin {
 		}
 	}
 
-	// Delegate to SyncService
+	/** A sync the user asked for. While another runs, it says so and starts nothing. */
 	async runSync(prune = false, targetPath: string | null = null, force = false) {
-		await this.syncService.runSync(prune, targetPath, force, this.updateStatusBar.bind(this));
-		// Update last sync time on success
+		await this.syncScheduler.requestManual({ prune, targetPath, force });
+	}
+
+	/** Run one sync to its end; a successful one becomes the last sync time. */
+	private async executeSync(request: SyncRequest): Promise<void> {
+		const outcome = await this.syncService.runSync(
+			request.prune,
+			request.targetPath,
+			request.force,
+			this.updateStatusBar.bind(this),
+		);
+		if (outcome !== 'success') return;
 		this.settings.last_sync_time = Date.now();
 		await this.saveSettings();
 	}
