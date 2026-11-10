@@ -1,4 +1,4 @@
-export interface RecordedButton {
+interface RecordedButton {
 	container: any;
 	buttonEl: any;
 	text?: string;
@@ -9,7 +9,7 @@ export interface RecordedButton {
 	onClick?: (evt?: unknown) => unknown;
 }
 
-export interface RecordedExtraButton {
+interface RecordedExtraButton {
 	container: any;
 	extraSettingsEl: any;
 	icon?: string;
@@ -17,7 +17,7 @@ export interface RecordedExtraButton {
 	onClick?: () => unknown;
 }
 
-export interface RecordedSetting {
+interface RecordedSetting {
 	container: any;
 	name?: string;
 	heading: boolean;
