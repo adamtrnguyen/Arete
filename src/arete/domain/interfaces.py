@@ -13,7 +13,7 @@ from contextlib import AbstractAsyncContextManager
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
-from .models import HeldNote, NewNote, NoteChange, NoteTypeInfo, UpdateItem, WorkItem
+from .models import HeldNote, NewNote, NoteChange, NoteTypeInfo
 
 
 @runtime_checkable
@@ -57,19 +57,10 @@ class ContentCache(Protocol):
 
 @runtime_checkable
 class SyncPort(Protocol):
-    """What the sync pipeline needs. Used by application/sync only."""
+    """What prune needs: deck and note reads, and the deletes. Used by application/sync only.
 
-    @abstractmethod
-    async def sync_notes(self, work_items: list[WorkItem]) -> list[UpdateItem]:
-        """Process a batch of notes: add new ones or update existing ones.
-
-        If a note has an existing 'nid', the adapter updates that note. If it has
-        none, the adapter reconciles by Arete ID tag, then by content, then creates.
-
-        The adapter owns its own concurrency. A caller may issue overlapping
-        sync_notes calls; a backend that cannot take them serializes internally.
-        """
-        pass
+    Cards themselves are synced by `NoteSync` over a `NoteStorePort`.
+    """
 
     @abstractmethod
     async def get_deck_names(self) -> list[str]:
@@ -168,9 +159,14 @@ class NoteStoreSession(Protocol):
 class NoteStorePort(Protocol):
     """A collection the sync reads and writes notes in, one session at a time per caller."""
 
+    @abstractmethod
     def session(self) -> AbstractAsyncContextManager[NoteStoreSession]:
         """Open the collection for a batch of reads and writes; closed on exit."""
         ...
+
+
+class SyncBackend(NoteStorePort, SyncPort, Protocol):
+    """What the sync pipeline needs: the note store it syncs cards in, and prune's port."""
 
 
 @runtime_checkable
@@ -251,7 +247,7 @@ class AnkiAdminPort(Protocol):
         pass
 
 
-class AnkiBridge(SyncPort, QueuePort, CardStatsPort, AnkiAdminPort):
+class AnkiBridge(NoteStorePort, SyncPort, QueuePort, CardStatsPort, AnkiAdminPort):
     """Every role at once: the type of an adapter and of the shared test fake.
 
     Use a role port in a use-case signature. Use this one only where something

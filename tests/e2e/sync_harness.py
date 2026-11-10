@@ -454,20 +454,11 @@ def sync_config(root: Path, vault: Path, backend: Backend, **overrides: Any) -> 
 async def run_sync(
     backend: Backend, config: AppConfig, **kwargs: Any
 ) -> tuple[RunStats, list[UpdateItem]]:
-    """One whole sync through `backend`; the stats and every `UpdateItem` the bridge returned."""
+    """One whole sync through `backend`; the stats and every `UpdateItem` NoteSync returned."""
     returned: list[UpdateItem] = []
 
     async def _bridge(_config: AppConfig) -> AnkiBridge:
-        bridge = backend.bridge()
-        sync_notes = bridge.sync_notes
-
-        async def _recording(items):
-            results = await sync_notes(items)
-            returned.extend(results)
-            return results
-
-        bridge.sync_notes = _recording  # type: ignore[method-assign]
-        return bridge
+        return backend.bridge()
 
     shared = NoteSync.sync_notes
 

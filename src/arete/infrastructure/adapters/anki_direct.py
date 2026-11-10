@@ -15,7 +15,6 @@ from arete.domain.constants import (
     MAX_PROBLEMATIC_NOTES,
 )
 from arete.domain.interfaces import AnkiBridge
-from arete.domain.models import AnkiDeck, UpdateItem, WorkItem
 from arete.infrastructure.anki.note_session import DirectNoteSession
 from arete.infrastructure.anki.repository import AnkiRepository
 
@@ -33,18 +32,6 @@ class AnkiDirectAdapter(AnkiBridge):
         self.logger = logging.getLogger(__name__)
         self._sync_lock = asyncio.Lock()
 
-    async def ensure_deck(self, deck: AnkiDeck | str) -> bool:
-        # AnkiRepository creates/ensures decks on the fly during add_note
-        # via 'col.decks.id(name)'.
-        # So we can just return True or verify it exists.
-        deck_name = deck.name if isinstance(deck, AnkiDeck) else deck
-        with AnkiRepository(self.anki_base) as repo:
-            if repo.col:
-                # col.decks.id(deck_name) creates it if missing
-                repo.col.decks.id(deck_name)
-                return True
-        return False
-
     @asynccontextmanager
     async def session(self) -> AsyncIterator[DirectNoteSession]:
         """The collection, open for one batch of note reads and writes (`NoteStorePort`).
@@ -56,102 +43,6 @@ class AnkiDirectAdapter(AnkiBridge):
                 if repo.col is None:
                     raise OSError("Anki collection did not open")
                 yield DirectNoteSession(repo.col, self.logger)
-
-    async def sync_notes(self, work_items: list[WorkItem]) -> list[UpdateItem]:
-        results = []
-
-        # One collection at a time: this backend opens the Anki SQLite file, so
-        # overlapping calls would open it twice. The caller does not need to know.
-        async with self._sync_lock:
-            return await self._sync_notes_locked(work_items, results)
-
-    async def _sync_notes_locked(
-        self, work_items: list[WorkItem], results: list[UpdateItem]
-    ) -> list[UpdateItem]:
-        # Batch operation: Open DB once
-        try:
-            with AnkiRepository(self.anki_base) as repo:
-                for item in work_items:
-                    try:
-                        self.logger.debug(f"Processing {item.source_file} #{item.source_index}")
-
-                        note_data = item.note
-                        success = False
-                        new_nid = str(note_data.nid) if note_data.nid else None
-                        error_msg = None
-
-                        # 1. Try Update if NID exists
-                        if note_data.nid:
-                            try:
-                                updated = repo.update_note(int(note_data.nid), note_data)
-                                if updated:
-                                    success = True
-                                else:
-                                    # Note ID not found in DB? Fallback to Add?
-                                    # Ideally we trust the NID. If it's missing, it's deleted.
-                                    # Note with ID not found. Will create new note.
-                                    self.logger.warning(
-                                        f"Note {note_data.nid} not found. Creating new."
-                                    )
-                                    # Fallthrough to add
-                                    pass
-                            except Exception as e:
-                                error_msg = str(e)
-                                self.logger.error(f"Update failed for {note_data.nid}: {e}")
-
-                        # 2. Add if not updated/existing
-                        if not success and not error_msg:
-                            try:
-                                nid_int = repo.add_note(note_data)
-                                new_nid = str(nid_int)
-                                success = True
-                            except Exception as e:
-                                error_msg = f"Add failed: {e}"
-                                self.logger.error(error_msg)
-
-                        # 3. Compile Result
-                        results.append(
-                            UpdateItem(
-                                source_file=item.source_file,
-                                source_index=item.source_index,
-                                new_nid=new_nid,
-                                new_cid=None,  # CID not easily returned without extra query
-                                ok=success,
-                                error=error_msg,
-                                note=item.note,
-                            )
-                        )
-
-                    except Exception as e:
-                        # Catch-all for item failure
-                        results.append(
-                            UpdateItem(
-                                source_file=item.source_file,
-                                source_index=item.source_index,
-                                new_nid=None,
-                                new_cid=None,
-                                ok=False,
-                                error=f"Unexpected error: {e}",
-                            )
-                        )
-
-        except Exception as e:
-            # DB Open failure
-            self.logger.critical(f"Failed to open Anki DB: {e}")
-            # Fail all items
-            for item in work_items:
-                results.append(
-                    UpdateItem(
-                        source_file=item.source_file,
-                        source_index=item.source_index,
-                        new_nid=None,
-                        new_cid=None,
-                        ok=False,
-                        error=f"DB Error: {e}",
-                    )
-                )
-
-        return results
 
     async def get_deck_names(self) -> list[str]:
         with AnkiRepository(self.anki_base) as repo:

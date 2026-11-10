@@ -1,7 +1,7 @@
 """The content cache is written once per consumer batch, and only after Anki accepted it.
 
 Invariants pinned here:
-- a card is recorded in the cache only after the bridge returned ok for it;
+- a card is recorded in the cache only after the sync returned ok for it;
 - one batch is one transaction: a failure records none of its rows, so those cards are
   sent again on the next sync instead of being skipped.
 """
@@ -22,6 +22,7 @@ from arete.application.sync.vault_service import VaultService
 from arete.domain.interfaces import AnkiBridge
 from arete.infrastructure.persistence.cache import ContentCache
 from tests.application.sync.test_pipeline_data_safety import FakeAnki
+from tests.fakes.pipeline import syncing_through
 
 LOG = logging.getLogger("test-cache-batching")
 
@@ -92,7 +93,8 @@ def sync(root: Path, anki: FakeAnki, cache: ContentCache) -> None:
     config = AppConfig.model_construct(**fields)
     vault = VaultService(root, cache, ignore_cache=False)
     parser = MarkdownParser(root, root / "media", ignore_cache=False, logger=LOG)
-    asyncio.run(run_pipeline(config, LOG, "run", vault, parser, cast(AnkiBridge, anki), cache))
+    with syncing_through(anki):
+        asyncio.run(run_pipeline(config, LOG, "run", vault, parser, cast(AnkiBridge, anki), cache))
 
 
 @pytest.fixture

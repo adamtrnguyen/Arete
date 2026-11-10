@@ -1,10 +1,9 @@
 """Golden pins: the ids each backend hands back for the vault, per kind of sync.
 
 `UpdateItem.new_nid` and `new_cid` are what the pipeline writes into `anki.nid` and
-`anki.cid`. One work item goes through the path the pipeline uses for the backend (the
-shared `NoteSync` over the adapter for the backends in `SHARED`, the adapter's own
-`sync_notes` for the others) against an empty collection (direct, add-on) or the fake,
-and the reply is pinned against what Anki then holds.
+`anki.cid`. One work item goes through the shared `NoteSync` over each backend's adapter,
+as the pipeline sends it, against an empty collection (direct, add-on) or the fake, and
+the reply is pinned against what Anki then holds.
 """
 
 from __future__ import annotations
@@ -18,7 +17,6 @@ from arete.domain.models import AnkiNote, UpdateItem, WorkItem
 from tests.e2e.sync_harness import BACKENDS, Backend, make_backend
 
 ID = "arete_01J00000000000000000000009"
-SHARED = {"direct", "fake", "addon"}  # the backends the pipeline syncs through NoteSync
 
 
 def _item(nid: int | str | None = None, model: str = "Basic", **fields: str) -> WorkItem:
@@ -48,10 +46,7 @@ def backend(request, tmp_path: Path):
 async def _sync(backend: Backend, item: WorkItem) -> UpdateItem:
     bridge = backend.bridge()
     try:
-        if backend.name in SHARED:
-            [result] = await NoteSync(bridge).sync_notes([item])  # type: ignore[arg-type]
-        else:
-            [result] = await bridge.sync_notes([item])
+        [result] = await NoteSync(bridge).sync_notes([item])
     finally:
         await bridge.close()
     return result

@@ -5,8 +5,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from arete.domain.models import AnkiNote
-
 
 # Fixture to safely patch Anki modules only for this test module context
 @pytest.fixture(scope="module", autouse=True)
@@ -112,8 +110,6 @@ def test_runtime_errors_when_closed(repo):
         repo.find_notes("query")
     with pytest.raises(RuntimeError, match="Collection not open"):
         repo.get_model("Basic")
-    with pytest.raises(RuntimeError, match="Collection not open"):
-        repo.add_note(MagicMock())
 
 
 def test_enter_exit(repo):
@@ -134,69 +130,3 @@ def test_enter_exit(repo):
 
         captured_col.close.assert_called_once()
         assert repo.col is None
-
-
-def test_add_note(repo):
-    repo.col = MagicMock()
-    note_data = AnkiNote(
-        model="Basic",
-        deck="Default",
-        fields={"Front": "Q", "Back": "A"},
-        tags=[],
-        start_line=1,
-        end_line=1,
-        source_file=Path("f.md"),
-        source_index=1,
-    )
-
-    mock_model = {"flds": [{"name": "Front"}, {"name": "Back"}]}
-    repo.col.models.by_name.return_value = mock_model
-
-    mock_note = MagicMock()
-    mock_note.id = 12345
-    mock_note.note_type.return_value = {}
-    repo.col.new_note.return_value = mock_note
-    repo.col.add_note.return_value = 12345
-    repo.col.decks.id.return_value = 1
-
-    nid = repo.add_note(note_data)
-    assert nid == 12345
-    repo.col.models.set_current.assert_called_with(mock_model)
-    repo.col.add_note.assert_called()
-
-
-def test_add_note_missing_deck(repo):
-    repo.col = MagicMock()
-    mock_model = {"flds": [{"name": "Front"}, {"name": "Back"}]}
-    repo.col.models.by_name.return_value = mock_model
-    repo.col.decks.id.return_value = None  # Deck not found
-
-    note_data = AnkiNote(
-        model="Basic",
-        deck="MissingDeck",
-        fields={},
-        tags=[],
-        start_line=1,
-        end_line=1,
-        source_file=Path("f.md"),
-        source_index=1,
-    )
-    with pytest.raises(RuntimeError, match="Could not resolve deck: MissingDeck"):
-        repo.add_note(note_data)
-
-
-def test_add_note_missing_model(repo):
-    repo.col = MagicMock()
-    repo.col.models.by_name.return_value = None
-    note_data = AnkiNote(
-        model="Missing",
-        deck="Default",
-        fields={},
-        tags=[],
-        start_line=1,
-        end_line=1,
-        source_file=Path("f.md"),
-        source_index=1,
-    )
-    with pytest.raises(ValueError, match="Model 'Missing' not found"):
-        repo.add_note(note_data)

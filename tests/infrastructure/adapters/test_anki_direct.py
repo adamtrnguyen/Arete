@@ -7,11 +7,10 @@ method name.  Both success and failure / no-collection paths are tested.
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import ANY, AsyncMock, MagicMock, PropertyMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import pytest
 
-from arete.domain.models import AnkiDeck, AnkiNote, WorkItem
 from arete.infrastructure.adapters.anki_direct import AnkiDirectAdapter
 
 # ---------------------------------------------------------------------------
@@ -34,41 +33,6 @@ def mock_repo():
 
 
 # ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _make_note(
-    *,
-    model: str = "Basic",
-    deck: str = "Default",
-    fields: dict | None = None,
-    tags: list | None = None,
-    nid: str | None = None,
-    source_file: str = "test.md",
-    source_index: int = 1,
-    start_line: int = 1,
-    end_line: int = 5,
-) -> AnkiNote:
-    return AnkiNote(
-        model=model,
-        deck=deck,
-        fields=fields or {"Front": "Q", "Back": "A"},
-        tags=tags or [],
-        start_line=start_line,
-        end_line=end_line,
-        source_file=Path(source_file),
-        source_index=source_index,
-        nid=nid,
-    )
-
-
-def _make_item(note: AnkiNote, *, source_index: int | None = None) -> WorkItem:
-    idx = source_index if source_index is not None else note.source_index
-    return WorkItem(source_file=note.source_file, source_index=idx, note=note)
-
-
-# ---------------------------------------------------------------------------
 # get_deck_names
 # ---------------------------------------------------------------------------
 
@@ -87,238 +51,6 @@ async def test_get_deck_names_returns_full_list(adapter, mock_repo):
     names = await adapter.get_deck_names()
     assert names == ["Default", "Math", "Math::Calc"]
     assert len(names) == 3
-
-
-# ---------------------------------------------------------------------------
-# ensure_deck
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_ensure_deck(adapter, mock_repo):
-    mock_repo.col.decks.id.return_value = 1
-    result = await adapter.ensure_deck("New Deck")
-    assert result is True
-    mock_repo.col.decks.id.assert_called_with("New Deck")
-
-
-@pytest.mark.asyncio
-async def test_ensure_deck_with_anki_deck_object(adapter, mock_repo):
-    """ensure_deck should accept an AnkiDeck instance, not just a string."""
-    mock_repo.col.decks.id.return_value = 1
-    deck = AnkiDeck(name="Science::Physics")
-    result = await adapter.ensure_deck(deck)
-    assert result is True
-    mock_repo.col.decks.id.assert_called_with("Science::Physics")
-
-
-# ---------------------------------------------------------------------------
-# sync_notes — insert (add)
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_sync_notes_insert(adapter, mock_repo):
-    note = _make_note()
-    item = _make_item(note, source_index=0)
-    mock_repo.add_note.return_value = 12345
-
-    updates = await adapter.sync_notes([item])
-
-    assert len(updates) == 1
-    assert updates[0].ok is True
-    assert updates[0].new_nid == "12345"
-    mock_repo.add_note.assert_called_once()
-
-
-@pytest.mark.asyncio
-async def test_sync_notes_single_basic_note(adapter, mock_repo):
-    """Sync a single new Basic note — verifies all result fields."""
-    note = _make_note(
-        fields={"Front": "Capital of France?", "Back": "Paris"},
-        tags=["geography"],
-        source_file="/vault/geo.md",
-    )
-    item = _make_item(note)
-    mock_repo.add_note.return_value = 99999
-
-    results = await adapter.sync_notes([item])
-
-    assert len(results) == 1
-    assert results[0].ok is True
-    assert results[0].new_nid == "99999"
-    assert results[0].source_file == Path("/vault/geo.md")
-    assert results[0].source_index == 1
-    assert results[0].note is note
-
-
-@pytest.mark.asyncio
-async def test_sync_notes_add_when_nid_is_none_and_update_returns_false(adapter, mock_repo):
-    """When note has no nid, update returns False (not found), it should add."""
-    note = _make_note(nid=None)
-    item = _make_item(note, source_index=0)
-    mock_repo.update_note.return_value = False
-    mock_repo.add_note.return_value = 12345
-
-    results = await adapter.sync_notes([item])
-
-    assert len(results) == 1
-    assert results[0].ok is True
-    assert results[0].new_nid == "12345"
-    mock_repo.add_note.assert_called_once()
-
-
-# ---------------------------------------------------------------------------
-# sync_notes — update
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_sync_notes_update(adapter, mock_repo):
-    """When NID exists and update succeeds, add_note should NOT be called."""
-    note = _make_note(nid="999")
-    item = _make_item(note, source_index=0)
-    mock_repo.update_note.return_value = True
-
-    results = await adapter.sync_notes([item])
-
-    assert len(results) == 1
-    assert results[0].ok is True
-    assert results[0].new_nid == "999"
-    mock_repo.update_note.assert_called_once()
-    mock_repo.add_note.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_sync_notes_update_not_found_falls_through_to_add(adapter, mock_repo):
-    """When update_note returns False (NID not found in Anki DB), fall through to add."""
-    note = _make_note(nid="9999")
-    item = _make_item(note, source_index=1)
-    mock_repo.update_note.return_value = False
-    mock_repo.add_note.return_value = 55555
-
-    results = await adapter.sync_notes([item])
-
-    assert len(results) == 1
-    assert results[0].ok is True
-    assert results[0].new_nid == "55555"
-    mock_repo.update_note.assert_called_once()
-    mock_repo.add_note.assert_called_once()
-
-
-# ---------------------------------------------------------------------------
-# sync_notes — failures
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_sync_notes_add_failure(adapter, mock_repo):
-    """When add_note raises, the result should reflect the error."""
-    note = _make_note(nid=None)
-    item = _make_item(note, source_index=1)
-    mock_repo.add_note.side_effect = Exception("Model not found")
-
-    results = await adapter.sync_notes([item])
-
-    assert len(results) == 1
-    assert results[0].ok is False
-    assert "Add failed" in results[0].error
-
-
-@pytest.mark.asyncio
-async def test_sync_notes_update_exception_sets_error(adapter, mock_repo):
-    """When update_note raises, the error_msg is set and add is NOT attempted."""
-    note = _make_note(nid="1", fields={})
-    item = _make_item(note, source_index=1)
-    mock_repo.update_note.side_effect = Exception("Update Failed")
-
-    results = await adapter.sync_notes([item])
-
-    assert results[0].ok is False
-    assert results[0].error == "Update Failed"
-
-
-@pytest.mark.asyncio
-async def test_sync_notes_item_failure(adapter, mock_repo):
-    """Test individual item failure (catch-all in the loop)."""
-    item = WorkItem(note=MagicMock(nid="123"), source_file=Path("x"), source_index=0)
-    mock_repo.update_note.side_effect = Exception("Update Failed")
-
-    results = await adapter.sync_notes([item])
-
-    assert len(results) == 1
-    assert results[0].ok is False
-    assert "Unexpected" in results[0].error or "Update Failed" in results[0].error
-
-
-@pytest.mark.asyncio
-async def test_sync_notes_loop_exception_critical(adapter, mock_repo):
-    """Property access on WorkItem raises — caught by outer catch-all."""
-    item = MagicMock()
-    type(item).note = PropertyMock(side_effect=Exception("Critical Fail"))
-    item.source_file = Path("f.md")
-    item.source_index = 0
-
-    results = await adapter.sync_notes([item])
-    assert results[0].ok is False
-    assert "Unexpected error" in results[0].error
-
-
-@pytest.mark.asyncio
-async def test_sync_notes_db_failure(adapter):
-    """Test full failure if DB cannot be opened (AnkiRepository __enter__ raises)."""
-    item = WorkItem(source_file=Path("x"), source_index=0, note=MagicMock())
-
-    with patch("arete.infrastructure.adapters.anki_direct.AnkiRepository") as MockRepo:
-        MockRepo.return_value.__enter__.side_effect = Exception("DB Locked")
-
-        results = await adapter.sync_notes([item])
-
-        assert len(results) == 1
-        assert results[0].ok is False
-        assert "DB Error" in results[0].error
-        assert "DB Locked" in results[0].error
-
-
-@pytest.mark.asyncio
-async def test_sync_notes_db_failure_constructor(adapter):
-    """Test full failure if AnkiRepository constructor itself raises."""
-    item = WorkItem(source_file=Path("f.md"), source_index=1, note=MagicMock())
-
-    with patch(
-        "arete.infrastructure.adapters.anki_direct.AnkiRepository",
-        side_effect=Exception("DB Lock"),
-    ):
-        results = await adapter.sync_notes([item])
-        assert len(results) == 1
-        assert results[0].ok is False
-        assert "DB Error" in results[0].error
-
-
-# ---------------------------------------------------------------------------
-# sync_notes — batch
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_sync_notes_multiple_items(adapter, mock_repo):
-    """Batch sync: multiple items processed in sequence."""
-    items = []
-    for i in range(3):
-        note = _make_note(
-            fields={"Front": f"Q{i}"},
-            source_file=f"file{i}.md",
-            source_index=i + 1,
-        )
-        items.append(_make_item(note, source_index=i + 1))
-
-    mock_repo.add_note.side_effect = [100, 200, 300]
-
-    results = await adapter.sync_notes(items)
-
-    assert len(results) == 3
-    assert all(r.ok for r in results)
-    assert [r.new_nid for r in results] == ["100", "200", "300"]
 
 
 # ---------------------------------------------------------------------------
@@ -815,7 +547,6 @@ async def test_gui_browse_polling(adapter):
 @pytest.mark.parametrize(
     "method,args,expected",
     [
-        ("ensure_deck", ["D"], False),
         ("get_deck_names", [], []),
         ("get_notes_in_deck", ["D"], {}),
         ("delete_notes", [[1]], False),
@@ -826,7 +557,6 @@ async def test_gui_browse_polling(adapter):
         ("suspend_cards", [[1]], False),
     ],
     ids=[
-        "ensure_deck",
         "get_deck_names",
         "get_notes_in_deck",
         "delete_notes",

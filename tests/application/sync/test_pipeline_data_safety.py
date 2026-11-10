@@ -1,7 +1,8 @@
 """The sync pipeline must never lose a note, a card, or its review history.
 
-Each test drives the real `run_pipeline` with an in-memory Anki. The fake mirrors the direct backend's prune view
-(`get_notes_in_deck` -> {str(nid): nid}).
+Each test drives the real `run_pipeline` with an in-memory Anki that stands in for the
+run's NoteSync (`tests/fakes/pipeline.py`) and for the bridge prune reads. The fake
+mirrors the direct backend's prune view (`get_notes_in_deck` -> {str(nid): nid}).
 """
 
 from __future__ import annotations
@@ -20,6 +21,7 @@ from arete.application.sync.vault_service import VaultService
 from arete.domain.interfaces import AnkiBridge
 from arete.domain.models import UpdateItem
 from arete.infrastructure.persistence.cache import ContentCache
+from tests.fakes.pipeline import syncing_through
 
 LOG = logging.getLogger("test-data-safety")
 
@@ -31,13 +33,20 @@ class FakeAnki:
         self.tags: dict[int, list[str]] = {}
         self.sent: list[tuple[str, int]] = []
         self.fail = False
+        self.dry_run = False  # set by the pipeline's NoteSync(...) for the run
         self._next = 1000
+
+    async def prefetch(self, nids, models):
+        """The run's one read of every vault note; nothing to do in memory."""
 
     async def sync_notes(self, batch):
         out = []
         for wi in batch:
             note = wi.note
             self.sent.append((wi.source_file.name, wi.source_index))
+            if self.dry_run:
+                out.append(UpdateItem(wi.source_file, wi.source_index, note.nid, None, True))
+                continue
             if self.fail:
                 out.append(
                     UpdateItem(
@@ -124,7 +133,10 @@ def sync(root: Path, anki: FakeAnki, cache: ContentCache, **overrides) -> None:
     parser = MarkdownParser(root, root / "media", ignore_cache=False, logger=LOG)
     bridge = cast(AnkiBridge, anki)
     # Confirmed, so a prune test proves what prune keeps, not that it was never asked.
-    asyncio.run(run_pipeline(config, LOG, "run", vault, parser, bridge, cache, confirm_prune=True))
+    with syncing_through(anki):
+        asyncio.run(
+            run_pipeline(config, LOG, "run", vault, parser, bridge, cache, confirm_prune=True)
+        )
 
 
 @pytest.fixture

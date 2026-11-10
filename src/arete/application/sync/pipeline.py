@@ -18,7 +18,7 @@ from arete.application.utils.logging import RunRecorder
 from arete.application.utils.media import FilenameIndex
 from arete.application.utils.text import rebuild_markdown_with_frontmatter
 from arete.domain.constants import CONSUMER_BATCH_SIZE
-from arete.domain.interfaces import ContentCache, NoteStorePort, SyncPort
+from arete.domain.interfaces import ContentCache, SyncBackend
 from arete.domain.models import UpdateItem, WorkItem
 
 
@@ -65,19 +65,17 @@ async def run_pipeline(
     run_id: str,
     vault_service: VaultService,
     parser: MarkdownParser,
-    anki_bridge: SyncPort,
+    anki_bridge: SyncBackend,
     cache: ContentCache,
     *,
     confirm_prune: bool = False,
     prompt: PruneConfirm | None = None,
-    note_store: NoteStorePort | None = None,
 ) -> RunStats:
     """Sync the vault to Anki, then prune if asked.
 
     `confirm_prune` is the caller's explicit consent to delete. Without it prune asks
     `prompt` at a terminal, and anywhere else returns a preview and deletes nothing.
-    With a `note_store`, cards are synced by `NoteSync` over it; without one, by the
-    bridge's own `sync_notes`.
+    Cards are synced by `NoteSync` over the bridge's note store, whichever backend it is.
     """
     recorder = RunRecorder()
 
@@ -173,13 +171,11 @@ async def run_pipeline(
                 p, f"Arete id {card_id} is declared by {len(c)} cards; none is synced", f"#{i}"
             )
     # A dry run decides through the same NoteSync, reading Anki and writing nothing.
-    note_sync = None
-    if note_store is not None:
-        scanned = vault_claims(compatible, parser)
-        note_sync = NoteSync(note_store, scanned, logger, dry_run=config.dry_run)
-        # Every note the vault names, read once: every card is compared with Anki, and
-        # the batches compare against this read instead of reading their own.
-        await note_sync.prefetch(scanned.nid_owners, vault_models(compatible))
+    scanned = vault_claims(compatible, parser)
+    note_sync = NoteSync(anki_bridge, scanned, logger, dry_run=config.dry_run)
+    # Every note the vault names, read once: every card is compared with Anki, and the
+    # batches compare against this read instead of reading their own.
+    await note_sync.prefetch(scanned.nid_owners, vault_models(compatible))
 
     # -------- Stage 2: media index, walked on the first image lookup --------
     assert config.vault_root is not None  # Guaranteed by resolve_config
@@ -239,33 +235,10 @@ async def run_pipeline(
                     break
 
             try:
-                if note_sync is not None:
-                    # A dry run's NoteSync reads and reports; the cache stays untouched
-                    # below, so the next real run still sees these cards as pending.
-                    async with sync_semaphore:
-                        batch_updates = await note_sync.sync_notes(batch)
-                elif config.dry_run:
-                    # Dry run without a note store: never touch Anki.
-                    batch_updates = []
-                    for wi in batch:
-                        action = "update" if wi.note.nid else "create"
-                        logger.info(
-                            f"[dry-run] would {action} {wi.source_file.name} "
-                            f"#{wi.source_index} deck={wi.note.deck!r}"
-                        )
-                        batch_updates.append(
-                            UpdateItem(
-                                source_file=wi.source_file,
-                                source_index=wi.source_index,
-                                new_nid=wi.note.nid,
-                                new_cid=wi.note.cid,
-                                ok=True,
-                                note=wi.note,
-                            )
-                        )
-                else:
-                    async with sync_semaphore:
-                        batch_updates = await anki_bridge.sync_notes(batch)
+                # A dry run's NoteSync reads and reports; the cache stays untouched below,
+                # so the next real run still sees these cards as pending.
+                async with sync_semaphore:
+                    batch_updates = await note_sync.sync_notes(batch)
 
                 async with updates_lock:
                     synced_rows: list[tuple[Path, int, str, str]] = []

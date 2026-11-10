@@ -25,8 +25,6 @@ from arete.domain.models import (
     NoteChange,
     NoteTypeInfo,
     OutcomeUnknown,
-    UpdateItem,
-    WorkItem,
 )
 
 # Writes sent in one multi request. Every write resets Anki's UI on its main thread, so
@@ -479,13 +477,6 @@ class AnkiConnectAdapter(AnkiBridge):
             return False
         except Exception:
             return False
-
-    async def sync_notes(self, work_items: list[WorkItem]) -> list[UpdateItem]:
-        """Not a sync path: the pipeline syncs AnkiConnect cards through `NoteSync`.
-
-        `SyncPort` still declares it; `session()` is what the sync uses.
-        """
-        raise NotImplementedError("AnkiConnect cards are synced by NoteSync over session()")
 
     async def _read_notes(self, nids: list[int]) -> dict[int, dict | Exception]:
         """NotesInfo for each nid, one request per chunk; a failed chunk maps to its error.

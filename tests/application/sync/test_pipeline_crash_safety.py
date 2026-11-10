@@ -1,7 +1,7 @@
 """A sync that fails half-way must not send unstored ids or expose a note to prune.
 
 Driven through the real `run_pipeline` with the in-memory Anki of
-`test_pipeline_data_safety.py`.
+`test_pipeline_data_safety.py` standing in for the run's NoteSync.
 """
 
 from __future__ import annotations
@@ -20,6 +20,7 @@ from arete.application.sync.vault_service import VaultService
 from arete.domain.interfaces import AnkiBridge
 from arete.infrastructure.persistence.cache import ContentCache
 from tests.application.sync.test_pipeline_data_safety import ID_A1, FakeAnki, card, note_file
+from tests.fakes.pipeline import syncing_through
 
 LOG = logging.getLogger("test-crash-safety")
 
@@ -40,9 +41,10 @@ def run(root: Path, anki: FakeAnki, cache: ContentCache, **overrides) -> RunStat
     vault = VaultService(root, cache, ignore_cache=False)
     parser = MarkdownParser(root, root / "media", ignore_cache=False, logger=LOG)
     bridge = cast(AnkiBridge, anki)
-    return asyncio.run(
-        run_pipeline(config, LOG, "run", vault, parser, bridge, cache, confirm_prune=True)
-    )
+    with syncing_through(anki):
+        return asyncio.run(
+            run_pipeline(config, LOG, "run", vault, parser, bridge, cache, confirm_prune=True)
+        )
 
 
 @pytest.fixture

@@ -9,6 +9,7 @@ from arete.application.config import AppConfig
 from arete.application.sync.pipeline import UpdateItem, run_pipeline
 from arete.domain.models import AnkiNote
 from arete.infrastructure.adapters.anki_direct import AnkiDirectAdapter
+from tests.fakes.pipeline import syncing_through
 
 
 @pytest.fixture
@@ -52,7 +53,9 @@ def mock_components():
     ]
     bridge.get_deck_names.return_value = ["Default"]
 
-    return logger, vault, parser, bridge, cache
+    # The bridge stands in for the run's NoteSync too: bridge.sync_notes is what it returns.
+    with syncing_through(bridge):
+        yield logger, vault, parser, bridge, cache
 
 
 @pytest.mark.asyncio
@@ -97,7 +100,7 @@ async def test_run_pipeline_no_files(mock_components, tmp_path):
 
 @pytest.mark.asyncio
 async def test_run_pipeline_dry_run_never_writes(mock_components, tmp_path):
-    """--dry-run must not call the Anki bridge, mutate the cache, or persist nids.
+    """--dry-run plans through a read-only NoteSync, mutates no cache, persists no nid.
 
     Every stage honours the flag, not only the nid write-back and prune
     (docs/history/2026-09-08-duplicate-storm.md).
@@ -112,7 +115,7 @@ async def test_run_pipeline_dry_run_never_writes(mock_components, tmp_path):
 
     assert stats.total_generated == 1
     assert stats.total_errors == 0
-    bridge.sync_notes.assert_not_called()
+    assert bridge.dry_run is True, "the run's NoteSync is built read-only"
     cache.set_note.assert_not_called()
     cache.set_notes.assert_not_called()
     # Vault write-back is invoked but told it is a dry run

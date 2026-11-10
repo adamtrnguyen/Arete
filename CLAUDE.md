@@ -38,7 +38,7 @@ Arete is a one-way sync tool: Obsidian → Anki. Obsidian is the source of truth
 interface → composition → application → infrastructure → domain
 ```
 
-- `src/arete/domain/` — Models, role ports (`SyncPort`, `QueuePort`, `CardStatsPort`, `AnkiAdminPort`; `AnkiBridge` combines them), constants
+- `src/arete/domain/` — Models, role ports (`NoteStorePort`, `SyncPort`, `QueuePort`, `CardStatsPort`, `AnkiAdminPort`; `AnkiBridge` combines them), constants
 - `src/arete/infrastructure/` — Adapters (AnkiConnect HTTP, AnkiDirect file-based, stats)
 - `src/arete/application/` — Use cases (sync, queue builder, graph resolver, config, stats)
 - `src/arete/interface/` — CLI (Typer), MCP server (MCPServer, mcp 2.x), HTTP server
@@ -59,7 +59,9 @@ Two backends, auto-selected by `composition/factory.py`:
 | **AnkiConnect** (`anki_connect.py`) | Anki is running | HTTP to `localhost:8765` via `arete_ankiconnect` plugin |
 | **AnkiDirect** (`anki_direct.py`) | Anki is closed | Opens `collection.anki2` directly via Anki Python libs |
 
-Both implement `AnkiBridge` interface (`domain/interfaces.py`).
+Both implement `AnkiBridge` interface (`domain/interfaces.py`). Neither decides what a sync
+does: `application/sync/note_sync.py` (`NoteSync`) decides for both, over the batch
+primitives of each adapter's `NoteStorePort` session.
 
 ### Arete AnkiConnect Plugin
 
