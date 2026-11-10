@@ -16,6 +16,7 @@ const createInstance = () => {
 		onNodeClick: jest.fn().mockReturnThis(),
 		onNodeHover: jest.fn().mockReturnThis(),
 		d3Force: jest.fn().mockReturnThis(),
+		zoomToFit: jest.fn().mockReturnThis(),
 		_destructor: jest.fn(),
 	};
 	return graphInstance;

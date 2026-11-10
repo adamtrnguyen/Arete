@@ -89,3 +89,16 @@ describe('3D render with an ESM-shaped 3d-force-graph', () => {
 		expect(cards.graph3D.graphData).toHaveBeenCalled();
 	});
 });
+
+/** "Fit to View" acts on the drawing on screen, not on an earlier 2D one. */
+describe('global graph Fit to View in 3D', () => {
+	it.each(['renderFile3D', 'renderCard3D'])('fits the 3D camera after %s', (render) => {
+		const view = globalView(GlobalGraphView);
+		const fit2D = jest.fn();
+		view.fitToView = fit2D; // what the last 2D drawing left behind
+		view[render]();
+		view.fitToView();
+		expect(fit2D).not.toHaveBeenCalled();
+		expect(view.graph3D.zoomToFit).toHaveBeenCalledTimes(1);
+	});
+});

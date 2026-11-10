@@ -41,7 +41,8 @@ type ForceGraph3DInstance = {
 		| 'linkDirectionalArrowLength'
 		| 'linkDirectionalArrowRelPos'
 		| 'onNodeClick'
-		| 'd3Force']: (...args: any[]) => ForceGraph3DInstance;
+		| 'd3Force'
+		| 'zoomToFit']: (...args: any[]) => ForceGraph3DInstance;
 } & { _destructor?: () => void };
 
 /**
@@ -108,6 +109,8 @@ export class GlobalGraphView extends ItemView {
 
 	/** Delay before a search keystroke or a pane resize is applied. */
 	private static readonly INPUT_DEBOUNCE_MS = 150;
+	/** Duration of the camera move that "Fit to View" makes in 3D. */
+	private static readonly ZOOM_TO_FIT_MS = 400;
 	/** Class of a file node's name label, the text the search dims. */
 	private static readonly FILE_LABEL_CLASS = 'arete-global-graph-node-label';
 	private searchTimer: ReturnType<typeof setTimeout> | null = null;
@@ -893,6 +896,7 @@ export class GlobalGraphView extends ItemView {
 				this.renderFileDetail(fileNode);
 			});
 		this.resizeViewport = () => this.resize3D();
+		this.fitToView = () => this.graph3D?.zoomToFit(GlobalGraphView.ZOOM_TO_FIT_MS);
 	}
 
 	/** Resize the 3D renderer to the canvas; the layout is kept. */
@@ -975,6 +979,7 @@ export class GlobalGraphView extends ItemView {
 				this.renderCardDetail(cardNode);
 			});
 		this.resizeViewport = () => this.resize3D();
+		this.fitToView = () => this.graph3D?.zoomToFit(GlobalGraphView.ZOOM_TO_FIT_MS);
 
 		// Clustering in 3D card mode
 		if (this.clusteringEnabled) {
@@ -1355,6 +1360,7 @@ export class GlobalGraphView extends ItemView {
 	private stopSimulation(): void {
 		this.searchTargets = null;
 		this.resizeViewport = null;
+		this.fitToView = null;
 		if (this.simulation) {
 			this.simulation.stop();
 			this.simulation = null;
