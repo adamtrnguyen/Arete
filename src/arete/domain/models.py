@@ -69,26 +69,6 @@ class AnkiNote:
 
 
 @dataclass
-class AnkiCardStats:
-    """Statistics for a specific Anki card/note.
-
-    Used for dashboard analytics.
-    """
-
-    card_id: int
-    note_id: int
-    lapses: int
-    ease: int  # Factor (SM-2, e.g. 2500)
-    difficulty: float | None  # FSRS Difficulty (0.0-1.0)
-    deck_name: str
-    interval: int
-    due: int  # Epoch
-    reps: int
-    average_time: int = 0
-    front: str | None = None
-
-
-@dataclass
 class WorkItem:
     """Carries a note through the pipeline with metadata."""
 

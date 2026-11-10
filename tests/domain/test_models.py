@@ -5,7 +5,6 @@ from pathlib import Path
 import pytest
 
 from arete.domain.models import (
-    AnkiCardStats,
     AnkiDeck,
     AnkiNote,
     UpdateItem,
@@ -138,47 +137,6 @@ class TestAnkiNote:
         restored = AnkiNote.from_dict(d)
         assert restored.nid == "111"
         assert restored.cid == "222"
-
-
-# ---------------------------------------------------------------------------
-# AnkiCardStats
-# ---------------------------------------------------------------------------
-
-
-class TestAnkiCardStats:
-    def test_creation_required_fields(self):
-        stats = AnkiCardStats(
-            card_id=1,
-            note_id=2,
-            lapses=3,
-            ease=2500,
-            difficulty=0.5,
-            deck_name="Test",
-            interval=30,
-            due=1700000000,
-            reps=10,
-        )
-        assert stats.card_id == 1
-        assert stats.lapses == 3
-        assert stats.ease == 2500
-        assert stats.difficulty == 0.5
-        assert stats.average_time == 0  # default
-        assert stats.front is None  # default
-
-    def test_optional_defaults(self):
-        stats = AnkiCardStats(
-            card_id=1,
-            note_id=2,
-            lapses=0,
-            ease=2500,
-            difficulty=None,
-            deck_name="D",
-            interval=1,
-            due=0,
-            reps=0,
-        )
-        assert stats.average_time == 0
-        assert stats.front is None
 
 
 # ---------------------------------------------------------------------------

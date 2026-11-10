@@ -76,7 +76,7 @@ src/arete/
 │   ├── constants.py               Centralized constants for the Arete application
 │   ├── graph.py                   Domain types for dependency graph
 │   ├── interfaces.py              Ports: what the application layer is allowed to ask of the outside world
-│   ├── models.py                  AnkiDeck, AnkiNote, AnkiCardStats...
+│   ├── models.py                  AnkiDeck, AnkiNote, WorkItem...
 │   ├── note_types.py              Field mapping for changing a note's type in place
 │   ├── ownership.py               Which Anki notes Arete owns
 │
@@ -89,7 +89,7 @@ src/arete/
 | `composition` | 2 | 178 | application, infrastructure, domain |
 | `application` | 25 | 4726 | domain (ports only) |
 | `infrastructure` | 7 | 2467 | domain |
-| `domain` | 8 | 687 | nothing in arete |
+| `domain` | 8 | 667 | nothing in arete |
 
 The import rules in the last column are enforced by `just check-architecture`
 (import-linter), not by convention.
