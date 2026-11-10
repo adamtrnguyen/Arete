@@ -22,6 +22,15 @@ function declarations(selector: string): string {
 }
 
 describe('dashboard.css', () => {
+	it.each(['.arete-deck-header:hover', '.arete-leech-table tbody tr:hover'])(
+		'%s shows the native hover background (rule N9)',
+		(selector) => {
+			expect(declarations(selector)).toMatch(
+				/background(-color)?:\s*var\(--background-modifier-hover\)/,
+			);
+		},
+	);
+
 	it('keeps a badge on one line, so a two-word label does not wrap beside long text', () => {
 		expect(declarations('.arete-badge')).toMatch(/white-space:\s*nowrap/);
 	});

@@ -134,6 +134,11 @@
 	background: color-mix(in oklch, var(--color-red) 5%, transparent);
 }
 
+/* After the error tint, so a hovered row shows the hover background either way */
+.arete-deck-header:hover {
+	background: var(--background-modifier-hover);
+}
+
 .arete-deck-icon {
 	margin-right: var(--size-4-2);
 }
@@ -306,8 +311,8 @@
 	border-bottom: var(--border-width) solid var(--background-modifier-border);
 }
 
-.arete-leech-table tr:hover {
-	background: var(--background-primary-alt);
+.arete-leech-table tbody tr:hover {
+	background: var(--background-modifier-hover);
 }
 
 .arete-leech-table tr.is-suspended {
