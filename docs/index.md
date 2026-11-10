@@ -8,7 +8,7 @@ written back except the ids Arete assigns.
 
 ```bash
 uv tool install git+https://github.com/adamtrnguyen/Arete
-arete init          # pick the vault and the Anki profile
+arete init          # pick the vault, the Anki media folder and the backend
 ```
 
 From the [latest release](https://github.com/adamtrnguyen/Arete/releases/latest):

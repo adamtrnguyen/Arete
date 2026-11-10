@@ -1,15 +1,15 @@
 # Troubleshooting Guide
 
-This guide covers common issues encountered while using ObsiAnki (arete) and how to resolve them.
+This guide covers common issues encountered while using Arete and how to resolve them.
 
 ## 1. Connection Issues (AnkiConnect)
 
-If the sync fails with a "Cannot connect to Anki" error:
+If Arete cannot reach Anki:
 
--   **Is Anki running?**: Anki must be open for the sync to work.
--   **AnkiConnect installed?**: Ensure you have the [AnkiConnect](https://ankiweb.net/shared/info/2055492232) add-on installed in Anki.
--   **Port Binding**: By default, AnkiConnect listens on `127.0.0.1:8765`. 
--   **Allowed Origins**: In Anki, go to `Tools -> Add-ons -> AnkiConnect -> Config` and ensure your origin is allowed. For arete, adding `*` to `webBindAddress` (if needed) or ensuring `localhost` is in `webCorsOriginList` helps.
+-   **Anki closed?**: Arete writes the collection directly (the default `auto` backend).
+-   **Anki open?**: Arete needs the `arete_ankiconnect` add-on ([ANKI_PLUGIN.md](ANKI_PLUGIN.md)). It replaces AnkiConnect: do not install both.
+-   **Port Binding**: The add-on listens on `127.0.0.1:8765` (`webBindAddress`, `webBindPort`).
+-   **Allowed Origins**: In Anki, `Tools -> Add-ons -> arete_ankiconnect -> Config`: make sure your origin is in `webCorsOriginList` (`http://localhost` by default).
 
 ## 2. WSL (Windows Subsystem for Linux)
 
@@ -25,7 +25,7 @@ WSL users often face networking hurdles because WSL 2 uses a virtualized network
 
 ## 4. Sync Gaps & Missing Cards
 
--   **"File skipped"**: If a file isn't syncing, check if it has the required frontmatter or tags (depending on your config).
+-   **"File skipped"**: If a file isn't syncing, check that its frontmatter has `arete: true` and a non-empty `cards:` list. `arete vault check <file>` says what is missing.
 -   **Cache Mismatch**: If you suspect the cache is out of sync, you can force a re-scan by deleting the cache file:
     ```bash
     rm ~/.config/arete/cache.db
@@ -37,7 +37,7 @@ WSL users often face networking hurdles because WSL 2 uses a virtualized network
 When all else fails, check the logs. They contain detailed stack traces and internal logic transitions.
 
 ```bash
-uv run arete --open-logs
+uv run arete logs
 ```
 
 This will open the directory containing your `run_*.log` files. Attach the latest log to any GitHub issue you open.

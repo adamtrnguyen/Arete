@@ -74,7 +74,8 @@ through `moduleNameMapper` in `jest.config.js`.
 
 > [!warning] Never point a test at a collection you study from
 > `tests/conftest.py` gives every test a throwaway `HOME`, and a session guard fails
-> the run if a real `collection.anki2` moves. Setting `ANKI_CONNECT_URL` bypasses the
+> the run if a real `collection.anki2` moves. Every connection to port 8765 is refused,
+> so a test cannot reach a running Anki. Setting `ANKI_CONNECT_URL` bypasses the
 > container and defeats the first of those. The guard fires after the write, not
 > before.
 

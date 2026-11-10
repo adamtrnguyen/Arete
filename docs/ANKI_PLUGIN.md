@@ -45,15 +45,21 @@ New-Item -ItemType SymboliCLink -Path "$env:APPDATA\Anki2\addons21\arete_ankicon
 
 ## Configuration
 
-The add-on listens on port `8765` by default. You can change this in the `config.json` file within the add-on directory if needed.
+The add-on listens on `webBindAddress`:`webBindPort` (`127.0.0.1:8765` by default), set in the `config.json` file within the add-on directory.
 
 ```json
 {
     "apiKey": null,
-    "apiPort": 8765,
-    "apiLogPath": null
+    "apiLogPath": null,
+    "webBindAddress": "127.0.0.1",
+    "webBindPort": 8765,
+    "webCorsOriginList": ["http://localhost"],
+    "ignoreOriginList": [],
+    "vault_root": "/path/to/vault"
 }
 ```
+
+`vault_root` makes the source path the add-on copies to the clipboard absolute.
 
 ## Troubleshooting
 

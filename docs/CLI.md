@@ -25,6 +25,7 @@ uv sync
 | `arete queue` | Build `Arete::Queue` from due cards and resolved prerequisites. |
 | `arete init` | Initialize a new vault configuration. |
 | `arete logs` | Open the run logs directory. |
+| `arete report` | Show or clear card issues reported from Anki review sessions (`--json`, `--clear N`). |
 
 ### Vault Maintenance (`arete vault`)
 
@@ -59,6 +60,7 @@ uv sync
 | `arete config show` | View current resolved configuration. |
 | `arete config open` | Open the config file in your editor. |
 | `arete graph check` | Check dependency graph health. |
+| `arete graph export` | Print the resolved dependency graph as JSON. |
 
 ## Advanced Sync Options
 
@@ -114,7 +116,7 @@ uv run arete serve daemon --port 8080
 ## Configuration (`~/.config/arete/config.toml`)
 
 ```toml
-root_input = "/path/to/vault"
+vault_root = "/path/to/vault"
 anki_media_dir = "/path/to/anki/collection.media"
 backend = "auto"  # 'auto' (default), 'ankiconnect', or 'direct'
 prune = false

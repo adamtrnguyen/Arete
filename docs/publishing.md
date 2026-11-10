@@ -28,7 +28,7 @@ Once successful, `pip install arete` will work for everyone.
 
 The project uses GitHub Actions to automate testing and releases.
 
--   **Test Workflow**: Runs on every PR and push to `main`. It executes `pytest` (with Dockerized Anki) and `ruff`.
+-   **CI Workflow** (`ci.yml`): Runs on every PR and push to `main`. Unit tests with coverage on Linux, macOS and Windows; lint, types and import contracts; plugin lint, tests and build; integration tests against Dockerized Anki.
 -   **Release Workflow**: Triggered when a new GitHub Tag is pushed (e.g., `v1.0.0`).
     -   Automatically builds the Python `dist/` artifacts.
     -   Automatically builds the Obsidian Plugin (`main.js`, `manifest.json`, `styles.css`).
@@ -70,11 +70,9 @@ We follow **Semantic Versioning (SemVer)**: `MAJOR.MINOR.PATCH`.
 -   **MINOR**: New features (e.g., support for a new Anki field type).
 -   **PATCH**: Bug fixes and documentation updates.
 
-Always update `version` in `pyproject.toml` and `manifest.json` simultaneously to keep the CLI and Plugin in sync.
+Bump `version` in `pyproject.toml` only. `just sync-versions` writes it into every manifest (`just release` runs it), and `just qa` fails when they disagree.
 
 ---
-
-## Part 5: AnkiWeb (Add-on Store)
 
 ## Part 5: AnkiWeb (Add-on Store)
 

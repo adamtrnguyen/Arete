@@ -18,28 +18,29 @@ The **Arete** Obsidian Plugin provides a rich graphical interface for synchroniz
 ### 🧬 Card Health & Gutter
 The **Card Gutter** (enabled by default) adds visual indicators next to your notes:
 - **Index Number**: Shows the card's position in the current file.
-- **Retention Status**: Colored badges for "High", "Med", or "Low" retention based on Anki FSRS/SM-2 data.
-- **Lapse Counter**: Identifies "Leech" cards that need attention.
+- **Health Bar**: Green, orange or red, from FSRS difficulty and lapses.
+- **Difficulty or Ease**: FSRS difficulty out of 10, or SM-2 ease (`E:nn%`).
+- **Lapse Counter**: The lapse count (`3L`), red above 5.
 
-### 📐 Queue Builder (v2.0)
+### 📐 Queue Builder
 Generate custom Anki Filtered Decks that respect your knowledge graph:
-1.  Open the **Queue Builder** from the command palette.
-2.  Select the concepts/notes you want to study.
-3.  Click **Build Queue** to see the topologically sorted list.
-4.  Click **Create Anki Deck** to generate a study-ready deck in Anki.
+1.  Open the Dashboard (**Open Dashboard** command or ribbon icon) and pick the **Queue Builder** tab.
+2.  Choose a deck, a prerequisite depth and a card limit.
+3.  Click **Build Queue** to see the cards in prerequisite order.
+4.  Click **Send to Anki** to create the filtered deck (`Arete Study Queue`).
 
 ### 🔗 Dependency Management
 Manage prerequisites directly in your notes:
-- **Hover Preview**: Hover over any note ID or heading to see a preview of the card content.
-- **Graph Integration**: Right-click nodes in the local graph to add/remove dependencies.
+- **Graphs**: The local and global graph views draw `deps.requires` edges; hovering a node previews its card.
+- **Editing**: Edit `deps` in the note or in the YAML editor (**Open YAML Editor** command).
 
 ## Settings Configuration
 
-- **Execution Mode**: 
+- **Execution Mode**:
     - `CLI`: Spawns a process for each action (Classic).
     - `Server`: Connects to a persistent background server (**Recommended** for near-instant UI).
 - **Python Path**: Path to your `python3` or `arete` executable.
-- **Project Root**: Path to your `obsidian_2_anki` folder (required for `uv` support).
+- **Project Root**: The Arete checkout (the folder with `pyproject.toml`). Needed only when the plugin runs Arete through `uv run`.
 - **Parallel Workers**: Adjust based on your CPU for faster syncs.
 
 ## Troubleshooting
