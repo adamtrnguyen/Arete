@@ -257,3 +257,61 @@ describe('gutter marker eq', () => {
 		expect(skip.eq(start)).toBe(false);
 	});
 });
+
+/** A DOM element with what `toDOM` and its listeners use. */
+function fakeElement(): any {
+	const listeners: Record<string, () => void> = {};
+	const classes = new Set<string>();
+	return {
+		listeners,
+		style: {},
+		dataset: {},
+		className: '',
+		title: '',
+		textContent: '',
+		classList: {
+			add: (c: string) => classes.add(c),
+			remove: (c: string) => classes.delete(c),
+			contains: (c: string) => classes.has(c),
+		},
+		appendChild: jest.fn(),
+		querySelector: jest.fn((): null => null),
+		addEventListener: (name: string, cb: () => void) => {
+			listeners[name] = cb;
+		},
+	};
+}
+
+describe('card gutter hover and click', () => {
+	const doc = (global as any).document;
+	let createElement: any;
+
+	beforeEach(() => {
+		createElement = doc.createElement;
+		doc.createElement = jest.fn(() => fakeElement());
+		doc.querySelectorAll = jest.fn((): unknown[] => []);
+	});
+	afterEach(() => {
+		doc.createElement = createElement;
+		delete doc.querySelectorAll;
+	});
+
+	it('touches only the lines of its own editor, not other panes', () => {
+		const g = setup(threeCards());
+		const marker = cardMarkers(g.markers())[0].marker;
+		const ownEditor = {
+			dom: { querySelectorAll: jest.fn((): unknown[] => []) },
+			state: g.view.state,
+		};
+		const el = marker.toDOM(ownEditor);
+
+		el.listeners.mouseenter();
+		el.listeners.mouseleave();
+		el.listeners.click.call(el, { preventDefault: jest.fn(), stopPropagation: jest.fn() });
+
+		expect(ownEditor.dom.querySelectorAll).toHaveBeenCalledWith(
+			`.arete-gutter-marker[data-card-index="${marker.index}"]`,
+		);
+		expect(doc.querySelectorAll).not.toHaveBeenCalled();
+	});
+});

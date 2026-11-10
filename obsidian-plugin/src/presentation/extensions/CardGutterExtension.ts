@@ -115,7 +115,7 @@ class CardGutterMarker extends GutterMarker {
 		);
 	}
 
-	toDOM() {
+	toDOM(view: EditorView) {
 		const marker = document.createElement('div');
 		marker.className = 'arete-gutter-marker';
 		marker.dataset.cardIndex = String(this.index);
@@ -176,9 +176,10 @@ class CardGutterMarker extends GutterMarker {
 
 		marker.appendChild(bar);
 
-		// Helper to update all segments of this card (Sync/Hover logic)
+		// Update every line of this card in this editor. Another pane, even one showing a
+		// different note, has markers with the same card index; it is left alone.
 		const setCardState = (hover: boolean, active: boolean) => {
-			document
+			view.dom
 				.querySelectorAll(`.arete-gutter-marker[data-card-index="${this.index}"]`)
 				.forEach((el) => {
 					const b = el.querySelector('.arete-gutter-bar') as HTMLElement;
@@ -216,7 +217,7 @@ class CardGutterMarker extends GutterMarker {
 				: `Card ${this.index + 1}: No stats found.`;
 			new Notice(msg);
 
-			document.querySelectorAll('.arete-gutter-marker.arete-gutter-active').forEach((el) => {
+			view.dom.querySelectorAll('.arete-gutter-marker.arete-gutter-active').forEach((el) => {
 				el.classList.remove('arete-gutter-active');
 				const b = el.querySelector('.arete-gutter-bar') as HTMLElement;
 				if (b) {
