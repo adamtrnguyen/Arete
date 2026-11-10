@@ -40,7 +40,7 @@ def _write_vault(root: Path) -> None:
     )
 
 
-@pytest.mark.parametrize("algo", ["static", "dynamic", "simple"])
+@pytest.mark.parametrize("algo", ["static", "dynamic"])
 @pytest.mark.parametrize("enrich", [True, False])
 def test_one_request_builds_the_graph_once(tmp_path: Path, algo, enrich):
     """Each graph build reads and parses the whole vault, so a request pays for one."""

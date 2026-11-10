@@ -319,7 +319,7 @@ def create_server() -> MCPServer:  # noqa: C901
         deck: str = "CS::DSA",
         depth: int = 2,
         include_new: bool = False,
-        algo: QueueAlgo = "simple",
+        algo: QueueAlgo = "static",
     ) -> str:
         """Build a dependency-ordered study queue in Anki.
 
@@ -330,7 +330,7 @@ def create_server() -> MCPServer:  # noqa: C901
             deck: Deck to build queue from (default: "CS::DSA")
             depth: How many prerequisite levels to include (default: 2)
             include_new: Whether to include new (unreviewed) cards
-            algo: "simple" (default), "static" or "dynamic" -- same vocabulary as the CLI --algo
+            algo: "static" (default) or "dynamic" -- same vocabulary as the CLI --algo
 
         """
         from arete.application.queue.service import build_study_queue as _build_queue

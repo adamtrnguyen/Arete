@@ -23,7 +23,7 @@ from arete.application.queue.graph_resolver import build_graph, topological_sort
 from arete.domain.interfaces import QueuePort
 
 # The one queue-algorithm vocabulary. CLI, HTTP and MCP all expose exactly this.
-QueueAlgo = Literal["static", "dynamic", "simple"]
+QueueAlgo = Literal["static", "dynamic"]
 
 logger = logging.getLogger(__name__)
 
@@ -110,7 +110,7 @@ async def build_study_queue(  # noqa: PLR0913
 ) -> QueueOrchestratorResult:
     """Fetch due cards, map them to Arete ids, build the queue, and create the filtered deck.
 
-    `algo` is "static", "dynamic" or "simple" (the same traversal as "static").
+    `algo` is "static" (prerequisite order) or "dynamic" (ready frontier).
     `cross_deck` pulls prerequisites from other decks; `enrich` adds titles and files from
     the graph; `dry_run` creates no deck. The result holds everything an interface shows.
     """
@@ -148,7 +148,6 @@ async def build_study_queue(  # noqa: PLR0913
             graph=graph,
         )
     else:
-        # "static" and "simple" name the same traversal.
         build_result = build_simple_queue(
             vault_root=vault_root,
             due_card_ids=valid_ids,

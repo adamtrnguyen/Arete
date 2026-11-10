@@ -360,7 +360,7 @@ class QueueBuildRequest(BaseModel):
     deck: str | None = None
     depth: int = 2
     max_cards: int = 50
-    algo: QueueAlgo = "simple"  # same vocabulary as the CLI --algo
+    algo: QueueAlgo = "static"  # same vocabulary as the CLI --algo
     vault_root: str | None = None
     backend: str | None = None
     anki_connect_url: str | None = None

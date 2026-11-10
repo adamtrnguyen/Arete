@@ -359,6 +359,15 @@ def test_queue_dynamic_algo(
     mock_build_static.assert_not_called()
 
 
+@patch("arete.composition.factory.get_anki_bridge")
+def test_queue_rejects_an_unknown_algo(mock_get_bridge):
+    """`--algo` takes static or dynamic only; anything else is a usage error."""
+    result = runner.invoke(app, ["queue", "--algo", "simple", "--dry-run"])
+
+    assert result.exit_code == 2
+    mock_get_bridge.assert_not_called()
+
+
 # --- humanize_error ---
 
 

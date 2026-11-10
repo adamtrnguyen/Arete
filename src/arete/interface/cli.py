@@ -205,8 +205,7 @@ def queue(
             help=(
                 "Queue algorithm. "
                 "'static' = build once and study as-is. "
-                "'dynamic' = ready-frontier ordering for prerequisite-aware sequencing. "
-                "'simple' = due cards plus prerequisites, no ordering (what the plugin uses)."
+                "'dynamic' = ready-frontier ordering for prerequisite-aware sequencing."
             ),
         ),
     ] = "static",
