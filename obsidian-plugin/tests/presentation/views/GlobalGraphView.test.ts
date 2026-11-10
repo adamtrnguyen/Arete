@@ -6,11 +6,33 @@ import { createMockElement as baseElement } from '../../test-setup';
 function createMockElement(tag?: string, opts?: any): any {
 	const el = baseElement(tag, opts);
 	el.setAttribute = jest.fn();
+	el.toggleClass = jest.fn((cls: string, on: boolean) => {
+		el.classes = new Set(el.classes ?? []);
+		if (on) el.classes.add(cls);
+		else el.classes.delete(cls);
+	});
 	el.createDiv = jest.fn((o?: any) => createMockElement('div', o));
 	el.createEl = jest.fn((t: string, o?: any) => createMockElement(t, o));
 	el.createSpan = jest.fn((o?: any) => createMockElement('span', o));
 	return el;
 }
+
+// The shared obsidian mock has no setTooltip or ButtonComponent; the view calls both.
+beforeAll(() => {
+	const obsidian = jest.requireMock('obsidian');
+	obsidian.setTooltip = jest.fn();
+	obsidian.ButtonComponent = class {
+		setButtonText() {
+			return this;
+		}
+		setClass() {
+			return this;
+		}
+		onClick() {
+			return this;
+		}
+	};
+});
 
 /** Every element created under `el`, depth first, in creation order. */
 function created(el: any): any[] {
@@ -262,6 +284,8 @@ describe('GlobalGraphView search and resize', () => {
 			relatedEdges: [],
 		};
 		const view: any = await makeView(empty);
+		view.app = new (jest.requireMock('obsidian').App)();
+		view.registerEvent = jest.fn();
 		view.contentEl = createMockElement('div');
 		await view.onOpen();
 		const render = jest.spyOn(view, 'render');

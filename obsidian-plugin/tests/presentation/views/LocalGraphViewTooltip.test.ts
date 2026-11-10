@@ -46,6 +46,10 @@ jest.mock('d3', () => {
 	};
 });
 
+beforeAll(() => {
+	jest.requireMock('obsidian').setTooltip = jest.fn();
+});
+
 /** The shared mock element, with the DOM members CardRenderer and the tooltip use. */
 function element(tag?: string, opts?: any): any {
 	const el = baseElement(tag, { clientWidth: 400, clientHeight: 300, children: [], ...opts });
@@ -252,7 +256,7 @@ describe('LocalGraphView tooltip position', () => {
 		view.render3DGraph(canvas, [], []);
 		const onHover = view.graph3D.onNodeHover.mock.calls[0][0];
 		onHover(node);
-		expect(view.tooltipContainer.style.display).toBe('block');
+		expect(view.tooltipContainer.addClass).toHaveBeenCalledWith('is-visible');
 		expect(view.tooltipContainer.style.left).toBe('12px');
 		expect(view.tooltipContainer.style.top).toBe('52px');
 	});

@@ -8,11 +8,24 @@
  * Includes a detail panel, search, and 2D/3D toggle.
  */
 
-import { ItemView, WorkspaceLeaf, setIcon, TFile, Component } from 'obsidian';
+import {
+	ButtonComponent,
+	ItemView,
+	WorkspaceLeaf,
+	setIcon,
+	setTooltip,
+	TFile,
+	Component,
+} from 'obsidian';
 import * as d3 from 'd3';
 
 import { DependencyResolver } from '@/application/services/DependencyResolver';
 import { CardNode, GlobalGraphResult, DependencyEdge } from '@/domain/graph/types';
+import {
+	GraphColors,
+	loadForceGraph3D,
+	resolveGraphColors,
+} from '@/presentation/graph/ForceGraph3D';
 
 /** What this view needs from the plugin (main.ts satisfies it; no import of main). */
 export interface GlobalGraphHost {
@@ -20,41 +33,6 @@ export interface GlobalGraphHost {
 }
 
 export const GLOBAL_GRAPH_VIEW_TYPE = 'arete-global-graph';
-
-/** 3d-force-graph's kapsule call form: `ForceGraph3D()(element)`. */
-type ForceGraph3DFactory = () => (element: HTMLElement) => ForceGraph3DInstance;
-
-/**
- * The 3d-force-graph instance methods this view calls; each setter returns the instance.
- * The package's own typings import three's, which this project does not install.
- */
-type ForceGraph3DInstance = {
-	[K in
-		| 'width'
-		| 'height'
-		| 'graphData'
-		| 'nodeLabel'
-		| 'nodeColor'
-		| 'nodeVal'
-		| 'linkColor'
-		| 'linkWidth'
-		| 'linkDirectionalArrowLength'
-		| 'linkDirectionalArrowRelPos'
-		| 'onNodeClick'
-		| 'd3Force'
-		| 'zoomToFit']: (...args: any[]) => ForceGraph3DInstance;
-} & { _destructor?: () => void };
-
-/**
- * `require('3d-force-graph')`, called on the first 3D render rather than at module top:
- * the package pulls in three.js, most of the bundle, and esbuild evaluates it on the
- * first call of this function instead of at plugin load. The package is ESM-only, so the
- * required value can be its namespace object (`{ default }`) or the function; take either.
- */
-function loadForceGraph3D(): ForceGraph3DFactory {
-	const mod = require('3d-force-graph') as ForceGraph3DFactory | { default: ForceGraph3DFactory };
-	return 'default' in mod ? mod.default : mod;
-}
 
 // --- D3 node/link interfaces ---
 
@@ -140,7 +118,7 @@ export class GlobalGraphView extends ItemView {
 	}
 
 	getDisplayText(): string {
-		return 'Arete Global Graph';
+		return 'Arete global graph';
 	}
 
 	getIcon(): string {
@@ -180,6 +158,9 @@ export class GlobalGraphView extends ItemView {
 		});
 		observer.observe(this.graphContainer);
 		this.register(() => observer.disconnect());
+
+		// 2D follows the theme through CSS; a 3D drawing repaints in place.
+		this.registerEvent(this.app.workspace.on('css-change', () => this.repaint3D?.()));
 	}
 
 	// --- Data Loading ---
@@ -198,7 +179,7 @@ export class GlobalGraphView extends ItemView {
 		// Refresh
 		const refreshBtn = this.toolbarEl.createDiv({ cls: 'clickable-icon' });
 		setIcon(refreshBtn, 'refresh-cw');
-		refreshBtn.setAttribute('title', 'Rebuild Graph');
+		setTooltip(refreshBtn, 'Rebuild graph');
 		refreshBtn.addEventListener('click', async () => {
 			await this.loadData(true);
 			this.render();
@@ -207,7 +188,7 @@ export class GlobalGraphView extends ItemView {
 		// Search
 		const searchInput = this.toolbarEl.createEl('input', {
 			cls: 'arete-global-graph-search',
-			attr: { type: 'text', placeholder: 'Search nodes...' },
+			attr: { type: 'text', placeholder: 'Search nodes…' },
 		});
 		searchInput.value = this.searchQuery;
 		searchInput.addEventListener('input', () => {
@@ -227,11 +208,10 @@ export class GlobalGraphView extends ItemView {
 			cls: 'clickable-icon' + (this.viewMode === 'card' ? ' is-active' : ''),
 		});
 		setIcon(viewToggle, this.viewMode === 'file' ? 'folder' : 'layers');
-		viewToggle.setAttribute(
-			'title',
-			this.viewMode === 'file' ? 'Switch to Card Mode' : 'Switch to File Mode',
+		setTooltip(
+			viewToggle,
+			this.viewMode === 'file' ? 'Switch to card mode' : 'Switch to file mode',
 		);
-		if (this.viewMode === 'card') viewToggle.style.color = 'var(--interactive-accent)';
 		viewToggle.addEventListener('click', () => {
 			this.viewMode = this.viewMode === 'file' ? 'card' : 'file';
 			this._selectedNodeId = null;
@@ -245,8 +225,7 @@ export class GlobalGraphView extends ItemView {
 			cls: 'clickable-icon' + (this.showRelated ? ' is-active' : ''),
 		});
 		setIcon(relatedToggle, 'link');
-		relatedToggle.setAttribute('title', 'Toggle Related Edges');
-		if (this.showRelated) relatedToggle.style.color = 'var(--interactive-accent)';
+		setTooltip(relatedToggle, 'Toggle related edges');
 		relatedToggle.addEventListener('click', () => {
 			this.showRelated = !this.showRelated;
 			this.renderToolbar();
@@ -254,10 +233,11 @@ export class GlobalGraphView extends ItemView {
 		});
 
 		// 2D/3D toggle
-		const dimToggle = this.toolbarEl.createDiv({ cls: 'clickable-icon' });
+		const dimToggle = this.toolbarEl.createDiv({
+			cls: 'clickable-icon' + (this.renderMode === '3d' ? ' is-active' : ''),
+		});
 		setIcon(dimToggle, this.renderMode === '3d' ? 'box' : 'square');
-		dimToggle.setAttribute('title', 'Toggle 2D/3D');
-		if (this.renderMode === '3d') dimToggle.style.color = 'var(--interactive-accent)';
+		setTooltip(dimToggle, 'Toggle 2D/3D');
 		dimToggle.addEventListener('click', () => {
 			this.renderMode = this.renderMode === '2d' ? '3d' : '2d';
 			this.renderToolbar();
@@ -270,8 +250,7 @@ export class GlobalGraphView extends ItemView {
 				cls: 'clickable-icon' + (this.clusteringEnabled ? ' is-active' : ''),
 			});
 			setIcon(clusterToggle, 'group');
-			clusterToggle.setAttribute('title', 'Toggle Clustering by File');
-			if (this.clusteringEnabled) clusterToggle.style.color = 'var(--interactive-accent)';
+			setTooltip(clusterToggle, 'Toggle clustering by file');
 			clusterToggle.addEventListener('click', () => {
 				this.clusteringEnabled = !this.clusteringEnabled;
 				this.renderToolbar();
@@ -282,7 +261,7 @@ export class GlobalGraphView extends ItemView {
 		// Fit/reset zoom
 		const fitBtn = this.toolbarEl.createDiv({ cls: 'clickable-icon' });
 		setIcon(fitBtn, 'maximize-2');
-		fitBtn.setAttribute('title', 'Fit to View');
+		setTooltip(fitBtn, 'Fit to view');
 		fitBtn.addEventListener('click', () => {
 			if (this.fitToView) this.fitToView();
 			else this.render();
@@ -513,7 +492,7 @@ export class GlobalGraphView extends ItemView {
 			.attr('orient', 'auto')
 			.append('path')
 			.attr('d', 'M0,-5L10,0L0,5')
-			.attr('fill', 'var(--text-muted)');
+			.attr('class', 'arete-global-graph-arrow');
 
 		// Simulation
 		const isFileMode = this.viewMode === 'file';
@@ -568,12 +547,11 @@ export class GlobalGraphView extends ItemView {
 			.selectAll('line')
 			.data(links)
 			.join('line')
-			.attr('stroke', 'var(--text-muted)')
+			.attr('class', (d) => `arete-global-graph-link mod-${d.edgeType}`)
 			.attr('stroke-width', (d) => {
 				if (isFileMode) return Math.min(1 + d.weight * 0.5, 6);
 				return d.edgeType === 'requires' ? 1.5 : 0.8;
 			})
-			.attr('stroke-dasharray', (d) => (d.edgeType === 'related' ? '4 4' : null))
 			.attr('marker-end', (d) => (d.edgeType === 'requires' ? 'url(#global-arrow)' : null));
 
 		// Drag
@@ -597,10 +575,10 @@ export class GlobalGraphView extends ItemView {
 		// Node groups
 		const nodeGroup = g
 			.append('g')
-			.selectAll('.node')
+			.selectAll('.arete-global-graph-node')
 			.data(nodes)
 			.join('g')
-			.attr('class', 'node')
+			.attr('class', `arete-global-graph-node mod-${isFileMode ? 'file' : 'card'}`)
 			.call(dragBehavior as any);
 
 		// Render nodes
@@ -613,7 +591,7 @@ export class GlobalGraphView extends ItemView {
 		this.applySearch();
 
 		// Hover highlight: global-graph.css dims everything while the svg has
-		// `arete-hovering`, except elements marked `arete-connected`. Only the hovered
+		// `is-hovering`, except elements marked `is-connected`. Only the hovered
 		// node, its neighbours and its links are marked, so a hover costs its degree.
 		const { neighbours, incident } = this.indexLinks(links);
 		const nodeEls = new Map<string, Element>();
@@ -624,8 +602,8 @@ export class GlobalGraphView extends ItemView {
 		const svgEl = svg.node() as Element;
 		let marked: Element[] = [];
 		const clearHover = () => {
-			svgEl.classList.remove('arete-hovering');
-			for (const el of marked) el.classList.remove('arete-connected');
+			svgEl.classList.remove('is-hovering');
+			for (const el of marked) el.classList.remove('is-connected');
 			marked = [];
 		};
 		nodeGroup
@@ -633,13 +611,13 @@ export class GlobalGraphView extends ItemView {
 				clearHover();
 				const mark = (el: Element | undefined) => {
 					if (!el) return;
-					el.classList.add('arete-connected');
+					el.classList.add('is-connected');
 					marked.push(el);
 				};
 				mark(nodeEls.get(d.id));
 				for (const id of neighbours.get(d.id) ?? []) mark(nodeEls.get(id));
 				for (const i of incident.get(d.id) ?? []) mark(linkEls[i]);
-				svgEl.classList.add('arete-hovering');
+				svgEl.classList.add('is-hovering');
 			})
 			.on('mouseout', clearHover);
 
@@ -702,10 +680,7 @@ export class GlobalGraphView extends ItemView {
 			.attr('fill', (d: any) => {
 				const hue = this.hashToHue(d.id);
 				return `hsl(${hue}, 60%, 55%)`;
-			})
-			.attr('stroke', 'var(--background-primary)')
-			.attr('stroke-width', 2)
-			.style('cursor', 'pointer');
+			});
 
 		// Labels
 		nodeGroup
@@ -714,33 +689,23 @@ export class GlobalGraphView extends ItemView {
 				const name = d.basename;
 				return name.length > 30 ? name.slice(0, 28) + '...' : name;
 			})
-			.attr('font-size', '9px')
 			.attr('dx', (d: any) => d.radius + 4)
 			.attr('dy', 3)
-			.attr('fill', 'var(--text-muted)')
-			.attr('class', GlobalGraphView.FILE_LABEL_CLASS)
-			.style('pointer-events', 'none');
+			.attr('class', GlobalGraphView.FILE_LABEL_CLASS);
 
 		// Card count badge
 		nodeGroup
 			.append('text')
 			.text((d: any) => d.cardCount)
-			.attr('font-size', '8px')
-			.attr('text-anchor', 'middle')
 			.attr('dy', 3)
-			.attr('fill', 'white')
-			.attr('font-weight', 'bold')
-			.style('pointer-events', 'none');
+			.attr('class', 'arete-global-graph-node-count');
 	}
 
 	private renderCardNodes(nodeGroup: d3.Selection<any, GlobalNode, any, any>): void {
 		nodeGroup
 			.append('circle')
 			.attr('r', (d: any) => d.radius)
-			.attr('fill', (d: any) => `hsl(${d.fileHue}, 55%, 55%)`)
-			.attr('stroke', 'var(--background-primary)')
-			.attr('stroke-width', 1.5)
-			.style('cursor', 'pointer');
+			.attr('fill', (d: any) => `hsl(${d.fileHue}, 55%, 55%)`);
 
 		// A card's label exists only while the card is hovered, so the svg does not carry
 		// one hidden <text> per card.
@@ -752,11 +717,8 @@ export class GlobalGraphView extends ItemView {
 				group
 					.append('text')
 					.text(t.length > 20 ? t.slice(0, 18) + '...' : t)
-					.attr('font-size', '8px')
 					.attr('dx', 8)
 					.attr('dy', 3)
-					.attr('fill', 'var(--text-muted)')
-					.style('pointer-events', 'none')
 					.attr('class', 'arete-global-graph-card-label');
 			})
 			.on('mouseout.label', function () {
@@ -796,12 +758,6 @@ export class GlobalGraphView extends ItemView {
 				.attr('class', 'arete-global-graph-file-label')
 				.attr('x', cx)
 				.attr('y', cy - 15)
-				.attr('text-anchor', 'middle')
-				.attr('font-size', '10px')
-				.attr('font-weight', '600')
-				.attr('fill', 'var(--text-muted)')
-				.attr('opacity', 0.6)
-				.style('pointer-events', 'none')
 				.text(
 					group.basename.length > 25
 						? group.basename.slice(0, 23) + '...'
@@ -877,9 +833,7 @@ export class GlobalGraphView extends ItemView {
 			.height(height)
 			.graphData(graphData3D)
 			.nodeLabel((n: any) => `${n.basename} (${n.cardCount} cards)`)
-			.nodeColor((n: any) => `hsl(${this.hashToHue(n.id)}, 60%, 55%)`)
 			.nodeVal((n: any) => n.val)
-			.linkColor(() => '#6b7280')
 			.linkWidth((l: any) => Math.min(1 + l.weight * 0.5, 5))
 			.linkDirectionalArrowLength((l: any) => (l.type === 'requires' ? 4 : 0))
 			.linkDirectionalArrowRelPos(1)
@@ -895,8 +849,25 @@ export class GlobalGraphView extends ItemView {
 				};
 				this.renderFileDetail(fileNode);
 			});
+		this.paintOnThemeChange((graph, colors) =>
+			graph
+				.backgroundColor(colors.background)
+				.nodeColor((n: any) => `hsl(${this.hashToHue(n.id)}, 60%, 55%)`)
+				.linkColor(() => colors.line),
+		);
 		this.resizeViewport = () => this.resize3D();
 		this.fitToView = () => this.graph3D?.zoomToFit(GlobalGraphView.ZOOM_TO_FIT_MS);
+	}
+
+	/**
+	 * Colour the current 3D drawing from the theme now, and again on a theme change. The
+	 * theme is read once per call, so neither a frame nor a node resolves a variable; a
+	 * repaint swaps the colour accessors and leaves the layout alone.
+	 */
+	private paintOnThemeChange(paint: (graph: any, colors: GraphColors) => unknown): void {
+		const graph = this.graph3D;
+		this.repaint3D = () => paint(graph, resolveGraphColors(this.graphContainer));
+		this.repaint3D();
 	}
 
 	/** Resize the 3D renderer to the canvas; the layout is kept. */
@@ -959,9 +930,7 @@ export class GlobalGraphView extends ItemView {
 			.height(height)
 			.graphData(graphData3D)
 			.nodeLabel((n: any) => `${n.title}\n(${n.id})`)
-			.nodeColor((n: any) => `hsl(${n.fileHue}, 55%, 55%)`)
 			.nodeVal(1)
-			.linkColor((l: any) => (l.type === 'requires' ? '#6b7280' : '#d1d5db'))
 			.linkWidth((l: any) => (l.type === 'requires' ? 1.5 : 0.8))
 			.linkDirectionalArrowLength((l: any) => (l.type === 'requires' ? 3 : 0))
 			.linkDirectionalArrowRelPos(1)
@@ -978,6 +947,12 @@ export class GlobalGraphView extends ItemView {
 				};
 				this.renderCardDetail(cardNode);
 			});
+		this.paintOnThemeChange((graph, colors) =>
+			graph
+				.backgroundColor(colors.background)
+				.nodeColor((n: any) => `hsl(${n.fileHue}, 55%, 55%)`)
+				.linkColor((l: any) => (l.type === 'requires' ? colors.line : colors.unresolved)),
+		);
 		this.resizeViewport = () => this.resize3D();
 		this.fitToView = () => this.graph3D?.zoomToFit(GlobalGraphView.ZOOM_TO_FIT_MS);
 
@@ -1084,13 +1059,12 @@ export class GlobalGraphView extends ItemView {
 		}
 
 		// Open file button
-		const btn = section.createEl('button', {
-			text: 'Open File',
-			cls: 'arete-global-graph-detail-btn',
-		});
-		btn.addEventListener('click', async () => {
-			await this.openFileAtLine(node.id, 1);
-		});
+		new ButtonComponent(section)
+			.setButtonText('Open file')
+			.setClass('arete-global-graph-detail-btn')
+			.onClick(async () => {
+				await this.openFileAtLine(node.id, 1);
+			});
 	}
 
 	private renderCardDetail(node: CardGraphNode): void {
@@ -1213,13 +1187,12 @@ export class GlobalGraphView extends ItemView {
 		}
 
 		// Open in Editor button
-		const btn = section.createEl('button', {
-			text: 'Open in Editor',
-			cls: 'arete-global-graph-detail-btn',
-		});
-		btn.addEventListener('click', async () => {
-			await this.openFileAtLine(node.filePath, node.lineNumber);
-		});
+		new ButtonComponent(section)
+			.setButtonText('Open in editor')
+			.setClass('arete-global-graph-detail-btn')
+			.onClick(async () => {
+				await this.openFileAtLine(node.filePath, node.lineNumber);
+			});
 	}
 
 	// --- Helpers ---
@@ -1356,9 +1329,12 @@ export class GlobalGraphView extends ItemView {
 	}
 
 	private fitToView: (() => void) | null = null;
+	/** Re-reads the theme colours into the current 3D drawing; null when none is drawn. */
+	private repaint3D: (() => void) | null = null;
 
 	private stopSimulation(): void {
 		this.searchTargets = null;
+		this.repaint3D = null;
 		this.resizeViewport = null;
 		this.fitToView = null;
 		if (this.simulation) {

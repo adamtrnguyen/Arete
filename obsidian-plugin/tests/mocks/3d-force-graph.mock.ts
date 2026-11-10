@@ -5,6 +5,7 @@ const createInstance = () => {
 	const graphInstance = {
 		width: jest.fn().mockReturnThis(),
 		height: jest.fn().mockReturnThis(),
+		backgroundColor: jest.fn().mockReturnThis(),
 		graphData: jest.fn().mockReturnThis(),
 		nodeLabel: jest.fn().mockReturnThis(),
 		nodeColor: jest.fn().mockReturnThis(),

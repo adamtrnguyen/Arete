@@ -1,6 +1,10 @@
 import { LocalGraphView } from '@/presentation/views/LocalGraphView';
 import { GlobalGraphView } from '@/presentation/views/GlobalGraphView';
 
+beforeAll(() => {
+	jest.requireMock('obsidian').setTooltip = jest.fn();
+});
+
 const element = (): any => ({
 	clientWidth: 400,
 	clientHeight: 300,

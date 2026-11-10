@@ -7,6 +7,11 @@ import { createMockElement as baseElement } from '../../test-setup';
 function element(tag?: string, opts?: any): any {
 	const el = baseElement(tag, { clientWidth: 400, clientHeight: 300, ...opts });
 	el.setAttribute = jest.fn();
+	el.toggleClass = jest.fn((cls: string, on: boolean) => {
+		el.classes = new Set(el.classes ?? []);
+		if (on) el.classes.add(cls);
+		else el.classes.delete(cls);
+	});
 	el.createDiv = jest.fn((o?: any) => element('div', o));
 	el.createEl = jest.fn((t: string, o?: any) => element(t, o));
 	el.createSpan = jest.fn((o?: any) => element('span', o));
@@ -16,6 +21,11 @@ function element(tag?: string, opts?: any): any {
 	});
 	return el;
 }
+
+// The shared obsidian mock has no setTooltip; the views call it for toolbar tooltips.
+beforeAll(() => {
+	jest.requireMock('obsidian').setTooltip = jest.fn();
+});
 
 const CENTER = { id: 'arete_A', title: 'algebra', filePath: 'Algebra.md', lineNumber: 5 };
 const LOCAL: LocalGraphResult = {

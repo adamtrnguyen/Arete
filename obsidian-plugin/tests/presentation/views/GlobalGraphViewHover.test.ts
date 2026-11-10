@@ -39,11 +39,11 @@ describe('GlobalGraphView hover highlight', () => {
 
 	it('marks the hovered node, its neighbours and its links, then clears them', () => {
 		const { links, nodes, svg, nodeEl } = draw('a');
-		const connected = (el: any) => el.classList.contains('arete-connected');
+		const connected = (el: any) => el.classList.contains('is-connected');
 		d3.attrLog.length = 0;
 
 		nodes.handlers.mouseover({}, nodes.data()[0]); // A.md, which requires B.md
-		expect(svg.classList.contains('arete-hovering')).toBe(true);
+		expect(svg.classList.contains('is-hovering')).toBe(true);
 		expect([
 			connected(nodeEl('A.md')),
 			connected(nodeEl('B.md')),
@@ -52,7 +52,7 @@ describe('GlobalGraphView hover highlight', () => {
 		expect(connected(links.nodes()[0])).toBe(true);
 
 		nodes.handlers.mouseout();
-		expect(svg.classList.contains('arete-hovering')).toBe(false);
+		expect(svg.classList.contains('is-hovering')).toBe(false);
 		expect(['A.md', 'B.md', 'C.md'].map((id) => connected(nodeEl(id)))).toEqual([
 			false,
 			false,

@@ -1,6 +1,8 @@
-/* Arete Plugin - Global Graph View
- * The view sizes its SVG/3D canvas from .arete-global-graph-canvas clientWidth/Height,
+/* Arete Plugin - Global and local graph views
+ * The global view sizes its SVG/3D canvas from .arete-global-graph-canvas clientWidth/Height,
  * so the canvas must fill the pane: without these rules it measured 0px and drew nothing.
+ * Colours come from Obsidian's --graph-* variables. SVG text sizes are scene units: they
+ * scale with the zoom, so they stay in px.
  */
 
 .arete-global-graph {
@@ -15,20 +17,20 @@
 	display: flex;
 	flex-wrap: wrap;
 	align-items: center;
-	gap: 6px;
-	padding: 6px 10px;
-	border-bottom: 1px solid var(--background-modifier-border);
+	gap: var(--size-4-2);
+	padding: var(--size-4-2) var(--size-4-3);
+	border-bottom: var(--border-width) solid var(--background-modifier-border);
 	flex: 0 0 auto;
 }
 
 .arete-global-graph-search {
 	width: 180px;
-	font-size: 12px;
+	font-size: var(--font-ui-smaller);
 }
 
 .arete-global-graph-sep {
 	color: var(--text-faint);
-	padding: 0 2px;
+	padding: 0 var(--size-2-1);
 }
 
 .arete-global-graph-body {
@@ -49,7 +51,7 @@
 }
 
 .arete-global-graph-empty {
-	padding: 24px;
+	padding: var(--size-4-6);
 	color: var(--text-muted);
 	text-align: center;
 }
@@ -57,9 +59,9 @@
 .arete-global-graph-detail {
 	flex: 0 0 280px;
 	overflow-y: auto;
-	padding: 10px 12px;
-	border-left: 1px solid var(--background-modifier-border);
-	font-size: 12px;
+	padding: var(--size-4-3);
+	border-left: var(--border-width) solid var(--background-modifier-border);
+	font-size: var(--font-ui-smaller);
 }
 
 .arete-global-graph-detail-empty {
@@ -67,55 +69,242 @@
 }
 
 .arete-global-graph-detail-section {
-	margin-bottom: 12px;
+	margin-bottom: var(--size-4-3);
 }
 
 .arete-global-graph-detail-stats {
 	display: flex;
 	flex-wrap: wrap;
-	gap: 4px 12px;
+	gap: var(--size-2-2) var(--size-4-3);
 	color: var(--text-muted);
-	margin: 4px 0 8px;
+	margin: var(--size-2-2) 0 var(--size-4-2);
 }
 
 .arete-global-graph-detail-list {
 	display: flex;
 	flex-direction: column;
-	gap: 2px;
-	margin: 4px 0;
+	gap: var(--size-2-1);
+	margin: var(--size-2-2) 0;
+}
+
+.arete-global-graph-detail-list a,
+.arete-global-graph-detail-stats a {
+	cursor: var(--cursor-link);
 }
 
 .arete-global-graph-detail-btn {
-	margin-top: 6px;
+	margin-top: var(--size-4-2);
 }
 
-/* Hover highlight. While a node is hovered the svg has .arete-hovering, and the node, its
- * neighbours and its links have .arete-connected. CSS beats the opacity attributes the
+/* Global graph drawing */
+
+.arete-global-graph-link {
+	stroke: var(--graph-line);
+}
+
+.arete-global-graph-link.mod-related {
+	stroke-dasharray: 4 4;
+}
+
+.arete-global-graph-arrow {
+	fill: var(--graph-line);
+}
+
+.arete-global-graph-node circle {
+	stroke: var(--background-primary);
+	cursor: var(--cursor);
+}
+
+.arete-global-graph-node.mod-file circle {
+	stroke-width: 2px;
+}
+
+.arete-global-graph-node.mod-card circle {
+	stroke-width: 1.5px;
+}
+
+.arete-global-graph-node-label {
+	font-size: 9px;
+	fill: var(--graph-text);
+	pointer-events: none;
+}
+
+.arete-global-graph-node-count {
+	font-size: 8px;
+	font-weight: var(--font-bold);
+	text-anchor: middle;
+	fill: var(--text-on-accent);
+	pointer-events: none;
+}
+
+/* Hover highlight. While a node is hovered the svg has .is-hovering, and the node, its
+ * neighbours and its links have .is-connected. CSS beats the opacity attributes the
  * search sets, so leaving the node shows the search dimming again. */
-.arete-global-graph-canvas svg.arete-hovering .node circle,
-.arete-global-graph-canvas svg.arete-hovering .node text:not(.arete-global-graph-card-label) {
+.arete-global-graph-canvas svg.is-hovering .arete-global-graph-node circle,
+.arete-global-graph-canvas
+	svg.is-hovering
+	.arete-global-graph-node
+	text:not(.arete-global-graph-card-label) {
 	opacity: 0.1;
 }
 
-.arete-global-graph-canvas svg.arete-hovering .node.arete-connected circle,
+.arete-global-graph-canvas svg.is-hovering .arete-global-graph-node.is-connected circle,
 .arete-global-graph-canvas
-	svg.arete-hovering
-	.node.arete-connected
+	svg.is-hovering
+	.arete-global-graph-node.is-connected
 	text:not(.arete-global-graph-card-label) {
 	opacity: 1;
 }
 
-.arete-global-graph-canvas svg.arete-hovering line {
+.arete-global-graph-canvas svg.is-hovering line {
 	stroke-opacity: 0.05;
 }
 
-.arete-global-graph-canvas svg.arete-hovering line.arete-connected {
+.arete-global-graph-canvas svg.is-hovering line.is-connected {
 	stroke-opacity: 0.8;
 }
 
 .arete-global-graph-file-label,
 .arete-global-graph-card-label {
 	font-size: 10px;
-	fill: var(--text-muted);
+	fill: var(--graph-text);
 	pointer-events: none;
+}
+
+.arete-global-graph-file-label {
+	font-weight: var(--font-semibold);
+	text-anchor: middle;
+	opacity: 0.6;
+}
+
+/* Local graph */
+
+.arete-local-graph-d3 {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	overflow: hidden;
+	position: relative;
+}
+
+.arete-graph-toolbar {
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-2);
+	padding: var(--size-4-2);
+	border-bottom: var(--border-width) solid var(--background-modifier-border);
+}
+
+.arete-graph-toolbar-label {
+	font-size: var(--font-ui-smaller);
+}
+
+.arete-graph-toolbar-sep {
+	color: var(--text-muted);
+}
+
+.arete-graph-canvas {
+	flex: 1;
+	overflow: hidden;
+	position: relative;
+}
+
+.arete-graph-empty-msg {
+	padding: var(--size-4-5);
+}
+
+.arete-graph-link {
+	stroke: var(--graph-line);
+	stroke-opacity: 0.6;
+	stroke-width: 1px;
+}
+
+.arete-graph-link.mod-requires {
+	stroke-width: 2px;
+}
+
+.arete-graph-link.mod-related {
+	stroke-dasharray: 4 4;
+}
+
+.arete-graph-arrow {
+	fill: var(--graph-line);
+}
+
+.arete-graph-dot {
+	fill: var(--graph-node-unresolved);
+	stroke: var(--background-primary);
+	stroke-width: 2px;
+	cursor: var(--cursor);
+}
+
+.arete-graph-dot.mod-prereq {
+	fill: var(--graph-node);
+}
+
+.arete-graph-dot.mod-center {
+	fill: var(--graph-node-focused);
+}
+
+.arete-graph-label {
+	font-size: 10px;
+	fill: var(--graph-text);
+	pointer-events: none;
+}
+
+.arete-graph-card {
+	width: 100%;
+	height: 100%;
+	overflow: hidden;
+	background: var(--background-primary);
+	border: var(--border-width) solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	font-size: var(--font-ui-smaller);
+	padding: var(--size-4-2);
+	box-shadow: var(--shadow-s);
+}
+
+.arete-graph-card-error {
+	font-weight: var(--font-bold);
+	margin-bottom: var(--size-2-2);
+	color: var(--text-error);
+}
+
+/* Hover tooltip, placed by the view with inline left/top. */
+.arete-graph-tooltip {
+	position: absolute;
+	display: none;
+	z-index: var(--layer-popover);
+	pointer-events: none;
+}
+
+.arete-graph-tooltip.is-visible {
+	display: block;
+}
+
+.arete-graph-tooltip-card {
+	max-height: 300px;
+	overflow: auto;
+}
+
+.arete-graph-tooltip-card.mod-3d {
+	width: 250px;
+	max-height: 200px;
+	background: var(--background-primary);
+	border: var(--border-width) solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	padding: var(--size-4-2);
+	box-shadow: var(--shadow-l);
+}
+
+.arete-graph-tooltip .arete-card-title {
+	font-weight: var(--font-bold);
+}
+
+.arete-graph-tooltip .arete-card-id {
+	font-size: var(--font-smallest);
+}
+
+.arete-graph-tooltip .arete-card-file {
+	font-size: var(--font-smallest);
 }

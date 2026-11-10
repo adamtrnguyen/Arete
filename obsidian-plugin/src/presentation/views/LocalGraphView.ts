@@ -5,13 +5,18 @@
  * that mimics Obsidian's native graph view behavior.
  */
 
-import { ItemView, WorkspaceLeaf, setIcon, TFile, Component } from 'obsidian';
+import { ItemView, WorkspaceLeaf, setIcon, setTooltip, TFile, Component } from 'obsidian';
 import * as d3 from 'd3';
 
 import { DependencyResolver } from '@/application/services/DependencyResolver';
 import { LocalGraphResult } from '@/domain/graph/types';
 import { CardRenderer } from '@/presentation/renderers/CardRenderer';
 import { debugLog } from '@/domain/debugLog';
+import {
+	GraphColors,
+	loadForceGraph3D,
+	resolveGraphColors,
+} from '@/presentation/graph/ForceGraph3D';
 
 /** What this view needs from the plugin (main.ts satisfies it; no import of main). */
 export interface LocalGraphHost {
@@ -26,41 +31,6 @@ export const LOCAL_GRAPH_VIEW_TYPE = 'arete-local-graph';
 const TOOLTIP_OFFSET_PX = 12;
 /** Width of the 2D hover tooltip's card, used before the tooltip has been laid out. */
 const TOOLTIP_WIDTH_PX = 300;
-
-/** 3d-force-graph's kapsule call form: `ForceGraph3D()(element)`. */
-type ForceGraph3DFactory = () => (element: HTMLElement) => ForceGraph3DInstance;
-
-/**
- * The 3d-force-graph instance methods this view calls; each setter returns the instance.
- * The package's own typings import three's, which this project does not install.
- */
-type ForceGraph3DInstance = {
-	[K in
-		| 'width'
-		| 'height'
-		| 'graphData'
-		| 'nodeLabel'
-		| 'nodeColor'
-		| 'nodeVal'
-		| 'linkColor'
-		| 'linkWidth'
-		| 'linkDirectionalArrowLength'
-		| 'linkDirectionalArrowRelPos'
-		| 'onNodeClick'
-		| 'onNodeHover'
-		| 'd3Force']: (...args: any[]) => ForceGraph3DInstance;
-} & { _destructor?: () => void };
-
-/**
- * `require('3d-force-graph')`, called on the first 3D render rather than at module top:
- * the package pulls in three.js, most of the bundle, and esbuild evaluates it on the
- * first call of this function instead of at plugin load. The package is ESM-only, so the
- * required value can be its namespace object (`{ default }`) or the function; take either.
- */
-function loadForceGraph3D(): ForceGraph3DFactory {
-	const mod = require('3d-force-graph') as ForceGraph3DFactory | { default: ForceGraph3DFactory };
-	return 'default' in mod ? mod.default : mod;
-}
 
 interface GraphNode extends d3.SimulationNodeDatum {
 	id: string;
@@ -92,6 +62,8 @@ export class LocalGraphView extends ItemView {
 	private viewMode: '2d' | '3d' = '2d';
 	private clusteringEnabled = false;
 	private graph3D: any = null; // 3d-force-graph instance
+	/** Re-reads the theme colours into the current 3D drawing; null when none is drawn. */
+	private repaint3D: (() => void) | null = null;
 
 	/** Delay that lets bursts of leaf changes, selections and resizes settle. */
 	private static readonly REFRESH_DEBOUNCE_MS = 100;
@@ -128,7 +100,7 @@ export class LocalGraphView extends ItemView {
 	}
 
 	getDisplayText(): string {
-		return 'Arete Local Graph';
+		return 'Arete local graph';
 	}
 
 	getIcon(): string {
@@ -139,18 +111,10 @@ export class LocalGraphView extends ItemView {
 		this.container = this.contentEl; // Safer than children[1]
 		this.container.empty();
 		this.container.addClass('arete-local-graph-d3');
-		this.container.style.display = 'flex';
-		this.container.style.flexDirection = 'column';
-		this.container.style.height = '100%';
-		this.container.style.overflow = 'hidden';
-		this.container.style.position = 'relative'; // For absolute tooltip
 
 		this.renderToolbar();
 
 		const graphDiv = this.container.createDiv({ cls: 'arete-graph-canvas' });
-		graphDiv.style.flex = '1';
-		graphDiv.style.overflow = 'hidden'; // SVG handles scroll via zoom
-		graphDiv.style.position = 'relative';
 
 		// Refresh when the canvas gains or changes size. A hidden canvas measures 0x0 and
 		// refresh() skips it, so a zero size is forgotten: showing the view again at its
@@ -179,7 +143,7 @@ export class LocalGraphView extends ItemView {
 		// Register events
 		this.registerEvent(
 			(this.app.workspace as any).on('arete:card-selected', (cardId: string) => {
-				debugLog('[Arete Graph] Received selection event:', cardId);
+				debugLog('[Arete] Received selection event:', cardId);
 				this.centeredCardId = cardId;
 				// If we receive a selection, we assume the file context is still valid or will handle in refresh
 				this.scheduleRefresh();
@@ -195,6 +159,9 @@ export class LocalGraphView extends ItemView {
 				this.scheduleRefresh();
 			}),
 		);
+		// The 2D drawing follows the theme through CSS; a 3D one repaints in place, which
+		// neither rebuilds it nor restarts its layout.
+		this.registerEvent(this.app.workspace.on('css-change', () => this.repaint3D?.()));
 		// No workspace 'resize' listener: the ResizeObserver above sees every size change
 		// of the canvas, including those a workspace resize causes.
 	}
@@ -210,16 +177,11 @@ export class LocalGraphView extends ItemView {
 
 	renderToolbar() {
 		const toolbar = this.container.createDiv({ cls: 'arete-graph-toolbar' });
-		toolbar.style.padding = '8px';
-		toolbar.style.borderBottom = '1px solid var(--background-modifier-border)';
-		toolbar.style.display = 'flex';
-		toolbar.style.gap = '10px';
-		toolbar.style.alignItems = 'center';
 
 		// Refresh Button
 		const refreshBtn = toolbar.createDiv({ cls: 'clickable-icon' });
 		setIcon(refreshBtn, 'refresh-cw');
-		refreshBtn.setAttribute('title', 'Rebuild Graph');
+		setTooltip(refreshBtn, 'Rebuild graph');
 		refreshBtn.addEventListener('click', () => {
 			this.resolver.buildGraph(true).then(() => this.refresh());
 		});
@@ -229,17 +191,10 @@ export class LocalGraphView extends ItemView {
 			cls: 'clickable-icon' + (this.renderCardNodes ? ' is-active' : ''),
 		});
 		setIcon(renderToggle, 'layout-template'); // icon for 'card' view
-		renderToggle.setAttribute('title', 'Toggle Card Rendering');
-		if (this.renderCardNodes) renderToggle.style.color = 'var(--interactive-accent)';
+		setTooltip(renderToggle, 'Toggle card rendering');
 		renderToggle.addEventListener('click', () => {
 			this.renderCardNodes = !this.renderCardNodes;
-			if (this.renderCardNodes) {
-				renderToggle.style.color = 'var(--interactive-accent)';
-				renderToggle.addClass('is-active');
-			} else {
-				renderToggle.style.color = '';
-				renderToggle.removeClass('is-active');
-			}
+			renderToggle.toggleClass('is-active', this.renderCardNodes);
 			this.refresh();
 		});
 
@@ -248,18 +203,15 @@ export class LocalGraphView extends ItemView {
 			cls: 'clickable-icon' + (this.showRelated ? ' is-active' : ''),
 		});
 		setIcon(relatedToggle, 'link');
-		relatedToggle.setAttribute('title', 'Toggle Related Links');
-		if (this.showRelated) relatedToggle.style.color = 'var(--interactive-accent)';
+		setTooltip(relatedToggle, 'Toggle related links');
 		relatedToggle.addEventListener('click', () => {
 			this.showRelated = !this.showRelated;
-			if (this.showRelated) relatedToggle.style.color = 'var(--interactive-accent)';
-			else relatedToggle.style.color = '';
+			relatedToggle.toggleClass('is-active', this.showRelated);
 			this.refresh();
 		});
 
 		// Depth Select
-		const depthLabel = toolbar.createSpan({ text: 'Depth:' });
-		depthLabel.style.fontSize = '0.8em';
+		toolbar.createSpan({ text: 'Depth:', cls: 'arete-graph-toolbar-label' });
 		const depthSelect = toolbar.createEl('select');
 		[1, 2, 3, 4].forEach((d) => {
 			const opt = depthSelect.createEl('option', { value: String(d), text: String(d) });
@@ -271,23 +223,18 @@ export class LocalGraphView extends ItemView {
 		});
 
 		// Separator
-		toolbar.createSpan({ text: '|' }).style.color = 'var(--text-muted)';
+		toolbar.createSpan({ text: '|', cls: 'arete-graph-toolbar-sep' });
 
 		// 2D/3D Toggle
 		const dimensionToggle = toolbar.createDiv({
-			cls: 'clickable-icon',
+			cls: 'clickable-icon' + (this.viewMode === '3d' ? ' is-active' : ''),
 		});
 		setIcon(dimensionToggle, this.viewMode === '3d' ? 'box' : 'square');
-		dimensionToggle.setAttribute('title', 'Toggle 2D/3D View');
-		if (this.viewMode === '3d') dimensionToggle.style.color = 'var(--interactive-accent)';
+		setTooltip(dimensionToggle, 'Toggle 2D/3D view');
 		dimensionToggle.addEventListener('click', () => {
 			this.viewMode = this.viewMode === '2d' ? '3d' : '2d';
 			setIcon(dimensionToggle, this.viewMode === '3d' ? 'box' : 'square');
-			if (this.viewMode === '3d') {
-				dimensionToggle.style.color = 'var(--interactive-accent)';
-			} else {
-				dimensionToggle.style.color = '';
-			}
+			dimensionToggle.toggleClass('is-active', this.viewMode === '3d');
 			this.refresh();
 		});
 
@@ -296,17 +243,10 @@ export class LocalGraphView extends ItemView {
 			cls: 'clickable-icon' + (this.clusteringEnabled ? ' is-active' : ''),
 		});
 		setIcon(clusterToggle, 'group');
-		clusterToggle.setAttribute('title', 'Toggle Clustering by File');
-		if (this.clusteringEnabled) clusterToggle.style.color = 'var(--interactive-accent)';
+		setTooltip(clusterToggle, 'Toggle clustering by file');
 		clusterToggle.addEventListener('click', () => {
 			this.clusteringEnabled = !this.clusteringEnabled;
-			if (this.clusteringEnabled) {
-				clusterToggle.style.color = 'var(--interactive-accent)';
-				clusterToggle.addClass('is-active');
-			} else {
-				clusterToggle.style.color = '';
-				clusterToggle.removeClass('is-active');
-			}
+			clusterToggle.toggleClass('is-active', this.clusteringEnabled);
 			this.refresh();
 		});
 	}
@@ -317,7 +257,7 @@ export class LocalGraphView extends ItemView {
 
 	// Public method to explicitly set context (robustness)
 	async setContext(filePath: string, cardId?: string | null) {
-		debugLog('[Arete Graph] Explicit context set:', filePath, cardId);
+		debugLog('[Arete] Explicit context set:', filePath, cardId);
 		this.currentFilePath = filePath;
 		this.centeredCardId = cardId || null;
 		await this.refresh();
@@ -334,10 +274,10 @@ export class LocalGraphView extends ItemView {
 	}
 
 	async refresh() {
-		debugLog('[Arete Graph] Refreshing...');
+		debugLog('[Arete] Refreshing...');
 		const canvas = this.container.querySelector('.arete-graph-canvas') as HTMLElement;
 		if (!canvas) {
-			console.error('[Arete Graph] No canvas element found');
+			console.error('[Arete] No canvas element found');
 			return;
 		}
 		// A hidden view measures 0x0 and draws nothing, so it does not fetch the graph
@@ -365,12 +305,12 @@ export class LocalGraphView extends ItemView {
 			if (fallback) {
 				targetPath = fallback.path;
 				this.currentFilePath = targetPath;
-				debugLog('[Arete Graph] Using fallback file:', targetPath);
+				debugLog('[Arete] Using fallback file:', targetPath);
 			}
 		}
 
 		if (!targetPath) {
-			debugLog('[Arete Graph] No active file resolveable');
+			debugLog('[Arete] No active file resolveable');
 			this.renderEmpty(canvas, 'No active file selected.');
 			return;
 		}
@@ -381,18 +321,18 @@ export class LocalGraphView extends ItemView {
 			return;
 		}
 
-		debugLog('[Arete Graph] Rendering for:', targetPath);
+		debugLog('[Arete] Rendering for:', targetPath);
 
 		const cache = this.app.metadataCache.getFileCache(file);
 		const cards = cache?.frontmatter?.arete === true ? cache.frontmatter.cards : undefined;
 		const filePath = targetPath; // Alias for consistent usage below
 
 		if (!cards || !Array.isArray(cards) || cards.length === 0) {
-			debugLog('[Arete Graph] No cards found in frontmatter');
+			debugLog('[Arete] No cards found in frontmatter');
 			this.renderEmpty(canvas, 'No Arete cards found in this file.');
 			return;
 		}
-		debugLog('[Arete Graph] Found cards:', cards.length);
+		debugLog('[Arete] Found cards:', cards.length);
 
 		// determine center card:
 		let targetCardId = this.centeredCardId;
@@ -419,7 +359,7 @@ export class LocalGraphView extends ItemView {
 					// Update context to match default
 					this.centeredCardId = targetCardId;
 					this.plugin.setCardContext(filePath, targetCardId);
-					debugLog('[Arete Graph] Defaulting to first card:', targetCardId);
+					debugLog('[Arete] Defaulting to first card:', targetCardId);
 				}
 			}
 		} else {
@@ -479,10 +419,10 @@ export class LocalGraphView extends ItemView {
 
 		// 2. Transform Data for D3
 		const { nodes, links } = this.transformData(localGraph);
-		debugLog(`[Arete Graph] Transformed: ${nodes.length} nodes, ${links.length} links`);
+		debugLog(`[Arete] Transformed: ${nodes.length} nodes, ${links.length} links`);
 
 		if (nodes.length === 0) {
-			this.renderEmpty(canvas, 'Graph is empty (No nodes found).');
+			this.renderEmpty(canvas, 'Graph is empty: no nodes found.');
 			return;
 		}
 
@@ -523,6 +463,15 @@ export class LocalGraphView extends ItemView {
 			this.graph3D._destructor?.();
 			this.graph3D = null;
 		}
+		this.repaint3D = null;
+	}
+
+	/** The single tooltip container, created on first use; hidden until a node is hovered. */
+	private ensureTooltip(): HTMLElement {
+		if (!this.tooltipContainer) {
+			this.tooltipContainer = this.container.createDiv({ cls: 'arete-graph-tooltip' });
+		}
+		return this.tooltipContainer;
 	}
 
 	/**
@@ -547,10 +496,7 @@ export class LocalGraphView extends ItemView {
 		this.drawnKey = null;
 		this.releaseDrawing();
 		container.empty();
-		container.createDiv({
-			text: msg,
-			cls: 'arete-graph-empty-msg',
-		}).style.padding = '20px';
+		container.createDiv({ text: msg, cls: 'arete-graph-empty-msg' });
 	}
 
 	// Helper to transform LocalGraphResult to D3 format
@@ -600,9 +546,7 @@ export class LocalGraphView extends ItemView {
 			});
 		} else {
 			// Fallback for types safety if links missing (shouldn't happen with new resolver)
-			console.warn(
-				'[Arete Graph] No links provided by resolver, graph may look disconnected.',
-			);
+			console.warn('[Arete] No links provided by resolver, graph may look disconnected.');
 		}
 
 		return {
@@ -617,15 +561,7 @@ export class LocalGraphView extends ItemView {
 		const drawingComponent = this.tooltipComponent.addChild(new Component());
 		this.drawingComponent = drawingComponent;
 
-		// Setup Tooltip Container if not exists
-		if (!this.tooltipContainer) {
-			this.tooltipContainer = this.container.createDiv({ cls: 'arete-graph-tooltip' });
-			this.tooltipContainer.style.position = 'absolute';
-			this.tooltipContainer.style.display = 'none';
-			this.tooltipContainer.style.zIndex = '1000';
-			this.tooltipContainer.style.zIndex = '1000';
-			this.tooltipContainer.style.pointerEvents = 'none'; // Don't block mouse
-		}
+		this.ensureTooltip();
 		const width = container.clientWidth;
 		const height = container.clientHeight;
 
@@ -682,7 +618,7 @@ export class LocalGraphView extends ItemView {
 			.attr('orient', 'auto')
 			.append('path')
 			.attr('d', 'M0,-5L10,0L0,5')
-			.attr('fill', 'var(--text-muted)');
+			.attr('class', 'arete-graph-arrow');
 
 		// Links
 		const link = g
@@ -690,10 +626,7 @@ export class LocalGraphView extends ItemView {
 			.selectAll('line')
 			.data(links)
 			.join('line')
-			.attr('stroke', 'var(--text-muted)')
-			.attr('stroke-opacity', 0.6)
-			.attr('stroke-width', (d) => (d.type === 'requires' ? 2 : 1))
-			.attr('stroke-dasharray', (d) => (d.type === 'related' ? '4 4' : null))
+			.attr('class', (d) => `arete-graph-link mod-${d.type}`)
 			.attr('marker-end', (d) => (d.type === 'requires' ? 'url(#arrow)' : null));
 
 		// Drag
@@ -717,10 +650,10 @@ export class LocalGraphView extends ItemView {
 		// Nodes Group
 		const nodeGroup = g
 			.append('g')
-			.selectAll('.node')
+			.selectAll('.arete-graph-node')
 			.data(nodes)
 			.join('g')
-			.attr('class', 'node')
+			.attr('class', 'arete-graph-node')
 			.call(dragBehavior as any);
 
 		if (this.renderCardNodes) {
@@ -741,16 +674,8 @@ export class LocalGraphView extends ItemView {
 
 				const div = fo
 					.append('xhtml:div')
-					.style('width', '100%')
-					.style('height', '100%')
-					.style('overflow', 'hidden') // Hide overflow for cleanliness
-					.style('background', 'var(--background-primary)')
-					.style('border', '1px solid var(--background-modifier-border)')
-					.style('border-radius', '8px')
-					.style('font-size', '10px')
-					.style('padding', '8px')
-					.style('box-shadow', '0 2px 4px rgba(0,0,0,0.1)')
-					.classed('arete-card-preview', true); // Apply preview styling class
+					.classed('arete-graph-card', true)
+					.classed('arete-card-preview', true);
 
 				// Fetch Real Card Data
 				// We have d.filePath and d.id
@@ -771,14 +696,16 @@ export class LocalGraphView extends ItemView {
 						);
 					} else {
 						// Fallback if card not found in cache
-						div.html(
-							`<div style="font-weight:bold;margin-bottom:4px;color:red">Card Not Found</div><div>${d.id}</div>`,
-						);
+						div.append('div')
+							.attr('class', 'arete-graph-card-error')
+							.text('Card not found');
+						div.append('div').text(d.id);
 					}
 				} else {
-					div.html(
-						`<div style="font-weight:bold;margin-bottom:4px;color:red">File Not Found</div><div>${d.filePath}</div>`,
-					);
+					div.append('div')
+						.attr('class', 'arete-graph-card-error')
+						.text('File not found');
+					div.append('div').text(d.filePath);
 				}
 			});
 		} else {
@@ -786,30 +713,21 @@ export class LocalGraphView extends ItemView {
 			nodeGroup
 				.append('circle')
 				.attr('r', (d) => (d.group === 'center' ? 10 : 6))
-				.attr('fill', (d) => {
-					if (d.group === 'center') return 'var(--interactive-accent)';
-					if (d.group === 'prereq') return 'var(--text-normal)';
-					return 'var(--text-muted)';
-				})
-				.attr('stroke', 'var(--background-primary)')
-				.attr('stroke-width', 2)
-				.style('cursor', 'pointer');
+				.attr('class', (d) => `arete-graph-dot mod-${d.group}`);
 
 			// Labels
 			nodeGroup
 				.append('text')
 				.text((d) => (d.title.length > 25 ? d.title.slice(0, 23) + '...' : d.title))
-				.attr('font-size', '10px')
+				.attr('class', 'arete-graph-label')
 				.attr('dx', 15)
-				.attr('dy', 4)
-				.attr('fill', 'var(--text-muted)')
-				.style('pointer-events', 'none');
+				.attr('dy', 4);
 
 			// Hover Tooltip
 			nodeGroup
 				.on('mouseover', async (event, d) => {
 					if (this.tooltipContainer) {
-						this.tooltipContainer.style.display = 'block';
+						this.tooltipContainer.addClass('is-visible');
 						this.placeTooltip(event);
 
 						// Populate tooltip. A node's tooltip is rendered on its first hover in
@@ -822,12 +740,10 @@ export class LocalGraphView extends ItemView {
 							return;
 						}
 						const cardDiv = this.tooltipContainer.createDiv({
-							cls: 'arete-card-preview',
+							cls: 'arete-card-preview arete-graph-tooltip-card',
 						});
 						this.tooltipCache.set(cacheKey, cardDiv);
 						cardDiv.style.width = `${TOOLTIP_WIDTH_PX}px`;
-						cardDiv.style.maxHeight = '300px';
-						cardDiv.style.overflow = 'auto';
 
 						// Re-construct basic card object for display
 						// In a real scenario we'd want the full card from cache
@@ -848,11 +764,7 @@ export class LocalGraphView extends ItemView {
 					}
 				})
 				.on('mousemove', (event) => this.placeTooltip(event))
-				.on('mouseout', () => {
-					if (this.tooltipContainer) {
-						this.tooltipContainer.style.display = 'none';
-					}
-				});
+				.on('mouseout', () => this.tooltipContainer?.removeClass('is-visible'));
 		}
 
 		// Click Interaction
@@ -955,6 +867,20 @@ export class LocalGraphView extends ItemView {
 		);
 	}
 
+	/** Colour a 3D drawing from the theme; also the whole of what a theme change redoes. */
+	private paint3D(graph: any, colors: GraphColors): void {
+		if (!graph) return;
+		graph
+			.backgroundColor(colors.background)
+			.nodeColor((node: any) => {
+				if (node.group === 'center') return colors.focused;
+				if (node.group === 'prereq') return colors.green;
+				if (node.group === 'dependent') return colors.orange;
+				return colors.unresolved;
+			})
+			.linkColor((link: any) => (link.type === 'requires' ? colors.line : colors.unresolved));
+	}
+
 	/**
 	 * Render the graph in 3D using 3d-force-graph.
 	 */
@@ -993,23 +919,19 @@ export class LocalGraphView extends ItemView {
 			.height(height)
 			.graphData(graphData)
 			.nodeLabel((node: any) => `${node.title}\n(${node.id})`)
-			.nodeColor((node: any) => {
-				if (node.group === 'center') return '#7c3aed'; // purple
-				if (node.group === 'prereq') return '#10b981'; // green
-				if (node.group === 'dependent') return '#f59e0b'; // amber
-				return '#6b7280'; // gray for related
-			})
 			.nodeVal((node: any) => (node.group === 'center' ? 3 : 1))
-			.linkColor((link: any) => (link.type === 'requires' ? '#6b7280' : '#d1d5db'))
 			.linkWidth((link: any) => (link.type === 'requires' ? 2 : 1))
 			.linkDirectionalArrowLength((link: any) => (link.type === 'requires' ? 4 : 0))
 			.linkDirectionalArrowRelPos(1)
 			.onNodeClick((node: any) => {
-				debugLog('[Arete Graph 3D] Clicked:', node.id);
+				debugLog('[Arete] Clicked:', node.id);
 				this.centeredCardId = node.id;
 				this.currentFilePath = node.filePath;
 				this.refresh();
 			});
+		// Theme colours are read once per drawing, and again when the theme changes.
+		this.repaint3D = () => this.paint3D(this.graph3D, resolveGraphColors(container));
+		this.repaint3D();
 
 		// Apply clustering force in 3D mode if enabled
 		if (this.clusteringEnabled) {
@@ -1033,47 +955,26 @@ export class LocalGraphView extends ItemView {
 		}
 
 		// Setup hover tooltip (reuse single container)
-		if (!this.tooltipContainer) {
-			this.tooltipContainer = this.container.createDiv({ cls: 'arete-graph-tooltip' });
-			this.tooltipContainer.style.position = 'absolute';
-			this.tooltipContainer.style.display = 'none';
-			this.tooltipContainer.style.zIndex = '1000';
-			this.tooltipContainer.style.pointerEvents = 'none';
-		}
+		this.ensureTooltip();
 
 		this.graph3D.onNodeHover((node: any) => {
 			if (node && this.tooltipContainer) {
 				// The hover callback has no pointer position, and 3d-force-graph shows its own
 				// label at the pointer, so the card sits in the canvas's top-left corner.
-				this.tooltipContainer.style.display = 'block';
+				this.tooltipContainer.addClass('is-visible');
 				this.tooltipContainer.style.left = `${container.offsetLeft + TOOLTIP_OFFSET_PX}px`;
 				this.tooltipContainer.style.top = `${container.offsetTop + TOOLTIP_OFFSET_PX}px`;
 				this.tooltipContainer.empty();
-				const cardDiv = this.tooltipContainer.createDiv({ cls: 'arete-card-preview' });
-				cardDiv.style.width = '250px';
-				cardDiv.style.maxHeight = '200px';
-				cardDiv.style.overflow = 'auto';
-				cardDiv.style.background = 'var(--background-primary)';
-				cardDiv.style.border = '1px solid var(--background-modifier-border)';
-				cardDiv.style.borderRadius = '8px';
-				cardDiv.style.padding = '8px';
-				cardDiv.style.boxShadow = '0 4px 12px rgba(0,0,0,0.2)';
+				const cardDiv = this.tooltipContainer.createDiv({
+					cls: 'arete-card-preview arete-graph-tooltip-card mod-3d',
+				});
 
 				// Simple preview (full CardRenderer could be added)
-				cardDiv.createEl('div', {
-					text: node.title,
-					cls: 'arete-card-title',
-				}).style.fontWeight = 'bold';
-				cardDiv.createEl('div', {
-					text: `ID: ${node.id}`,
-					cls: 'arete-card-id',
-				}).style.fontSize = '0.8em';
-				cardDiv.createEl('div', {
-					text: `File: ${node.filePath}`,
-					cls: 'arete-card-file',
-				}).style.fontSize = '0.75em';
+				cardDiv.createEl('div', { text: node.title, cls: 'arete-card-title' });
+				cardDiv.createEl('div', { text: `ID: ${node.id}`, cls: 'arete-card-id' });
+				cardDiv.createEl('div', { text: `File: ${node.filePath}`, cls: 'arete-card-file' });
 			} else if (this.tooltipContainer) {
-				this.tooltipContainer.style.display = 'none';
+				this.tooltipContainer.removeClass('is-visible');
 			}
 		});
 	}
