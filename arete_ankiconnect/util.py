@@ -52,20 +52,6 @@ def api(*versions):
     return decorator
 
 
-def cardQuestion(card):
-    if getattr(card, "question", None) is None:
-        return card._getQA()["q"]
-
-    return card.question()
-
-
-def cardAnswer(card):
-    if getattr(card, "answer", None) is None:
-        return card._getQA()["a"]
-
-    return card.answer()
-
-
 DEFAULT_CONFIG = {
     "apiKey": None,
     "apiLogPath": None,

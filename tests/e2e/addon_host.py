@@ -76,8 +76,8 @@ def _addon_class() -> type:
     namespace: dict[str, Any] = {
         "anki": anki,
         # Module-level names the class reads, defined as the add-on's module defines them.
-        "int_time": getattr(anki.utils, "int_time", None) or anki.utils.intTime,
-        "field_checksum": getattr(anki.utils, "field_checksum", None) or anki.utils.fieldChecksum,
+        "int_time": anki.utils.int_time,
+        "field_checksum": anki.utils.field_checksum,
         "threading": threading,
         "util": util,
         "Card": Card,

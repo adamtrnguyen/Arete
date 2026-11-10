@@ -45,6 +45,7 @@ from anki.errors import NotFoundError
 from anki.exporting import AnkiPackageExporter
 from anki.importing import AnkiPackageImporter
 from anki.notes import Note
+from anki.utils import field_checksum, int_time
 from aqt import gui_hooks, mw
 from aqt.browser import Browser
 from aqt.qt import QAction, QCheckBox, QKeySequence, QMenu, QMessageBox, Qt, QTimer
@@ -54,11 +55,6 @@ from aqt.utils import showWarning, tooltip
 from . import util, web
 from .edit import Edit
 from .web import format_exception_reply, format_success_reply
-
-# Anki 2.1.45 has only the camelCase originals; later versions keep them as aliases of the
-# snake_case functions that print a deprecation warning on every call.
-int_time = getattr(anki.utils, "int_time", None) or anki.utils.intTime
-field_checksum = getattr(anki.utils, "field_checksum", None) or anki.utils.fieldChecksum
 
 # A burst of write actions gets one UI refresh, this long after its last write.
 REFRESH_DELAY_MS = 250
@@ -693,17 +689,6 @@ class AnkiConnect:
             col.sched.rebuild_filtered_deck(did)
 
             # 4. Enforce topological order via due values
-            if not hasattr(col, "update_cards"):
-                for i, cid in enumerate(cids):
-                    try:
-                        card = col.get_card(cid)
-                        if card.did == did:
-                            card.due = i + 1000
-                            col.update_card(card)
-                    except Exception:
-                        pass  # Card may not have been pulled (suspended, etc.)
-                return did
-
             # One update for all cards. A cid listed twice keeps its last position, as
             # it does when each position is saved in turn.
             pulled = {}
@@ -930,10 +915,7 @@ class AnkiConnect:
 
     @util.api()
     def deleteMediaFile(self, filename):
-        try:
-            self.media().syncDelete(filename)
-        except AttributeError:
-            self.media().trash_files([filename])
+        self.media().trash_files([filename])
 
     @util.api()
     def getMediaDirPath(self):
@@ -1359,11 +1341,7 @@ class AnkiConnect:
         if model is None:
             raise Exception(f"model was not found: {modelName}")
         else:
-            try:
-                return [field["description"] for field in model["flds"]]
-            except KeyError:
-                # older versions of Anki don't have field descriptions
-                return ["" for field in model["flds"]]
+            return [field["description"] for field in model["flds"]]
 
     @util.api()
     def modelFieldFonts(self, modelName):
@@ -1624,11 +1602,9 @@ class AnkiConnect:
         if not isinstance(description, str):
             raise Exception(f"description should be a string: {description}")
 
-        if "description" in field:  # older versions do not have the 'description' key
-            field["description"] = description
-            self.save_model(mm, model)
-            return True
-        return False
+        field["description"] = description
+        self.save_model(mm, model)
+        return True
 
     @util.api()
     def deckNameFromId(self, deckId):
@@ -1679,8 +1655,8 @@ class AnkiConnect:
                         "cardId": card.id,
                         "fields": fields,
                         "fieldOrder": card.ord,
-                        "question": util.cardQuestion(card),
-                        "answer": util.cardAnswer(card),
+                        "question": card.question(),
+                        "answer": card.answer(),
                         "modelName": model["name"],
                         "ord": card.ord,
                         "deckName": deckName(card.did),
@@ -1900,10 +1876,7 @@ class AnkiConnect:
 
         if query is not None:
             browser.form.searchEdit.lineEdit().setText(query)
-            if hasattr(browser, "onSearch"):
-                browser.onSearch()
-            else:
-                browser.onSearchActivated()
+            browser.onSearchActivated()
 
         return self.findCards(query)
 
@@ -2005,8 +1978,8 @@ class AnkiConnect:
             "cardId": card.id,
             "fields": fields,
             "fieldOrder": card.ord,
-            "question": util.cardQuestion(card),
-            "answer": util.cardAnswer(card),
+            "question": card.question(),
+            "answer": card.answer(),
             "buttons": [b[0] for b in buttonList],
             "nextReviews": [
                 reviewer.mw.col.sched.nextIvlStr(reviewer.card, b[0], True) for b in buttonList
@@ -2099,26 +2072,17 @@ class AnkiConnect:
         """
         from aqt.import_export.importing import import_file, prompt_for_file_then_import
 
-        if hasattr(Qt, "WindowStaysOnTopHint"):
-            # Qt5
-            WindowOnTopFlag = Qt.WindowStaysOnTopHint
-        elif hasattr(Qt, "WindowType") and hasattr(Qt.WindowType, "WindowStaysOnTopHint"):
-            # Qt6
-            WindowOnTopFlag = Qt.WindowType.WindowStaysOnTopHint
-        else:
-            # Unsupported, don't try to bring window to top
-            WindowOnTopFlag = None
+        WindowOnTopFlag = Qt.WindowType.WindowStaysOnTopHint
 
         # Bring window to top for user to review import settings.
-        if WindowOnTopFlag is not None:
-            try:
-                # [Step 1/2] set always on top flag, show window (it stays on top for now)
-                self.window().setWindowFlags(self.window().windowFlags() | WindowOnTopFlag)
-                self.window().show()
-            finally:
-                # [Step 2/2] clear always on top flag, show window (it doesn't stay on top anymore)
-                self.window().setWindowFlags(self.window().windowFlags() & ~WindowOnTopFlag)
-                self.window().show()
+        try:
+            # [Step 1/2] set always on top flag, show window (it stays on top for now)
+            self.window().setWindowFlags(self.window().windowFlags() | WindowOnTopFlag)
+            self.window().show()
+        finally:
+            # [Step 2/2] clear always on top flag, show window (it doesn't stay on top anymore)
+            self.window().setWindowFlags(self.window().windowFlags() & ~WindowOnTopFlag)
+            self.window().show()
 
         if path is None:
             prompt_for_file_then_import(self.window())
