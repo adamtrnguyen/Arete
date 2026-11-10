@@ -1,13 +1,13 @@
 # Arete Anki Add-on
 
-The **Arete Anki Add-on** (`arete_ankiconnect`) is a specialized bridge that allows the Arete CLI and Obsidian Plugin to communicate directly with your running Anki instance.
+The **Arete Anki Add-on** (`arete_ankiconnect`) is a fork of AnkiConnect. The Arete CLI and the Obsidian plugin use it to reach a running Anki.
 
 ## Why is this needed?
 
 > [!WARNING]
 > This add-on **replaces** the standard AnkiConnect. **Do NOT** install both at the same time, or they will conflict on port 8765.
 
-While Arete can sync notes directly to the Anki database (using `AnkiDirectAdapter`), many of the real-time features require Anki to be open. The add-on provides a REST API that enables:
+While Arete can sync notes directly to the Anki database (using `AnkiDirectAdapter`), the live features need Anki open. The add-on serves an HTTP API (the AnkiConnect protocol, plus Arete's own actions) that enables:
 
 - **Live Hover Previews**: See your card content in Obsidian without switching apps.
 - **Statistical Analytics**: Fetch real-time retention and lapse data.
@@ -40,7 +40,7 @@ ln -s "$(pwd)/arete_ankiconnect" "$HOME/Library/Application Support/Anki2/addons
 
 **Windows (PowerShell):**
 ```powershell
-New-Item -ItemType SymboliCLink -Path "$env:APPDATA\Anki2\addons21\arete_ankiconnect" -Target "$(Get-Location)\arete_ankiconnect"
+New-Item -ItemType SymbolicLink -Path "$env:APPDATA\Anki2\addons21\arete_ankiconnect" -Target "$(Get-Location)\arete_ankiconnect"
 ```
 
 ## Configuration
