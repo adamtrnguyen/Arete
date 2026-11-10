@@ -18,7 +18,7 @@ Arete syncs cards written in note frontmatter (Obsidian) to Anki. **Obsidian is 
 
 1. **Never write `id:` or `anki:`.** Arete assigns both on first sync. A new card has neither.
 2. **Never pass `--force`, `--backend`, or `--clear-cache` unasked.** Prune always previews and asks.
-3. **Sync is the user's call.** It writes to Anki. Draft, show, and polish freely; run `arete sync` when asked.
+3. **Sync is the user's call.** It writes to Anki and overwrites what Anki holds for each card (fields, deck, tags), except the tags `leech` and `marked`. Draft, show, and polish freely; run `arete sync` when asked.
 4. **Cards come from the note body.** Derive fields from what the body says; follow the vault's own writing rules (its CLAUDE.md).
 5. **Verify what the user will see.** A check that did not run is not a pass: render, screenshot, or validate.
 
@@ -26,11 +26,11 @@ Arete syncs cards written in note frontmatter (Obsidian) to Anki. **Obsidian is 
 
 | Surface | Use it for |
 |---|---|
-| **Edit/Write the note** | Drafting and polishing cards. The Card Editor updates within ~1 s. |
+| **Edit/Write the note** | Drafting and polishing cards. The Card Editor re-renders when the file changes. |
 | `open -g "obsidian://arete?vault=<Vault%20Name>&file=<path>&card=<id or position>"` | Put a card in front of the user without stealing focus. `card` is an Arete id or a 1-based position (drafts have no id). |
 | vault MCP `obsidian_screenshot`, `obsidian_dom` | See exactly what the user sees. |
 | `obsidian dev:console limit=<n> level=<level>` (Obsidian CLI) | Read render errors from the console. |
-| vault MCP `obsidian_click` `.arete-toolbar-btn[title="Preview Mode"]` | Switch the Card Editor to the rendered Anki preview (`.arete-preview-side-btn` toggles Front/Back). |
+| vault MCP `obsidian_click` on the toolbar button with the tooltip "Preview mode" (`.arete-toolbar-btn`) | Switch the Card Editor to the rendered Anki preview (`.arete-preview-side-btn` toggles Front/Back). |
 | `arete` CLI (`uv tool`) | `sync`, `vault check/fix/format`, `graph check/export`, `queue`, `report`, `anki stats`. |
 | arete MCP | `list_file_cards`, `get_dep_subgraph`, `check_graph`, `sync_file`, `get_due_cards`, `build_study_queue`. |
 
@@ -47,7 +47,7 @@ Arete syncs cards written in note frontmatter (Obsidian) to Anki. **Obsidian is 
 
 1. **Show the card:** `obsidian://arete…&card=<n>`; switch to Preview Mode for the rendered card.
 2. **User reacts in the terminal** ("card 3's front is vague").
-3. **Edit the field on disk.** The Card Editor re-renders within ~1 s; screenshot to confirm.
+3. **Edit the field on disk.** The Card Editor re-renders; screenshot to confirm.
 4. **Move on:** `card=<n+1>`.
 
 ⚠ The Card Editor preview renders through Obsidian, where a single newline is a line break. **Anki does not** (no nl2br). Check line structure against `references/FORMAT.md`, not the preview alone.
@@ -62,29 +62,29 @@ Whole vault: `arete sync --dry-run`, then `arete sync`. Orphans: `arete sync --p
 
 ### 4. Dependency graph health
 
-1. `arete graph check` (or `--json`) → cycles, duplicate ids, unresolved refs, unreadable files.
+1. `arete graph check` (or `--json`) → cycles, isolated cards, unresolved refs, duplicate ids, unparsed files.
 2. **Unresolved ref:** a typo, a note with no cards, or a note that does not exist. Fix the ref; never invent a note to satisfy it.
 3. **Ambiguous basename** (two files share a name): use `folder/Name`.
-4. **Duplicate id:** two cards share an `id`; keep one (usually the one with deps/anki data).
+4. **Duplicate id:** two cards share an `id`; keep one (usually the one with deps/anki data). Sync refuses every card that shares an id.
 
 Wire deps with arete MCP `get_dep_subgraph` for the batch, `requires` for true prerequisites, `related` for peers.
 
 ### 5. Fix cards flagged during review
 
 1. `arete report --json` → each flagged card's `file_path`, `line`, `arete_id`, `front`, and the user's `note` (the issue).
-2. Open `file_path` at `line`, fix the card, show it (Workflow 2). "No reported cards." means nothing is flagged.
-3. After the user confirms: `arete report --clear <n>` (1-based; `0` clears all).
+2. Open `file_path` at `line`, fix the card, show it (Workflow 2). "No reported cards." means nothing is flagged. Reporting suspends the card in Anki.
+3. After the user confirms: `arete report --clear <n>` (1-based; `0` clears all). Clearing unsuspends the card.
 
 ### 6. Study queue
 
-`arete queue --deck "<Deck>" --dry-run` to preview, then without `--dry-run`. `--include-new`, `--depth N`, `--cross-deck`. Output deck: `Arete::Queue`. Sync first.
+`arete queue --deck "<Deck>" --dry-run` to preview, then without `--dry-run`. `--include-new`, `--depth N`, `--cross-deck`, `--algo static|dynamic`. Output deck: `Arete::Queue`. Sync first. With `--deck` and no `--cross-deck` the queue stays inside that deck. arete MCP `build_study_queue` takes the same options and covers every deck when `deck` is omitted.
 
 ### 7. Vault maintenance
 
 | Check | Command |
 |---|---|
 | One file | `arete vault check "<note>.md"`, `arete vault fix "<note>.md"` |
-| Every card note | loop `validate_arete_file` from `arete.application.validation` in one Python process (1,168 notes in seconds; the CLI per file is slow) |
+| Every card note | loop `validate_arete_file` from `arete.application.validation` in one Python process (the CLI per file is slow) |
 | YAML formatting | `arete vault format --dry-run`, then without |
 | Graph | `arete graph check` |
 
