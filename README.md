@@ -12,7 +12,8 @@ source of truth: nothing comes back except the ids Arete assigns.
 
 ## What it does
 
-- **Sync** cards from note frontmatter to Anki. Unchanged files are skipped.
+- **Sync** cards from note frontmatter to Anki. Unchanged files are not parsed again, and every
+  card is still compared with Anki. What Anki holds for a card is overwritten with the vault's.
 - **Study in prerequisite order:** cards list what they need under `deps.requires`, and
   `arete queue` builds a filtered deck that puts those first.
 - **Prune** Anki notes whose cards were deleted from the vault, after showing you the list.
