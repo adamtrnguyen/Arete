@@ -1,4 +1,7 @@
 import logging
+from types import SimpleNamespace
+
+import pytest
 
 from arete.application.utils.logging import (
     RunRecorder,
@@ -32,6 +35,11 @@ def test_run_recorder_add_inventory():
 
     assert recorder.inventory_nids == {"1", "2"}
     assert recorder.inventory_decks == {"D1", "D2"}
+
+
+def test_run_recorder_inventory_takes_mappings_only():
+    with pytest.raises(AttributeError):
+        RunRecorder().add_inventory([SimpleNamespace(nid="1", deck="D1")])  # type: ignore[arg-type]
 
 
 def test_rotate_logs(tmp_path):

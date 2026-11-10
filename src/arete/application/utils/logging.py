@@ -2,6 +2,7 @@ import logging
 import os
 import sys
 import threading
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -34,11 +35,12 @@ class RunRecorder:
 
     start_time: datetime = field(default_factory=datetime.now)
 
-    def add_inventory(self, items: list[Any]):
+    def add_inventory(self, items: Iterable[Mapping[str, Any]]):
+        """Record each item's `nid` and `deck` (either may be None) for prune to keep."""
         with self._inventory_lock:
             for item in items:
-                nid = item.get("nid") if isinstance(item, dict) else getattr(item, "nid", None)
-                deck = item.get("deck") if isinstance(item, dict) else getattr(item, "deck", None)
+                nid = item.get("nid")
+                deck = item.get("deck")
                 if nid:
                     self.inventory_nids.add(str(nid))
                 if deck:
