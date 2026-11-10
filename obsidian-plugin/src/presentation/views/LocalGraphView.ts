@@ -528,8 +528,7 @@ export class LocalGraphView extends ItemView {
 			graph.related.forEach((n) => addNode(n, 'related'));
 		}
 
-		// 2. Add Links from Graph Data
-		// The resolver now provides valid edges for the subgraph
+		// 2. Add Links from Graph Data: the resolver's edges for the subgraph
 		if (graph.links) {
 			graph.links.forEach((edge) => {
 				// Only add link if both nodes are in the graph (e.g. might be hidden related)
@@ -545,7 +544,7 @@ export class LocalGraphView extends ItemView {
 				}
 			});
 		} else {
-			// Fallback for types safety if links missing (shouldn't happen with new resolver)
+			// `links` is required by the type; this guards a malformed reply.
 			console.warn('[Arete] No links provided by resolver, graph may look disconnected.');
 		}
 

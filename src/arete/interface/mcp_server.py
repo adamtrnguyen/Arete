@@ -67,7 +67,7 @@ def create_server() -> MCPServer:  # noqa: C901
         return bridge
 
     # ------------------------------------------------------------------
-    # Existing tools (migrated from raw Server)
+    # Sync and stats tools
     # ------------------------------------------------------------------
 
     @mcp.tool()
@@ -176,7 +176,7 @@ def create_server() -> MCPServer:  # noqa: C901
         return json.dumps(dataclasses.asdict(insights), indent=2)
 
     # ------------------------------------------------------------------
-    # New learning-focused tools
+    # Learning tools: graph, concepts, due cards, study queue
     # ------------------------------------------------------------------
 
     @mcp.tool()

@@ -33,7 +33,7 @@ class EnrichedStats:
     lapse_rate: float | None
     volatility: float | None
     days_overdue: int | None
-    interval_growth: float | None  # Replaces stability_gain
+    interval_growth: float | None
     press_fatigue: float | None  # New metric
     average_time_ms: int | None  # New metric
     ret_at_review: float | None
