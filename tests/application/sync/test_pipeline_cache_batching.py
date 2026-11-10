@@ -112,8 +112,11 @@ def test_one_cache_transaction_per_batch_not_per_card(root: Path, tmp_path: Path
     sync(root, anki, cache)
 
     assert cache.single_writes == 0, "every accepted card used to be its own commit"
-    assert len(cache.batches) == anki.calls
-    assert sum(cache.batches) == 120
+    # One transaction per batch, then one for the cards the nid/cid write-back moved:
+    # every card below the first in each file (3 x 39).
+    assert len(cache.batches) == anki.calls + 1
+    assert sum(cache.batches[: anki.calls]) == 120
+    assert cache.batches[-1] == 117
     assert all(cache.get_hash(root / f"n{f}.md", c) for f in range(3) for c in range(1, 41))
 
 
@@ -128,7 +131,7 @@ def test_a_card_is_cached_only_after_anki_accepted_it(root: Path, tmp_path: Path
     assert cache.get_hash(root / "n0.md", 4) is None, "a rejected card must not be cached"
     assert cache.get_hash(root / "n1.md", 30) is None
     assert cache.get_hash(root / "n0.md", 3) is not None
-    assert sum(cache.batches) == 58
+    assert sum(cache.batches[: anki.calls]) == 58, "the batches cache only accepted cards"
 
 
 def test_a_failed_cache_write_loses_rows_and_the_cards_are_sent_again(root: Path, tmp_path: Path):

@@ -85,6 +85,17 @@ class MarkdownParser:
         cached.source_file, cached.source_index, cached.unchanged = md_path, idx, True
         return cached
 
+    def source_field(self, md_path: Path, line: int, arete_id: str) -> str | None:
+        """The `_obsidian_source` value: `vault|path|line|arete_id`; None outside the vault.
+
+        The add-on's "Open in Obsidian" jumps to `line` through Advanced URI.
+        """
+        try:
+            relative_path = md_path.relative_to(self.vault_root)
+        except ValueError:
+            return None
+        return f"{self.vault_root.name}|{relative_path.as_posix()}|{line}|{arete_id}"
+
     def _cached_nid(self, md_path: Path, idx: int, cache: ContentCache) -> str | None:
         """The nid the content cache recorded for a card, which the vault may not hold yet."""
         import json
@@ -307,18 +318,11 @@ class MarkdownParser:
                     continue
 
                 # 4) Add Obsidian source location for linking back
-                try:
-                    relative_path = md_path.relative_to(self.vault_root)
-                    vault_name = self.vault_root.name
-                    arete_id = sanitize(card.get("id", "")).strip()
-                    # Store as: vault|path|line|arete_id
-                    # Use start_line so Advanced URI can jump to the exact location
-                    fields["_obsidian_source"] = (
-                        f"{vault_name}|{relative_path.as_posix()}|{start_line}|{arete_id}"
-                    )
-                except ValueError:
-                    # File not in vault root, skip source field
-                    pass
+                source = self.source_field(
+                    md_path, start_line, sanitize(card.get("id", "")).strip()
+                )
+                if source is not None:
+                    fields["_obsidian_source"] = source
 
                 # Construct per-card tag list (file base + card-level + arete ID)
                 card_tags = list(base_tags)  # Copy to avoid mutating shared list

@@ -211,8 +211,24 @@ class VaultService:
 
         return count
 
-    def apply_updates(self, updates: list[UpdateItem], dry_run: bool = False):
-        """Write back new NIDs/CIDs to the markdown files."""
+    def card_lines(self, md_path: Path) -> dict[int, int]:
+        """Each card's start line in the file as it is now, by card index (1-based)."""
+        try:
+            meta, _ = self.parse(md_path, md_path.read_text(encoding="utf-8"))
+        except Exception as e:
+            self.logger.warning(f"[vault] could not read card lines of {md_path.name}: {e}")
+            return {}
+        if not meta or "__yaml_error__" in meta:
+            return {}
+        return {
+            idx: int(card["__line__"])
+            for idx, card in enumerate(meta.get("cards") or [], start=1)
+            if isinstance(card, dict) and "__line__" in card
+        }
+
+    def apply_updates(self, updates: list[UpdateItem], dry_run: bool = False) -> set[Path]:
+        """Write back new NIDs/CIDs to the markdown files; the files rewritten."""
+        written: set[Path] = set()
         by_file: dict[Path, list[UpdateItem]] = defaultdict(list)
         for u in updates:
             if u.ok and (u.new_nid or u.new_cid):
@@ -257,8 +273,10 @@ class VaultService:
                             self.logger.info(f"[dry-run] Would write normalized YAML to {md_path}")
                         else:
                             md_path.write_text(new_text, encoding="utf-8")
+                            written.add(md_path)
                             self.logger.debug(
                                 f"[write] {md_path}: persisted nid/cid into frontmatter"
                             )
             except Exception as e:
                 self.logger.error(f"[error] write-updates {md_path}: {e}")
+        return written

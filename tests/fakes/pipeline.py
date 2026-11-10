@@ -1,8 +1,10 @@
 """Run the pipeline with its NoteSync replaced, for tests of the pipeline itself.
 
-`run_pipeline` builds one `NoteSync` per run over the bridge and calls its `prefetch`
-and `sync_notes`. A pipeline test that scripts what each batch returns hands an object
-with those two methods to `syncing_through`; the bridge then serves prune only.
+`run_pipeline` builds one `NoteSync` per run over the bridge and calls its `prefetch`,
+`sync_notes` and, after the write-back, `rewrite_fields`. A pipeline test that scripts
+what each batch returns hands an object with the first two to `syncing_through` (one
+without `rewrite_fields` gets one that records its calls and writes nothing); the
+bridge then serves prune only.
 The decisions themselves are tested against the real NoteSync elsewhere
 (`tests/application/sync/test_note_sync.py`, `tests/e2e`).
 """
@@ -26,6 +28,15 @@ def syncing_through(fake: Any) -> Iterator[MagicMock]:
         if hasattr(fake, "dry_run"):
             fake.dry_run = dry_run
         return fake
+
+    if not hasattr(fake, "rewrite_fields"):
+        fake.rewritten = []
+
+        async def rewrite_fields(items: Any) -> dict:
+            fake.rewritten.extend(items)
+            return {}
+
+        fake.rewrite_fields = rewrite_fields
 
     factory = MagicMock(side_effect=build)
     with patch("arete.application.sync.pipeline.NoteSync", factory):

@@ -255,6 +255,30 @@ class NoteSync:
             return
         self._snapshot.update((n, h) for n, h in held.items() if not isinstance(h, Exception))
 
+    async def rewrite_fields(
+        self, items: Sequence[tuple[int, str, dict[str, str]]]
+    ) -> dict[int, Exception | None]:
+        """Set fields of notes this run synced, in one session: (nid, note type, fields).
+
+        For a field whose vault value changed after the card was synced, such as the
+        line in `_obsidian_source` after the write-back moved the card. A field the
+        note type lacks is left out. Nothing is written in a dry run.
+        """
+        changes = []
+        for nid, model, fields in items:
+            info = self._types.get(model)
+            wanted = _type_fields(info, fields) if isinstance(info, NoteTypeInfo) else {}
+            if wanted:
+                changes.append(NoteChange(nid, fields=wanted))
+        if self._dry or not changes:
+            return {}
+        try:
+            async with self._store.session() as s:
+                errors = await s.apply_changes(changes)
+        except Exception as e:
+            errors = [e] * len(changes)
+        return {c.nid: error for c, error in zip(changes, errors, strict=True)}
+
     async def _run(self, s: NoteStoreSession, cards: list[_Card]) -> None:
         await self._load_types(s, {c.work.note.model for c in cards})
         await self._ensure_source_fields(s, cards)

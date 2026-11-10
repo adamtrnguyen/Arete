@@ -51,6 +51,68 @@ def vault_models(compatible: list[tuple[Path, dict[str, Any], bool]]) -> set[str
     return models
 
 
+async def true_source_lines(
+    written: set[Path],
+    updates: list[UpdateItem],
+    vault_service: VaultService,
+    parser: MarkdownParser,
+    note_sync: NoteSync,
+    cache: ContentCache,
+    logger: logging.Logger,
+) -> set[Path]:
+    """Point `_obsidian_source` at each card's line in the files the write-back rewrote.
+
+    The card was synced with the line it had before its file was rewritten, and the
+    rewrite moves the cards in it. Every card that reached Anki and moved gets one field
+    write, all in one session, and its cached render the same line, so the next sync
+    finds nothing to change. Anki holds the value this run compared or wrote, so
+    nothing is read. Returns the files with a card that could not be corrected.
+    """
+    by_file: dict[Path, list[UpdateItem]] = {}
+    for u in updates:
+        if u.ok and u.note and u.source_file in written:
+            by_file.setdefault(u.source_file, []).append(u)
+    moved: list[tuple[UpdateItem, int, str, int]] = []
+    for path, ups in by_file.items():
+        lines = vault_service.card_lines(path)
+        for u in ups:
+            assert u.note is not None
+            old = u.note.fields.get("_obsidian_source")
+            line = lines.get(u.source_index)
+            nid = u.new_nid or u.note.nid
+            if old is None or line is None or not (nid and nid.isdigit()):
+                continue
+            new = parser.source_field(path, line, u.note.arete_id or "")
+            if new is not None and new != old:
+                moved.append((u, int(nid), new, line))
+    if not moved:
+        return set()
+    errors = await note_sync.rewrite_fields(
+        [(nid, u.note.model, {"_obsidian_source": new}) for u, nid, new, _ in moved if u.note]
+    )
+    failed: set[Path] = set()
+    rows: list[tuple[Path, int, str, str]] = []
+    for u, nid, new, line in moved:
+        assert u.note is not None
+        if errors.get(nid) is not None:
+            logger.warning(f"[source] {u.source_file.name} #{u.source_index}: {errors[nid]}")
+            failed.add(u.source_file)
+            continue
+        u.note.fields["_obsidian_source"] = new
+        u.note.start_line = u.note.end_line = line
+        if u.note.content_hash:
+            rows.append(
+                (u.source_file, u.source_index, u.note.content_hash, json.dumps(u.note.to_dict()))
+            )
+    if rows:
+        try:
+            cache.set_notes(rows)
+        except Exception as e:  # the stale renders stay; the files are read afresh next run
+            logger.warning(f"[source] could not cache the corrected lines: {e}")
+            failed |= {path for path, *_ in rows}
+    return failed
+
+
 @dataclass
 class RunStats:
     total_generated: int
@@ -332,7 +394,11 @@ async def run_pipeline(
     # -------- Stage 4: Persist Updates (Write back NIDs) --------
     if updates:
         logger.info("[pipeline] Persisting NIDs/CIDs to frontmatter...")
-        vault_service.apply_updates(updates, dry_run=config.dry_run)
+        written = vault_service.apply_updates(updates, dry_run=config.dry_run)
+        if not config.dry_run:
+            failed_files |= await true_source_lines(
+                written, updates, vault_service, parser, note_sync, cache, logger
+            )
 
     # A file is recorded as synced only once every card in it reached Anki, so a dry
     # run or a failed card leaves it fresh and the next run looks at it again.
