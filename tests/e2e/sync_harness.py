@@ -106,11 +106,6 @@ class FakeAnkiPlus(FakeAnki):
             if note["model"] == modelName:
                 note["fields"].setdefault(fieldName, "")
 
-    def _a_modelTemplates(self, modelName):
-        if modelName not in self.models:
-            raise Exception(f"model was not found: {modelName}")
-        return {"Card 1": {"Front": "", "Back": ""}}
-
     def _a_addNote(self, note):
         if note["deckName"] not in self.decks:
             raise Exception("deck was not found: {}".format(note["deckName"]))

@@ -1,9 +1,13 @@
+from __future__ import annotations
+
 import asyncio
 import json
 import logging
 import platform
 import shutil
 from collections import Counter
+from collections.abc import AsyncIterator, Collection, Sequence
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -17,7 +21,17 @@ from arete.domain.constants import (
 )
 from arete.domain.identity import first_field_key
 from arete.domain.interfaces import AnkiBridge
-from arete.domain.models import AnkiDeck, OutcomeUnknown, UpdateItem, WorkItem
+from arete.domain.models import (
+    AnkiDeck,
+    HeldCard,
+    HeldNote,
+    NewNote,
+    NoteChange,
+    NoteTypeInfo,
+    OutcomeUnknown,
+    UpdateItem,
+    WorkItem,
+)
 from arete.domain.note_types import map_note_type_fields
 from arete.domain.ownership import is_arete_id
 
@@ -105,6 +119,234 @@ class _NotePlan:
     writes: list[tuple[str, dict]] = field(default_factory=list)
 
 
+class ConnectNoteSession:
+    """`NoteStoreSession` over AnkiConnect, batched: a few requests per call, any size.
+
+    Reads go 500 ids per request; writes go in `multi` requests of at most
+    `_WRITES_PER_REQUEST`, step by step (`apply_changes`). With today's actions a card's
+    deck is read with `getDecks`, which names the deck the card sits in (a filtered deck
+    while it is queued, `Default` for a deck that is gone, read as unknown), and a card is
+    filed with `changeDeck`, which takes it out of a filtered deck first.
+    """
+
+    def __init__(self, adapter: AnkiConnectAdapter):
+        """Send through the adapter's `_invoke` and `_send_writes`."""
+        self._a = adapter
+
+    # -- reads ---------------------------------------------------------------
+
+    async def note_types(
+        self, names: Collection[str]
+    ) -> dict[str, NoteTypeInfo | None | Exception]:
+        ordered = sorted(names)
+        if not ordered:
+            return {}
+        reads: list[tuple[str, dict]] = []
+        for name in ordered:
+            reads.append(("modelFieldNames", {"modelName": name}))
+            reads.append(("modelTemplates", {"modelName": name}))
+        replies = await self._a._send_writes(reads, results=True)
+        return {
+            name: _type_info(name, replies[2 * i], replies[2 * i + 1])
+            for i, name in enumerate(ordered)
+        }
+
+    async def deck_names(self) -> set[str]:
+        return set(await self._a._invoke("deckNames"))
+
+    async def read_notes(self, nids: Sequence[int]) -> dict[int, HeldNote | None | Exception]:
+        unique = list(dict.fromkeys(int(n) for n in nids))
+        infos = await self._a._read_notes(unique)
+        cids = [c for i in infos.values() if isinstance(i, dict) for c in i.get("cards") or []]
+        decks = await self._decks_of(cids)
+        out: dict[int, HeldNote | None | Exception] = {}
+        for nid in unique:
+            info = infos[nid]
+            if isinstance(info, Exception):
+                out[nid] = info
+            elif not info.get("noteId"):
+                out[nid] = None
+            else:
+                out[nid] = _held(info, decks)
+        return out
+
+    async def _decks_of(self, cids: list[int]) -> dict[int, str | None]:
+        """Each card's deck by `getDecks`; a failed chunk leaves its cards unknown."""
+        deck_of: dict[int, str | None] = {}
+        for i in range(0, len(cids), CHUNK_SIZE):
+            try:
+                reply = await self._a._invoke("getDecks", cards=cids[i : i + CHUNK_SIZE])
+                for deck_name, deck_cids in reply.items():
+                    known = None if deck_name == _UNPROVABLE_DECK else deck_name
+                    deck_of.update((int(c), known) for c in deck_cids)
+            except Exception as e:
+                self._a.logger.warning(f"[anki] getDecks failed; those decks count as unknown: {e}")
+        return deck_of
+
+    async def find_by_arete_ids(
+        self, arete_ids: Sequence[str]
+    ) -> dict[str, list[HeldNote] | Exception]:
+        ids = list(dict.fromkeys(arete_ids))
+        if not ids:
+            return {}
+        replies = await self._a._send_writes(
+            [("findNotes", {"query": f"tag:{i}"}) for i in ids], results=True
+        )
+        hits = {i: r for i, r in zip(ids, replies, strict=True) if isinstance(r, list)}
+        nids = sorted({int(n) for found in hits.values() for n in found})
+        infos = await self._a._read_notes(nids)
+        out: dict[str, list[HeldNote] | Exception] = {}
+        for arete_id, reply in zip(ids, replies, strict=True):
+            if arete_id not in hits:
+                failed = reply if isinstance(reply, Exception) else None
+                out[arete_id] = failed or Exception(f"findNotes answered {reply!r:.80}")
+                continue
+            out[arete_id] = _tagged(arete_id, sorted(int(n) for n in hits[arete_id]), infos)
+        return out
+
+    async def scan_model(self, model: str) -> list[HeldNote]:
+        candidates = await self._a._invoke("findNotes", query=f'"note:{model}"')
+        infos = await self._a._read_notes([int(n) for n in candidates or []])
+        failed = [i for i in infos.values() if isinstance(i, Exception)]
+        if failed:
+            raise failed[0]
+        return [_held(i, {}) for i in infos.values() if isinstance(i, dict) and i.get("noteId")]
+
+    # -- writes --------------------------------------------------------------
+
+    async def add_field(self, model: str, field: str) -> None:
+        await self._a._invoke("modelFieldAdd", modelName=model, fieldName=field)
+
+    async def create_decks(self, names: Collection[str]) -> dict[str, Exception | None]:
+        ordered = sorted(names)
+        if not ordered:
+            return {}
+        errors = await self._a._send_writes([("createDeck", {"deck": n}) for n in ordered])
+        return dict(zip(ordered, errors, strict=True))
+
+    async def create_notes(self, notes: Sequence[NewNote]) -> list[int | Exception]:
+        out: list[int | Exception] = []
+        for start in range(0, len(notes), _WRITES_PER_REQUEST):
+            group = notes[start : start + _WRITES_PER_REQUEST]
+            writes = [("addNote", {"note": _add_params(n)}) for n in group]
+            results = await self._a._send_writes(writes, results=True)
+            for result in results:
+                if isinstance(result, Exception):
+                    out.append(result)
+                elif not result:
+                    out.append(Exception("addNote returned null ID"))
+                else:
+                    out.append(int(result))
+        return out
+
+    async def apply_changes(self, changes: Sequence[NoteChange]) -> list[Exception | None]:
+        """Each note's steps in order, the k-th step of every note in one request."""
+        steps = [_steps_of(c) for c in changes]
+        errors: list[Exception | None] = [None] * len(changes)
+        k = 0
+        while due := [i for i, s in enumerate(steps) if errors[i] is None and k < len(s)]:
+            for start in range(0, len(due), _WRITES_PER_REQUEST):
+                group = due[start : start + _WRITES_PER_REQUEST]
+                sent = await self._a._send_writes([steps[i][k] for i in group])
+                for i, error in zip(group, sent, strict=True):
+                    if error is not None and steps[i][k][0] == "changeNoteType":
+                        error = await self._confirm_retype(changes[i], error)
+                    errors[i] = error
+            k += 1
+        return errors
+
+    async def _confirm_retype(self, change: NoteChange, error: Exception) -> Exception | None:
+        """A lost `changeNoteType` reply: done if the note has the new type, else the error.
+
+        It is never sent again: its field map indexes the old type's fields.
+        """
+        if not isinstance(error, OutcomeUnknown) or change.retype is None:
+            return error
+        try:
+            await self._a._confirm_retype(change.nid, change.retype[0], error)
+        except OutcomeUnknown as still:
+            return still
+        return None
+
+
+def _type_info(name: str, fields: Any, templates: Any) -> NoteTypeInfo | None | Exception:
+    """A note type from the results of `modelFieldNames` and `modelTemplates`.
+
+    Without a model-info action a type counts as cloze when a template's front holds a
+    cloze field, as Anki's own cloze type's does.
+    """
+    for reply in (fields, templates):
+        if isinstance(reply, Exception):
+            return None if "model was not found" in str(reply) else reply
+    if not isinstance(fields, list) or not isinstance(templates, dict):
+        return ValueError(f"note type {name}: unexpected replies {fields!r:.40} {templates!r:.40}")
+    is_cloze = any("{{cloze:" in str((t or {}).get("Front", "")) for t in templates.values())
+    return NoteTypeInfo(name, tuple(fields), is_cloze, len(templates))
+
+
+def _held(info: dict, decks: dict[int, str | None]) -> HeldNote:
+    """A notesInfo entry as a held note; card order is Anki's `ord` order."""
+    raw = info.get("fields") or {}
+    names = sorted(raw, key=lambda n: (raw[n] or {}).get("order", 0))
+    cards = tuple(
+        HeldCard(int(c), i, decks.get(int(c)), None) for i, c in enumerate(info.get("cards") or [])
+    )
+    return HeldNote(
+        int(info["noteId"]),
+        str(info.get("modelName", "")),
+        {n: str((raw[n] or {}).get("value", "")) for n in names},
+        tuple(info.get("tags") or []),
+        cards,
+    )
+
+
+def _tagged(
+    arete_id: str, nids: list[int], infos: dict[int, dict | Exception]
+) -> list[HeldNote] | Exception:
+    """The notes among `nids` that carry the id as a whole tag, ignoring case."""
+    key = arete_id.casefold()
+    out: list[HeldNote] = []
+    for nid in nids:
+        info = infos.get(nid)
+        if isinstance(info, Exception):
+            return info
+        if info and info.get("noteId") and key in {str(t).casefold() for t in info.get("tags", [])}:
+            out.append(_held(info, {}))
+    return out
+
+
+def _add_params(new: NewNote) -> dict:
+    """An addNote note. A duplicate first field is allowed: identity is decided before."""
+    return {
+        "deckName": new.deck,
+        "modelName": new.model,
+        "fields": dict(new.fields),
+        "tags": list(new.tags),
+        "options": {"allowDuplicate": True},
+    }
+
+
+def _steps_of(change: NoteChange) -> list[tuple[str, dict]]:
+    """The note's writes in the port's order: retype, fields, add tags, remove tags, deck."""
+    nid = change.nid
+    steps: list[tuple[str, dict]] = []
+    if change.retype:
+        model, mapping = change.retype
+        steps.append(
+            ("changeNoteType", {"notes": [nid], "modelName": model, "newFields": list(mapping)})
+        )
+    if change.fields:
+        steps.append(("updateNoteFields", {"note": {"id": nid, "fields": dict(change.fields)}}))
+    if change.add_tags:
+        steps.append(("addTags", {"notes": [nid], "tags": " ".join(change.add_tags)}))
+    if change.remove_tags:
+        steps.append(("removeTags", {"notes": [nid], "tags": " ".join(change.remove_tags)}))
+    if change.home_deck:
+        cids, deck = change.home_deck
+        steps.append(("changeDeck", {"cards": list(cids), "deck": deck}))
+    return steps
+
+
 class AnkiConnectAdapter(AnkiBridge):
     """Adapter for communicating with Anki via the AnkiConnect add-on (HTTP API)."""
 
@@ -166,6 +408,11 @@ class AnkiConnectAdapter(AnkiBridge):
             f"AnkiConnectAdapter initialized with url={self.url} "
             f"(curl_bridge={self.use_windows_curl})"
         )
+
+    @asynccontextmanager
+    async def session(self) -> AsyncIterator[ConnectNoteSession]:
+        """Note reads and writes over AnkiConnect (`NoteStorePort`); nothing to open."""
+        yield ConnectNoteSession(self)
 
     async def is_responsive(self) -> bool:
         """Check if AnkiConnect is reachable and has the expected API version."""
@@ -460,13 +707,16 @@ class AnkiConnectAdapter(AnkiBridge):
                         plan.result = self._failed(plan.item, error)
             step += 1
 
-    async def _send_writes(self, writes: list[tuple[str, dict]]) -> list[Exception | None]:
-        """Send writes in one request, a lone one as itself, and return each one's error."""
+    async def _send_writes(self, writes: list[tuple[str, dict]], results: bool = False) -> list:
+        """Send writes in one request, a lone one as itself; per write its error or None.
+
+        With `results`, per write its result, or its error.
+        """
         if len(writes) == 1:
             action, params = writes[0]
             try:
-                await self._invoke(action, **params)
-                return [None]
+                value = await self._invoke(action, **params)
+                return [value if results else None]
             except Exception as e:
                 return [e]
         actions = [{"action": a, "version": 6, "params": p} for a, p in writes]
@@ -476,14 +726,14 @@ class AnkiConnectAdapter(AnkiBridge):
                 raise ValueError(f"multi answered {replies!r:.80} for {len(writes)} actions")
         except Exception as e:
             return [e] * len(writes)
-        errors: list[Exception | None] = []
+        errors: list = []
         for reply in replies:
             if not isinstance(reply, dict) or set(reply) != {"result", "error"}:
                 errors.append(ValueError(f"multi sub-reply is malformed: {reply!r:.80}"))
             elif reply["error"] is not None:
                 errors.append(Exception(reply["error"]))
             else:
-                errors.append(None)
+                errors.append(reply["result"] if results else None)
         return errors
 
     async def _fill_first_cids(self, plans: list[_NotePlan]) -> None:

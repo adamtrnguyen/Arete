@@ -41,6 +41,7 @@ class FakeAnki:
             lambda action, params: None
         )
         self.templates: dict[str, int] = {}  # model -> number of card templates (default 1)
+        self.cloze_models: set[str] = {"Cloze"}
         self._next_id = 1000
 
     # -- state helpers -------------------------------------------------------
@@ -119,12 +120,23 @@ class FakeAnki:
         return sorted(self.decks)
 
     def _a_modelFieldNames(self, modelName):
+        if modelName not in self.models:
+            raise Exception(f"model was not found: {modelName}")
         return list(self.models[modelName])
 
     def _a_modelFieldAdd(self, modelName, fieldName):
-        self.models[modelName].append(fieldName)
+        if modelName not in self.models:
+            raise Exception(f"model was not found: {modelName}")
+        if fieldName not in self.models[modelName]:  # the add-on adds a missing field only
+            self.models[modelName].append(fieldName)
 
     def _a_modelTemplates(self, modelName):
+        """One template per card, as Anki's: a cloze type's front holds its cloze field."""
+        if modelName not in self.models:
+            raise Exception(f"model was not found: {modelName}")
+        if modelName in self.cloze_models:
+            first = self.models[modelName][0]
+            return {"Cloze": {"Front": f"{{{{cloze:{first}}}}}", "Back": f"{{{{cloze:{first}}}}}"}}
         n = self.templates.get(modelName, 1)
         return {f"Card {i + 1}": {"Front": "", "Back": ""} for i in range(n)}
 
@@ -147,8 +159,11 @@ class FakeAnki:
     def _a_findNotes(self, query=None):
         if query is None:
             return []
-        if m := re.fullmatch(r"tag:(\S+)", query):
-            return [nid for nid, n in self.notes.items() if m.group(1) in n["tags"]]
+        if m := re.fullmatch(r"tag:(\S+)", query):  # Anki matches tags ignoring case
+            tag = m.group(1).casefold()
+            return [
+                nid for nid, n in self.notes.items() if tag in {t.casefold() for t in n["tags"]}
+            ]
         if m := re.fullmatch(r'"note:(.+)"', query):
             return [nid for nid, n in self.notes.items() if n["model"] == m.group(1)]
         if m := re.fullmatch(r'"deck:(.+)"', query):

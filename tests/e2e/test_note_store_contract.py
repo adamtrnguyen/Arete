@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import inspect
 from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -18,7 +19,7 @@ import pytest
 from arete.domain.interfaces import NoteStorePort, NoteStoreSession
 from arete.domain.models import HeldNote, NewNote, NoteChange, OutcomeUnknown
 from arete.infrastructure.adapters.anki_direct import AnkiDirectAdapter
-from tests.e2e.sync_harness import DirectBackend, make_backend
+from tests.e2e.sync_harness import AddonBackend, DirectBackend, FakeBackend, make_backend
 from tests.fakes.note_store import ContractViolation, FakeNoteStore
 
 ID = "arete_01J00000000000000000000101"
@@ -59,7 +60,61 @@ def _direct(root: Path) -> StoreUnderTest:
     )
 
 
-STORES: dict[str, Callable[[Path], StoreUnderTest]] = {"fake": _fake, "direct": _direct}
+def _ac_fake(root: Path) -> StoreUnderTest:
+    backend = make_backend("fake", root)
+    assert isinstance(backend, FakeBackend)
+    fake = backend.fake
+
+    def queue(nids: list[int]) -> None:
+        """The fake has no filtered decks: the cards sit in the queue, as getDecks says."""
+        fake.decks.add("Arete::Queue")
+        for nid in nids:
+            for cid in fake.notes[nid]["cards"]:
+                fake.card_deck[cid] = "Arete::Queue"
+
+    return StoreUnderTest("ac-fake", backend.bridge(), backend.add_note, queue, backend.close)
+
+
+def _ac_addon(root: Path) -> StoreUnderTest:
+    backend = make_backend("addon", root)
+    assert isinstance(backend, AddonBackend)
+    return StoreUnderTest(
+        "ac-addon",
+        backend.bridge(),
+        backend.add_note,
+        lambda nids: None if backend.queue(nids) else None,
+        backend.close,
+    )
+
+
+STORES: dict[str, Callable[[Path], StoreUnderTest]] = {
+    "fake": _fake,
+    "direct": _direct,
+    "ac-fake": _ac_fake,
+    "ac-addon": _ac_addon,
+}
+
+# Stores that do not yet meet a contract test, and why. Each acts as a strict xfail: the
+# test fails once the store meets it, until its entry is deleted.
+HOME_DECK_GAP = {
+    "ac-fake": "AnkiConnect's getDecks names the filtered deck a queued card sits in, and "
+    "changeDeck takes it out of that deck: no action reads or sets a home deck",
+    "ac-addon": "AnkiConnect's getDecks names the filtered deck a queued card sits in, and "
+    "changeDeck takes it out of that deck: no action reads or sets a home deck",
+}
+
+
+@contextmanager
+def known_gap(sut: StoreUnderTest, gaps: dict[str, str]) -> Iterator[None]:
+    if sut.name not in gaps:
+        yield
+        return
+    try:
+        yield
+    except AssertionError:
+        pytest.xfail(gaps[sut.name])
+    else:
+        pytest.fail(f"{sut.name} now meets this; delete its entry: {gaps[sut.name]}")
 
 
 @pytest.fixture(params=sorted(STORES))
@@ -98,7 +153,9 @@ async def test_read_notes_returns_the_note_in_field_and_card_order(sut: StoreUnd
     assert list(held.fields)[:2] == ["Front", "Back"]
     assert (held.fields["Front"], held.fields["Back"]) == ("<p>Q</p>", "<p>A</p>")
     assert _tags(held) == {ID.casefold(), "t"}
-    assert [(c.ord, c.home_deck, c.in_filtered) for c in held.cards] == [(0, "C::Deck", False)]
+    assert [(c.ord, c.home_deck) for c in held.cards] == [(0, "C::Deck")]
+    with known_gap(sut, HOME_DECK_GAP):
+        assert [c.in_filtered for c in held.cards] == [False]
     assert got[1111111111111] is None
 
 
@@ -109,7 +166,8 @@ async def test_a_queued_card_reads_its_home_deck(sut: StoreUnderTest):
 
     held = await _read(sut, nid)
 
-    assert [(c.home_deck, c.in_filtered) for c in held.cards] == [("C::Home", True)]
+    with known_gap(sut, HOME_DECK_GAP):
+        assert [(c.home_deck, c.in_filtered) for c in held.cards] == [("C::Home", True)]
 
 
 @pytest.mark.asyncio
@@ -257,9 +315,9 @@ async def test_a_queued_card_gets_a_new_home_deck_and_stays_queued(sut: StoreUnd
         )
 
     assert error is None
-    assert [(c.home_deck, c.in_filtered) for c in (await _read(sut, nid)).cards] == [
-        ("C::Moved", True)
-    ]
+    after = await _read(sut, nid)
+    with known_gap(sut, HOME_DECK_GAP):
+        assert [(c.home_deck, c.in_filtered) for c in after.cards] == [("C::Moved", True)]
 
 
 @pytest.mark.asyncio
