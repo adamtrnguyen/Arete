@@ -8,6 +8,8 @@ a folder with a `SKILL.md` (loaded when its description matches the task) and op
 |---|---|
 | [`arete`](arete/SKILL.md) | Drafting cards into notes, showing them live in Obsidian's Card Editor, syncing to Anki, graph health, fixing cards flagged in review, study queues, vault maintenance. References: [schema](arete/references/SCHEMA.md), [YAML format guide](arete/references/FORMAT.md), [troubleshooting](arete/references/TROUBLESHOOTING.md). |
 
+| [`gui-test`](gui-test/SKILL.md) | Developing the plugin: deploy a build into a running Obsidian, check each view with DOM probes and screenshots, time and profile it. Scripts: [CPU profile summary](gui-test/scripts/profile_summary.cjs), [heap and listener snapshot](gui-test/scripts/heap_listeners.sh). |
+
 ## Install
 
 Link a skill rather than copying it, so it updates with Arete:
