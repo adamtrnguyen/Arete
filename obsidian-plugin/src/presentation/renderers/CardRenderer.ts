@@ -1,4 +1,5 @@
 import { App, Component, MarkdownRenderer } from 'obsidian';
+import { debugLog } from '@/domain/debugLog';
 
 export class CardRenderer {
 	static async render(
@@ -10,7 +11,7 @@ export class CardRenderer {
 	) {
 		container.empty();
 
-		console.log('[Arete] CardRenderer rendering card:', card);
+		debugLog('[Arete] CardRenderer rendering card:', card);
 
 		// Logic adapted from CardYamlEditorView to ensure consistency
 		// We iterate over all keys to support dynamic fields (Front/Back/Text/Extra/etc)
@@ -27,7 +28,7 @@ export class CardRenderer {
 			if (value === null || value === undefined) continue;
 			if (typeof value === 'object') continue; // Skip arrays/objects like deps/anki if not caught above
 
-			console.log('[Arete] Rendering field:', key, value);
+			debugLog('[Arete] Rendering field:', key, value);
 			const section = container.createDiv({ cls: 'arete-preview-section' });
 			section.createDiv({ cls: 'arete-preview-label', text: key });
 			const content = section.createDiv({ cls: 'arete-preview-content' });

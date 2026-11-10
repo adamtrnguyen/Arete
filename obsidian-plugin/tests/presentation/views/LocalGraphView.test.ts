@@ -167,3 +167,17 @@ describe('LocalGraphView events', () => {
 		expect(refresh).toHaveBeenCalledTimes(1);
 	});
 });
+
+describe('LocalGraphView logging', () => {
+	afterEach(() => jest.restoreAllMocks());
+
+	it('logs nothing on a refresh while debug mode is off', async () => {
+		const log = jest.spyOn(console, 'log').mockImplementation(() => undefined);
+		const { view } = setup();
+		withCanvas(view);
+		await view.refresh();
+		await view.setContext('Algebra.md', 'arete_A');
+		expect(view.renderD3Graph).toHaveBeenCalled();
+		expect(log).not.toHaveBeenCalled();
+	});
+});

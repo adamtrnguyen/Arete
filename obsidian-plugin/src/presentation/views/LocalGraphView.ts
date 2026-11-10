@@ -11,6 +11,7 @@ import * as d3 from 'd3';
 import { DependencyResolver } from '@/application/services/DependencyResolver';
 import { LocalGraphResult } from '@/domain/graph/types';
 import { CardRenderer } from '@/presentation/renderers/CardRenderer';
+import { debugLog } from '@/domain/debugLog';
 
 /** What this view needs from the plugin (main.ts satisfies it; no import of main). */
 export interface LocalGraphHost {
@@ -178,7 +179,7 @@ export class LocalGraphView extends ItemView {
 		// Register events
 		this.registerEvent(
 			(this.app.workspace as any).on('arete:card-selected', (cardId: string) => {
-				console.log('[Arete Graph] Received selection event:', cardId);
+				debugLog('[Arete Graph] Received selection event:', cardId);
 				this.centeredCardId = cardId;
 				// If we receive a selection, we assume the file context is still valid or will handle in refresh
 				this.scheduleRefresh();
@@ -316,7 +317,7 @@ export class LocalGraphView extends ItemView {
 
 	// Public method to explicitly set context (robustness)
 	async setContext(filePath: string, cardId?: string | null) {
-		console.log('[Arete Graph] Explicit context set:', filePath, cardId);
+		debugLog('[Arete Graph] Explicit context set:', filePath, cardId);
 		this.currentFilePath = filePath;
 		this.centeredCardId = cardId || null;
 		await this.refresh();
@@ -333,7 +334,7 @@ export class LocalGraphView extends ItemView {
 	}
 
 	async refresh() {
-		console.log('[Arete Graph] Refreshing...');
+		debugLog('[Arete Graph] Refreshing...');
 		const canvas = this.container.querySelector('.arete-graph-canvas') as HTMLElement;
 		if (!canvas) {
 			console.error('[Arete Graph] No canvas element found');
@@ -364,12 +365,12 @@ export class LocalGraphView extends ItemView {
 			if (fallback) {
 				targetPath = fallback.path;
 				this.currentFilePath = targetPath;
-				console.log('[Arete Graph] Using fallback file:', targetPath);
+				debugLog('[Arete Graph] Using fallback file:', targetPath);
 			}
 		}
 
 		if (!targetPath) {
-			console.log('[Arete Graph] No active file resolveable');
+			debugLog('[Arete Graph] No active file resolveable');
 			this.renderEmpty(canvas, 'No active file selected.');
 			return;
 		}
@@ -380,18 +381,18 @@ export class LocalGraphView extends ItemView {
 			return;
 		}
 
-		console.log('[Arete Graph] Rendering for:', targetPath);
+		debugLog('[Arete Graph] Rendering for:', targetPath);
 
 		const cache = this.app.metadataCache.getFileCache(file);
 		const cards = cache?.frontmatter?.arete === true ? cache.frontmatter.cards : undefined;
 		const filePath = targetPath; // Alias for consistent usage below
 
 		if (!cards || !Array.isArray(cards) || cards.length === 0) {
-			console.log('[Arete Graph] No cards found in frontmatter');
+			debugLog('[Arete Graph] No cards found in frontmatter');
 			this.renderEmpty(canvas, 'No Arete cards found in this file.');
 			return;
 		}
-		console.log('[Arete Graph] Found cards:', cards.length);
+		debugLog('[Arete Graph] Found cards:', cards.length);
 
 		// determine center card:
 		let targetCardId = this.centeredCardId;
@@ -418,7 +419,7 @@ export class LocalGraphView extends ItemView {
 					// Update context to match default
 					this.centeredCardId = targetCardId;
 					this.plugin.setCardContext(filePath, targetCardId);
-					console.log('[Arete Graph] Defaulting to first card:', targetCardId);
+					debugLog('[Arete Graph] Defaulting to first card:', targetCardId);
 				}
 			}
 		} else {
@@ -478,7 +479,7 @@ export class LocalGraphView extends ItemView {
 
 		// 2. Transform Data for D3
 		const { nodes, links } = this.transformData(localGraph);
-		console.log(`[Arete Graph] Transformed: ${nodes.length} nodes, ${links.length} links`);
+		debugLog(`[Arete Graph] Transformed: ${nodes.length} nodes, ${links.length} links`);
 
 		if (nodes.length === 0) {
 			this.renderEmpty(canvas, 'Graph is empty (No nodes found).');
@@ -854,7 +855,7 @@ export class LocalGraphView extends ItemView {
 			// If node is in same file, re-center graph
 			const activeFile = this.app.workspace.getActiveFile();
 			if (activeFile && d.filePath === activeFile.path) {
-				console.log('[Arete] Switching graph center to:', d.id);
+				debugLog('[Arete] Switching graph center to:', d.id);
 				this.centeredCardId = d.id;
 				this.refresh();
 			} else {
@@ -1002,7 +1003,7 @@ export class LocalGraphView extends ItemView {
 			.linkDirectionalArrowLength((link: any) => (link.type === 'requires' ? 4 : 0))
 			.linkDirectionalArrowRelPos(1)
 			.onNodeClick((node: any) => {
-				console.log('[Arete Graph 3D] Clicked:', node.id);
+				debugLog('[Arete Graph 3D] Clicked:', node.id);
 				this.centeredCardId = node.id;
 				this.currentFilePath = node.filePath;
 				this.refresh();
