@@ -1,6 +1,6 @@
 """Prune: delete the Anki notes and decks Arete made that the vault no longer claims.
 
-Three rules keep this from touching anything else:
+Four rules keep this from touching anything else:
 
 1. Ownership. Only a note carrying an Arete id tag (`domain/ownership.py`) can be an
    orphan. A note without one was made by hand or by another tool and is never deleted,
@@ -13,6 +13,11 @@ Three rules keep this from touching anything else:
 3. Confirmation. Nothing is deleted unless the caller confirmed (`--yes`,
    `confirm_prune=true`) or a person typed "yes" at a terminal prompt. Off a terminal
    (an agent, a script) the prompt is never shown: the run returns the preview.
+4. Claims. A note is an orphan only if the vault claims it neither by its note id nor by
+   its Arete id: a note carrying an id some vault card declares is kept, ids compared
+   ignoring case as the sync compares them. A run in which any card or file failed
+   deletes nothing, confirmed or not: a failed card may be the only claim on its note, so
+   the claims are incomplete. Prune then lists what it would delete and says why not.
 
 Background: docs/history/prune-and-path-containment.md.
 """
@@ -21,7 +26,7 @@ from __future__ import annotations
 
 import logging
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Collection
 from dataclasses import asdict, dataclass, field
 from typing import Literal
 
@@ -40,6 +45,7 @@ PruneStatus = Literal[
     "dry_run",  # preview only: --dry-run
     "skipped",  # the run did not cover the whole vault
     "refused",  # a vault file could not be read, so orphans cannot be told apart
+    "withheld",  # preview only: a card or file failed this run, so the claims are incomplete
 ]
 
 # Shown a preview, return True to delete. Called only when stdin is a terminal.
@@ -66,6 +72,21 @@ class PruneReport:
     def deletes_anything(self) -> bool:
         return bool(self.decks or self.notes)
 
+    def summary(self) -> str:
+        """The outcome in a few words, for the sync's summary line."""
+        listed = f"{len(self.notes)} notes and {len(self.decks)} decks"
+        return {
+            "clean": "nothing to delete",
+            "deleted": f"deleted {listed}",
+            "failed": f"failed: {self.message}",
+            "unconfirmed": f"not confirmed, deleted nothing ({listed} listed)",
+            "aborted": "aborted at the prompt, deleted nothing",
+            "dry_run": f"dry run, would delete {listed}",
+            "skipped": "skipped, the run did not cover the whole vault",
+            "refused": "refused, a vault file could not be read",
+            "withheld": f"withheld, the run had errors; deleted nothing ({listed} listed)",
+        }[self.status]
+
     def to_dict(self) -> dict:
         out = asdict(self)
         out["deck_count"] = len(self.decks)
@@ -77,14 +98,26 @@ def _is_default(deck: str) -> bool:
     return deck == "Default" or deck.startswith("Default::")
 
 
+def _claimed(
+    all_nids: list[int], tags: dict[int, list[str]], valid_nids: set[str], declared: set[str]
+) -> set[int]:
+    """The notes the vault claims: by note id, or by an Arete id tag a card declares."""
+    return {
+        nid
+        for nid in all_nids
+        if str(nid) in valid_nids
+        or any(is_arete_id(t) and t.casefold() in declared for t in tags.get(nid, []))
+    }
+
+
 def _arete_orphans(
-    all_nids: list[int], tags: dict[int, list[str]], valid_nids: set[str], default_nids: set[int]
+    all_nids: list[int], tags: dict[int, list[str]], claimed: set[int], default_nids: set[int]
 ) -> dict[int, str]:
     """{nid: arete_id} for each note Arete owns that the vault no longer claims."""
     orphans: dict[int, str] = {}
     for nid in all_nids:
         owner = next((t for t in tags.get(nid, []) if is_arete_id(t)), None)
-        if owner and str(nid) not in valid_nids and nid not in default_nids:
+        if owner and nid not in claimed and nid not in default_nids:
             orphans[nid] = owner
     return orphans
 
@@ -94,7 +127,7 @@ def _decide_decks(
     notes_by_deck: dict[str, set[int]],
     orphans: set[int],
     protected: set[str],
-    valid_nids: set[str],
+    claimed_nids: set[int],
     logger: logging.Logger,
 ) -> None:
     """Fill report.decks, .empty_decks_not_deleted and .decks_kept."""
@@ -108,7 +141,7 @@ def _decide_decks(
         if not notes:
             report.empty_decks_not_deleted.append(d)
             continue
-        claimed = [n for n in notes if str(n) in valid_nids]
+        claimed = [n for n in notes if n in claimed_nids]
         if claimed:
             logger.warning(
                 f"[prune] keeping deck {d!r}: it holds {len(claimed)} note(s) the vault "
@@ -129,9 +162,17 @@ def _decide_decks(
 
 
 async def plan_prune(
-    bridge: SyncPort, valid_nids: set[str], valid_decks: set[str], logger: logging.Logger
+    bridge: SyncPort,
+    valid_nids: set[str],
+    declared_ids: Collection[str],
+    valid_decks: set[str],
+    logger: logging.Logger,
 ) -> PruneReport:
-    """Work out what prune would delete. Reads Anki; changes nothing."""
+    """Work out what prune would delete. Reads Anki; changes nothing.
+
+    `valid_nids` are the note ids the vault holds, `declared_ids` the Arete ids its cards
+    declare: a note claimed by either is not an orphan.
+    """
     anki_decks = await bridge.get_deck_names()
     candidates = [d for d in anki_decks if not _is_default(d)]
     if not candidates:
@@ -149,10 +190,11 @@ async def plan_prune(
     notes_by_deck = {d: set((await bridge.get_notes_in_deck(d)).values()) for d in candidates}
     all_nids = sorted(set().union(*notes_by_deck.values()))
     tags = await bridge.get_note_tags(all_nids) if all_nids else {}
-    orphans = _arete_orphans(all_nids, tags, valid_nids, default_nids)
+    claimed = _claimed(all_nids, tags, valid_nids, {i.casefold() for i in declared_ids})
+    orphans = _arete_orphans(all_nids, tags, claimed, default_nids)
 
     report = PruneReport("clean")
-    _decide_decks(report, notes_by_deck, set(orphans), protected, valid_nids, logger)
+    _decide_decks(report, notes_by_deck, set(orphans), protected, claimed, logger)
 
     def deck_of(nid: int) -> str:
         return max((d for d, ns in notes_by_deck.items() if nid in ns), key=len)
@@ -224,10 +266,15 @@ async def prune_orphans(
     bridge: SyncPort,
     logger: logging.Logger,
     *,
+    declared_ids: Collection[str],
     confirmed: bool = False,
     prompt: PruneConfirm | None = None,
 ) -> PruneReport:
-    """Plan the prune, then delete only if confirmed. See the module docstring."""
+    """Plan the prune, then delete only if confirmed. See the module docstring.
+
+    `declared_ids` are the Arete ids the vault's cards declare; `recorder` holds the run's
+    note ids, decks and errors.
+    """
     if config.root_input != config.vault_root:
         msg = "Pruning requires running on the entire vault root to ensure safety."
         logger.warning(f"[prune] SKIPPED: {msg}")
@@ -236,7 +283,7 @@ async def prune_orphans(
     logger.info("[prune] analyzing vault vs anki state...")
     valid_nids = {str(n) for n in recorder.inventory_nids}
     valid_decks = set(recorder.inventory_decks)
-    report = await plan_prune(bridge, valid_nids, valid_decks, logger)
+    report = await plan_prune(bridge, valid_nids, declared_ids, valid_decks, logger)
 
     if not report.deletes_anything:
         report.status = "clean"
@@ -245,6 +292,17 @@ async def prune_orphans(
         return report
 
     _log_preview(report, len(valid_nids), len(valid_decks), logger)
+
+    if recorder.errors:
+        files = sorted({e.file for e in recorder.errors})
+        report.status = "withheld"
+        report.message = (
+            f"Nothing was deleted: {len(recorder.errors)} error(s) this run, in "
+            f"{', '.join(files)}. A card that failed may be the only claim on its note, so "
+            "prune deletes only after a run without errors. Fix them and prune again."
+        )
+        logger.warning(f"[prune] {report.message}")
+        return report
 
     if config.dry_run:
         report.status = "dry_run"

@@ -454,6 +454,30 @@ async def test_inv6_after_a_crash_a_confirmed_prune_keeps_the_vaults_note(world:
 
 @pytest.mark.asyncio
 @on(*ALL)
+async def test_inv6_a_confirmed_prune_keeps_a_note_whose_card_failed_this_run(world: World):
+    """The card lost its `anki:` block, was edited, and fails this run (a mistyped type).
+
+    Its nid is in no vault file and the edit defeats the content cache, so only its Arete
+    id still claims the note: the prune keeps it. A real orphan beside it is listed, not
+    deleted: a run with errors deletes nothing.
+    """
+    await world.sync()
+    nid = world.nid()
+    if isinstance(world.backend, CollectionBackend):
+        world.backend.review_everything()
+    orphan = world.backend.add_note("Basic", "Inv::Gone", {"Front": "gone"}, [COPY_ID])
+    edit_card(world.md, _set(anki=None, Back="An edited answer.", model="Basic (typo)"))
+
+    stats, _ = await world.sync(prune=True, confirm_prune=True)
+
+    assert stats.total_errors == 1
+    assert sorted(n.nid for n in world.backend.notes()) == sorted([nid, orphan])
+    assert stats.prune is not None and stats.prune.status == "withheld"
+    assert [n.nid for n in stats.prune.notes] == [orphan], "its id claims the vault's note"
+
+
+@pytest.mark.asyncio
+@on(*ALL)
 async def test_after_a_crash_the_next_sync_finds_the_note_by_its_id_and_stores_its_nid(
     world: World,
 ):

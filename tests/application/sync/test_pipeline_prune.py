@@ -96,7 +96,11 @@ def recorder(nids=(), decks=()) -> RunRecorder:
 
 async def prune(anki, rec=None, cfg=None, **kwargs):
     return await prune_orphans(
-        cfg or config(), rec or recorder(), anki, LOG, **{"confirmed": True, **kwargs}
+        cfg or config(),
+        rec or recorder(),
+        anki,
+        LOG,
+        **{"confirmed": True, "declared_ids": (), **kwargs},
     )
 
 
@@ -181,6 +185,36 @@ async def test_a_note_whose_tags_cannot_be_read_is_kept():
     report = await prune(anki)
     assert anki.deleted_notes == [] and anki.deleted_decks == []
     assert report.decks_kept == ["Gone"]
+
+
+@pytest.mark.asyncio
+async def test_a_note_whose_arete_id_the_vault_declares_is_kept():
+    """Its nid is not in the vault (the write-back never landed), but its id is."""
+    anki = FakeAnki({1: ("Stats", [aid(1)]), 2: ("Stats", [aid(2)])})
+
+    report = await prune(anki, declared_ids={aid(1).upper().replace("ARETE", "arete")})
+
+    assert anki.deleted_notes == [2]
+    assert [n.nid for n in report.notes] == [2]
+    assert anki.deleted_decks == [] and report.decks_kept == ["Stats"]
+
+
+@pytest.mark.asyncio
+async def test_a_run_with_errors_deletes_nothing_and_lists_what_it_would():
+    anki = FakeAnki({1: ("Old", [aid(1)])})
+    rec = recorder()
+    rec.add_error(Path("/v/Bayes.md"), "Sync fail: model was not found", "#1")
+
+    report = await prune(anki, rec)
+
+    assert anki.deleted_notes == [] and anki.deleted_decks == []
+    assert report.status == "withheld"
+    assert [n.nid for n in report.notes] == [1] and report.decks == ["Old"]
+    assert "Bayes.md" in report.message and "Nothing was deleted" in report.message
+    assert (
+        report.summary()
+        == "withheld, the run had errors; deleted nothing (1 notes and 1 decks listed)"
+    )
 
 
 # ---------------------------------------------------------------------------

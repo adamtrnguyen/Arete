@@ -132,9 +132,10 @@ async def run_sync_logic(
         logger.error(f"[sync] stopped: {e}")
         raise SyncFailedError(str(e)) from e
 
+    pruned = f" prune: {stats.prune.summary()}" if stats.prune else ""
     logger.info(
         f"=== summary === generated={stats.total_generated} "
-        f"updated/added={stats.total_imported} errors={stats.total_errors}"
+        f"updated/added={stats.total_imported} errors={stats.total_errors}{pruned}"
     )
 
     if stats.total_errors and not config.keep_going:

@@ -6,6 +6,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from arete.application.config import AppConfig
+from arete.application.sync.pipeline import RunStats
+from arete.application.sync.prune import OrphanNote, PruneReport
 from arete.composition.orchestrator import run_sync_logic
 
 
@@ -111,3 +113,40 @@ async def test_summary_output(mock_setup_logging, mock_run_pipeline, mock_config
     summary_msg = str(summary_calls[0])
     assert "generated=27" in summary_msg
     assert "updated/added=25" in summary_msg
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("report", "said"),
+    [
+        (
+            PruneReport("deleted", notes=[OrphanNote(1, "arete_x", "D")]),
+            "deleted 1 notes and 0 decks",
+        ),
+        (PruneReport("unconfirmed", decks=["D"]), "not confirmed, deleted nothing"),
+        (
+            PruneReport("withheld", notes=[OrphanNote(1, "arete_x", "D")]),
+            "withheld, the run had errors",
+        ),
+    ],
+)
+@patch("arete.composition.orchestrator.run_pipeline")
+@patch("arete.composition.orchestrator.setup_logging")
+async def test_the_summary_line_states_the_prune_outcome(
+    mock_setup_logging, mock_run_pipeline, mock_config, report, said
+):
+    mock_setup_logging.return_value = (MagicMock(), Path("/tmp/log.txt"), "run-123")
+    mock_run_pipeline.return_value = RunStats(3, 3, 0, prune=report)
+    summary_logger = MagicMock()
+
+    with (
+        patch(
+            "arete.infrastructure.adapters.anki_connect.AnkiConnectAdapter.is_responsive",
+            return_value=True,
+        ),
+        patch("logging.getLogger", return_value=summary_logger),
+    ):
+        await run_sync_logic(mock_config)
+
+    [line] = [str(c) for c in summary_logger.info.call_args_list if "=== summary ===" in str(c)]
+    assert f"prune: {said}" in line

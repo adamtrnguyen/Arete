@@ -87,8 +87,8 @@ src/arete/
 | Layer | Modules | Lines | May import |
 |---|---|---|---|
 | `interface` | 4 | 979 | application, composition |
-| `composition` | 2 | 221 | application, infrastructure, domain |
-| `application` | 24 | 5858 | domain (ports only) |
+| `composition` | 2 | 222 | application, infrastructure, domain |
+| `application` | 24 | 5922 | domain (ports only) |
 | `infrastructure` | 11 | 2222 | domain |
 | `domain` | 9 | 866 | nothing in arete |
 
@@ -142,7 +142,9 @@ This split lets you automate syncs with crontab or shell scripts, while plugin u
 
 6.  **Prune** (only with `--prune`):
     *   Only notes carrying an Arete id tag can be orphans (`domain/ownership.py`); a deck goes only if every note in it is one (`application/sync/prune.py`).
+    *   A note the vault claims by its note id or by an Arete id a card declares is never an orphan.
     *   Deletes nothing without a confirmation: `--yes`, `confirm_prune`, or "yes" at a terminal prompt.
+    *   Deletes nothing in a run with errors, confirmed or not: it lists what it would delete and says why.
 
 ## Key design decisions
 

@@ -63,9 +63,11 @@ uv sync
 - `--clear-cache`: Empty the content cache first, so every file is parsed again.
 - `--prune`: Delete Anki notes Arete created whose card is gone from the vault, and decks
   that hold only such notes. A note without an Arete id tag (`arete_` + 26-char ULID) is
-  never deleted, whatever deck it is in. Empty decks are listed, not deleted. Prune runs
-  only on a whole-vault sync. It shows what it will delete and asks; off a terminal it
-  deletes nothing and reports the list.
+  never deleted, whatever deck it is in, and neither is a note whose Arete id a vault card
+  still declares. Empty decks are listed, not deleted. Prune runs only on a whole-vault
+  sync. It shows what it will delete and asks; off a terminal it deletes nothing and
+  reports the list. A run with any error deletes nothing, even with `--yes`: it lists what
+  it would delete and says why. The summary line states the prune's outcome.
 - `--yes`, `-y`: Confirm the prune without the prompt.
 - `--force`: Re-send every card, ignoring the content cache. It does not confirm a prune.
 - `--backend`: Select backend (`auto`, `ankiconnect`, `direct`).

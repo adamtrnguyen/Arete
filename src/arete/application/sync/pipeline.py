@@ -427,7 +427,13 @@ async def run_pipeline(
             prune_report = PruneReport("refused", msg)
         else:
             prune_report = await prune_orphans(
-                config, recorder, anki_bridge, logger, confirmed=confirm_prune, prompt=prompt
+                config,
+                recorder,
+                anki_bridge,
+                logger,
+                declared_ids=scanned.arete_ids,
+                confirmed=confirm_prune,
+                prompt=prompt,
             )
 
     total_generated = len(updates)
