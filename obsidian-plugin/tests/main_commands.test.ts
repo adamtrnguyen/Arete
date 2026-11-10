@@ -1,5 +1,5 @@
 import './test-setup';
-import { App, Notice, TFile } from 'obsidian';
+import { App, Notice, TFile, setIcon, setTooltip } from 'obsidian';
 import AretePlugin from '@/main';
 import { LocalGraphView } from '@presentation/views/LocalGraphView';
 
@@ -73,7 +73,7 @@ describe('AretePlugin commands, views and status bar', () => {
 			commands['arete-sync-current-file'].callback!();
 
 			expect(spy).not.toHaveBeenCalled();
-			expect(notices()).toContain('Error: Cannot resolve file path.');
+			expect(notices()).toContain('Cannot resolve the file path.');
 		});
 
 		test('Force Re-upload All syncs the whole vault with force set', () => {
@@ -98,7 +98,7 @@ describe('AretePlugin commands, views and status bar', () => {
 			commands['arete-check-file'].editorCallback!({}, { file: { path: 'B.md' } });
 
 			expect(spy).not.toHaveBeenCalled();
-			expect(notices()).toContain('Error: Cannot determine vault path.');
+			expect(notices()).toContain('Cannot determine the vault path.');
 		});
 	});
 
@@ -127,7 +127,7 @@ describe('AretePlugin commands, views and status bar', () => {
 
 			await plugin.runCheck('/v/x.md');
 
-			expect(notices()).toEqual(['Checking file...', 'Error: boom']);
+			expect(notices()).toEqual(['Checking file...', 'Check failed: boom']);
 		});
 
 		test('runFix delegates to CheckService', async () => {
@@ -156,7 +156,7 @@ describe('AretePlugin commands, views and status bar', () => {
 			expect(plugin.graphService.updateGraphTags).toHaveBeenCalledWith(file, concept);
 			expect(renderToolbar).toHaveBeenCalled();
 			expect(notices()).toEqual([
-				'Refreshing Arete stats...',
+				'Refreshing stats...',
 				'Graph tags updated.',
 				'Stats refreshed.',
 			]);
@@ -178,7 +178,7 @@ describe('AretePlugin commands, views and status bar', () => {
 			plugin.templateRenderer.clearModelCache = jest.fn();
 			commands['arete-reload-note-types'].callback!();
 			expect(plugin.templateRenderer.clearModelCache).toHaveBeenCalled();
-			expect(notices().join(' ')).toContain('note types will be fetched');
+			expect(notices().join(' ')).toContain('Note types will be fetched');
 		});
 
 		test('Clear Retention Tags delegates to GraphService', async () => {
@@ -229,12 +229,12 @@ describe('AretePlugin commands, views and status bar', () => {
 		test('an unknown note opens nothing and says so', async () => {
 			await plugin.showCard('Nope', '1');
 			expect(openFile).not.toHaveBeenCalled();
-			expect(notices()).toEqual(['Arete: no note at Nope']);
+			expect(notices()).toEqual(['No note found at Nope.']);
 		});
 
 		test('a missing file argument is reported, not thrown', async () => {
 			await plugin.showCard(undefined, undefined);
-			expect(notices()).toEqual(['Arete: no note at undefined']);
+			expect(notices()).toEqual(['No note found at undefined.']);
 		});
 
 		test('an unknown card id leaves the editor closed and says so', async () => {
@@ -243,7 +243,7 @@ describe('AretePlugin commands, views and status bar', () => {
 			});
 			await plugin.showCard('Cards', 'zzz');
 			expect(plugin.activateYamlEditorView).not.toHaveBeenCalled();
-			expect(notices()).toEqual(['Arete: Cards has no card zzz']);
+			expect(notices()).toEqual(['Cards has no card zzz.']);
 		});
 
 		test('waits for the metadata cache to parse a note written a moment ago', async () => {
@@ -288,7 +288,7 @@ describe('AretePlugin commands, views and status bar', () => {
 				await pending;
 
 				expect(app.metadataCache.offref).toHaveBeenCalledWith('ref');
-				expect(notices()).toEqual(['Arete: Cards has no card 1']);
+				expect(notices()).toEqual(['Cards has no card 1.']);
 			} finally {
 				jest.useRealTimers();
 			}
@@ -408,12 +408,17 @@ describe('AretePlugin commands, views and status bar', () => {
 			const el: any = {
 				empty: jest.fn(),
 				setText: jest.fn(),
-				createSpan: jest.fn(),
-				title: '',
+				createSpan: jest.fn().mockReturnValue({}),
 			};
 			plugin.statusBarItem = el;
+			(setIcon as jest.Mock).mockClear();
+			(setTooltip as jest.Mock).mockClear();
 			return el;
 		}
+		const labels = (el: any) =>
+			el.createSpan.mock.calls.map((c: any[]) => c[0]?.text).filter(Boolean);
+		const icons = () => (setIcon as jest.Mock).mock.calls.map((c) => c[1]);
+		const tooltip = () => [...(setTooltip as jest.Mock).mock.calls].pop()?.[1];
 
 		test('idle shows the age of the last sync', () => {
 			const el = bar();
@@ -421,18 +426,19 @@ describe('AretePlugin commands, views and status bar', () => {
 			jest.spyOn(Date, 'now').mockReturnValue(now);
 			try {
 				const cases: Array<[number, string]> = [
-					[now - 10_000, '🃏 Just now'],
-					[now - 5 * 60_000, '🃏 5m ago'],
-					[now - 3 * 3_600_000, '🃏 3h ago'],
-					[now - 2 * 86_400_000, '🃏 2d ago'],
+					[now - 10_000, 'Just now'],
+					[now - 5 * 60_000, '5m ago'],
+					[now - 3 * 3_600_000, '3h ago'],
+					[now - 2 * 86_400_000, '2d ago'],
 				];
 				for (const [ts, text] of cases) {
-					el.setText.mockClear();
+					el.createSpan.mockClear();
 					plugin.settings.last_sync_time = ts;
 					plugin.updateStatusBar('idle');
-					expect(el.setText).toHaveBeenCalledWith(text);
+					expect(labels(el)).toEqual([text]);
+					expect([...icons()].pop()).toBe('layers');
 				}
-				expect(el.title).toBe('Click to sync to Anki');
+				expect(tooltip()).toBe('Click to sync to Anki');
 			} finally {
 				jest.spyOn(Date, 'now').mockRestore();
 			}
@@ -442,8 +448,8 @@ describe('AretePlugin commands, views and status bar', () => {
 			const el = bar();
 			plugin.settings.last_sync_time = null;
 			plugin.updateStatusBar('idle');
-			expect(el.setText).toHaveBeenCalledWith('🃏 Arete');
-			expect(el.title).toBe('Never synced. Click to sync.');
+			expect(labels(el)).toEqual(['Arete']);
+			expect(tooltip()).toBe('Never synced. Click to sync.');
 		});
 
 		test('success shows a tick, then returns to idle after 3 seconds', () => {
@@ -452,9 +458,11 @@ describe('AretePlugin commands, views and status bar', () => {
 				const el = bar();
 				plugin.settings.last_sync_time = null;
 				plugin.updateStatusBar('success');
-				expect(el.setText).toHaveBeenLastCalledWith('✅ Synced');
+				expect(labels(el)).toEqual(['Synced']);
+				expect(icons()).toEqual(['check']);
+				el.createSpan.mockClear();
 				jest.advanceTimersByTime(3000);
-				expect(el.setText).toHaveBeenLastCalledWith('🃏 Arete');
+				expect(labels(el)).toEqual(['Arete']);
 			} finally {
 				jest.useRealTimers();
 			}
@@ -463,7 +471,9 @@ describe('AretePlugin commands, views and status bar', () => {
 		test('error without a message falls back to a hint', () => {
 			const el = bar();
 			plugin.updateStatusBar('error');
-			expect(el.title).toBe('Check logs');
+			expect(labels(el)).toEqual(['Error']);
+			expect(icons()).toEqual(['circle-x']);
+			expect(tooltip()).toBe('Check logs');
 		});
 
 		test('does nothing before the status bar exists', () => {

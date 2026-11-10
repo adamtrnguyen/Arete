@@ -63,7 +63,7 @@ describe('DependencySelectionModal: choosing a card', () => {
 		expect(modal.mode).toBe('cards');
 		expect(ids()).toEqual(['__back__', 'arete_1', 'arete_2', 'arete_3']);
 		expect(labels()).toEqual([
-			'.. (Back to Files)',
+			'.. (back to files)',
 			'What is [Image] here?',
 			'Cloze {{c1::x}}',
 			'Untitled Card',

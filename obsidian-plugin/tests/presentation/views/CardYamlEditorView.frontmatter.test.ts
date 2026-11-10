@@ -185,7 +185,7 @@ describe('CardYamlEditorView: editing the card list in frontmatter', () => {
 			expect(e.preventDefault).toHaveBeenCalled();
 			expect(e.dataTransfer.dropEffect).toBe('move');
 			expect(e.target.closest).toHaveBeenCalledWith('.arete-yaml-index-item');
-			expect(item.addClass).toHaveBeenCalledWith('drag-over');
+			expect(item.addClass).toHaveBeenCalledWith('is-drag-over');
 		});
 
 		it('drag end clears both markers from every item', () => {
@@ -195,13 +195,13 @@ describe('CardYamlEditorView: editing the card list in frontmatter', () => {
 			view.handleDragEnd();
 			for (const item of items) {
 				expect(item.removeClass).toHaveBeenCalledWith('is-dragging');
-				expect(item.removeClass).toHaveBeenCalledWith('drag-over');
+				expect(item.removeClass).toHaveBeenCalledWith('is-drag-over');
 			}
 		});
 	});
 
 	describe('context menu', () => {
-		it('offers Delete Card, which deletes the right-clicked card', () => {
+		it('offers Delete card, which deletes the right-clicked card', () => {
 			const items: any[] = [];
 			const Menu = jest.fn().mockImplementation(() => ({
 				addItem: (cb: (i: any) => void) => {
@@ -228,7 +228,7 @@ describe('CardYamlEditorView: editing the card list in frontmatter', () => {
 				view.showCardContextMenu({} as MouseEvent, 2);
 
 				expect(items).toHaveLength(1);
-				expect(items[0].setTitle).toHaveBeenCalledWith('Delete Card');
+				expect(items[0].setTitle).toHaveBeenCalledWith('Delete card');
 				expect(items[0].setWarning).toHaveBeenCalledWith(true);
 				items[0].click();
 				expect(view.deleteCard).toHaveBeenCalledWith(2);
