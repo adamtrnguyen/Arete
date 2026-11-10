@@ -71,6 +71,11 @@ uv sync
 - `--backend`: Select backend (`auto`, `ankiconnect`, `direct`).
 - `--workers`: Override parallel sync worker count.
 
+One sync runs at a time per cache database. A sync started while another holds the lock
+(`cache.db.lock` beside the cache) does nothing: it prints one line on stderr, starting
+`Another Arete sync is running, so this sync did nothing.`, and exits with status 75. A dry
+run takes the lock too. Exit status 1 is a sync that ran and failed.
+
 ## Queue (Dependency-Sorted Study Sessions)
 
 Arete supports dependency-aware study queues. By tagging notes with prerequisites, you can generate filtered decks in Anki that ensure you learn concepts in dependency order.

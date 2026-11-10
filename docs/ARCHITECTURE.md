@@ -66,7 +66,8 @@ src/arete/
 │   │   ├── repository.py          Anki Repository
 │   │   ├── search.py              Anki search terms built from a name, so the name matches only itself
 │   ├── persistence/              
-│   │   ├── cache.py               ContentCache
+│   │   ├── cache.py               cache_path, ContentCache
+│   │   ├── sync_lock.py           One sync at a time per cache: an exclusive, non-blocking lock on a file beside the cache
 │
 ├── domain/                    Types and ports. True whatever the technology is.
 │   ├── stats/                    
@@ -86,9 +87,9 @@ src/arete/
 | Layer | Modules | Lines | May import |
 |---|---|---|---|
 | `interface` | 4 | 979 | application, composition |
-| `composition` | 2 | 183 | application, infrastructure, domain |
+| `composition` | 2 | 221 | application, infrastructure, domain |
 | `application` | 24 | 5858 | domain (ports only) |
-| `infrastructure` | 10 | 2136 | domain |
+| `infrastructure` | 11 | 2222 | domain |
 | `domain` | 9 | 866 | nothing in arete |
 
 The import rules in the last column are enforced by `just check-architecture`

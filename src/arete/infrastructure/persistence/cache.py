@@ -10,14 +10,17 @@ from typing import Any
 SCHEMA_VERSION = 2
 
 
+def cache_path(configured: Path | None = None) -> Path:
+    """The cache database a run uses: the configured path, else ~/.config/arete/cache.db."""
+    return configured if configured is not None else Path.home() / ".config/arete/cache.db"
+
+
 class ContentCache:
     def __init__(self, db_path: Path | None = None):
-        """Initialize ContentCache."""
+        """Open the cache database at `db_path`, or at the default `cache_path()`."""
         if db_path is None:
-            # Default to XDG-ish standard: ~/.config/arete/cache.db
-            conf_dir = Path.home() / ".config/arete"
-            conf_dir.mkdir(parents=True, exist_ok=True)
-            db_path = conf_dir / "cache.db"
+            db_path = cache_path()
+            db_path.parent.mkdir(parents=True, exist_ok=True)
 
         self.db_path = db_path
         self._lock = threading.Lock()
