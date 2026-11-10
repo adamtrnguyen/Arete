@@ -7,8 +7,8 @@ Each invariant gets a test that fails when it breaks; its status changes only wi
 
 | # | Invariant | Holds today |
 |---|---|---|
-| 1 | **Obsidian is ground truth.** After any sync, Anki's fields, tags, deck and note type for a card id equal the vault's. An edit made in Anki is overwritten. Anki's own `leech` and `marked` tags stay. | Holds. An edit made in Anki while a sync runs can survive that sync; the next one overwrites it |
-| 2 | **The Arete id is the identity.** A card is found by its id, whichever backend runs. | Holds |
+| 1 | **Obsidian is ground truth.** Every sync sets Anki's fields, tags, deck and note type for a card id to the vault's. An edit made in Anki is overwritten. Anki's own `leech` and `marked` tags stay. Tags are stored as Anki stores them: a tag with a space becomes two tags. | Holds. An edit made in Anki while a sync runs can survive that sync; the next one overwrites it |
+| 2 | **The Arete id is the identity.** A card is found by its Anki note id, then its Arete id tag, then its first field, and is created only if none matches. The same id on two cards, or the same first field in one deck and note type, is refused. Both backends do the same. | Holds |
 | 3 | **Both backends behave the same.** Whether Anki is open changes how Arete reaches the collection, never what it does. | Holds |
 | 4 | **Arete never touches scheduling.** Review history, due dates and suspension belong to Anki. | Holds, a card in `Arete::Queue` included |
 | 5 | **A sync writes only ids into the vault.** The Arete id, the note id and the card id. | Note bodies hold. Not yet for frontmatter: a rewritten file loses comments and formatting, and a `\|` block becomes `\|-` |
@@ -25,10 +25,7 @@ Arete is a one-way sync tool: Obsidian → Anki. Obsidian is the source of truth
 **Source:** `/Users/adam/Research/ObsidianSuite/arete`
 **Vault:** `/Users/adam/Obsidian Vault`
 
-> [!warning] A second vault copy exists and is stale
-> `~/Library/CloudStorage/OneDrive-Personal/Obsidian Vault` is also a git repo, behind
-> the live one (`docs/history/vault-data-findings.md`). Edit the live vault
-> (`~/Obsidian Vault`, which is also `arete_ankiconnect`'s `vault_root`).
+The live vault is `~/Obsidian Vault`, which is also `arete_ankiconnect`'s `vault_root`.
 
 ## Architecture
 
@@ -87,9 +84,9 @@ Plugin must be reloaded (restart Anki) after code changes.
 
 | Recipe | What it does |
 |--------|-------------|
-| `just test` | Unit tests (no Anki required) |
+| `just test` | Unit and e2e tests on 6 pytest-xdist workers (`ARETE_TEST_WORKERS` overrides); no Anki needed |
 | `just test-integration` | Integration tests (requires Dockerized Anki) |
-| `just coverage` | Tests with coverage report (85% threshold) |
+| `just coverage` | The same tests with a coverage report; fails under the threshold in `pyproject.toml` |
 | `just lint` | Ruff linter check (no fixes) |
 | `just fmt-check` | Ruff format check |
 | `just fix` | Opt-in fixers: ruff fix + format, prettier on the plugin |
@@ -111,7 +108,7 @@ just qa               # the gate; the pre-push hook runs it too
 |---|---|---|
 | `tests/domain`, `application`, `infrastructure`, `interface` | nothing | unit tests (`just test`) |
 | `tests/e2e` | nothing | whole syncs against a collection in `tmp_path` |
-| `tests/integration` | OrbStack running | a throwaway Anki container per session (`just test-integration`) |
+| `tests/integration` | Docker running (OrbStack on macOS) | a throwaway Anki container per session (`just test-integration`) |
 
 Details (image, ports, `ANKI_CONNECT_URL`) are in `tests/integration/conftest.py`.
 
@@ -119,7 +116,8 @@ Details (image, ports, `ANKI_CONNECT_URL`) are in `tests/integration/conftest.py
 
 Commands: `docs/CLI.md` or `arete <cmd> --help`. Agent workflows: `skills/arete`.
 MCP server: `arete serve mcp` (stdio); its tools are the `@mcp.tool()` functions in
-`src/arete/interface/mcp_server.py`.
+`src/arete/interface/mcp_server.py`. `build_study_queue` covers every deck unless `deck` is
+set, and a named deck is an isolated set unless `cross_deck` is true, like the CLI.
 
 ### CLI Safety Rules
 
@@ -146,7 +144,7 @@ Cards declare prerequisites via `deps.requires` in YAML frontmatter. The queue b
 
 Location: `obsidian-plugin/` — an Obsidian community plugin bundled with esbuild.
 
-Style rules for plugin code and UI: [`obsidian-plugin/CLAUDE.md`](obsidian-plugin/CLAUDE.md). The plugin looks and behaves like part of Obsidian.
+Style rules for plugin code and UI: [`obsidian-plugin/CLAUDE.md`](obsidian-plugin/CLAUDE.md). The plugin looks and behaves like part of Obsidian: native settings and views, sentence-case command names, no default hotkeys.
 
 Same DDD layer structure as the Python backend: `domain/`, `infrastructure/`, `application/`, `presentation/`.
 
@@ -156,6 +154,7 @@ Same DDD layer structure as the Python backend: `domain/`, `infrastructure/`, `a
 |--------|-------------|
 | `just build-obsidian` | Type-check + production build |
 | `just test-obsidian` | Jest tests |
+| `just coverage-obsidian` | Jest with coverage; enforces the threshold in `jest.config.js` |
 | `just lint-obsidian` | ESLint |
 | `just dev-plugin` | esbuild dev watcher (hot-reload) |
 
@@ -174,13 +173,8 @@ the reload (they keep running the old code).
 
 ## Open work
 
-No dates and no version narrative here. The history, with what was verified and when,
-lives in `docs/history/`.
-
 **Backend**
 
-- [ ] `arete vault check` does not detect a duplicate Arete id, and the real vault
-      has some (`docs/history/vault-data-findings.md`).
 - [ ] The three surfaces duplicate their wiring: `http_server` resolves config and builds
       a bridge inline in each route (`grep -c 'resolve_config(\|get_anki_bridge('
       src/arete/interface/http_server.py`). Five Anki admin verbs are called only from
@@ -191,9 +185,7 @@ lives in `docs/history/`.
 - [ ] PyPI trusted publishing is unconfigured. `release.yml:64` runs the publish step
       under `continue-on-error: true`, so it cannot block a release. Configure a
       trusted publisher, or drop the step.
-- [ ] Delete the dangling `v2.2.1` tag on origin: `git push origin :v2.2.1`.
 - [ ] Bump the GitHub Actions versions (Dependabot PR #48).
-
 
 ## Key Conventions
 
