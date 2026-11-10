@@ -104,89 +104,75 @@ The import rules in the last column are enforced by `just check-architecture`
 obsidian-plugin/        # Obsidian GUI
 ├── src/                # TypeScript source files
 │   ├── domain/         # Types, settings, stats models
-│   ├── application/    # Frontend services (Sync, Stats, Graph, Leech, LinkChecker)
-│   ├── infrastructure/ # API clients (AreteClient)
+│   ├── application/    # Frontend services (Stats, Graph, Leech, LinkChecker, card rendering)
+│   ├── infrastructure/ # Python process and API clients (AreteClient, SyncService, ServerManager)
 │   └── presentation/   # UI components and views (Gutter, Dashboard, Graphs)
-└── styles.css          # Core UI styling
+└── styles.css          # Built from src/styles/*.css
 ```
 
 ## CLI vs Plugin
 
--   **CLI**: Handles all the heavy lifting—scanning files, hashing content, communicating with AnkiConnect, and writing IDs back to Markdown.
--   **Plugin**: Provides a settings page in Obsidian and a simple "Sync" ribbon icon. When clicked, it spawns a child process to run `arete sync` and captures the output to display in a modal.
+-   **CLI**: does the work: scanning files, hashing content, talking to Anki (AnkiConnect, or the collection directly), and writing ids back to Markdown.
+-   **Plugin**: settings, commands, the card gutter, the dashboard and the graph views. It runs `arete sync` as a child process (execution mode `CLI`) or calls `arete serve daemon` over HTTP (mode `Server`), and shows the result.
 
-This split ensures that advanced users can automate syncs via crontab or shell scripts, while causal users get a seamless integrated experience.
+This split lets you automate syncs with crontab or shell scripts, while plugin users get an integrated experience.
 
-## The Pipeline
+## The pipeline
 
-The application runs in 5 distinct stages, orchestrated by `application/sync/pipeline.py`:
+`application/sync/pipeline.py` runs these stages:
 
-1.  **Scanning (`VaultService`)**:
+1.  **Scan (`VaultService`)**:
     *   Walks the directory tree.
-    *   Checks `ContentCache` (MD5 hash) to see if a file needs processing.
-    *   Returns a list of compatible markdown files.
+    *   Skips parsing a file whose mtime and size match the stat cache (`ContentCache`).
+    *   Returns the compatible markdown files.
 
-2.  **Media Indexing (`media.py`)**:
-    *   Builds a global filename index of all common attachment folders (e.g., `attachments`, `assets`).
-    *   Enables resolving wikilinks and markdown images without needing full paths.
+2.  **Ids**:
+    *   A card without an Arete id gets one, and the file is rewritten (not on a dry run).
+    *   An `anki.nid` claimed by cards in several files, or an Arete id declared by several cards, is an error. Those cards are not synced.
 
-3.  **Async Processing (Producer/Consumer pairing)**:
-    *   **Producers (`Parsing`)**: Parse Markdown, calculate content hashes, and transform media links.
-    *   **Consumers (`Syncing`)**: Multi-threaded sync to Anki (via AnkiConnect, or the collection directly). 
-    *   Caching happens here: If a card's content hash matches the cache, it's skipped.
+3.  **Media indexing (`media.py`)**:
+    *   Builds a filename index of the vault's attachment folders on the first image lookup.
+    *   Resolves wikilinks and markdown images without full paths.
 
-4.  **ID Write-back (`VaultService`)**:
-    *   Writes assigned `nid` (Note ID) and `cid` (Card ID) back to the Markdown frontmatter.
-    *   Ensures future runs track existing cards correctly.
+4.  **Producers and consumers**:
+    *   **Producers (parse)**: parse Markdown, render it to HTML, hash the content, and copy media.
+    *   **Consumers (`NoteSync`)**: batches go to Anki through the backend's note store. `NoteSync` finds each card's note (note id, Arete id tag, first field), creates what is missing, and sets fields, tags, deck and note type to the vault's.
+    *   A card whose hash matches the cache is labelled unchanged. It is compared with Anki all the same.
 
-5.  **Pruning**:
+5.  **Write-back (`VaultService`)**:
+    *   Writes `nid` and `cid` into the card's `anki:` block in the frontmatter.
+    *   A file counts as synced in the stat cache only when every card in it reached Anki.
+
+6.  **Prune** (only with `--prune`):
     *   Only notes carrying an Arete id tag can be orphans (`domain/ownership.py`); a deck goes only if every note in it is one (`application/sync/prune.py`).
-    *   Deletes nothing without a confirmation: `--yes`, `confirm_prune`, or "yes" at a terminal prompt (if `--prune` is enabled).
+    *   Deletes nothing without a confirmation: `--yes`, `confirm_prune`, or "yes" at a terminal prompt.
 
-## Key Design Decisions
+## Key design decisions
 
-### 1. Filesystem-Based Media Sync
-Unlike note syncing which uses an API, **Media Sync is filesystem-based**. `arete` copies images directly from your vault into Anki's `collection.media` folder. 
-*   **Implication**: The CLI must have write access to the Anki media directory.
-*   **Uniqueness**: Files are hashed to avoid duplicates (e.g., `image.png` becomes `image_a1b2c3d4.png`).
+### 1. Filesystem-based media sync
+Notes go through the Anki backend, but **media is copied on the filesystem**. `arete` copies images from your vault into Anki's `collection.media` folder.
+*   **Implication**: the CLI needs write access to the Anki media directory.
+*   **Names**: a file keeps its name. If a different file of that name is already there, the new one gets an 8-character content hash suffix (`image.png` becomes `image_a1b2c3d4.png`). An identical file is not copied again.
 
-### 2. Obsidian as Source of Truth
-The system is designed to be **Stateless** regarding logic. The state lives in Obsidian (text) and Anki (reviews). `arete` is just the bridge. We write IDs back to Obsidian so it "owns" the link to the card.
+### 2. Obsidian as source of truth
+The logic holds no state of its own. The state lives in Obsidian (text) and Anki (reviews). `arete` is the bridge. Ids are written back to Obsidian so it holds the link to the card.
 
-### 3. WSL Compatibility
-`anki_connect.py` contains specific logic to detect WSL environments.
-*   **Problem**: WSL's `localhost` != Windows `localhost`.
-*   **Solution**: It attempts to find `curl.exe` (Windows binary) accessible from Linux and uses it as a bridge to communicate with Anki on the host.
+### 3. WSL compatibility
+`anki_connect.py` detects WSL.
+*   **Problem**: WSL's `localhost` is not Windows' `localhost`.
+*   **Solution**: it uses `curl.exe` (a Windows binary reachable from Linux) as a bridge to Anki on the host. Without `curl.exe` it rewrites the URL with the host address from `/etc/resolv.conf`.
 
-### 3. Caching
-`infrastructure/persistence/cache.py` maintains a lightweight SQLite database of file hashes. This allows the tool to run in milliseconds for unchanged vaults, only processing what you've actually edited.
+### 4. Caching
+`infrastructure/persistence/cache.py` keeps a SQLite database of file stats and card hashes. Unchanged files skip parsing and rendering, so a run over an unchanged vault is fast. Every card is still compared with Anki.
 
-## Development Stack
+## Development stack
 
-`arete` is built with a focus on developer velocity and code quality:
+-   **Package management**: `uv`.
+-   **Task automation**: `just` (see the `justfile`).
+-   **Code quality**: `ruff` for linting and formatting, `pyright` for types, `import-linter` for layers.
+-   **Testing**: `pytest` for unit and e2e tests, and a Dockerized Anki for integration tests.
 
--   **Package Management**: `uv` for lightning-fast dependency resolution and isolated environments.
--   **Task Automation**: `just` (via `justfile`) replaces complex Makefiles for common tasks (test, lint, docker).
--   **Code Quality**: `ruff` for linting and formatting, ensuring a 100% clean codebase with modern Python rules.
--   **Testing**: `pytest` for unit/service tests, and a **Dockerized Anki** environment for end-to-end integration tests.
+## Logging
 
-## Convenience Features
-
--   **Self-Healing**: Automatic recovery from "Duplicate" errors by adopting existing NIDs, making it robust against manual edits in Anki.
--   **Integrated Logs**: Use `arete logs` to open detailed execution logs for debugging.
-
-## Logging & Reporting
-
-Every execution of `arete` is fully audited:
-
-1.  **Console Output**: Clean and high-level, with verbosity controlled by `-v`.
-2.  **Debug Logs**: A comprehensive log file (`run_*.log`) is generated in `~/.config/arete/logs/` for every run, capturing full stack traces and internal transitions.
-3.  **Run Reports**: `logging_utils.py` generates a human-readable Markdown report (`report_*.md`) for every sync, providing stats on files scanned, cards updated, and specific error tables.
-
-## History
-
-Why the code looks the way it does, with dates and the measurements that drove it:
-
-- [2026-09-08 — the duplicate storm](history/2026-09-08-duplicate-storm.md): how
-  6814 duplicate notes were created, the four faults behind it, and the tests
-  that now prevent it.
+1.  **Console output**: high level, with verbosity set by `-v`.
+2.  **Debug logs**: a `run_*.log` file per run in `~/.config/arete/logs/` (the latest 50 are kept). `arete logs` opens the directory.
