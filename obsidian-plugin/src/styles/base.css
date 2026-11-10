@@ -1,5 +1,11 @@
 /* Arete Plugin - Base & Utility Styles */
 
+/* Status-bar item: an icon and a label. Obsidian's own icon items carry no label, so
+   Obsidian sets no gap between them. */
+.arete-status-bar {
+	gap: var(--size-2-2);
+}
+
 /* File Name Display */
 .arete-filename {
 	display: inline-block;

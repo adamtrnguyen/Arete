@@ -149,6 +149,7 @@ export default class AretePlugin extends Plugin {
 		// 1. Status Bar Setup
 		this.statusBarItem = this.addStatusBarItem();
 		this.statusBarItem.addClass('mod-clickable');
+		this.statusBarItem.addClass('arete-status-bar');
 		this.statusBarItem.addEventListener('click', () => this.runSync());
 		this.updateStatusBar('idle');
 

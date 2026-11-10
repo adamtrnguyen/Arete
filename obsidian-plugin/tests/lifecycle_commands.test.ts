@@ -63,6 +63,11 @@ describe('AretePlugin Lifecycle and Commands', () => {
 		expect(plugin.addSettingTab).toHaveBeenCalled();
 	});
 
+	test('marks the status-bar item with its own class, which spaces its icon and label', async () => {
+		await plugin.onload();
+		expect(plugin.statusBarItem.addClass).toHaveBeenCalledWith('arete-status-bar');
+	});
+
 	test('ribbon icon click triggers Sync', async () => {
 		await plugin.onload();
 		const ribbonMock = (plugin.addRibbonIcon as jest.Mock).mock.results[0].value;
