@@ -371,7 +371,7 @@ def _tagged(
 
 
 def _add_params(new: NewNote) -> dict:
-    """An addNote note. A duplicate first field is allowed: identity is decided before."""
+    """An addNote note. Anki's duplicate check is off: NoteSync refuses duplicates before."""
     return {
         "deckName": new.deck,
         "modelName": new.model,

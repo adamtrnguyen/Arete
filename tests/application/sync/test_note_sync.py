@@ -8,6 +8,7 @@ in one place, plus the identity rules of the shared-sync design (section 2.6).
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 
 import pytest
@@ -98,17 +99,128 @@ async def test_a_new_cloze_card_reports_the_card_of_ord_0():
 
 
 @pytest.mark.asyncio
-async def test_two_cards_with_one_first_field_are_both_created():
+async def test_of_two_cards_with_one_first_field_in_a_deck_the_later_is_refused():
     store = FakeNoteStore()
 
     a, b = await run(
         store,
-        card(1, Front="Same", Back="one"),
-        card(2, arete_id=ID2, Front="Same", Back="two"),
+        card(1, Front="<p>Same</p>", Back="one"),
+        card(2, arete_id=ID2, Front="Same ", Back="two"),  # one key: first_field_key
     )
 
-    assert a.ok and b.ok and a.new_nid != b.new_nid
-    assert len(store.notes) == 2
+    assert a.ok and not b.ok and b.new_nid is None
+    assert list(store.notes) == [int(a.new_nid or 0)]
+    assert b.error == (
+        f"duplicate first field: c.md #2 (vault/c.md) has the same first field as note "
+        f"{a.new_nid} of c.md #1 in deck 'S::Deck' (Basic). Not created: change the card's "
+        "first field or its deck"
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_card_of_an_earlier_batch_holds_its_first_field_for_the_run():
+    store = FakeNoteStore()
+    sync = NoteSync(store)
+
+    [a] = await sync.sync_notes([card(1, Front="Same", Back="one")])
+    [b] = await sync.sync_notes([card(2, arete_id=ID2, Front="Same", Back="two")])
+
+    assert a.ok and not b.ok and f"note {a.new_nid} of c.md #1" in (b.error or "")
+    assert len(store.notes) == 1
+
+
+@pytest.mark.asyncio
+async def test_batches_run_at_once_never_both_create_one_first_field():
+    store = FakeNoteStore()
+    sync = NoteSync(store)
+
+    [a], [b] = await asyncio.gather(
+        sync.sync_notes([card(1, Front="Same", Back="one")]),
+        sync.sync_notes([card(2, arete_id=ID2, Front="Same", Back="two")]),
+    )
+
+    assert sorted([a.ok, b.ok]) == [False, True] and len(store.notes) == 1
+    loser = b if a.ok else a
+    assert "duplicate first field" in (loser.error or "")
+
+
+@pytest.mark.asyncio
+async def test_a_note_held_in_the_deck_refuses_a_new_card_and_is_left_alone():
+    store = FakeNoteStore()
+    other = store.add("Basic", "S::Deck", {"Front": "<p>Q</p>", "Back": "theirs"}, [FOREIGN])
+
+    [r] = await run(store, card())
+
+    assert not r.ok and f"same first field as note {other} in deck 'S::Deck'" in (r.error or "")
+    assert list(store.notes) == [other] and store.held(other).fields["Back"] == "theirs"
+
+
+@pytest.mark.asyncio
+async def test_the_held_notes_home_deck_counts_not_the_queue_it_is_in():
+    store = FakeNoteStore()
+    other = store.add("Basic", "S::Deck", {"Front": "<p>Q</p>", "Back": "theirs"}, [FOREIGN])
+    store.queue([other])
+
+    [r] = await run(store, card())
+
+    assert not r.ok and f"note {other}" in (r.error or "")
+
+
+@pytest.mark.asyncio
+async def test_the_same_first_field_in_another_deck_or_type_is_created():
+    store = FakeNoteStore()
+    store.add("Basic", "S::Other", {"Front": "<p>Q</p>", "Back": "x"}, [FOREIGN])
+    store.add("Basic (and reversed card)", "S::Deck", {"Front": "<p>Q</p>", "Back": "x"}, [ID2])
+
+    [r] = await run(store, card())
+
+    assert r.ok and r.new_nid is not None and len(store.notes) == 3
+
+
+@pytest.mark.asyncio
+async def test_a_note_whose_decks_cannot_be_read_refuses_the_card():
+    """Refusing is the safe side; the next sync checks again."""
+    store = FakeNoteStore()
+    other = store.add("Basic", "S::Deck", {"Front": "<p>Q</p>", "Back": "x"}, [FOREIGN])
+    store.fail = lambda op, key: RuntimeError("read broke") if op == "read_notes" else None
+
+    [r] = await run(store, card())
+
+    assert not r.ok and f"note {other}, whose decks could not be read" in (r.error or "")
+    assert store.calls["create_notes"] == 0 and list(store.notes) == [other]
+
+
+@pytest.mark.asyncio
+async def test_an_identity_match_is_an_update_never_a_refusal():
+    store = FakeNoteStore()
+    mine = store.add("Basic", "S::Deck", {"Front": "<p>Q</p>", "Back": "old"}, [ID])
+    by_nid = store.add("Basic", "S::Deck", {"Front": "<p>R</p>", "Back": "old"}, [ID2])
+
+    a, b = await run(
+        store,
+        card(1, Back="new"),  # found by its Arete id
+        card(2, arete_id=ID2, nid=by_nid, Front="<p>R</p>", Back="new"),
+    )
+
+    assert a.ok and a.new_nid == str(mine) and b.ok and b.new_nid == str(by_nid)
+    assert len(store.notes) == 2 and store.held(mine).fields["Back"] == "new"
+
+
+@pytest.mark.asyncio
+async def test_a_dry_run_refuses_the_duplicate_as_a_sync_would():
+    store = FakeNoteStore()
+    store.read_only = True
+    sync = NoteSync(store, dry_run=True)
+
+    a, b = await sync.sync_notes(
+        [card(1, Front="Same", Back="one"), card(2, arete_id=ID2, Front="Same", Back="two")]
+    )
+
+    assert a.ok and not b.ok
+    assert "same first field as c.md #1, which this run creates" in (b.error or "")
+    assert any(
+        line.startswith("would refuse c.md #2: duplicate first field") for line in sync.report
+    )
 
 
 @pytest.mark.asyncio
@@ -406,7 +518,8 @@ async def test_content_never_adopts_a_note_carrying_another_cards_id():
 
     [r] = await run(store, card())
 
-    assert r.ok and r.new_nid != str(other)
+    assert r.new_nid != str(other), "never adopted"
+    assert not r.ok and "duplicate first field" in (r.error or ""), "one deck: refused"
     assert store.held(other).fields["Back"] == "theirs"
 
 
@@ -420,7 +533,8 @@ async def test_content_never_adopts_a_note_another_vault_card_declares():
 
     [r] = await run(store, card(), claims=claims)
 
-    assert r.ok and r.new_nid != str(other)
+    assert r.new_nid != str(other), "never adopted"
+    assert not r.ok and "duplicate first field" in (r.error or ""), "one deck: refused"
 
 
 @pytest.mark.asyncio

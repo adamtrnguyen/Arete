@@ -15,8 +15,12 @@ Per batch, inside one store session:
 2. **By Arete id**, for a card with no nid or a nid Anki does not hold.
 3. **By content**, the first field, for a card still unresolved. A note carrying another
    card's Arete id, or claimed by another card, is never taken.
-4. **Create** the rest. A create whose reply was lost is looked up by its Arete id and
-   never sent again in the same run.
+4. **Create** the rest, except a card whose first field (compared through
+   `first_field_key`) a note of its type already holds in its deck: that card is refused
+   and named, with the note that holds the field. At most one card of the run gets the
+   field: within a batch, and for batches run one after another, the earlier card in the
+   vault; for batches run at once, the batch that reaches this check first. A create
+   whose reply was lost is looked up by its Arete id and never sent again in the same run.
 5. **Compare and write.** Fields, tags, home deck and note type are set to the vault's
    where they differ. Tags compare case-insensitively, and the tags Anki owns
    (`ANKI_OWNED_TAGS`) are never removed. A type change that would drop cards is refused.
@@ -74,6 +78,8 @@ class _Card:
     how: str = "update"  # update | adopt | create
     error: str | None = None
     changed: bool = False  # Anki was written for this card (a dry run: would be)
+    # refused as a duplicate: what holds the first field, the deck, the note type
+    duplicate: tuple[_Card | int | Exception, str, str] | None = None
 
     @property
     def label(self) -> str:
@@ -206,6 +212,8 @@ class NoteSync:
         self._claimed: dict[int, str] = {}  # nid -> the card that resolved to it this run
         # nid -> the note as `prefetch` read it (None: not in Anki); each entry used once.
         self._snapshot: dict[int, HeldNote | None] = {}
+        # (type, deck casefolded, first-field key) -> the card of this run that holds it
+        self._fronts: dict[tuple[str, str, str], _Card] = {}
 
     # -- entry ---------------------------------------------------------------
 
@@ -250,7 +258,13 @@ class NoteSync:
         await self._resolve_by_nid(s, cards)
         await self._resolve_by_id(s, [c for c in cards if c.open])
         await self._resolve_by_content(s, [c for c in cards if c.open])
+        self._reserve_fronts(cards)
         await self._create(s, [c for c in cards if c.open])
+        for card in cards:
+            if card.duplicate is not None:  # named once the earlier card has its note
+                card.error = self._duplicate_error(card)
+                if self._dry:
+                    self._plan(f"would refuse {card.label}: {card.error}")
         await self._read_adopted(
             s,
             [
@@ -546,11 +560,100 @@ class NoteSync:
             new = self._new_note(card)
             if new is not None:
                 todo.append((card, new))
+        await self._refuse_duplicates(s, todo)
+        todo = [(c, n) for c, n in todo if c.error is None]
         failed = await self._ensure_decks(s, {new.deck for _, new in todo}) if todo else {}
         for card, new in todo:
             if new.deck in failed:
                 card.fail(failed[new.deck])
         return [(c, n) for c, n in todo if c.error is None]
+
+    async def _refuse_duplicates(
+        self, s: NoteStoreSession, todo: list[tuple[_Card, NewNote]]
+    ) -> None:
+        """Refuse a new note whose first field a note of its type already holds in its deck.
+
+        First fields compare through `first_field_key`; a card counts as in the deck it
+        belongs to (its home deck). The notes Anki held at the content scan are checked,
+        their decks read in one batch, and so is every card this run created or resolved
+        before: the earlier card wins, the later one is refused. Checking and reserving
+        a field share no await, so batches run at once never both get it.
+        """
+        keyed = [(c, n, k) for c, n in todo if (k := self._front_key(n))]
+        index = self._index
+        nids = sorted({n for _, new, k in keyed for n, _ in index.get(new.model, {}).get(k, [])})
+        held: dict[int, HeldNote | None | Exception] = {}
+        if nids:
+            try:
+                held = await s.read_notes(nids)
+            except Exception as e:
+                held = dict.fromkeys(nids, e)
+        for card, new, key in keyed:
+            holder = self._front_holder(new, key, held)
+            if holder is None:
+                self._fronts.setdefault((new.model, new.deck.casefold(), key), card)
+            else:
+                card.duplicate = (holder, new.deck, new.model)
+                card.fail("duplicate first field")
+
+    def _front_key(self, new: NewNote) -> str:
+        info = self._types.get(new.model)
+        if not isinstance(info, NoteTypeInfo) or not info.fields:
+            return ""
+        return first_field_key(new.fields.get(info.fields[0], ""))
+
+    def _front_holder(
+        self, new: NewNote, key: str, held: dict[int, HeldNote | None | Exception]
+    ) -> _Card | int | Exception | None:
+        """What already holds the first field in the deck: a card of this run or a note.
+
+        A note whose decks could not be read counts as holding it: refusing is the safe
+        side, and the next sync checks again.
+        """
+        deck = new.deck.casefold()
+        earlier = self._fronts.get((new.model, deck, key))
+        if earlier is not None:
+            return earlier
+        for nid, _ in self._index.get(new.model, {}).get(key, []):
+            note = held.get(nid)
+            if isinstance(note, Exception):
+                return Exception(f"note {nid}, whose decks could not be read: {note}")
+            if note and any(c.home_deck and c.home_deck.casefold() == deck for c in note.cards):
+                return nid
+        return None
+
+    def _reserve_fronts(self, cards: list[_Card]) -> None:
+        """Record the first field each resolved card gives its note, for later new cards."""
+        for card in cards:
+            if card.error is None and card.nid is not None:
+                info = self._type(card.work.note.model)
+                if isinstance(info, NoteTypeInfo):
+                    key = _first_key(info, card.work.note.fields)
+                    if key:
+                        where = (info.name, card.work.note.deck.casefold(), key)
+                        self._fronts.setdefault(where, card)
+
+    @staticmethod
+    def _duplicate_error(card: _Card) -> str:
+        """The refusal of a duplicate, naming the card, its file and what holds the field."""
+        assert card.duplicate is not None
+        holder, deck, model = card.duplicate
+        if isinstance(holder, _Card):
+            if holder.nid is not None:
+                what = f"note {holder.nid} of {holder.label}"
+            elif holder.error is not None:
+                what = f"{holder.label}, which was not created either ({holder.error})"
+            else:
+                what = f"{holder.label}, which this run creates"
+        elif isinstance(holder, Exception):
+            what = str(holder)
+        else:
+            what = f"note {holder}"
+        return (
+            f"duplicate first field: {card.label} ({card.work.source_file}) has the same "
+            f"first field as {what} in deck '{deck}' ({model}). Not created: change the "
+            "card's first field or its deck"
+        )
 
     def _new_note(self, card: _Card) -> NewNote | None:
         note = card.work.note

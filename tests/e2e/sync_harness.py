@@ -541,8 +541,13 @@ class _Labels:
         return f"card ord {ord_} of {whose}"
 
 
-def _error(text: str | None) -> str | None:
-    return None if text is None else re.sub(r"\d{10,}", "<id>", text)
+def _error(text: str | None, vault: Path) -> str | None:
+    """The error with the run's vault path and every note id masked."""
+    if text is None:
+        return None
+    for root in (str(vault.resolve()), str(vault)):
+        text = text.replace(root, "<vault>")
+    return re.sub(r"note \d+", "note <id>", re.sub(r"\d{10,}", "<id>", text))
 
 
 def snapshot(backend: Backend, vault: Path, runs: list[list[UpdateItem]]) -> dict[str, Any]:
@@ -579,7 +584,7 @@ def _run(labels: _Labels, vault: Path, updates: list[UpdateItem]) -> list[dict[s
             {
                 "card": key,
                 "ok": u.ok,
-                "error": _error(u.error),
+                "error": _error(u.error, vault),
                 "new_nid": labels.nid(key, u.new_nid),
                 "new_cid": labels.cid(key, u.new_cid),
             }

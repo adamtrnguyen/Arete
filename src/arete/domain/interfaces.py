@@ -143,7 +143,8 @@ class NoteStoreSession(Protocol):
     async def create_notes(self, notes: Sequence[NewNote]) -> list[int | Exception]:
         """Add each note; its nid, or the error. `OutcomeUnknown`: it may have been added.
 
-        A note whose first field duplicates another note's is added all the same.
+        A note whose first field duplicates another note's is added all the same: the
+        sync use-case decides which duplicates to refuse, alike on every backend.
         """
         ...
 

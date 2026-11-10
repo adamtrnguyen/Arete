@@ -8,27 +8,11 @@
         "fields": {
           "Back": "<p>First answer</p>",
           "Front": "<p>Same question</p>",
-          "_obsidian_source": "vault|twins.md|6|<id of twins.md#1>"
+          "_obsidian_source": "vault|twins.md|7|<id of twins.md#1>"
         },
         "model": "Basic",
         "tags": [
           "<id of twins.md#1>"
-        ]
-      }
-    ],
-    "twins.md#2": [
-      {
-        "decks": [
-          "S::Twins"
-        ],
-        "fields": {
-          "Back": "<p>Second answer</p>",
-          "Front": "<p>Same question</p>",
-          "_obsidian_source": "vault|twins.md|9|<id of twins.md#2>"
-        },
-        "model": "Basic",
-        "tags": [
-          "<id of twins.md#2>"
         ]
       }
     ]
@@ -44,10 +28,10 @@
       },
       {
         "card": "twins.md#2",
-        "error": null,
-        "new_cid": "card ord 0 of its note",
-        "new_nid": "its note",
-        "ok": true
+        "error": "duplicate first field: twins.md #2 (<vault>/twins.md) has the same first field as note <id> of twins.md #1 in deck 'S::Twins' (Basic). Not created: change the card's first field or its deck",
+        "new_cid": null,
+        "new_nid": null,
+        "ok": false
       }
     ],
     [
@@ -60,10 +44,10 @@
       },
       {
         "card": "twins.md#2",
-        "error": null,
+        "error": "duplicate first field: twins.md #2 (<vault>/twins.md) has the same first field as note <id> of twins.md #1 in deck 'S::Twins' (Basic). Not created: change the card's first field or its deck",
         "new_cid": null,
-        "new_nid": "its note",
-        "ok": true
+        "new_nid": null,
+        "ok": false
       }
     ]
   ],
@@ -73,8 +57,8 @@
       "nid": "its note"
     },
     "twins.md#2": {
-      "cid": "card ord 0 of its note",
-      "nid": "its note"
+      "cid": null,
+      "nid": null
     }
   }
 }
