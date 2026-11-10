@@ -7,6 +7,7 @@ method name.  Both success and failure / no-collection paths are tested.
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import pytest
@@ -37,17 +38,21 @@ def mock_repo():
 # ---------------------------------------------------------------------------
 
 
+def _decks(*names):
+    return [SimpleNamespace(name=n, id=i) for i, n in enumerate(names, 1)]
+
+
 @pytest.mark.asyncio
 async def test_get_deck_names(adapter, mock_repo):
-    mock_repo.col.decks.all_names.return_value = ["Default", "Math"]
+    mock_repo.col.decks.all_names_and_ids.return_value = _decks("Default", "Math")
     names = await adapter.get_deck_names()
     assert "Math" in names
-    mock_repo.col.decks.all_names.assert_called_once()
+    mock_repo.col.decks.all_names_and_ids.assert_called_once_with()
 
 
 @pytest.mark.asyncio
 async def test_get_deck_names_returns_full_list(adapter, mock_repo):
-    mock_repo.col.decks.all_names.return_value = ["Default", "Math", "Math::Calc"]
+    mock_repo.col.decks.all_names_and_ids.return_value = _decks("Default", "Math", "Math::Calc")
     names = await adapter.get_deck_names()
     assert names == ["Default", "Math", "Math::Calc"]
     assert len(names) == 3

@@ -47,7 +47,9 @@ class AnkiDirectAdapter(AnkiBridge):
     async def get_deck_names(self) -> list[str]:
         with AnkiRepository(self.anki_base) as repo:
             if repo.col:
-                return repo.col.decks.all_names()
+                # `all_names` prints a deprecation notice to stdout, which a JSON command
+                # must keep clean.
+                return [d.name for d in repo.col.decks.all_names_and_ids()]
         return []
 
     async def get_due_cards(

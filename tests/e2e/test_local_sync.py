@@ -437,3 +437,14 @@ async def test_a_conversion_that_would_delete_cards_is_refused(
         assert len(note.cards()) == 3
     finally:
         col.close()
+
+
+@pytest.mark.asyncio
+async def test_listing_decks_prints_nothing_to_stdout(anki_base: Path, capsys):
+    """The plugin parses `arete anki decks` stdout as JSON; the adapter must add nothing."""
+    from arete.infrastructure.adapters.anki_direct import AnkiDirectAdapter
+
+    names = await AnkiDirectAdapter(anki_base=anki_base).get_deck_names()
+
+    assert "Default" in names
+    assert capsys.readouterr().out == ""
