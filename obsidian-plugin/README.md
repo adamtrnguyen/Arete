@@ -1,67 +1,44 @@
-# Arete (Obsidian to Anki Sync)
+# Arete (Obsidian to Anki sync)
 
-**A professional-grade, one-way sync tool from Obsidian to Anki.**
+One-way sync from your vault to Anki. Cards live in a note's frontmatter, and the plugin runs the `arete` command-line tool to sync them. Full guide: [docs/PLUGIN.md](../docs/PLUGIN.md).
 
-Arete treats your Obsidian vault as the **Source of Truth**. Write your flashcards in Markdown, and let Arete handle the synchronization to Anki, including media, math, and updates.
+## What it does
 
-![Demo Screenshot](https://raw.githubusercontent.com/adamtrnguyen/Arete/main/docs/assets/demo.png)
+- **Sync** cards to Anki from the command palette, the ribbon or the status bar.
+- **Media and math**: image embeds are copied to Anki, and `$...$` becomes MathJax.
+- **Prune**: the `Sync (prune deleted cards)` command lists Anki notes whose card left the vault and asks before deleting.
+- **Tags**: frontmatter tags become Anki tags.
+- **Views**: a card editor with an Anki preview, a card gutter, local and global dependency graphs, and a dashboard with review stats and a queue builder.
 
-## Features
+## A card
 
-- **⚡ Zero-Config Sync**: Automatically finds flashcards in your notes.
-- **🖼️ Media Support**: Syncs images, audio, and video to Anki.
-- **🧮 MathJax Ready**: Full support for LaTeX/MathJax equations.
-- **🧹 Prune Mode**: Deleted a note in Obsidian? It's removed from Anki automatically.
-- **🏷️ Tag Sync**: Obsidian tags become Anki tags.
-
-## Usage
-
-### 1. Basic Flashcard
-
-Create a new note (or add to an existing one) with the `Front: Back` syntax or the default Question/Answer block.
-
-```markdown
+```yaml
 ---
-deck: Computer Science
+arete: true
+deck: "Biology::Anatomy"
+cards:
+  - Front: What are the three layers of the skin?
+    Back: |-
+      Epidermis, dermis, hypodermis.
+  - model: Cloze
+    Text: |-
+      The {{c1::epidermis}} is the outermost layer of skin.
 ---
-
-# My Notes
-
-## Question
-
-What is the time complexity of binary search?
-
-## Answer
-
-O(log n)
 ```
 
-### 2. Cloze Deletion
-
-Use standard Anki cloze syntax:
-
-```markdown
-The capital of {{c1::France}} is {{c2::Paris}}.
-```
-
-### 3. Syncing
-
-1.  Open the Command Palette (`Cmd/Ctrl + P`).
-2.  Type `Arete: Sync`.
-3.  Watch the notification for progress!
+Run `Arete: Sync` from the command palette (`Cmd/Ctrl + P`). The card schema is in [skills/arete/references/SCHEMA.md](../skills/arete/references/SCHEMA.md).
 
 ## Requirements
 
-- **Anki** (Desktop application)
-- **AnkiConnect** (Anki Add-on) or the **Arete Unified Add-on** (Recommended)
-- **Python 3.11+** (for the backend CLI)
+- **Anki** desktop. The `arete_ankiconnect` add-on is needed while Anki is open.
+- **Python 3.12 or later** with the `arete` command: `uv tool install git+https://github.com/adamtrnguyen/Arete`.
 
 ## Installation
 
-1.  Install **Arete** from the Obsidian Community Plugins list.
-2.  Ensure you have the backend CLI installed: `pip install arete`
-3.  Configure your Vault path in the plugin settings.
+1.  Download `main.js`, `manifest.json` and `styles.css` from [GitHub Releases](https://github.com/adamtrnguyen/Arete/releases/latest).
+2.  Put them in `<vault>/.obsidian/plugins/arete/` and enable the plugin.
+3.  In the plugin settings, set `Python executable` to the `arete` or `python3` you installed.
 
 ## License
 
-MIT License. See [LICENSE](https://github.com/adamtrnguyen/Arete/blob/main/LICENSE) for details.
+GPL-3.0. See [LICENSE](LICENSE).
