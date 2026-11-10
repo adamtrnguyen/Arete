@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "arete": {
-      "command": "uv",
-      "args": ["run", "--project", "/Users/adam/Research/ObsidianSuite/arete", "arete", "serve", "mcp"]
-    }
-  }
-}

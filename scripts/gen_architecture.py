@@ -25,7 +25,7 @@ BEGIN = "<!-- BEGIN GENERATED: package-tree (scripts/gen_architecture.py) -->"
 END = "<!-- END GENERATED -->"
 
 LAYERS = {
-    "interface": "How a person or a client reaches the system: CLI, HTTP, MCP.",
+    "interface": "How a person or a client reaches the system: CLI, HTTP.",
     "composition": "The only place that picks an adapter for a port and wires a use-case.",
     "application": "Use-cases. Decides what happens next, over ports, never over adapters.",
     "infrastructure": "One technology each: AnkiConnect over HTTP, the Anki library, SQLite.",

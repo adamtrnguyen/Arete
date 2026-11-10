@@ -28,7 +28,6 @@ dependencies = [
     "anki==25.9.2",
     "python-ulid>=3.0.0",
     "networkx>=3.0",
-    "mcp[cli]>=2.2,<3",
 ]
 
 [project.urls]
@@ -175,7 +174,7 @@ markers = [
 
 [tool.vulture]
 paths = ["src", "scripts"]
-# At 60% vulture flags every typer command, MCP tool and pydantic field, all
+# At 60% vulture flags every typer command and pydantic field, all
 # registered by decorator or read by key; 80% keeps only names nothing can reach.
 min_confidence = 80
 # Parameters a protocol requires by position, never read in the body:

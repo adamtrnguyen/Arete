@@ -390,7 +390,7 @@ async def test_inv4_a_field_change_of_a_queued_card_keeps_scheduling(world: Worl
 #   tests/infrastructure/adapters/anki_connect/test_adapter.py::
 #     test_sync_refuses_a_conversion_that_would_delete_cards (mocked transport)
 #   tests/interface/test_cli_sync.py::test_only_yes_confirms_a_prune
-#   tests/interface/test_path_containment.py: MCP and HTTP pass the confirmation through
+#   tests/interface/test_path_containment.py: HTTP passes the confirmation through
 # ---------------------------------------------------------------------------
 
 

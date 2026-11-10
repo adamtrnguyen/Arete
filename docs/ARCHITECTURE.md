@@ -12,11 +12,10 @@ The tree below is generated from the package by `scripts/gen_architecture.py`, a
 ```text
 src/arete/
 │
-├── interface/                 How a person or a client reaches the system: CLI, HTTP, MCP.
+├── interface/                 How a person or a client reaches the system: CLI, HTTP.
 │   ├── _common.py                 Shared utilities for all CLI submodules
 │   ├── anki_commands.py           Anki card management and debugging commands
 │   ├── cli.py                     Arete CLI — root commands and subgroup registration
-│   ├── mcp_server.py              Arete MCP Server
 │   ├── vault_commands.py          Vault maintenance commands: validate, fix, format
 │
 ├── composition/               The only place that picks an adapter for a port and wires a use-case.
@@ -87,7 +86,7 @@ src/arete/
 
 | Layer | Modules | Lines | May import |
 |---|---|---|---|
-| `interface` | 5 | 1436 | application, composition |
+| `interface` | 4 | 975 | application, composition |
 | `composition` | 2 | 183 | application, infrastructure, domain |
 | `application` | 26 | 5841 | domain (ports only) |
 | `infrastructure` | 9 | 2234 | domain |
