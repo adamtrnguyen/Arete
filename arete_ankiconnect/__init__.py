@@ -775,13 +775,13 @@ class AnkiConnect:
         collection = self.collection()
 
         config["id"] = str(config["id"])
-        config["mod"] = anki.utils.intTime()
+        config["mod"] = int_time()
         config["usn"] = collection.usn()
         if int(config["id"]) not in [c["id"] for c in collection.decks.all_config()]:
             return False
         try:
             collection.decks.save(config)
-            collection.decks.updateConf(config)
+            collection.decks.update_config(config)
         except:
             return False
         return True
@@ -813,8 +813,8 @@ class AnkiConnect:
         if configId not in [c["id"] for c in collection.decks.all_config()]:
             return False
 
-        config = collection.decks.getConf(configId)
-        return collection.decks.confId(name, config)
+        config = collection.decks.get_config(configId)
+        return collection.decks.add_config_returning_id(name, config)
 
     @util.api()
     def removeDeckConfigId(self, configId):
@@ -822,7 +822,7 @@ class AnkiConnect:
         if int(configId) not in [c["id"] for c in collection.decks.all_config()]:
             return False
 
-        collection.decks.remConf(configId)
+        collection.decks.remove_config(configId)
         return True
 
     @util.api()
@@ -1866,7 +1866,7 @@ class AnkiConnect:
         if note is not None:
             collection = self.collection()
 
-            deck = collection.decks.byName(note["deckName"])
+            deck = collection.decks.by_name(note["deckName"])
             if deck is None:
                 raise Exception("deck was not found: {}".format(note["deckName"]))
 
@@ -2011,7 +2011,7 @@ class AnkiConnect:
     def guiDeckOverview(self, name):
         collection = self.collection()
         if collection is not None:
-            deck = collection.decks.byName(name)
+            deck = collection.decks.by_name(name)
             if deck is not None:
                 collection.decks.select(deck["id"])
                 self.window().onOverview()
@@ -2093,7 +2093,7 @@ class AnkiConnect:
     def exportPackage(self, deck, path, includeSched=False):
         collection = self.collection()
         if collection is not None:
-            deck = collection.decks.byName(deck)
+            deck = collection.decks.by_name(deck)
             if deck is not None:
                 exporter = AnkiPackageExporter(collection)
                 exporter.did = deck["id"]
