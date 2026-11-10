@@ -23,7 +23,8 @@ Per batch, inside one store session:
    the other is refused every time. A create whose reply was lost is looked up by its
    Arete id and never sent again in the same run.
 5. **Compare and write.** Fields, tags, home deck and note type are set to the vault's
-   where they differ. Tags compare case-insensitively, and the tags Anki owns
+   where they differ. Tags compare case-insensitively and as Anki stores them
+   (`anki_tags`: a vault tag `A B` is the tags `A` and `B`), and the tags Anki owns
    (`ANKI_OWNED_TAGS`) are never removed. A type change that would drop cards is refused.
 
 One note belongs to at most one card per run.
@@ -37,7 +38,7 @@ from collections.abc import Collection, Sequence
 from contextlib import AsyncExitStack
 from dataclasses import dataclass, field
 
-from arete.domain.identity import ANKI_OWNED_TAGS, first_field_key
+from arete.domain.identity import ANKI_OWNED_TAGS, anki_tags, first_field_key
 from arete.domain.interfaces import NoteStorePort, NoteStoreSession
 from arete.domain.models import (
     HeldNote,
@@ -663,7 +664,7 @@ class NoteSync:
             card.fail(info)
             return None
         return NewNote(
-            info.name, note.deck, _type_fields(info, note.fields), tuple(dict.fromkeys(note.tags))
+            info.name, note.deck, _type_fields(info, note.fields), tuple(anki_tags(note.tags))
         )
 
     async def _adopt_lost(self, s: NoteStoreSession, lost: list[tuple[_Card, Exception]]) -> None:
@@ -867,11 +868,15 @@ def _tag_change(
 ) -> tuple[tuple[str, ...], tuple[str, ...]]:
     """Tags to add and to remove so the note's tags equal the vault's, ignoring case.
 
-    A tag Anki owns stays on the note.
+    The vault's tags are compared as Anki stores them (`anki_tags`): a vault tag
+    `Cognitive Science` is the note's `Cognitive` and `Science`. Those forms are also what
+    is sent, as on create, since Anki keeps them as sent. A tag Anki owns stays on the
+    note.
     """
-    wanted = {t.casefold() for t in vault}
+    stored = anki_tags(vault)
+    wanted = {t.casefold() for t in stored}
     present = {t.casefold() for t in held}
-    add = tuple(t for t in dict.fromkeys(vault) if t.casefold() not in present)
+    add = tuple(t for t in stored if t.casefold() not in present)
     remove = tuple(
         t for t in held if t.casefold() not in wanted and t.casefold() not in ANKI_OWNED_TAGS
     )

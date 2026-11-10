@@ -20,6 +20,8 @@ from collections import Counter
 from collections.abc import Callable
 from typing import Any
 
+from arete.domain.identity import anki_tags
+
 
 class FakeAnki:
     def __init__(self, models: dict[str, list[str]] | None = None):
@@ -65,7 +67,7 @@ class FakeAnki:
         self.notes[nid] = {
             "model": model,
             "fields": {name: fields.get(name, "") for name in names},
-            "tags": list(tags or []),
+            "tags": anki_tags(tags or []),  # as Anki stores them: `A B` is two tags
             "cards": [nid * 10 + i for i in range(n_cards)],
         }
         for cid in self.notes[nid]["cards"]:
@@ -240,17 +242,21 @@ class FakeAnki:
             if name in held["fields"]:
                 held["fields"][name] = value
 
-    def _a_addTags(self, notes, tags, add=True):
+    def _a_addTags(self, notes, tags):
+        """As Anki: the string is split and each tag stored as `anki_tags` says."""
         for nid in notes:
             held = self.notes[nid]["tags"]
-            for tag in tags.split():
-                if add and tag not in held:
+            for tag in anki_tags([tags]):
+                if tag.casefold() not in {t.casefold() for t in held}:
                     held.append(tag)
-                if not add and tag in held:
-                    held.remove(tag)
 
     def _a_removeTags(self, notes, tags):
-        return self._a_addTags(notes, tags, False)
+        """As Anki: the names are split at spaces and removed ignoring case."""
+        gone = {t.casefold() for t in re.split("[ 　]", tags) if t}
+        for nid in notes:
+            self.notes[nid]["tags"] = [
+                t for t in self.notes[nid]["tags"] if t.casefold() not in gone
+            ]
 
     def _a_changeDeck(self, cards, deck):
         """The add-on's changeDeck: a queued card leaves its filtered deck first."""

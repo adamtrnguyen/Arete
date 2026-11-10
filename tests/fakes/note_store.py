@@ -2,7 +2,8 @@
 
 It keeps what the port can see (note types, decks, notes, cards and where each card is
 filed) and nothing it cannot: no scheduling, no review history. A card in a filtered deck
-has a home deck (`odid`) beside the deck it sits in, as in Anki.
+has a home deck (`odid`) beside the deck it sits in, as in Anki. Tags are kept as Anki
+keeps them (`anki_tags`, pinned against the anki library): `A B` is two tags.
 
 It also polices the port's contract, so a use-case bug fails loudly here:
 - a primitive called outside a session raises;
@@ -25,6 +26,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import Any
 
+from arete.domain.identity import anki_tags
 from arete.domain.models import (
     HeldCard,
     HeldNote,
@@ -98,7 +100,7 @@ class FakeNoteStore:
         self._next += 1
         nid = self._next
         values = {name: (fields or {}).get(name, "") for name in info.fields}
-        note = FakeNote(model, values, list(tags))
+        note = FakeNote(model, values, anki_tags(tags))  # as Anki stores them
         self.notes[nid] = note
         self.decks.add(deck)
         count = n_cards if n_cards is not None else self._cards_for(info, values)
@@ -287,13 +289,13 @@ class FakeNoteStore:
 
     @staticmethod
     def _add_tags(note: FakeNote, tags: Collection[str]) -> None:
-        for tag in tags:
+        for tag in anki_tags(tags):
             if tag.casefold() not in {t.casefold() for t in note.tags}:
                 note.tags.append(tag)
 
     @staticmethod
     def _remove_tags(note: FakeNote, tags: Collection[str]) -> None:
-        gone = {t.casefold() for t in tags}
+        gone = {t.casefold() for t in tags}  # removed by name, as Anki removes them
         note.tags = [t for t in note.tags if t.casefold() not in gone]
 
     def _file(self, cids: Collection[int], deck: str) -> None:

@@ -121,7 +121,7 @@ class DirectNoteSession:
                 nid,
                 model["name"] if model else "",
                 dict(zip(names, values, strict=False)),
-                tuple(tags.split()),
+                tuple(t for t in tags.split(" ") if t),  # a tag may hold a no-break space
                 tuple(cards.get(nid, [])),
             )
         return out
