@@ -56,6 +56,7 @@ function element(tag?: string, opts?: any): any {
 	});
 	el.createEl = jest.fn((t: string, o?: any) => element(t, o));
 	el.createSpan = jest.fn((o?: any) => element('span', o));
+	el.getBoundingClientRect = jest.fn(() => ({ left: 0, top: 0, width: 400, height: 300 }));
 	return el;
 }
 (global as any).mockGraphElement = () => element('div');
@@ -157,5 +158,60 @@ describe('LocalGraphView rendered markdown', () => {
 		await d3.mockHandlers.mouseover({ pageX: 0, pageY: 0 }, node);
 		view.renderEmpty(element('div'), 'No Arete cards found in this file.');
 		expect(liveChildren(view.tooltipComponent)).toBe(0);
+	});
+});
+
+/**
+ * The tooltip is absolutely positioned inside the view's container, which sits anywhere in
+ * the window (the right sidebar starts near x = 2000 on a wide screen).
+ */
+describe('LocalGraphView tooltip position', () => {
+	const d3 = jest.requireMock('d3');
+	const node = { id: 'arete_A', title: 't', group: 'center', filePath: 'A.md', lineNumber: 1 };
+	let view: any;
+
+	beforeEach(() => {
+		view = new LocalGraphView({} as any, {
+			dependencyResolver: {} as any,
+			getCardContext: jest.fn(),
+			setCardContext: jest.fn(),
+		});
+		view.app = new (jest.requireMock('obsidian').App)();
+		view.container = element('div');
+		view.container.getBoundingClientRect = () => ({
+			left: 2009,
+			top: 100,
+			width: 900,
+			height: 1400,
+		});
+	});
+
+	it('places the 2D tooltip beside the pointer, in the container’s coordinates', async () => {
+		view.renderD3Graph(element('div'), [node], []);
+		await d3.mockHandlers.mouseover(
+			{ clientX: 2300, clientY: 400, pageX: 2300, pageY: 400 },
+			node,
+		);
+		expect(view.tooltipContainer.style.left).toBe('303px');
+		expect(view.tooltipContainer.style.top).toBe('312px');
+		d3.mockHandlers.mousemove({ clientX: 2310, clientY: 420 }, node);
+		expect(view.tooltipContainer.style.left).toBe('313px');
+		expect(view.tooltipContainer.style.top).toBe('332px');
+	});
+
+	it('puts the 2D tooltip to the pointer’s left near the container’s right edge', async () => {
+		view.renderD3Graph(element('div'), [node], []);
+		await d3.mockHandlers.mouseover({ clientX: 2809, clientY: 400 }, node);
+		expect(view.tooltipContainer.style.left).toBe('488px');
+	});
+
+	it('pins the 3D tooltip to the canvas corner', () => {
+		const canvas = element('div', { offsetLeft: 0, offsetTop: 40 });
+		view.render3DGraph(canvas, [], []);
+		const onHover = view.graph3D.onNodeHover.mock.calls[0][0];
+		onHover(node);
+		expect(view.tooltipContainer.style.display).toBe('block');
+		expect(view.tooltipContainer.style.left).toBe('12px');
+		expect(view.tooltipContainer.style.top).toBe('52px');
 	});
 });

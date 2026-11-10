@@ -21,6 +21,11 @@ export interface LocalGraphHost {
 
 export const LOCAL_GRAPH_VIEW_TYPE = 'arete-local-graph';
 
+/** Gap between the pointer (or the canvas corner) and the hover tooltip. */
+const TOOLTIP_OFFSET_PX = 12;
+/** Width of the 2D hover tooltip's card, used before the tooltip has been laid out. */
+const TOOLTIP_WIDTH_PX = 300;
+
 /** 3d-force-graph's kapsule call form: `ForceGraph3D()(element)`. */
 type ForceGraph3DFactory = () => (element: HTMLElement) => ForceGraph3DInstance;
 
@@ -512,6 +517,24 @@ export class LocalGraphView extends ItemView {
 		this.tooltipCache.clear();
 	}
 
+	/**
+	 * Put the tooltip beside the pointer. The tooltip is positioned inside the view's
+	 * container, so the pointer's window coordinates are taken relative to that box; near
+	 * the right edge the tooltip goes to the pointer's left so it stays in the view.
+	 */
+	private placeTooltip(event: MouseEvent): void {
+		const tip = this.tooltipContainer;
+		if (!tip) return;
+		const box = this.container.getBoundingClientRect();
+		const x = event.clientX - box.left;
+		const y = event.clientY - box.top;
+		const width = tip.offsetWidth || TOOLTIP_WIDTH_PX;
+		const right = x + TOOLTIP_OFFSET_PX + width > box.width;
+		const left = right ? Math.max(0, x - TOOLTIP_OFFSET_PX - width) : x + TOOLTIP_OFFSET_PX;
+		tip.style.left = `${left}px`;
+		tip.style.top = `${y + TOOLTIP_OFFSET_PX}px`;
+	}
+
 	renderEmpty(container: HTMLElement, msg: string) {
 		this.drawnKey = null;
 		this.releaseDrawing();
@@ -779,8 +802,7 @@ export class LocalGraphView extends ItemView {
 				.on('mouseover', async (event, d) => {
 					if (this.tooltipContainer) {
 						this.tooltipContainer.style.display = 'block';
-						this.tooltipContainer.style.left = event.pageX + 10 + 'px';
-						this.tooltipContainer.style.top = event.pageY + 10 + 'px';
+						this.placeTooltip(event);
 
 						// Populate tooltip. A node's tooltip is rendered on its first hover in
 						// this drawing and reattached on later ones.
@@ -795,7 +817,7 @@ export class LocalGraphView extends ItemView {
 							cls: 'arete-card-preview',
 						});
 						this.tooltipCache.set(cacheKey, cardDiv);
-						cardDiv.style.width = '300px';
+						cardDiv.style.width = `${TOOLTIP_WIDTH_PX}px`;
 						cardDiv.style.maxHeight = '300px';
 						cardDiv.style.overflow = 'auto';
 
@@ -817,12 +839,7 @@ export class LocalGraphView extends ItemView {
 						);
 					}
 				})
-				.on('mousemove', (event) => {
-					if (this.tooltipContainer) {
-						this.tooltipContainer.style.left = event.clientX + 15 + 'px';
-						this.tooltipContainer.style.top = event.clientY + 15 + 'px';
-					}
-				})
+				.on('mousemove', (event) => this.placeTooltip(event))
 				.on('mouseout', () => {
 					if (this.tooltipContainer) {
 						this.tooltipContainer.style.display = 'none';
@@ -1023,7 +1040,11 @@ export class LocalGraphView extends ItemView {
 
 		this.graph3D.onNodeHover((node: any) => {
 			if (node && this.tooltipContainer) {
+				// The hover callback has no pointer position, and 3d-force-graph shows its own
+				// label at the pointer, so the card sits in the canvas's top-left corner.
 				this.tooltipContainer.style.display = 'block';
+				this.tooltipContainer.style.left = `${container.offsetLeft + TOOLTIP_OFFSET_PX}px`;
+				this.tooltipContainer.style.top = `${container.offsetTop + TOOLTIP_OFFSET_PX}px`;
 				this.tooltipContainer.empty();
 				const cardDiv = this.tooltipContainer.createDiv({ cls: 'arete-card-preview' });
 				cardDiv.style.width = '250px';
