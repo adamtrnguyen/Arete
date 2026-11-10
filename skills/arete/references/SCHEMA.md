@@ -28,7 +28,7 @@ cards:
       with multiple lines
     deck: "Override::Deck"                   # Optional, overrides file-level deck
     model: "Basic"                           # Optional, overrides file-level model
-    tags: [extra-tag]                        # Optional, overrides file-level tags
+    tags: [extra-tag]                        # Optional, added to the file-level tags
     deps:
       requires: [arete_ULID, basename]       # Prerequisites (card IDs or filenames without .md)
       related: [arete_ULID]                  # Related cards (informational, not traversed)
@@ -91,4 +91,3 @@ cards:
     "Back Extra": Contains melanocytes for pigmentation
 ---
 ```
-
