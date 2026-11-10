@@ -7,8 +7,16 @@ import {
 	Text,
 	Transaction,
 } from '@codemirror/state';
-import { Notice } from 'obsidian';
-import type { AnkiCardStats } from '@/domain/stats';
+import { Notice, setIcon, setTooltip } from 'obsidian';
+import type {
+	AnkiCardStats,
+	CardState,
+	CardStateResult,
+	CardStateSettings,
+	MetricState,
+} from '@/domain/stats';
+import { cardState } from '@/domain/stats';
+import { DEFAULT_SETTINGS } from '@/domain/settings';
 import { CardVisualsService } from '@/application/services/CardVisualsService';
 
 // Re-use interfaces from service
@@ -41,8 +49,8 @@ class SkipToBottomMarker extends GutterMarker {
 	toDOM() {
 		const marker = document.createElement('div');
 		marker.className = 'arete-skip-button';
-		marker.innerHTML = '↓';
-		marker.title = 'Skip to end of frontmatter';
+		setIcon(marker, 'arrow-down');
+		setTooltip(marker, 'Skip to end of frontmatter');
 
 		marker.addEventListener('click', (e) => {
 			e.preventDefault();
@@ -62,6 +70,24 @@ class SkipToBottomMarker extends GutterMarker {
 	}
 }
 
+const CARD_STATE_CLASS: Record<CardState, string | null> = {
+	muted: null,
+	accent: null,
+	success: 'mod-success',
+	warning: 'mod-warning',
+	error: 'mod-error',
+};
+
+/** A difficulty or lapse figure. `ok` shows green only for difficulty, as before. */
+function statSpan(text: string, state: MetricState, okIsSuccess: boolean): HTMLElement {
+	const span = document.createElement('span');
+	span.className = 'arete-gutter-stat';
+	span.textContent = text;
+	if (state === 'warning' || state === 'error') span.classList.add(`mod-${state}`);
+	else if (state === 'ok' && okIsSuccess) span.classList.add('mod-success');
+	return span;
+}
+
 // Custom gutter marker for cards
 class CardGutterMarker extends GutterMarker {
 	index: number;
@@ -72,6 +98,9 @@ class CardGutterMarker extends GutterMarker {
 	stats: AnkiCardStats | null;
 	algorithm: 'fsrs' | 'sm2';
 	isSynced: boolean;
+	state: CardState;
+	diffState: MetricState;
+	lapseState: MetricState;
 	onClick: () => void;
 
 	constructor(
@@ -83,6 +112,7 @@ class CardGutterMarker extends GutterMarker {
 		stats: AnkiCardStats | null,
 		algorithm: 'fsrs' | 'sm2',
 		isSynced: boolean,
+		result: CardStateResult,
 		onClick: () => void,
 	) {
 		super();
@@ -94,6 +124,9 @@ class CardGutterMarker extends GutterMarker {
 		this.stats = stats;
 		this.algorithm = algorithm;
 		this.isSynced = isSynced;
+		this.state = result.state;
+		this.diffState = algorithm === 'fsrs' ? result.metrics.difficulty : result.metrics.ease;
+		this.lapseState = result.metrics.lapses;
 		this.onClick = onClick;
 	}
 
@@ -111,7 +144,10 @@ class CardGutterMarker extends GutterMarker {
 			other.totalLines === this.totalLines &&
 			other.stats === this.stats &&
 			other.algorithm === this.algorithm &&
-			other.isSynced === this.isSynced
+			other.isSynced === this.isSynced &&
+			other.state === this.state &&
+			other.diffState === this.diffState &&
+			other.lapseState === this.lapseState
 		);
 	}
 
@@ -119,22 +155,20 @@ class CardGutterMarker extends GutterMarker {
 		const marker = document.createElement('div');
 		marker.className = 'arete-gutter-marker';
 		marker.dataset.cardIndex = String(this.index);
-		marker.style.position = 'relative';
-		marker.style.height = '100%';
-		marker.style.width = '100%';
-		marker.style.minWidth = '20px';
 
-		if (this.isStart) marker.classList.add('arete-gutter-start');
-		if (this.isEnd) marker.classList.add('arete-gutter-end');
-		if (this.isSynced) marker.classList.add('arete-gutter-synced');
+		if (this.isStart) marker.classList.add('is-start');
+		if (this.isEnd) marker.classList.add('is-end');
+		if (this.isSynced) marker.classList.add('is-synced');
+		const stateClass = CARD_STATE_CLASS[this.state];
+		if (stateClass) marker.classList.add(stateClass);
 
-		// 1. Resolve Visuals from Service (UI Separation)
+		// Text and tooltip come from the service; colour comes from the card state.
 		const visuals = CardVisualsService.getGutterVisuals(
 			this.stats,
 			this.algorithm,
 			this.isSynced,
 		);
-		marker.title = visuals.tooltip;
+		if (visuals.tooltip) setTooltip(marker, visuals.tooltip);
 
 		if (this.isStart) {
 			const infoContainer = document.createElement('div');
@@ -148,59 +182,31 @@ class CardGutterMarker extends GutterMarker {
 
 			// Stats (Difficulty / Lapses)
 			if (visuals.diffText) {
-				const diffSpan = document.createElement('span');
-				diffSpan.textContent = visuals.diffText;
-				diffSpan.style.color = visuals.diffColor;
-				infoContainer.appendChild(diffSpan);
+				infoContainer.appendChild(statSpan(visuals.diffText, this.diffState, true));
 			}
 
 			if (visuals.lapseText) {
-				const lapseSpan = document.createElement('span');
-				lapseSpan.textContent = visuals.lapseText;
-				lapseSpan.style.color = visuals.lapseColor;
-				infoContainer.appendChild(lapseSpan);
+				infoContainer.appendChild(statSpan(visuals.lapseText, this.lapseState, false));
 			}
 
 			marker.appendChild(infoContainer);
 		}
 
-		// 2. Add the colored health bar
+		// The bar draws in the marker's state colour (see gutter.css).
 		const bar = document.createElement('div');
 		bar.className = 'arete-gutter-bar';
-
-		if (this.isEnd) {
-			bar.style.background = `linear-gradient(to bottom, ${visuals.barColor}, transparent)`;
-		} else {
-			bar.style.backgroundColor = visuals.barColor;
-		}
-
 		marker.appendChild(bar);
 
 		// Update every line of this card in this editor. Another pane, even one showing a
 		// different note, has markers with the same card index; it is left alone.
 		const setCardState = (hover: boolean, active: boolean) => {
 			view.dom
-				.querySelectorAll(`.arete-gutter-marker[data-card-index="${this.index}"]`)
+				.querySelectorAll<HTMLElement>(
+					`.arete-gutter-marker[data-card-index="${this.index}"]`,
+				)
 				.forEach((el) => {
-					const b = el.querySelector('.arete-gutter-bar') as HTMLElement;
-					if (hover) el.classList.add('arete-gutter-hover');
-					else el.classList.remove('arete-gutter-hover');
-
-					if (active) el.classList.add('arete-gutter-active');
-					else el.classList.remove('arete-gutter-active');
-
-					const isActive = el.classList.contains('arete-gutter-active');
-					const isHover = el.classList.contains('arete-gutter-hover');
-
-					if (isActive || isHover) {
-						if (b) {
-							b.style.boxShadow = `0 0 10px ${visuals.shadowColor}`;
-						}
-					} else {
-						if (b) {
-							b.style.boxShadow = 'none';
-						}
-					}
+					el.toggleClass('is-hovered', hover);
+					el.toggleClass('is-active', active);
 				});
 		};
 
@@ -217,14 +223,9 @@ class CardGutterMarker extends GutterMarker {
 				: `Card ${this.index + 1}: No stats found.`;
 			new Notice(msg);
 
-			view.dom.querySelectorAll('.arete-gutter-marker.arete-gutter-active').forEach((el) => {
-				el.classList.remove('arete-gutter-active');
-				const b = el.querySelector('.arete-gutter-bar') as HTMLElement;
-				if (b) {
-					b.style.width = '3px';
-					b.style.boxShadow = 'none';
-				}
-			});
+			view.dom
+				.querySelectorAll<HTMLElement>('.arete-gutter-marker.is-active')
+				.forEach((el) => el.toggleClass('is-active', false));
 			setCardState(true, true);
 			this.onClick();
 		});
@@ -318,6 +319,9 @@ export function createCardGutter(
 		view: EditorView,
 	) => AnkiCardStats | null = () => null,
 	algorithm: 'fsrs' | 'sm2' = 'fsrs',
+	// The cut-offs the state colours use, read on every call so a settings change shows at
+	// the next rebuild. The default is the settings default.
+	getThresholds: () => Omit<CardStateSettings, 'stats_algorithm'> = () => DEFAULT_SETTINGS,
 ) {
 	// CodeMirror calls `markers` on every view update (cursor move, scroll, focus,
 	// keystroke). The marker set is rebuilt only when the parse result or a card's stats
@@ -325,7 +329,12 @@ export function createCardGutter(
 	// gutter DOM. One entry per editor view, since the extension is shared by all editors.
 	const cache = new WeakMap<
 		EditorView,
-		{ result: ParseResult; stats: (AnkiCardStats | null)[]; markers: RangeSet<GutterMarker> }
+		{
+			result: ParseResult;
+			stats: (AnkiCardStats | null)[];
+			thresholds: CardStateSettings;
+			markers: RangeSet<GutterMarker>;
+		}
 	>();
 
 	return [
@@ -340,15 +349,25 @@ export function createCardGutter(
 				const cardStats = result.ranges.map((range) =>
 					range.nid || range.cid ? getCardStats(range.nid, range.cid, view) : null,
 				);
+				const t = getThresholds();
 				const cached = cache.get(view);
 				if (
 					cached &&
 					cached.result === result &&
 					cached.stats.length === cardStats.length &&
-					cached.stats.every((s, i) => s === cardStats[i])
+					cached.stats.every((s, i) => s === cardStats[i]) &&
+					cached.thresholds.stats_lapse_threshold === t.stats_lapse_threshold &&
+					cached.thresholds.stats_difficulty_threshold === t.stats_difficulty_threshold &&
+					cached.thresholds.stats_ease_threshold === t.stats_ease_threshold
 				) {
 					return cached.markers;
 				}
+				const thresholds: CardStateSettings = {
+					stats_algorithm: algorithm,
+					stats_lapse_threshold: t.stats_lapse_threshold,
+					stats_difficulty_threshold: t.stats_difficulty_threshold,
+					stats_ease_threshold: t.stats_ease_threshold,
+				};
 
 				const builder = new RangeSetBuilder<GutterMarker>();
 
@@ -363,6 +382,8 @@ export function createCardGutter(
 
 				result.ranges.forEach((range, rangeIndex) => {
 					const stats = cardStats[rangeIndex];
+					const isSynced = !!range.nid;
+					const state = cardState(stats, isSynced, thresholds);
 					for (let lineNum = range.startLine; lineNum <= range.endLine; lineNum++) {
 						if (lineNum >= view.state.doc.lines) break;
 
@@ -383,7 +404,8 @@ export function createCardGutter(
 								totalLines,
 								stats,
 								algorithm,
-								!!range.nid,
+								isSynced,
+								state,
 								() => onCardClick(range.index),
 							),
 						);
@@ -391,7 +413,7 @@ export function createCardGutter(
 				});
 
 				const markers = builder.finish();
-				cache.set(view, { result, stats: cardStats, markers });
+				cache.set(view, { result, stats: cardStats, thresholds, markers });
 				return markers;
 			},
 		}),

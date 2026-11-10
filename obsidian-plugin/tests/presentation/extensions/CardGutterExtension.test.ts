@@ -13,6 +13,8 @@ jest.mock('@codemirror/view', () => {
 });
 jest.mock('obsidian', () => ({
 	Notice: jest.fn(),
+	setIcon: jest.fn(),
+	setTooltip: jest.fn(),
 	// parseYaml is unavailable under jest; CardParserService falls back to its regex.
 	parseYaml: () => {
 		throw new Error('parseYaml unavailable');
@@ -54,14 +56,14 @@ const threeCards = () =>
 		cards: NIDS.map((nid, i) => card({ Front: `Question ${i}`, Back: `Answer ${i}`, nid })),
 	});
 
-function setup(doc: string) {
+function setup(doc: string, thresholds?: () => any, algorithm: 'fsrs' | 'sm2' = 'fsrs') {
 	const statsByNid = new Map<number, AnkiCardStats>(
 		NIDS.map((nid) => [nid, ankiCardStats({ noteId: nid, cardId: nid })]),
 	);
 	const getCardStats = jest.fn((nid: number | null) =>
 		nid ? (statsByNid.get(nid) ?? null) : null,
 	);
-	const ext = createCardGutter(jest.fn(), getCardStats as any, 'fsrs');
+	const ext = createCardGutter(jest.fn(), getCardStats as any, algorithm, thresholds);
 	const markers = markersFn(ext);
 	const view: FakeView = { state: EditorState.create({ doc, extensions: ext }) };
 	const apply = (spec: TransactionSpec) => {
@@ -243,6 +245,9 @@ describe('gutter marker eq', () => {
 		['stats', (m: any) => ({ ...m.stats })],
 		['algorithm', () => 'sm2'],
 		['isSynced', (m: any) => !m.isSynced],
+		['state', () => 'error'],
+		['diffState', () => 'error'],
+		['lapseState', () => 'error'],
 	])('card marker differs when %s differs', (field, change) => {
 		expect(start.eq(variant(start, field, change(start)))).toBe(false);
 	});
@@ -313,5 +318,165 @@ describe('card gutter hover and click', () => {
 			`.arete-gutter-marker[data-card-index="${marker.index}"]`,
 		);
 		expect(doc.querySelectorAll).not.toHaveBeenCalled();
+	});
+});
+
+describe('card gutter state', () => {
+	const stateOf = (g: ReturnType<typeof setup>) =>
+		Object.fromEntries(
+			cardMarkers(g.markers())
+				.filter((e) => e.marker.isStart)
+				.map((e) => [e.marker.index, e.marker.state]),
+		);
+
+	it('a synced card with healthy stats is success', () => {
+		expect(stateOf(setup(threeCards()))).toEqual({ 0: 'success', 1: 'success', 2: 'success' });
+	});
+
+	it('a card without stats is accent and an unsynced card is muted', () => {
+		const g = setup(threeCards());
+		g.statsByNid.delete(NIDS[1]);
+		expect(stateOf(g)[1]).toBe('accent');
+		const unsynced = setup(
+			noteYaml({ cards: [card({ Front: 'Question 0', Back: 'Answer 0' })] }),
+		);
+		expect(stateOf(unsynced)[0]).toBe('muted');
+	});
+
+	it('a lapse warns and the user threshold sets where it errs', () => {
+		const lapses = (n: number) => (g: ReturnType<typeof setup>) =>
+			g.statsByNid.set(
+				NIDS[0],
+				ankiCardStats({ noteId: NIDS[0], cardId: NIDS[0], lapses: n }),
+			);
+		const base = {
+			stats_lapse_threshold: 3,
+			stats_difficulty_threshold: 0.9,
+			stats_ease_threshold: 2100,
+		};
+		const g = setup(threeCards(), () => base);
+		lapses(2)(g);
+		expect(stateOf(g)[0]).toBe('warning');
+		lapses(3)(g);
+		expect(stateOf(g)[0]).toBe('error');
+
+		const lenient = setup(threeCards(), () => ({ ...base, stats_lapse_threshold: 6 }));
+		lapses(3)(lenient);
+		expect(stateOf(lenient)[0]).toBe('warning');
+	});
+
+	it('rebuilds the markers when only a threshold changed, and not otherwise', () => {
+		let lapseThreshold = 3;
+		const g = setup(threeCards(), () => ({
+			stats_lapse_threshold: lapseThreshold,
+			stats_difficulty_threshold: 0.9,
+			stats_ease_threshold: 2100,
+		}));
+		g.statsByNid.set(NIDS[0], ankiCardStats({ noteId: NIDS[0], cardId: NIDS[0], lapses: 3 }));
+		const before = g.markers();
+		expect(g.markers()).toBe(before);
+		lapseThreshold = 4;
+		const after = g.markers();
+		expect(after).not.toBe(before);
+		expect(stateOf(g)[0]).toBe('warning');
+	});
+
+	it('SM-2 ease drives the figure shown beside the badge', () => {
+		const g = setup(threeCards(), undefined, 'sm2');
+		g.statsByNid.set(NIDS[0], ankiCardStats({ noteId: NIDS[0], cardId: NIDS[0], ease: 1500 }));
+		const m = cardMarkers(g.markers()).find(
+			(e) => e.marker.isStart && e.marker.index === 0,
+		)!.marker;
+		expect(m.diffState).toBe('warning');
+	});
+});
+
+describe('card gutter DOM', () => {
+	const doc = (global as any).document;
+	let createElement: any;
+	const obsidian = jest.requireMock('obsidian');
+
+	beforeEach(() => {
+		createElement = doc.createElement;
+		doc.createElement = jest.fn(() => fakeElement());
+		obsidian.setTooltip.mockClear();
+		obsidian.setIcon.mockClear();
+	});
+	afterEach(() => {
+		doc.createElement = createElement;
+	});
+
+	const dom = (card: any) => {
+		const g = setup(threeCards());
+		g.statsByNid.set(NIDS[0], ankiCardStats({ noteId: NIDS[0], cardId: NIDS[0], ...card }));
+		const marker = cardMarkers(g.markers()).find(
+			(e) => e.marker.isStart && e.marker.index === 0,
+		)!.marker;
+		const view = {
+			dom: { querySelectorAll: jest.fn((): unknown[] => []) },
+			state: g.view.state,
+		};
+		return { el: marker.toDOM(view), view };
+	};
+
+	it('marks state with classes and sets no inline style', () => {
+		const { el } = dom({ lapses: 4 });
+		const added: string[] = [];
+		// the fake keeps classes in a set; read them back through contains()
+		for (const c of ['is-start', 'is-synced', 'mod-error', 'mod-warning', 'mod-success']) {
+			if (el.classList.contains(c)) added.push(c);
+		}
+		expect(added).toEqual(['is-start', 'is-synced', 'mod-error']);
+		expect(el.style).toEqual({});
+		expect(el.classList.contains('arete-gutter-start')).toBe(false);
+	});
+
+	it('draws the bar and the stat figures without inline colour', () => {
+		const { el } = dom({ lapses: 1, difficulty: 0.95 });
+		const made = (doc.createElement as jest.Mock).mock.results.map((r: any) => r.value);
+		expect(made.every((e: any) => Object.keys(e.style).length === 0)).toBe(true);
+		const stats = made.filter((e: any) => e.className === 'arete-gutter-stat');
+		expect(stats).toHaveLength(2);
+		expect(stats[0].classList.contains('mod-error')).toBe(true); // difficulty 0.95 >= 0.9
+		expect(stats[1].classList.contains('mod-warning')).toBe(true); // one lapse
+		expect(el.appendChild).toHaveBeenCalled();
+	});
+
+	it('sets the tooltip through setTooltip, not a title', () => {
+		const { el } = dom({ lapses: 2 });
+		expect(el.title).toBe('');
+		expect(jest.requireMock('obsidian').setTooltip).toHaveBeenCalledWith(
+			el,
+			expect.stringContaining('Lapses: 2'),
+		);
+	});
+
+	it('the skip button is an icon, built without innerHTML', () => {
+		const g = setup(threeCards());
+		const skip = entries(g.markers()).find((e) => !('lineIndex' in e.marker))!.marker;
+		const el = skip.toDOM();
+		expect(jest.requireMock('obsidian').setIcon).toHaveBeenCalledWith(el, 'arrow-down');
+		expect(el.innerHTML).toBeUndefined();
+		expect(jest.requireMock('obsidian').setTooltip).toHaveBeenCalledWith(
+			el,
+			'Skip to end of frontmatter',
+		);
+	});
+
+	it('hover and click toggle is-hovered and is-active on its own editor only', () => {
+		const { el, view } = dom({});
+		const row = { toggleClass: jest.fn() };
+		view.dom.querySelectorAll.mockReturnValue([row]);
+		el.listeners.mouseenter();
+		expect(row.toggleClass.mock.calls).toEqual([
+			['is-hovered', true],
+			['is-active', false],
+		]);
+		row.toggleClass.mockClear();
+		el.listeners.mouseleave();
+		expect(row.toggleClass.mock.calls).toEqual([
+			['is-hovered', false],
+			['is-active', false],
+		]);
 	});
 });

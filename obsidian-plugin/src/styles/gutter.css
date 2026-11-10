@@ -1,7 +1,7 @@
 /* Arete Plugin - Card Gutter Extension Styles */
 
 .arete-card-gutter {
-	width: 48px;
+	width: var(--size-4-12);
 }
 
 /* Skip Button */
@@ -9,16 +9,23 @@
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	width: 20px;
-	height: 20px;
+	width: var(--size-4-5);
+	height: var(--size-4-5);
 	background: var(--interactive-accent);
-	color: white;
-	border-radius: 4px;
-	font-size: 12px;
-	font-weight: bold;
-	cursor: pointer;
-	transition: all 0.15s ease-out;
-	margin: 2px;
+	color: var(--text-on-accent);
+	border-radius: var(--radius-s);
+	font-size: var(--font-ui-smaller);
+	font-weight: var(--font-bold);
+	cursor: var(--cursor);
+	transition:
+		background-color 0.15s ease-out,
+		transform 0.15s ease-out;
+	margin: var(--size-2-1);
+}
+
+.arete-skip-button svg {
+	width: var(--icon-xs);
+	height: var(--icon-xs);
 }
 
 .arete-skip-button:hover {
@@ -26,53 +33,84 @@
 	transform: scale(1.1);
 }
 
-/* Gutter Marker */
+/* Gutter Marker. Its `color` is the card's state colour; the bar, its gradient and its
+   glow all draw with currentColor. */
 .arete-gutter-marker {
 	display: flex;
 	align-items: flex-start;
 	justify-content: flex-end;
 	width: 100%;
-	height: calc(100% + 1px);
+	min-width: var(--size-4-5);
+	height: 100%;
 	margin-bottom: -1px;
-	cursor: pointer;
-	transition: all 0.15s ease-out;
+	cursor: var(--cursor);
+	transition: background-color 0.15s ease-out;
 	position: relative;
+	color: var(--interactive-accent);
+}
+
+.arete-gutter-marker:not(.is-synced) {
+	color: var(--text-muted);
+}
+
+.arete-gutter-marker.mod-success {
+	color: var(--color-green);
+}
+
+.arete-gutter-marker.mod-warning {
+	color: var(--color-orange);
+}
+
+.arete-gutter-marker.mod-error {
+	color: var(--color-red);
 }
 
 /* Gutter Bar */
 .arete-gutter-bar {
-	width: 6px;
+	width: var(--size-2-3);
 	height: 100%;
 	border-radius: 0;
-	transition: all 0.15s ease-out;
+	background-color: currentColor;
+	transition:
+		width 0.15s ease-out,
+		box-shadow 0.15s ease-out;
 	z-index: 1;
 }
 
-.arete-gutter-marker.arete-gutter-hover .arete-gutter-bar,
+.arete-gutter-marker.is-end .arete-gutter-bar {
+	background: linear-gradient(to bottom, currentColor, transparent);
+}
+
+.arete-gutter-marker.is-hovered .arete-gutter-bar,
 .arete-gutter-marker:hover .arete-gutter-bar,
-.arete-gutter-marker.arete-gutter-active .arete-gutter-bar {
-	width: 10px;
+.arete-gutter-marker.is-active .arete-gutter-bar {
+	width: calc(var(--size-2-1) * 5);
 }
 
-.arete-gutter-start .arete-gutter-bar {
-	border-top-left-radius: 4px;
-	border-top-right-radius: 4px;
+.arete-gutter-marker.is-hovered .arete-gutter-bar,
+.arete-gutter-marker.is-active .arete-gutter-bar {
+	box-shadow: 0 0 calc(var(--size-2-1) * 5) currentColor;
 }
 
-.arete-gutter-end .arete-gutter-bar {
-	border-bottom-left-radius: 4px;
-	border-bottom-right-radius: 4px;
+.arete-gutter-marker.is-start .arete-gutter-bar {
+	border-top-left-radius: var(--radius-s);
+	border-top-right-radius: var(--radius-s);
+}
+
+.arete-gutter-marker.is-end .arete-gutter-bar {
+	border-bottom-left-radius: var(--radius-s);
+	border-bottom-right-radius: var(--radius-s);
 }
 
 /* Info Container (Stats + Index) */
 .arete-gutter-info-container {
 	position: absolute;
-	top: 4px;
-	right: 12px;
+	top: var(--size-2-2);
+	right: var(--size-4-3);
 	display: flex;
 	flex-direction: column;
 	align-items: center;
-	gap: 4px;
+	gap: var(--size-2-2);
 	z-index: 2;
 	pointer-events: none;
 	white-space: nowrap;
@@ -80,40 +118,53 @@
 
 /* Index Badge */
 .arete-gutter-badge {
-	font-size: 10px;
+	font-size: calc(var(--font-ui-smaller) * 0.85);
 	line-height: 1;
-	font-weight: 800;
-	color: #fff;
+	font-weight: var(--font-extrabold);
+	color: var(--text-on-accent);
 	background: var(--interactive-accent);
-	padding: 2px 4px;
-	border-radius: 4px;
-	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+	padding: var(--size-2-1) var(--size-2-2);
+	border-radius: var(--radius-s);
+	box-shadow: var(--shadow-s);
 	text-align: center;
-	min-width: 16px;
+	min-width: var(--size-4-4);
 	display: inline-block;
 }
 
 /* Unsynced state */
-.arete-gutter-marker:not(.arete-gutter-synced) .arete-gutter-badge {
+.arete-gutter-marker:not(.is-synced) .arete-gutter-badge {
 	background: var(--text-muted);
 	color: var(--background-primary);
 	opacity: 1;
 }
 
 /* Stats Styles */
-.arete-gutter-info-container span:not(.arete-gutter-badge) {
-	font-size: 9px;
-	font-weight: 800;
+.arete-gutter-stat {
+	font-size: calc(var(--font-ui-smaller) * 0.75);
+	font-weight: var(--font-extrabold);
 	line-height: 1;
-	text-shadow: 0 0 4px var(--background-primary);
+	text-shadow: 0 0 var(--size-2-2) var(--background-primary);
+	color: var(--text-muted);
+}
+
+.arete-gutter-stat.mod-success {
+	color: var(--text-success);
+}
+
+.arete-gutter-stat.mod-warning {
+	color: var(--text-warning);
+}
+
+.arete-gutter-stat.mod-error {
+	color: var(--text-error);
 }
 
 /* Card Line Highlight */
 .arete-card-highlight {
-	background-color: rgba(var(--interactive-accent-rgb), 0.1) !important;
-	border-left: 2px solid var(--interactive-accent);
+	background-color: color-mix(in oklch, var(--interactive-accent) 10%, transparent) !important;
+	border-left: var(--size-2-1) solid var(--interactive-accent);
 }
 
-.arete-gutter-marker.arete-gutter-active {
-	background: rgba(var(--interactive-accent-rgb), 0.05);
+.arete-gutter-marker.is-active {
+	background: color-mix(in oklch, var(--interactive-accent) 5%, transparent);
 }
