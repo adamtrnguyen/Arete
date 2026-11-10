@@ -18,9 +18,11 @@ The **Arete** Obsidian plugin adds sync, card health, graph and study queue view
 ### Card health and gutter
 The card gutter marks each card in the open note:
 - **Index number**: the card's position in the current file.
-- **Health bar**: green, orange or red, from FSRS difficulty and lapses.
+- **Health bar**: the card's worst state among lapses, difficulty, retrievability, stability and (SM-2 only) ease. Green is fine, orange a warning, red an error. Grey is a card not yet synced.
 - **Difficulty or ease**: FSRS difficulty out of 10, or SM-2 ease (`E:nn%`).
-- **Lapse counter**: the lapse count (`3L`), red above 5.
+- **Lapse counter**: the lapse count (`3L`), orange from 1 and red at the lapse threshold.
+
+The thresholds are in the settings under `Card health analysis`.
 
 ### Queue builder
 Build a filtered deck that puts prerequisites first:
