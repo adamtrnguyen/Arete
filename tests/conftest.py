@@ -9,6 +9,15 @@ from unittest.mock import patch
 
 import pytest
 import requests
+from hypothesis import settings as hypothesis_settings
+
+# --- Hypothesis: no wall-clock deadline ---
+# A deadline fails a correct property when the machine is busy (pytest-xdist workers, the
+# twelve concurrent `just qa` checks). Correctness is what a property asserts; the number of
+# examples bounds the run time. A test that needs a deadline sets its own with @settings.
+
+hypothesis_settings.register_profile("arete", deadline=None)
+hypothesis_settings.load_profile("arete")
 
 # --- Isolation: no test may touch the user's real ~/.config/arete ---
 # arete's defaults (cache.db, logs/, config.toml) all hang off Path.home(), so a test that
