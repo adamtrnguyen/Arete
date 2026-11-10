@@ -346,10 +346,10 @@ describe('card gutter state', () => {
 		expect(stateOf(setup(threeCards()))).toEqual({ 0: 'success', 1: 'success', 2: 'success' });
 	});
 
-	it('a card without stats is accent and an unsynced card is muted', () => {
+	it('a card without stats has no data and an unsynced card is muted', () => {
 		const g = setup(threeCards());
 		g.statsByNid.delete(NIDS[1]);
-		expect(stateOf(g)[1]).toBe('accent');
+		expect(stateOf(g)[1]).toBe('nodata');
 		const unsynced = setup(
 			noteYaml({ cards: [card({ Front: 'Question 0', Back: 'Answer 0' })] }),
 		);

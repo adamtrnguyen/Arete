@@ -165,18 +165,43 @@ describe('cardState', () => {
 		expect(cardState(stats({ lapses: 9 }), false, settings).state).toBe('muted');
 	});
 
-	it('a synced card without stats is accent', () => {
-		expect(cardState(null, true, settings).state).toBe('accent');
-		expect(cardState(undefined, true, settings).state).toBe('accent');
+	it('a synced card without stats has no data', () => {
+		expect(cardState(null, true, settings).state).toBe('nodata');
+		expect(cardState(undefined, true, settings).state).toBe('nodata');
 	});
 
 	it('a synced card with no flag is success', () => {
 		expect(cardState(stats(), true, settings).state).toBe('success');
 	});
 
-	it('a card with stats but none of the five metrics is success', () => {
-		const bare = ankiCardStats({ lapses: 0, difficulty: undefined });
-		expect(cardState(bare, true, settings).state).toBe('success');
+	it('a card whose review metrics are all absent has no data, not success', () => {
+		const bare = ankiCardStats({
+			lapses: 0,
+			difficulty: undefined,
+			retrievability: undefined,
+			stability: undefined,
+		});
+		expect(cardState(bare, true, settings).state).toBe('nodata');
+	});
+
+	it('a card with no review metrics but a flagged lapse count is judged on the lapses', () => {
+		const bare = ankiCardStats({
+			lapses: 3,
+			difficulty: undefined,
+			retrievability: undefined,
+			stability: undefined,
+		});
+		expect(cardState(bare, true, settings).state).toBe('error');
+	});
+
+	it('one present metric is enough to judge the card', () => {
+		const some = ankiCardStats({
+			lapses: 0,
+			difficulty: 0.3,
+			retrievability: undefined,
+			stability: undefined,
+		});
+		expect(cardState(some, true, settings).state).toBe('success');
 	});
 
 	it.each([

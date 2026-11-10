@@ -199,6 +199,7 @@ export class CardStatsModal extends Modal {
 			const valEl = sub.createDiv({ text: s.value.toString(), cls: 'arete-modal-value' });
 			const flag = s.state ? flagClass(s.state) : null;
 			if (flag) valEl.addClass(flag);
+			else if (s.state === 'none') valEl.addClass('mod-nodata');
 		});
 	}
 

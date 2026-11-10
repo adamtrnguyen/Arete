@@ -2,7 +2,14 @@ import { App, TFile } from 'obsidian';
 import { AretePluginSettings } from '@/domain/settings';
 import { CardStatsSource } from '@/domain/ports';
 
-import type { AnkiCardStats, ConceptStats, StatsNode, StatsCache } from '@/domain/stats';
+import type {
+	AnkiCardStats,
+	ConceptStats,
+	StatsNode,
+	StatsCache,
+	SyncedCardState,
+} from '@/domain/stats';
+import { cardState, emptyCardStateCounts, uniqueCardStats } from '@/domain/stats';
 import { debugLog } from '@/domain/debugLog';
 
 export class StatsService {
@@ -277,6 +284,7 @@ export class StatsService {
 			difficulty: null,
 			stability: null,
 			retrievability: null,
+			stateCounts: emptyCardStateCounts(),
 			problematicCount: 0,
 			score: 0,
 		};
@@ -311,6 +319,7 @@ export class StatsService {
 						difficulty: null,
 						stability: null,
 						retrievability: null,
+						stateCounts: emptyCardStateCounts(),
 						problematicCount: 0,
 						score: 0,
 					};
@@ -337,6 +346,13 @@ export class StatsService {
 					? (c.sumRetrievability || 0) / c.countRetrievability
 					: null;
 
+			// Each card is judged once, with the same function the gutter uses.
+			const stateCounts = emptyCardStateCounts();
+			for (const card of uniqueCardStats(c.cardStats)) {
+				const { state } = cardState(card, true, this.settings);
+				if (state !== 'muted') stateCounts[state]++;
+			}
+
 			const leaf: StatsNode = {
 				title: c.fileName.replace('.md', ''),
 				filePath: c.filePath,
@@ -348,6 +364,7 @@ export class StatsService {
 				difficulty: diff,
 				stability: stab,
 				retrievability: ret,
+				stateCounts,
 				problematicCount: c.problematicCardsCount,
 				score: c.score,
 			};
@@ -378,6 +395,9 @@ export class StatsService {
 
 			node.count += child.count;
 			node.lapses += child.lapses;
+			for (const key of Object.keys(node.stateCounts) as SyncedCardState[]) {
+				node.stateCounts[key] += child.stateCounts[key];
+			}
 			node.problematicCount += child.problematicCount;
 
 			if (child.difficulty !== null) {

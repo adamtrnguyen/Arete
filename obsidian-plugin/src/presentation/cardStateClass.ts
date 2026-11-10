@@ -9,7 +9,22 @@ export function flagClass(state: MetricState): 'mod-warning' | 'mod-error' | nul
 	return state === 'warning' ? 'mod-warning' : state === 'error' ? 'mod-error' : null;
 }
 
-/** `mod-success` / `mod-warning` / `mod-error` for a card; `muted` and `accent` have none. */
+/**
+ * The class for a card state: `mod-success`, `mod-warning`, `mod-error`, `mod-nodata`.
+ * An unsynced (`muted`) card has none; the gutter styles it by the missing `is-synced`.
+ */
 export function cardStateClass(state: CardState): string | null {
-	return state === 'success' || state === 'warning' || state === 'error' ? `mod-${state}` : null;
+	switch (state) {
+		case 'success':
+		case 'warning':
+		case 'error':
+		case 'nodata':
+			return `mod-${state}`;
+		case 'muted':
+			return null;
+		default: {
+			const unhandled: never = state;
+			return unhandled;
+		}
+	}
 }

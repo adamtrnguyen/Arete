@@ -57,6 +57,10 @@
 	color: var(--color-green);
 }
 
+.arete-gutter-marker.mod-nodata {
+	color: var(--text-faint);
+}
+
 .arete-gutter-marker.mod-warning {
 	color: var(--color-orange);
 }

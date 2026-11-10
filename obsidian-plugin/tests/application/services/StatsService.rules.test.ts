@@ -354,6 +354,35 @@ describe('StatsService.refreshStats: which cards count and when they are flagged
 			]);
 		});
 
+		it('counts cards by state, with no-data cards apart, and the counts add up', async () => {
+			files['a.md'] = note(
+				[1, 2, 3, 4].map((n) => ({ anki: { nid: String(n) }, Front: 'q' })),
+				{ deck: 'Math::Algebra' },
+			);
+			files['b.md'] = note([{ anki: { nid: '5' }, Front: 'q' }], { deck: 'Math::Calculus' });
+			settings.stats_algorithm = 'fsrs';
+			reply([
+				{ noteId: 1, cardId: 1, difficulty: 0.2, stability: 30, retrievability: 0.95 },
+				{ noteId: 2, cardId: 2, difficulty: 0.8 },
+				{ noteId: 3, cardId: 3, lapses: 5 },
+				{ noteId: 4, cardId: 4 },
+				{ noteId: 5, cardId: 5 },
+			]);
+
+			const root = service.getAggregatedStats(await service.refreshStats());
+			const math = root.children[0];
+			const algebra = math.children.find((c) => c.deckName === 'Math::Algebra')!;
+			const calculus = math.children.find((c) => c.deckName === 'Math::Calculus')!;
+
+			expect(algebra.stateCounts).toEqual({ success: 1, warning: 1, error: 1, nodata: 1 });
+			expect(calculus.stateCounts).toEqual({ success: 0, warning: 0, error: 0, nodata: 1 });
+			expect(root.stateCounts).toEqual({ success: 1, warning: 1, error: 1, nodata: 2 });
+			for (const node of [root, math, algebra, calculus]) {
+				const { success, warning, error, nodata } = node.stateCounts;
+				expect(success + warning + error + nodata).toBe(node.count);
+			}
+		});
+
 		it('sorts children by problem score, worst first, and files unknown decks under Default', async () => {
 			files['calm.md'] = note([{ anki: { nid: '1' }, Front: 'q' }]);
 			files['hot.md'] = note([{ anki: { nid: '2' }, Front: 'q' }]);

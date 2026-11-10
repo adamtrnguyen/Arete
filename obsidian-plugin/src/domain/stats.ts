@@ -80,10 +80,13 @@ export interface StatsNode {
 
 	// Aggregated Metrics
 	count: number;
-	lapses: number;
+	lapses: number; // Sum, shown as a total; never judged against a per-card cut-off
 	difficulty: number | null; // Avg
 	stability: number | null; // Avg
 	retrievability: number | null; // Avg
+
+	// Cards of this node by state; the four counts add up to `count`
+	stateCounts: CardStateCounts;
 
 	// Problematic
 	problematicCount: number;
@@ -134,10 +137,19 @@ export function uniqueCardStats(cardStats: Record<number, AnkiCardStats>): AnkiC
 export type MetricState = 'none' | 'ok' | 'warning' | 'error';
 
 /**
- * A card as the views show it. `muted`: not synced to Anki. `accent`: synced, no stats
- * yet. `success`, `warning`, `error`: the worst state among the five metrics below.
+ * A card as the views show it. `muted`: not synced to Anki. `nodata`: synced, but nothing
+ * to judge (no stats yet, or no review metric present). `success`, `warning`, `error`: the
+ * worst state among the five metrics below.
  */
-export type CardState = 'muted' | 'accent' | 'success' | 'warning' | 'error';
+export type CardState = 'muted' | 'nodata' | 'success' | 'warning' | 'error';
+
+/** The states of a synced card, for counting. Their counts add up to the number of cards. */
+export type SyncedCardState = Exclude<CardState, 'muted'>;
+export type CardStateCounts = Record<SyncedCardState, number>;
+
+export function emptyCardStateCounts(): CardStateCounts {
+	return { success: 0, warning: 0, error: 0, nodata: 0 };
+}
 
 /** The settings that decide a card's state. */
 export type CardStateSettings = Pick<
@@ -255,9 +267,11 @@ export function metricStates(
 }
 
 /**
- * A card's state, for every view that colours a card. An unsynced card is `muted`; a synced
- * card without stats is `accent`; otherwise the state is the worst of the five metrics,
- * or `success` when none is flagged.
+ * A card's state, for every view that colours a card. An unsynced card is `muted`. A synced
+ * card is `nodata` when it has no stats, or when difficulty, retrievability, stability and
+ * ease are all absent and lapses are not flagged: a zero lapse count alone is no evidence.
+ * Otherwise the state is the worst of the five metrics that are present, or `success`
+ * when none is flagged.
  */
 export function cardState(
 	stats: AnkiCardStats | null | undefined,
@@ -266,7 +280,14 @@ export function cardState(
 ): CardStateResult {
 	const metrics = metricStates(stats ?? {}, settings);
 	if (!isSynced) return { state: 'muted', metrics };
-	if (!stats) return { state: 'accent', metrics };
+	if (!stats) return { state: 'nodata', metrics };
+	const judged = [metrics.difficulty, metrics.retrievability, metrics.stability, metrics.ease];
+	if (
+		judged.every((m) => m === 'none') &&
+		(metrics.lapses === 'none' || metrics.lapses === 'ok')
+	) {
+		return { state: 'nodata', metrics };
+	}
 	const worst = [
 		metrics.lapses,
 		metrics.difficulty,

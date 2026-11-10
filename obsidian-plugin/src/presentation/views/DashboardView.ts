@@ -13,6 +13,7 @@ import {
 import {
 	ConceptStats,
 	StatsNode,
+	cardState,
 	difficultyOutOfTen,
 	metricStates,
 	uniqueCardStats,
@@ -128,7 +129,11 @@ export class DashboardView extends ItemView {
 		// naive global aggregation
 		let totalCards = 0;
 		let totalLeeches = 0;
+		let totalNoData = 0;
 		Object.values(stats.concepts).forEach((c) => {
+			for (const card of uniqueCardStats(c.cardStats)) {
+				if (cardState(card, true, this.plugin.settings).state === 'nodata') totalNoData++;
+			}
 			totalCards += c.totalCards;
 			// Leeches are the problematic cards the stats cache counts.
 			totalLeeches += c.problematicCardsCount;
@@ -140,6 +145,9 @@ export class DashboardView extends ItemView {
 
 		const leechSpan = statsGroup.createSpan({ text: `${totalLeeches} issues` });
 		if (totalLeeches > 0) leechSpan.addClass('mod-error');
+
+		// Cards without review data are neither healthy nor flagged.
+		statsGroup.createSpan({ text: `${totalNoData} no data`, cls: 'mod-nodata' });
 
 		// Refresh Button
 		const refreshBtn = new ExtraButtonComponent(header)
@@ -264,6 +272,11 @@ export class DashboardView extends ItemView {
 
 		// 0. Card Count
 		stat(`${node.count} cards`, 'count');
+		const { success, warning, error, nodata } = node.stateCounts;
+		setTooltip(
+			statsContainer.lastElementChild as HTMLElement,
+			`${success} healthy, ${warning} warning, ${error} error, ${nodata} no data`,
+		);
 
 		// 1. Difficulty (Avg), stored 0..1; scale only to display it
 		stat(

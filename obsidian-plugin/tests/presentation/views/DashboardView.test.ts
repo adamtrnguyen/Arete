@@ -17,6 +17,7 @@ function node(over: Partial<StatsNode>): StatsNode {
 		difficulty: null,
 		stability: null,
 		retrievability: null,
+		stateCounts: { success: 0, warning: 0, error: 0, nodata: 0 },
 		problematicCount: 0,
 		score: 0,
 		...over,
@@ -167,6 +168,33 @@ describe('DashboardView shell', () => {
 		await none.view.render();
 		const zero = walk(none.container).find((w) => w.text === '0 issues')!;
 		expect(zero.el.addClass).not.toHaveBeenCalled();
+	});
+
+	it('counts cards without review data apart, in the neutral class', async () => {
+		const card = (id: number, over = {}) => ({
+			cardId: id,
+			noteId: id,
+			lapses: 0,
+			ease: 2500,
+			...over,
+		});
+		const m = mount({
+			concepts: {
+				'A.md': {
+					totalCards: 3,
+					problematicCardsCount: 0,
+					cardStats: {
+						1: card(1),
+						2: card(2),
+						3: card(3, { difficulty: 0.2 }),
+					},
+				},
+			},
+		});
+		await m.view.render();
+		const span = walk(m.container).find((w) => w.text === '2 no data')!;
+		expect(span.classes).toContain('mod-nodata');
+		expect(span.classes).not.toContain('mod-success');
 	});
 
 	it('marks the active tab with is-active and no inline colour', async () => {

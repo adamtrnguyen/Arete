@@ -42,6 +42,10 @@
 	color: var(--text-error);
 }
 
+.arete-header-stats .mod-nodata {
+	color: var(--text-faint);
+}
+
 /* Tab Bar */
 .arete-tab-bar {
 	display: flex;
@@ -501,6 +505,10 @@
 
 .arete-modal-value.mod-error {
 	color: var(--text-error);
+}
+
+.arete-modal-value.mod-nodata {
+	color: var(--text-faint);
 }
 
 .arete-modal-dist {
