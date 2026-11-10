@@ -1,10 +1,10 @@
 # Arete CLI Guide
 
-This guide covers the advanced usage, configuration, and syntax for the `arete` command-line tool.
+Commands, options and configuration for the `arete` command-line tool. `arete <command> --help` lists every flag.
 
 ## Installation
 
-`arete` uses [uv](https://github.com/astral-sh/uv) for lightning-fast dependency management and isolated environments.
+`arete` uses [uv](https://github.com/astral-sh/uv) for dependencies and isolated environments.
 
 ```bash
 git clone https://github.com/adamtrnguyen/Arete
@@ -25,13 +25,13 @@ uv sync
 | `arete queue` | Build `Arete::Queue` from due cards and resolved prerequisites. |
 | `arete init` | Initialize a new vault configuration. |
 | `arete logs` | Open the run logs directory. |
-| `arete report` | Show or clear card issues reported from Anki review sessions (`--json`, `--clear N`). |
+| `arete report` | Show or clear card issues reported from Anki review sessions (`--json`, `--clear N`). Clearing a report unsuspends its card. |
 
 ### Vault Maintenance (`arete vault`)
 
 | Command | Description |
 | :--- | :--- |
-| `arete vault check PATH` | Validate a single file for arete compatibility. |
+| `arete vault check PATH` | Validate a single file for arete compatibility (`--json`). It cannot see ids shared between files: `arete graph check` reports them, and a sync refuses them. |
 | `arete vault fix PATH` | Auto-fix common format errors in a file. |
 | `arete vault format [PATH]` | Normalize YAML frontmatter serialization. |
 
@@ -59,13 +59,13 @@ uv sync
 | :--- | :--- |
 | `arete config show` | View current resolved configuration. |
 | `arete config open` | Open the config file in your editor. |
-| `arete graph check` | Check dependency graph health. |
+| `arete graph check` | Check dependency graph health: cycles, isolated cards, unresolved references, duplicate Arete ids, unparsed files. |
 | `arete graph export` | Print the resolved dependency graph as JSON. |
 
 ## Advanced Sync Options
 
 - `--dry-run`: Preview changes without applying to Anki.
-- `--clear-cache`: Force re-sync of all files.
+- `--clear-cache`: Empty the content cache first, so every file is parsed again.
 - `--prune`: Delete Anki notes Arete created whose card is gone from the vault, and decks
   that hold only such notes. A note without an Arete id tag (`arete_` + 26-char ULID) is
   never deleted, whatever deck it is in. Empty decks are listed, not deleted. Prune runs
@@ -82,6 +82,7 @@ Arete supports dependency-aware study queues. By tagging notes with prerequisite
 
 - Queue output deck name is fixed: `Arete::Queue`.
 - With `--deck`, the queue is isolated to that deck unless `--cross-deck` is passed.
+- `--depth` sets how many prerequisite levels to walk (default 2). `--include-new` adds unreviewed cards.
 - `--algo` picks the ordering: `static` (default) collects due cards plus their
   prerequisites in prerequisite order, `dynamic` orders by a ready frontier.
 
@@ -113,6 +114,8 @@ The `serve daemon` command starts a local API that the Obsidian plugin uses for 
 uv run arete serve daemon --port 8080
 ```
 
+The default is `127.0.0.1:8777` (`--host`, `--port`).
+
 ## Configuration (`~/.config/arete/config.toml`)
 
 ```toml
@@ -123,4 +126,4 @@ prune = false
 ```
 
 > [!IMPORTANT]
-> **WSL Media Sync**: If you are using WSL, ensure your Anki media directory is a regular Windows path that `arete` can resolve (e.g., `/mnt/c/Users/.../collection.media`).
+> **WSL media sync**: `arete` copies images into the Anki media directory, so the path must be reachable from WSL, for example `/mnt/c/Users/.../collection.media`.
