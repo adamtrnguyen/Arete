@@ -33,10 +33,6 @@ default:
 
 # --- Development ---
 
-# Start the HTTP daemon with hot-reload
-@dev-backend:
-    uv run arete serve daemon --reload
-
 # Start plugin dev watcher
 @dev-plugin:
     {{NPM}} run dev

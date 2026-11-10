@@ -1,11 +1,5 @@
-import os
 from pathlib import Path
 from typing import Protocol
-from unittest.mock import patch
-
-from fastapi.testclient import TestClient
-
-from arete.interface.http_server import app
 
 
 class AreteRunner(Protocol):
@@ -57,43 +51,3 @@ class CliRunner:
         if self._last_result:
             return self._last_result.output
         return ""
-
-
-class ServerRunner:
-    def __init__(self):
-        """Initialize ServerRunner."""
-        self.client = TestClient(app)
-        self._last_logs = ""
-
-    def sync_vault(
-        self,
-        vault_path: Path,
-        anki_url: str,
-        prune: bool = False,
-        clear_cache: bool = False,
-        force: bool = False,
-    ) -> None:
-        payload = {
-            "vault_root": str(vault_path),
-            "anki_connect_url": anki_url,
-            "prune": prune,
-            "confirm_prune": prune,
-            "clear_cache": clear_cache,
-            "force": force,
-            # Force backend="ankiconnect" to ensure it calls out
-            "backend": "ankiconnect",
-        }
-        # The server accepts only paths inside its configured vault.
-        with patch.dict(os.environ, {"ARETE_VAULT_ROOT": str(vault_path)}):
-            resp = self.client.post("/sync", json=payload)
-        if resp.status_code != 200:
-            raise RuntimeError(f"Server failed: {resp.text}")
-
-        # Simulate log output from response for compatibility?
-        # Or better: construct a fake log string from stats?
-        # "updated/added={total_generated}"
-        data = resp.json()
-        self._last_logs = f"generated={data['total_generated']} updated/added={data['total_imported']} errors={data['total_errors']}"
-
-    def get_log_output(self) -> str:
-        return self._last_logs

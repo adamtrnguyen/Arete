@@ -1,12 +1,10 @@
-"""The plugin's graph views read `arete graph export` (CLI mode) or POST /graph."""
+"""The plugin's graph views read `arete graph export`."""
 
 import json
 
-from fastapi.testclient import TestClient
 from typer.testing import CliRunner
 
 from arete.interface.cli import app as cli_app
-from arete.interface.http_server import app as http_app
 
 NOTE = "---\narete: true\ncards:\n  - id: {cid}\n    Front: {front}\n    Back: a\n{deps}---\n"
 
@@ -25,9 +23,3 @@ def test_cli_prints_the_graph_as_json_only(tmp_path):
     data = json.loads(result.stdout)  # the plugin parses stdout whole
     assert data["requires"] == [["arete_T", "arete_B"]]
     assert {n["file"] for n in data["nodes"]} == {"Base.md", "Top.md"}
-
-
-def test_http_route_returns_the_same_graph(configured_vault):
-    res = TestClient(http_app).post("/graph", json={"vault_root": str(_vault(configured_vault))})
-    assert res.status_code == 200
-    assert res.json()["requires"] == [["arete_T", "arete_B"]]

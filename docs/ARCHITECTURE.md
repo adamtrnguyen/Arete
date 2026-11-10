@@ -16,9 +16,7 @@ src/arete/
 │   ├── _common.py                 Shared utilities for all CLI submodules
 │   ├── anki_commands.py           Anki card management and debugging commands
 │   ├── cli.py                     Arete CLI — root commands and subgroup registration
-│   ├── http_server.py             lifespan, HealthResponse, health_check...
 │   ├── mcp_server.py              Arete MCP Server
-│   ├── serve_commands.py          Server commands: daemon (HTTP) and MCP (stdio)
 │   ├── vault_commands.py          Vault maintenance commands: validate, fix, format
 │
 ├── composition/               The only place that picks an adapter for a port and wires a use-case.
@@ -89,7 +87,7 @@ src/arete/
 
 | Layer | Modules | Lines | May import |
 |---|---|---|---|
-| `interface` | 7 | 1969 | application, composition |
+| `interface` | 5 | 1436 | application, composition |
 | `composition` | 2 | 183 | application, infrastructure, domain |
 | `application` | 26 | 5857 | domain (ports only) |
 | `infrastructure` | 9 | 2234 | domain |

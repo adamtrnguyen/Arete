@@ -26,11 +26,11 @@ def test_cli_help():
 
 
 def test_cli_help_shows_new_subgroups():
-    """New subgroups (vault, serve, queue) appear in --help."""
+    """New subgroups (vault, queue) appear in --help."""
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
     assert "vault" in result.stdout
-    assert "serve" in result.stdout
+    assert "serve" not in result.stdout
     assert "queue" in result.stdout
 
 
@@ -65,18 +65,6 @@ def test_config_show_command(mock_resolve_config):
     output_data = json.loads(result.stdout)
     assert output_data["root_input"] == str(Path("/tmp/vault"))
     assert output_data["backend"] == "auto"
-
-
-# --- Server ---
-
-
-@patch("uvicorn.run")
-def test_serve_daemon_command(mock_run):
-    result = runner.invoke(app, ["serve", "daemon", "--port", "9000"])
-    assert result.exit_code == 0
-    mock_run.assert_called_with(
-        "arete.interface.http_server:app", host="127.0.0.1", port=9000, reload=False
-    )
 
 
 # --- Anki Subcommands ---

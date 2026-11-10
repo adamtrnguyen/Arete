@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.e2e.runners import CliRunner, ServerRunner
+from tests.e2e.runners import CliRunner
 
 
 def _anki_connect_reachable() -> bool:
@@ -33,12 +33,9 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-@pytest.fixture(params=["cli", "server"])
-def runner(request):
-    if request.param == "cli":
-        return CliRunner()
-    else:
-        return ServerRunner()
+@pytest.fixture
+def runner():
+    return CliRunner()
 
 
 @pytest.fixture
@@ -65,10 +62,8 @@ def test_basic_sync(runner, vault_scenarios, anki_url, setup_anki):
     logs = runner.get_log_output()
 
     # Verify Logs
-    # Note: Server runner synthesizes a simplified log string
     assert "updated/added=" in logs
-    # CLI logs: generated=4 updated/added=4 (from 4 files in basic)
-    # Server logs: generated=4 updated/added=4
+    # generated=4 updated/added=4 (from 4 files in basic)
 
     # Verify Content in Vault (NID writeback)
     # Basic scenarios has basic_card, healing, prune_me, stay.
@@ -122,24 +117,27 @@ def test_stats_retrieval(runner, vault_scenarios, anki_url):
 
     nid = re.search(r"nid:\s*['\"]?(\d+)['\"]?", (vault / "basic_card.md").read_text()).group(1)
 
-    # Now use Server API for stats (regardless of runner, we want to test Server Stats endpoint)
-    # But if verify 'runner' can do it?
-    # The requirement is to test functionality. The stats endpoint IS server functionality.
+    import json
 
-    from fastapi.testclient import TestClient
+    from typer.testing import CliRunner as TyperRunner
 
-    from arete.interface.http_server import app
+    from arete.interface.cli import app
 
-    client = TestClient(app)
-
-    resp = client.post(
-        "/anki/stats",
-        json={"nids": [int(nid)], "anki_connect_url": anki_url, "backend": "ankiconnect"},
+    result = TyperRunner().invoke(
+        app,
+        [
+            "anki",
+            "stats",
+            "--nids",
+            nid,
+            "--anki-connect-url",
+            anki_url,
+            "--backend",
+            "ankiconnect",
+        ],
     )
-
-    assert resp.status_code == 200
-    stats = resp.json()
-    # stats is a list of CardStats objects
+    assert result.exit_code == 0, result.output
+    stats = json.loads(result.stdout)
     # Note: s["card_id"] is the CID, s["note_id"] is the NID.
     found = next((s for s in stats if str(s["note_id"]) == str(nid)), None)
     assert found, f"Stats for {nid} not found in {stats}"

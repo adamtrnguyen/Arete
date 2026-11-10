@@ -13,7 +13,6 @@ from arete.application.config import resolve_config
 from arete.application.queue.service import QueueAlgo
 from arete.interface._common import _resolve_with_overrides, stdout_to_stderr
 from arete.interface.anki_commands import anki_app
-from arete.interface.serve_commands import serve_app
 from arete.interface.vault_commands import vault_app
 
 # ---------------------------------------------------------------------------
@@ -39,7 +38,6 @@ logger = logging.getLogger(__name__)
 
 app.add_typer(vault_app, name="vault")
 app.add_typer(anki_app, name="anki")
-app.add_typer(serve_app, name="serve")
 
 config_app = typer.Typer(help="Manage arete configuration.")
 app.add_typer(config_app, name="config")

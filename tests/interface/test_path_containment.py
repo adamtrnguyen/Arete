@@ -1,17 +1,15 @@
-"""The MCP and HTTP surfaces accept only paths inside the configured vault.
+"""The MCP surface accepts only paths inside the configured vault.
 
-They also pass a prune confirmation through only when the caller gave one.
+It also passes a prune confirmation through only when the caller gave one.
 """
 
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from fastapi.testclient import TestClient
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import TextContent
 
-from arete.interface.http_server import app
 from arete.interface.mcp_server import create_server
 
 NOTE = "---\narete: true\ndeck: D\ncards:\n- Front: q\n  Back: a\n---\n\nThe body.\n"
@@ -42,11 +40,6 @@ def _stats(prune=None):
     stats = MagicMock(total_generated=0, total_imported=0, total_errors=0)
     stats.prune = prune
     return stats
-
-
-# ---------------------------------------------------------------------------
-# MCP
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
@@ -118,64 +111,3 @@ async def test_mcp_tool_descriptions_say_force_does_not_confirm_a_prune():
     assert "never touched" in vault
     assert "confirm_prune" in tools["sync_vault"].input_schema["properties"]
     assert "Never prunes" in (tools["sync_file"].description or "")
-
-
-# ---------------------------------------------------------------------------
-# HTTP
-# ---------------------------------------------------------------------------
-
-client = TestClient(app)
-
-
-@pytest.mark.parametrize(
-    ("route", "body"),
-    [
-        ("/sync", lambda o: {"vault_root": str(o.parent)}),
-        ("/sync", lambda o: {"file_path": str(o)}),
-        ("/graph", lambda o: {"vault_root": str(o.parent)}),
-        ("/queue/build", lambda o: {"vault_root": str(o.parent)}),
-    ],
-)
-def test_http_refuses_a_path_outside_the_vault(route, body, outside, configured_vault):
-    with patch("arete.composition.orchestrator.execute_sync", new_callable=AsyncMock) as sync:
-        res = client.post(route, json=body(outside))
-    assert res.status_code == 400
-    assert "outside the configured vault" in res.json()["detail"]
-    sync.assert_not_called()
-
-
-@pytest.mark.parametrize("confirm", [None, True])
-def test_http_sync_passes_the_confirmation(configured_vault, confirm):
-    body = {"vault_root": str(configured_vault), "prune": True, "force": True}
-    if confirm is not None:
-        body["confirm_prune"] = confirm
-    with patch(
-        "arete.composition.orchestrator.execute_sync",
-        new_callable=AsyncMock,
-        return_value=_stats(),
-    ) as sync:
-        res = client.post("/sync", json=body)
-    assert res.status_code == 200
-    assert sync.call_args.kwargs == {"confirm_prune": bool(confirm)}
-    assert sync.call_args.args[0].root_input == configured_vault
-
-
-def test_http_refuses_an_anki_base_other_than_the_configured_one(tmp_path):
-    with patch("arete.composition.factory.get_anki_bridge", new_callable=AsyncMock) as bridge:
-        res = client.post("/anki/decks", json={"anki_base": str(tmp_path / "planted")})
-        styled = client.get("/anki/models/Basic/styling", params={"anki_base": str(tmp_path)})
-    assert res.status_code == 400 and styled.status_code == 400
-    assert "differs from the configured anki_base" in res.json()["detail"]
-    bridge.assert_not_called()
-
-
-def test_http_accepts_the_configured_anki_base():
-    from arete.application.config import resolve_config
-
-    configured = resolve_config().anki_base
-    mock = AsyncMock()
-    mock.get_deck_names.return_value = ["D"]
-    with patch("arete.composition.factory.get_anki_bridge", new_callable=AsyncMock) as bridge:
-        bridge.return_value = mock
-        res = client.post("/anki/decks", json={"anki_base": str(configured)})
-    assert res.status_code == 200 and res.json()["decks"] == ["D"]

@@ -1,6 +1,6 @@
-"""The CLI, the HTTP route and the MCP tool return the same queue for the same vault.
+"""The CLI and the MCP tool return the same queue for the same vault.
 
-All three delegate to `application/queue/service.py`; the vault and graph are real, Anki is a
+Both delegate to `application/queue/service.py`; the vault and graph are real, Anki is a
 fake bridge.
 """
 
@@ -9,12 +9,10 @@ import json
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from fastapi.testclient import TestClient
 from mcp.types import TextContent
 from typer.testing import CliRunner
 
 from arete.interface.cli import app as cli_app
-from arete.interface.http_server import app as http_app
 from arete.interface.mcp_server import create_server
 from tests.factories import card, write_note
 
@@ -55,7 +53,7 @@ CASES = {
 
 
 @pytest.mark.parametrize("name", list(CASES))
-def test_cli_http_and_mcp_queue_the_same_cards(configured_vault, name):
+def test_cli_and_mcp_queue_the_same_cards(configured_vault, name):
     write_note(
         configured_vault,
         "Algebra.md",
@@ -74,17 +72,11 @@ def test_cli_http_and_mcp_queue_the_same_cards(configured_vault, name):
     assert isinstance(content, TextContent)
     mcp_order = json.loads(content.text)["queue_order"]
 
-    http_bridge = FakeBridge(["arete_B"])
-    with patch("arete.composition.factory.get_anki_bridge", AsyncMock(return_value=http_bridge)):
-        response = TestClient(http_app).post("/queue/build", json=args)
-    assert response.status_code == 200
-    http_order = [item["id"] for item in response.json()["queue"]]
-
     cli_bridge = FakeBridge(["arete_B"])
     with patch("arete.composition.factory.get_anki_bridge", AsyncMock(return_value=cli_bridge)):
         ran = CliRunner().invoke(cli_app, ["queue", str(configured_vault), *cli_flags])
     assert ran.exit_code == 0
     cli_order = cli_bridge.resolved[0]
 
-    assert mcp_order == http_order == cli_order
+    assert mcp_order == cli_order
     assert mcp_order == (["arete_A", "arete_B"] if name != "named deck" else ["arete_B"])
