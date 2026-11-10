@@ -1,0 +1,92 @@
+{
+  "notes": {
+    "callout.md#1": [
+      {
+        "decks": [
+          "IntegrationTest::RichContent"
+        ],
+        "fields": {
+          "Back": "<p>Callout Verified</p>",
+          "Front": "<blockquote>\n<p>[!INFO]\nThis is a callout.</p>\n</blockquote>",
+          "_obsidian_source": "vault|callout.md|6|<id of callout.md#1>"
+        },
+        "model": "Basic",
+        "tags": [
+          "<id of callout.md#1>"
+        ]
+      }
+    ],
+    "code.md#1": [
+      {
+        "decks": [
+          "IntegrationTest::RichContent"
+        ],
+        "fields": {
+          "Back": "<p>Code Verified</p>",
+          "Front": "<p>Code:</p>\n<pre><code class=\"language-python\">print(&quot;hello&quot;)\n</code></pre>",
+          "_obsidian_source": "vault|code.md|6|<id of code.md#1>"
+        },
+        "model": "Basic",
+        "tags": [
+          "<id of code.md#1>"
+        ]
+      }
+    ],
+    "math.md#1": [
+      {
+        "decks": [
+          "IntegrationTest::RichContent"
+        ],
+        "fields": {
+          "Back": "<p>Math Verified</p>",
+          "Front": "<p>Math: \\(E=mc^2\\)\nBlock Math:\n\\[\n\\sum_{i=0}^n i^2\n\\]</p>",
+          "_obsidian_source": "vault|math.md|6|<id of math.md#1>"
+        },
+        "model": "Basic",
+        "tags": [
+          "<id of math.md#1>"
+        ]
+      }
+    ]
+  },
+  "runs": [
+    [
+      {
+        "card": "callout.md#1",
+        "error": null,
+        "new_cid": "card ord 0 of its note",
+        "new_nid": "its note",
+        "ok": true
+      },
+      {
+        "card": "code.md#1",
+        "error": null,
+        "new_cid": "card ord 0 of its note",
+        "new_nid": "its note",
+        "ok": true
+      },
+      {
+        "card": "math.md#1",
+        "error": null,
+        "new_cid": "card ord 0 of its note",
+        "new_nid": "its note",
+        "ok": true
+      }
+    ],
+    []
+  ],
+  "vault_ids": {
+    "callout.md#1": {
+      "cid": "card ord 0 of its note",
+      "nid": "its note"
+    },
+    "code.md#1": {
+      "cid": "card ord 0 of its note",
+      "nid": "its note"
+    },
+    "math.md#1": {
+      "cid": "card ord 0 of its note",
+      "nid": "its note"
+    }
+  }
+}

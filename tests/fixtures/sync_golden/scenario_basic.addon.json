@@ -1,0 +1,119 @@
+{
+  "notes": {
+    "basic_card.md#1": [
+      {
+        "decks": [
+          "IntegrationTest"
+        ],
+        "fields": {
+          "Back": "<p>World</p>",
+          "Front": "<p>Hello Integration</p>",
+          "_obsidian_source": "vault|basic_card.md|5|<id of basic_card.md#1>"
+        },
+        "model": "Basic",
+        "tags": [
+          "<id of basic_card.md#1>"
+        ]
+      }
+    ],
+    "healing.md#1": [
+      {
+        "decks": [
+          "IntegrationTest"
+        ],
+        "fields": {
+          "Back": "<p>Same Back</p>",
+          "Front": "<p>Healing Candidate</p>",
+          "_obsidian_source": "vault|healing.md|5|<id of healing.md#1>"
+        },
+        "model": "Basic",
+        "tags": [
+          "<id of healing.md#1>"
+        ]
+      }
+    ],
+    "prune_me.md#1": [
+      {
+        "decks": [
+          "IntegrationTest"
+        ],
+        "fields": {
+          "Back": "<p>Gone</p>",
+          "Front": "<p>Prune Candidate</p>",
+          "_obsidian_source": "vault|prune_me.md|5|<id of prune_me.md#1>"
+        },
+        "model": "Basic",
+        "tags": [
+          "<id of prune_me.md#1>"
+        ]
+      }
+    ],
+    "stay.md#1": [
+      {
+        "decks": [
+          "IntegrationTest"
+        ],
+        "fields": {
+          "Back": "<p>Stay</p>",
+          "Front": "<p>Persistent Note</p>",
+          "_obsidian_source": "vault|stay.md|5|<id of stay.md#1>"
+        },
+        "model": "Basic",
+        "tags": [
+          "<id of stay.md#1>"
+        ]
+      }
+    ]
+  },
+  "runs": [
+    [
+      {
+        "card": "basic_card.md#1",
+        "error": null,
+        "new_cid": "card ord 0 of its note",
+        "new_nid": "its note",
+        "ok": true
+      },
+      {
+        "card": "healing.md#1",
+        "error": null,
+        "new_cid": "card ord 0 of its note",
+        "new_nid": "its note",
+        "ok": true
+      },
+      {
+        "card": "prune_me.md#1",
+        "error": null,
+        "new_cid": "card ord 0 of its note",
+        "new_nid": "its note",
+        "ok": true
+      },
+      {
+        "card": "stay.md#1",
+        "error": null,
+        "new_cid": "card ord 0 of its note",
+        "new_nid": "its note",
+        "ok": true
+      }
+    ],
+    []
+  ],
+  "vault_ids": {
+    "basic_card.md#1": {
+      "cid": "card ord 0 of its note",
+      "nid": "its note"
+    },
+    "healing.md#1": {
+      "cid": "card ord 0 of its note",
+      "nid": "its note"
+    },
+    "prune_me.md#1": {
+      "cid": "card ord 0 of its note",
+      "nid": "its note"
+    },
+    "stay.md#1": {
+      "cid": "card ord 0 of its note",
+      "nid": "its note"
+    }
+  }
+}

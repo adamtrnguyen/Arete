@@ -1,0 +1,46 @@
+{
+  "notes": {
+    "card.md#1": [
+      {
+        "decks": [
+          "S::Dangling"
+        ],
+        "fields": {
+          "Back": "<p>A</p>",
+          "Front": "<p>Q dangling</p>",
+          "_obsidian_source": "vault|card.md|7|<id of card.md#1>"
+        },
+        "model": "Basic",
+        "tags": [
+          "<id of card.md#1>"
+        ]
+      }
+    ]
+  },
+  "runs": [
+    [
+      {
+        "card": "card.md#1",
+        "error": null,
+        "new_cid": "card ord 0 of its note",
+        "new_nid": "its note",
+        "ok": true
+      }
+    ],
+    [
+      {
+        "card": "card.md#1",
+        "error": null,
+        "new_cid": "card ord 0 of its note",
+        "new_nid": "its note",
+        "ok": true
+      }
+    ]
+  ],
+  "vault_ids": {
+    "card.md#1": {
+      "cid": "card ord 0 of its note",
+      "nid": "its note"
+    }
+  }
+}

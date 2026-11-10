@@ -1,0 +1,392 @@
+{
+  "notes": {
+    "Cramér accents.md#1": [
+      {
+        "decks": [
+          "Corpus::Unicode"
+        ],
+        "fields": {
+          "Back": "<p>Cramér and Rao. Also 日本語 and emoji.</p>",
+          "Front": "<p>Whose bound is it?</p>",
+          "_obsidian_source": "vault|Cramér accents.md|6|<id of Cramér accents.md#1>"
+        },
+        "model": "Basic",
+        "tags": [
+          "<id of Cramér accents.md#1>"
+        ]
+      }
+    ],
+    "basic.md#1": [
+      {
+        "decks": [
+          "Corpus::Basic"
+        ],
+        "fields": {
+          "Back": "<p>What a caller needs, not how it is done.</p>",
+          "Front": "<p>What does a port describe?</p>",
+          "_obsidian_source": "vault|basic.md|8|<id of basic.md#1>"
+        },
+        "model": "Basic",
+        "tags": [
+          "<id of basic.md#1>",
+          "corpus"
+        ]
+      }
+    ],
+    "basic_with_extra.md#1": [
+      {
+        "decks": [
+          "Corpus::Extra"
+        ],
+        "fields": {
+          "Back": "<p>When it truncates.</p>",
+          "Back Extra": "<p>Sort first, or the survivors depend on iteration order.</p>",
+          "Front": "<p>When does a cap change behaviour?</p>",
+          "_obsidian_source": "vault|basic_with_extra.md|6|<id of basic_with_extra.md#1>"
+        },
+        "model": "Basic with Extra",
+        "tags": [
+          "<id of basic_with_extra.md#1>"
+        ]
+      }
+    ],
+    "callout_and_code.md#1": [
+      {
+        "decks": [
+          "Corpus::Rich"
+        ],
+        "fields": {
+          "Back": "<blockquote>\n<p>[!definition] Gate\nLint, types, contracts, tests.</p>\n</blockquote>\n<pre><code class=\"language-python\">def gate() -&gt; bool:\n    return True\n</code></pre>",
+          "Front": "<p>What does the gate run?</p>",
+          "_obsidian_source": "vault|callout_and_code.md|6|<id of callout_and_code.md#1>"
+        },
+        "model": "Basic",
+        "tags": [
+          "<id of callout_and_code.md#1>"
+        ]
+      }
+    ],
+    "card_level_deck.md#1": [
+      {
+        "decks": [
+          "Corpus::FileLevel"
+        ],
+        "fields": {
+          "Back": "<p>The one on the file.</p>",
+          "Front": "<p>Which deck does this take?</p>",
+          "_obsidian_source": "vault|card_level_deck.md|6|<id of card_level_deck.md#1>"
+        },
+        "model": "Basic",
+        "tags": [
+          "<id of card_level_deck.md#1>"
+        ]
+      }
+    ],
+    "card_level_deck.md#2": [
+      {
+        "decks": [
+          "Corpus::CardLevel"
+        ],
+        "fields": {
+          "Back": "<p>The one on the card, which wins.</p>",
+          "Front": "<p>And this one?</p>",
+          "_obsidian_source": "vault|card_level_deck.md|9|<id of card_level_deck.md#2>"
+        },
+        "model": "Basic",
+        "tags": [
+          "<id of card_level_deck.md#2>"
+        ]
+      }
+    ],
+    "cloze.md#1": [
+      {
+        "decks": [
+          "Corpus::Cloze",
+          "Corpus::Cloze"
+        ],
+        "fields": {
+          "Back Extra": "<p>Interface segregation.</p>",
+          "Text": "<p>A {{c1::port}} is named for the {{c2::caller}}, not the adapter.</p>",
+          "_obsidian_source": "vault|cloze.md|6|<id of cloze.md#1>"
+        },
+        "model": "Cloze",
+        "tags": [
+          "<id of cloze.md#1>"
+        ]
+      }
+    ],
+    "deps.md#1": [
+      {
+        "decks": [
+          "Corpus::Deps"
+        ],
+        "fields": {
+          "Back": "<p>The prerequisite.</p>",
+          "Front": "<p>What must you know first?</p>",
+          "_obsidian_source": "vault|deps.md|6|<id of deps.md#1>"
+        },
+        "model": "Basic",
+        "tags": [
+          "<id of deps.md#1>"
+        ]
+      }
+    ],
+    "deps.md#2": [
+      {
+        "decks": [
+          "Corpus::Deps"
+        ],
+        "fields": {
+          "Back": "<p>The dependent.</p>",
+          "Front": "<p>What comes second?</p>",
+          "_obsidian_source": "vault|deps.md|9|<id of deps.md#2>"
+        },
+        "model": "Basic",
+        "tags": [
+          "<id of deps.md#2>"
+        ]
+      }
+    ],
+    "math.md#1": [
+      {
+        "decks": [
+          "Corpus::Math"
+        ],
+        "fields": {
+          "Back": "<p>\\[y = x + \\mathrm{Attn}(\\mathrm{Norm}(x))\\]\nThe gradient is \\(\\partial y/\\partial x = I + \\partial f/\\partial x\\).</p>",
+          "Front": "<p>Give the residual form of one block, inline \\(x + f(x)\\) and display below.</p>",
+          "_obsidian_source": "vault|math.md|6|<id of math.md#1>"
+        },
+        "model": "Basic",
+        "tags": [
+          "<id of math.md#1>"
+        ]
+      }
+    ],
+    "media.md#1": [
+      {
+        "decks": [
+          "Corpus::Media"
+        ],
+        "fields": {
+          "Back": "<p><img alt=\"\" src=\"diagram.png\" /></p>",
+          "Front": "<p>Which diagram shows the block?</p>",
+          "_obsidian_source": "vault|media.md|6|<id of media.md#1>"
+        },
+        "model": "Basic",
+        "tags": [
+          "<id of media.md#1>"
+        ]
+      }
+    ],
+    "multi_card.md#1": [
+      {
+        "decks": [
+          "Corpus::Multi"
+        ],
+        "fields": {
+          "Back": "<p>One.</p>",
+          "Front": "<p>First of three.</p>",
+          "_obsidian_source": "vault|multi_card.md|6|<id of multi_card.md#1>"
+        },
+        "model": "Basic",
+        "tags": [
+          "<id of multi_card.md#1>"
+        ]
+      }
+    ],
+    "multi_card.md#2": [
+      {
+        "decks": [
+          "Corpus::Multi"
+        ],
+        "fields": {
+          "Back": "<p>Two.</p>",
+          "Front": "<p>Second of three.</p>",
+          "_obsidian_source": "vault|multi_card.md|9|<id of multi_card.md#2>"
+        },
+        "model": "Basic",
+        "tags": [
+          "<id of multi_card.md#2>"
+        ]
+      }
+    ],
+    "multi_card.md#3": [
+      {
+        "decks": [
+          "Corpus::Multi"
+        ],
+        "fields": {
+          "Back": "<p>Three.</p>",
+          "Front": "<p>Third of three.</p>",
+          "_obsidian_source": "vault|multi_card.md|12|<id of multi_card.md#3>"
+        },
+        "model": "Basic",
+        "tags": [
+          "<id of multi_card.md#3>"
+        ]
+      }
+    ]
+  },
+  "runs": [
+    [
+      {
+        "card": "Cramér accents.md#1",
+        "error": null,
+        "new_cid": "card ord 0 of its note",
+        "new_nid": "its note",
+        "ok": true
+      },
+      {
+        "card": "basic.md#1",
+        "error": null,
+        "new_cid": "card ord 0 of its note",
+        "new_nid": "its note",
+        "ok": true
+      },
+      {
+        "card": "basic_with_extra.md#1",
+        "error": null,
+        "new_cid": "card ord 0 of its note",
+        "new_nid": "its note",
+        "ok": true
+      },
+      {
+        "card": "callout_and_code.md#1",
+        "error": null,
+        "new_cid": "card ord 0 of its note",
+        "new_nid": "its note",
+        "ok": true
+      },
+      {
+        "card": "card_level_deck.md#1",
+        "error": null,
+        "new_cid": "card ord 0 of its note",
+        "new_nid": "its note",
+        "ok": true
+      },
+      {
+        "card": "card_level_deck.md#2",
+        "error": null,
+        "new_cid": "card ord 0 of its note",
+        "new_nid": "its note",
+        "ok": true
+      },
+      {
+        "card": "cloze.md#1",
+        "error": null,
+        "new_cid": "card ord 0 of its note",
+        "new_nid": "its note",
+        "ok": true
+      },
+      {
+        "card": "deps.md#1",
+        "error": null,
+        "new_cid": "card ord 0 of its note",
+        "new_nid": "its note",
+        "ok": true
+      },
+      {
+        "card": "deps.md#2",
+        "error": null,
+        "new_cid": "card ord 0 of its note",
+        "new_nid": "its note",
+        "ok": true
+      },
+      {
+        "card": "math.md#1",
+        "error": null,
+        "new_cid": "card ord 0 of its note",
+        "new_nid": "its note",
+        "ok": true
+      },
+      {
+        "card": "media.md#1",
+        "error": null,
+        "new_cid": "card ord 0 of its note",
+        "new_nid": "its note",
+        "ok": true
+      },
+      {
+        "card": "multi_card.md#1",
+        "error": null,
+        "new_cid": "card ord 0 of its note",
+        "new_nid": "its note",
+        "ok": true
+      },
+      {
+        "card": "multi_card.md#2",
+        "error": null,
+        "new_cid": "card ord 0 of its note",
+        "new_nid": "its note",
+        "ok": true
+      },
+      {
+        "card": "multi_card.md#3",
+        "error": null,
+        "new_cid": "card ord 0 of its note",
+        "new_nid": "its note",
+        "ok": true
+      }
+    ],
+    []
+  ],
+  "vault_ids": {
+    "Cramér accents.md#1": {
+      "cid": "card ord 0 of its note",
+      "nid": "its note"
+    },
+    "basic.md#1": {
+      "cid": "card ord 0 of its note",
+      "nid": "its note"
+    },
+    "basic_with_extra.md#1": {
+      "cid": "card ord 0 of its note",
+      "nid": "its note"
+    },
+    "callout_and_code.md#1": {
+      "cid": "card ord 0 of its note",
+      "nid": "its note"
+    },
+    "card_level_deck.md#1": {
+      "cid": "card ord 0 of its note",
+      "nid": "its note"
+    },
+    "card_level_deck.md#2": {
+      "cid": "card ord 0 of its note",
+      "nid": "its note"
+    },
+    "cloze.md#1": {
+      "cid": "card ord 0 of its note",
+      "nid": "its note"
+    },
+    "deps.md#1": {
+      "cid": "card ord 0 of its note",
+      "nid": "its note"
+    },
+    "deps.md#2": {
+      "cid": "card ord 0 of its note",
+      "nid": "its note"
+    },
+    "math.md#1": {
+      "cid": "card ord 0 of its note",
+      "nid": "its note"
+    },
+    "media.md#1": {
+      "cid": "card ord 0 of its note",
+      "nid": "its note"
+    },
+    "multi_card.md#1": {
+      "cid": "card ord 0 of its note",
+      "nid": "its note"
+    },
+    "multi_card.md#2": {
+      "cid": "card ord 0 of its note",
+      "nid": "its note"
+    },
+    "multi_card.md#3": {
+      "cid": "card ord 0 of its note",
+      "nid": "its note"
+    }
+  }
+}

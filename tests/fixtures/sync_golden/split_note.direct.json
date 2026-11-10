@@ -1,0 +1,46 @@
+{
+  "notes": {
+    "split.md#1": [
+      {
+        "decks": [
+          "S::Home",
+          "S::Elsewhere"
+        ],
+        "fields": {
+          "Back Extra": "<p>edited</p>",
+          "Text": "<p>{{c1::one}} and {{c2::two}}</p>"
+        },
+        "model": "Cloze",
+        "tags": [
+          "<id of split.md#1>"
+        ]
+      }
+    ]
+  },
+  "runs": [
+    [
+      {
+        "card": "split.md#1",
+        "error": null,
+        "new_cid": null,
+        "new_nid": "its note",
+        "ok": true
+      }
+    ],
+    [
+      {
+        "card": "split.md#1",
+        "error": null,
+        "new_cid": null,
+        "new_nid": "its note",
+        "ok": true
+      }
+    ]
+  ],
+  "vault_ids": {
+    "split.md#1": {
+      "cid": null,
+      "nid": "its note"
+    }
+  }
+}

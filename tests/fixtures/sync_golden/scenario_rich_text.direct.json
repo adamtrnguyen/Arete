@@ -1,0 +1,89 @@
+{
+  "notes": {
+    "callout.md#1": [
+      {
+        "decks": [
+          "IntegrationTest::RichContent"
+        ],
+        "fields": {
+          "Back": "<p>Callout Verified</p>",
+          "Front": "<blockquote>\n<p>[!INFO]\nThis is a callout.</p>\n</blockquote>"
+        },
+        "model": "Basic",
+        "tags": [
+          "<id of callout.md#1>"
+        ]
+      }
+    ],
+    "code.md#1": [
+      {
+        "decks": [
+          "IntegrationTest::RichContent"
+        ],
+        "fields": {
+          "Back": "<p>Code Verified</p>",
+          "Front": "<p>Code:</p>\n<pre><code class=\"language-python\">print(&quot;hello&quot;)\n</code></pre>"
+        },
+        "model": "Basic",
+        "tags": [
+          "<id of code.md#1>"
+        ]
+      }
+    ],
+    "math.md#1": [
+      {
+        "decks": [
+          "IntegrationTest::RichContent"
+        ],
+        "fields": {
+          "Back": "<p>Math Verified</p>",
+          "Front": "<p>Math: \\(E=mc^2\\)\nBlock Math:\n\\[\n\\sum_{i=0}^n i^2\n\\]</p>"
+        },
+        "model": "Basic",
+        "tags": [
+          "<id of math.md#1>"
+        ]
+      }
+    ]
+  },
+  "runs": [
+    [
+      {
+        "card": "callout.md#1",
+        "error": null,
+        "new_cid": null,
+        "new_nid": "its note",
+        "ok": true
+      },
+      {
+        "card": "code.md#1",
+        "error": null,
+        "new_cid": null,
+        "new_nid": "its note",
+        "ok": true
+      },
+      {
+        "card": "math.md#1",
+        "error": null,
+        "new_cid": null,
+        "new_nid": "its note",
+        "ok": true
+      }
+    ],
+    []
+  ],
+  "vault_ids": {
+    "callout.md#1": {
+      "cid": null,
+      "nid": "its note"
+    },
+    "code.md#1": {
+      "cid": null,
+      "nid": "its note"
+    },
+    "math.md#1": {
+      "cid": null,
+      "nid": "its note"
+    }
+  }
+}

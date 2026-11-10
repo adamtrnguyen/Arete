@@ -1,0 +1,58 @@
+{
+  "notes": {
+    "card.md#1": [
+      {
+        "decks": [
+          "S::Dangling"
+        ],
+        "fields": {
+          "Back": "<p>A</p>",
+          "Front": "<p>Q dangling</p>"
+        },
+        "model": "Basic",
+        "tags": [
+          "<id of card.md#1>"
+        ]
+      },
+      {
+        "decks": [
+          "S::Dangling"
+        ],
+        "fields": {
+          "Back": "<p>A</p>",
+          "Front": "<p>Q dangling</p>"
+        },
+        "model": "Basic",
+        "tags": [
+          "<id of card.md#1>"
+        ]
+      }
+    ]
+  },
+  "runs": [
+    [
+      {
+        "card": "card.md#1",
+        "error": null,
+        "new_cid": null,
+        "new_nid": "its note",
+        "ok": true
+      }
+    ],
+    [
+      {
+        "card": "card.md#1",
+        "error": null,
+        "new_cid": null,
+        "new_nid": "its note",
+        "ok": true
+      }
+    ]
+  ],
+  "vault_ids": {
+    "card.md#1": {
+      "cid": null,
+      "nid": "its note"
+    }
+  }
+}
