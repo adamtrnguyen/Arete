@@ -344,11 +344,11 @@ class AnkiConnect:
     ):
         # Returns: 1 if first is empty, 2 if first is a duplicate, 0 otherwise.
 
-        # note.dupeOrEmpty returns if a note is a global duplicate with the specific model.
+        # note.fields_check returns if a note is a global duplicate with the specific model.
         # This is used as the default check, and the rest of this function is manually
         # checking if the note is a duplicate with additional options.
         if duplicateScope != "deck" and not duplicateScopeCheckAllModels:
-            return note.dupeOrEmpty() or 0
+            return note.fields_check() or 0
 
         # Primary field for uniqueness
         val = note.fields[0]
@@ -1051,10 +1051,10 @@ class AnkiConnect:
             except NotFoundError:
                 continue
 
-            if note.hasTag(tag_to_replace):
-                note.delTag(tag_to_replace)
-                note.addTag(replace_with_tag)
-                note.flush()
+            if note.has_tag(tag_to_replace):
+                note.remove_tag(tag_to_replace)
+                note.add_tag(replace_with_tag)
+                self.collection().update_note(note, skip_undo_entry=True)
 
         self.window().progress.finish()
         self.window().reset()
@@ -1066,10 +1066,10 @@ class AnkiConnect:
         collection = self.collection()
         for nid in collection.db.list("select id from notes"):
             note = self.getNote(nid)
-            if note.hasTag(tag_to_replace):
-                note.delTag(tag_to_replace)
-                note.addTag(replace_with_tag)
-                note.flush()
+            if note.has_tag(tag_to_replace):
+                note.remove_tag(tag_to_replace)
+                note.add_tag(replace_with_tag)
+                collection.update_note(note, skip_undo_entry=True)
 
         self.window().progress.finish()
         self.window().reset()
@@ -1086,7 +1086,7 @@ class AnkiConnect:
 
             couldSetEaseFactors.append(True)
             ankiCard.factor = easeFactors[i]
-            ankiCard.flush()
+            self.collection().update_card(ankiCard, skip_undo_entry=True)
 
         return couldSetEaseFactors
 
@@ -1129,7 +1129,7 @@ class AnkiConnect:
             ankiCard = self.getCard(card)
             for i, key in enumerate(keys):
                 setattr(ankiCard, key, newValues[i])
-            ankiCard.flush()
+            self.collection().update_card(ankiCard, skip_undo_entry=True)
             result.append(True)
         except Exception as e:
             result.append([False, str(e)])
@@ -1936,7 +1936,7 @@ class AnkiConnect:
 
         reviewer = self.reviewer()
         card = reviewer.card
-        model = card.model()
+        model = card.note_type()
         note = card.note()
 
         fields = {}
@@ -1969,7 +1969,7 @@ class AnkiConnect:
 
         card = self.reviewer().card
         if card is not None:
-            card.startTimer()
+            card.start_timer()
             return True
 
         return False
