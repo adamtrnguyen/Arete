@@ -444,16 +444,44 @@ async def test_after_a_crash_the_next_sync_finds_the_note_by_its_id_and_stores_i
 
 @pytest.mark.asyncio
 @on(*ALL)
-async def test_inv1_a_leech_tag_added_by_anki_stays(world: World):
-    """`leech` is Anki's scheduler mark (ANKI_OWNED_TAGS); every other Anki-only tag goes."""
+async def test_inv1_anki_owned_tags_stay_and_other_anki_tags_go(world: World):
+    """`leech` and `marked` are Anki's (ANKI_OWNED_TAGS); every other Anki-only tag goes."""
     await world.sync()
     nid = world.nid()
-    world.backend.add_tag(nid, "leech")
-    world.backend.add_tag(nid, "marked")
+    for tag in ("leech", "Marked", "anki-only"):
+        world.backend.add_tag(nid, tag)
 
     await world.sync()
 
-    assert sorted(world.backend.note(nid).tags) == sorted([ID, "inv", "leech"])
+    assert sorted(world.backend.note(nid).tags) == sorted([ID, "inv", "leech", "Marked"])
+
+
+@pytest.mark.asyncio
+@on(*ALL)
+async def test_inv1_a_marked_note_needs_nothing_from_a_sync_or_a_dry_run(world: World):
+    await world.sync()
+    nid = world.nid()
+    world.backend.add_tag(nid, "marked")
+
+    _, [dry] = await world.sync(dry_run=True)
+    _, [real] = await world.sync()
+
+    assert not dry.changed and not real.changed
+    assert "marked" in world.backend.note(nid).tags
+
+
+@pytest.mark.asyncio
+@on(*ALL)
+async def test_inv1_a_vault_that_declares_marked_gets_it_once(world: World):
+    await world.sync()
+    nid = world.nid()
+    edit_card(world.md, _set(tags=["marked"]))
+
+    _, [added] = await world.sync()
+    _, [again] = await world.sync()
+
+    assert added.changed and not again.changed
+    assert sorted(world.backend.note(nid).tags) == sorted([ID, "inv", "marked"])
 
 
 CLOZE_3 = CARD.replace("model: Basic", "model: Cloze").replace(

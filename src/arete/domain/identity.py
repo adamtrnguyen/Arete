@@ -9,8 +9,9 @@ import unicodedata
 from collections.abc import Iterable
 
 # Tags Anki itself writes on a note. A sync leaves them on the note, though the vault never
-# names them: `leech` is the scheduler's mark on a card it suspended for too many lapses.
-ANKI_OWNED_TAGS = frozenset({"leech"})
+# names them: `leech` is the scheduler's mark on a card it suspended for too many lapses,
+# `marked` the star a user sets on a note (`anki.tags.MARKED_TAG`). Compared ignoring case.
+ANKI_OWNED_TAGS = frozenset({"leech", "marked"})
 
 _HTML_TAG = re.compile(r"<[^>]+>")
 _CLOZE_OPEN = re.compile(r"\{\{c\d+::")

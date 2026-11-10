@@ -353,14 +353,14 @@ async def test_tags_compare_without_case_and_leech_stays():
 
 
 @pytest.mark.asyncio
-async def test_a_tag_added_in_anki_is_removed_but_not_leech():
+async def test_a_tag_added_in_anki_is_removed_but_not_leech_or_marked():
     store = FakeNoteStore()
     item = card()
-    nid = held_as_vault(store, item, tags=[ID, "marked", "leech"])
+    nid = held_as_vault(store, item, tags=[ID, "anki-only", "leech", "Marked"])
 
     await run(store, item)
 
-    assert sorted(store.held(nid).tags) == sorted([ID, "leech"])
+    assert sorted(store.held(nid).tags) == sorted([ID, "leech", "Marked"])
 
 
 @pytest.mark.asyncio

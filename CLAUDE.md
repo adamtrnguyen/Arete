@@ -7,7 +7,7 @@ Each invariant gets a test that fails when it breaks; its status changes only wi
 
 | # | Invariant | Holds today |
 |---|---|---|
-| 1 | **Obsidian is ground truth.** After any sync, Anki's fields, tags, deck and note type for a card id equal the vault's. An edit made in Anki is overwritten. Anki's own `leech` tag stays. | Holds. An edit made in Anki while a sync runs can survive that sync; the next one overwrites it |
+| 1 | **Obsidian is ground truth.** After any sync, Anki's fields, tags, deck and note type for a card id equal the vault's. An edit made in Anki is overwritten. Anki's own `leech` and `marked` tags stay. | Holds. An edit made in Anki while a sync runs can survive that sync; the next one overwrites it |
 | 2 | **The Arete id is the identity.** A card is found by its id, whichever backend runs. | Holds |
 | 3 | **Both backends behave the same.** Whether Anki is open changes how Arete reaches the collection, never what it does. | Holds |
 | 4 | **Arete never touches scheduling.** Review history, due dates and suspension belong to Anki. | Holds, a card in `Arete::Queue` included. Over an add-on without `setHomeDeck`, an update still takes a queued card out of the queue |

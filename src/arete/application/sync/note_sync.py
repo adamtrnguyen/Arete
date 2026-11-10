@@ -25,7 +25,8 @@ Per batch, inside one store session:
 5. **Compare and write.** Fields, tags, home deck and note type are set to the vault's
    where they differ. Tags compare case-insensitively and as Anki stores them
    (`anki_tags`: a vault tag `A B` is the tags `A` and `B`), and the tags Anki owns
-   (`ANKI_OWNED_TAGS`) are never removed. A type change that would drop cards is refused.
+   (`ANKI_OWNED_TAGS`: `leech`, `marked`) are never removed. A type change that would
+   drop cards is refused.
 
 One note belongs to at most one card per run.
 """
