@@ -16,6 +16,7 @@ from arete.domain.stats.models import (
     revlog_interval_days,
 )
 from arete.domain.stats.ports import StatsRepository
+from arete.infrastructure.adapters.stats.deck_config import deck_params, default_params
 
 logger = logging.getLogger(__name__)
 
@@ -194,28 +195,10 @@ class ConnectStatsRepository(StatsRepository):
             try:
                 if isinstance(deck_config, Exception):
                     raise deck_config
-                if deck_config:
-                    fsrs = deck_config.get("fsrs", {})
-                    default_retention = fsrs.get("desiredRetention", 0.9)
-                    params[deck_name] = {
-                        "desired_retention": deck_config.get("desiredRetention", default_retention),
-                        "weights": fsrs.get("w", []),
-                        "sm2_retention": deck_config.get("sm2Retention", 0.9),
-                    }
-                else:
-                    # Default values
-                    params[deck_name] = {
-                        "desired_retention": 0.9,
-                        "weights": [],
-                        "sm2_retention": 0.9,
-                    }
+                # The add-on answers False for a deck Anki does not hold.
+                params[deck_name] = deck_params(deck_config) if deck_config else default_params()
             except Exception as e:
                 logger.warning(f"Failed to fetch deck params for {deck_name}: {e}")
-                # Provide defaults on failure
-                params[deck_name] = {
-                    "desired_retention": 0.9,
-                    "weights": [],
-                    "sm2_retention": 0.9,
-                }
+                params[deck_name] = default_params()
 
         return params

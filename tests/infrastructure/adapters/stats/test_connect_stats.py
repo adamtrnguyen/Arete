@@ -363,10 +363,9 @@ async def test_get_deck_params_success(repo):
         return_value={
             "desiredRetention": 0.85,
             "sm2Retention": 0.88,
-            "fsrs": {
-                "desiredRetention": 0.85,
-                "w": [0.4, 0.6, 2.4, 5.8],
-            },
+            "fsrsWeights": [],
+            "fsrsParams5": [],
+            "fsrsParams6": [0.4, 0.6, 2.4, 5.8],
         }
     )
 
@@ -441,7 +440,7 @@ def _deck_config_server(configs: dict, failing: set[str] | None = None):
 
 @pytest.mark.asyncio
 async def test_get_deck_params_reads_every_deck_in_one_request(repo):
-    configs = {f"D{i}": {"fsrs": {"desiredRetention": (80 + i) / 100, "w": [i]}} for i in range(6)}
+    configs = {f"D{i}": {"desiredRetention": (80 + i) / 100, "fsrsParams6": [i]} for i in range(6)}
     repo._invoke, sent = _deck_config_server(configs)
 
     result = await repo.get_deck_params([*configs, "Missing"])
@@ -453,7 +452,7 @@ async def test_get_deck_params_reads_every_deck_in_one_request(repo):
 
 @pytest.mark.asyncio
 async def test_get_deck_params_a_failing_deck_gets_defaults_alone(repo):
-    configs = {"A": {"fsrs": {"desiredRetention": 0.7, "w": [1]}}, "B": {"fsrs": {}}}
+    configs = {"A": {"desiredRetention": 0.7, "fsrsParams6": [1]}, "B": {}}
     repo._invoke, _ = _deck_config_server(configs, failing={"B"})
 
     result = await repo.get_deck_params(["A", "B"])

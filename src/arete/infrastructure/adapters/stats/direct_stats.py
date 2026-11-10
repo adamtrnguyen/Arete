@@ -9,6 +9,7 @@ from typing import Any, cast
 
 from arete.domain.stats.models import CardStatsAggregate, ReviewEntry, revlog_interval_days
 from arete.domain.stats.ports import StatsRepository
+from arete.infrastructure.adapters.stats.deck_config import deck_params
 from arete.infrastructure.anki.fsrs import fsrs_state_of
 from arete.infrastructure.anki.repository import AnkiRepository
 
@@ -183,17 +184,7 @@ class DirectStatsRepository(StatsRepository):
                     config = repo.col.decks.get_config(deck["conf"])
                     if not config:
                         continue
-
-                    # Look for FSRS settings in the config
-                    # Modern Anki: config['fsrs']
-                    fsrs = config.get("fsrs", {})
-
-                    default_retention = fsrs.get("desiredRetention", 0.9)
-                    params[deck_name] = {
-                        "desired_retention": config.get("desiredRetention", default_retention),
-                        "weights": fsrs.get("w", []),
-                        "sm2_retention": config.get("sm2Retention", 0.9),  # Fallback for non-FSRS
-                    }
+                    params[deck_name] = deck_params(config)
                 except Exception as e:
                     logger.warning(f"Failed to fetch params for deck {deck_name}: {e}")
 

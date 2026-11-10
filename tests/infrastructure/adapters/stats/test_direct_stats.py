@@ -362,10 +362,9 @@ async def test_get_deck_params_success(mock_repo):
     config = {
         "desiredRetention": 0.85,
         "sm2Retention": 0.88,
-        "fsrs": {
-            "desiredRetention": 0.85,
-            "w": [0.4, 0.6, 2.4, 5.8],
-        },
+        "fsrsWeights": [],
+        "fsrsParams5": [],
+        "fsrsParams6": [0.4, 0.6, 2.4, 5.8],
     }
     mock_repo.col.decks.get_config.return_value = config
 

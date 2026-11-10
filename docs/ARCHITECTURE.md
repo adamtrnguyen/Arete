@@ -61,6 +61,7 @@ src/arete/
 │   ├── adapters/                 
 │   │   ├── stats/                
 │   │   │   ├── connect_stats.py   Connect Stats Repository — Infrastructure adapter using AnkiConnect HTTP API
+│   │   │   ├── deck_config.py     FSRS parameters from a deck config as Anki stores it
 │   │   │   ├── direct_stats.py    Direct Stats Repository — Infrastructure adapter for Anki's SQLite database
 │   │   ├── anki_connect.py        ConnectNoteSession, AnkiConnectAdapter
 │   │   ├── anki_direct.py         AnkiDirectAdapter
@@ -91,7 +92,7 @@ src/arete/
 | `interface` | 7 | 1840 | application, composition |
 | `composition` | 2 | 183 | application, infrastructure, domain |
 | `application` | 26 | 5844 | domain (ports only) |
-| `infrastructure` | 8 | 2218 | domain |
+| `infrastructure` | 9 | 2232 | domain |
 | `domain` | 9 | 907 | nothing in arete |
 
 The import rules in the last column are enforced by `just check-architecture`
