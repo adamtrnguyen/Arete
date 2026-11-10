@@ -17,6 +17,8 @@ import pytest
 
 from arete.domain.interfaces import NoteStorePort, NoteStoreSession
 from arete.domain.models import HeldNote, NewNote, NoteChange, OutcomeUnknown
+from arete.infrastructure.adapters.anki_direct import AnkiDirectAdapter
+from tests.e2e.sync_harness import DirectBackend, make_backend
 from tests.fakes.note_store import ContractViolation, FakeNoteStore
 
 ID = "arete_01J00000000000000000000101"
@@ -45,7 +47,19 @@ def _fake(_root: Path) -> StoreUnderTest:
     )
 
 
-STORES: dict[str, Callable[[Path], StoreUnderTest]] = {"fake": _fake}
+def _direct(root: Path) -> StoreUnderTest:
+    backend = make_backend("direct", root)
+    assert isinstance(backend, DirectBackend)
+    return StoreUnderTest(
+        "direct",
+        AnkiDirectAdapter(anki_base=backend.anki_base),
+        backend.add_note,
+        lambda nids: None if backend.queue(nids) else None,
+        backend.close,
+    )
+
+
+STORES: dict[str, Callable[[Path], StoreUnderTest]] = {"fake": _fake, "direct": _direct}
 
 
 @pytest.fixture(params=sorted(STORES))

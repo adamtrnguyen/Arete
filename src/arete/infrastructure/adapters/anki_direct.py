@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
@@ -14,6 +16,7 @@ from arete.domain.constants import (
 )
 from arete.domain.interfaces import AnkiBridge
 from arete.domain.models import AnkiDeck, UpdateItem, WorkItem
+from arete.infrastructure.anki.note_session import DirectNoteSession
 from arete.infrastructure.anki.repository import AnkiRepository
 
 if TYPE_CHECKING:  # importing these eagerly cycles inside the anki package
@@ -41,6 +44,18 @@ class AnkiDirectAdapter(AnkiBridge):
                 repo.col.decks.id(deck_name)
                 return True
         return False
+
+    @asynccontextmanager
+    async def session(self) -> AsyncIterator[DirectNoteSession]:
+        """The collection, open for one batch of note reads and writes (`NoteStorePort`).
+
+        One session at a time: this backend opens the Anki SQLite file itself.
+        """
+        async with self._sync_lock:
+            with AnkiRepository(self.anki_base) as repo:
+                if repo.col is None:
+                    raise OSError("Anki collection did not open")
+                yield DirectNoteSession(repo.col, self.logger)
 
     async def sync_notes(self, work_items: list[WorkItem]) -> list[UpdateItem]:
         results = []

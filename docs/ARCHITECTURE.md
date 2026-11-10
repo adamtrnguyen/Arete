@@ -66,6 +66,7 @@ src/arete/
 │   │   ├── anki_direct.py         AnkiDirectAdapter
 │   ├── anki/                     
 │   │   ├── fsrs.py                FSRS memory state of an Anki card, in the domain's units
+│   │   ├── note_session.py        The note-store primitives over an open collection, for the direct backend
 │   │   ├── repository.py          Anki Repository
 │   ├── persistence/              
 │   │   ├── cache.py               ContentCache
@@ -90,7 +91,7 @@ src/arete/
 | `interface` | 7 | 1840 | application, composition |
 | `composition` | 2 | 178 | application, infrastructure, domain |
 | `application` | 26 | 5389 | domain (ports only) |
-| `infrastructure` | 7 | 2465 | domain |
+| `infrastructure` | 8 | 2736 | domain |
 | `domain` | 9 | 843 | nothing in arete |
 
 The import rules in the last column are enforced by `just check-architecture`
