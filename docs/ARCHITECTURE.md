@@ -107,7 +107,7 @@ obsidian-plugin/        # Obsidian GUI
 ## CLI vs Plugin
 
 -   **CLI**: does the work: scanning files, hashing content, talking to Anki (AnkiConnect, or the collection directly), and writing ids back to Markdown.
--   **Plugin**: settings, commands, the card gutter, the dashboard and the graph views. It runs `arete sync` as a child process (execution mode `CLI`) or calls `arete serve daemon` over HTTP (mode `Server`), and shows the result.
+-   **Plugin**: settings, commands, the card gutter, the dashboard and the graph views. Every action runs an `arete` command as a child process and reads its output, JSON where the command prints it.
 
 This split lets you automate syncs with crontab or shell scripts, while plugin users get an integrated experience.
 

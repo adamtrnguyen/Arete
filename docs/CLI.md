@@ -41,17 +41,12 @@ uv sync
 | :--- | :--- |
 | `arete anki stats` | Fetch card statistics for given Note IDs. |
 | `arete anki browse` | Open Anki browser with a query. |
+| `arete anki decks` | Print every deck name as JSON: `{"decks": [...]}`. |
+| `arete anki queue-deck --ids JSON` | Fill a filtered deck with the cards of the given Arete ids, in order. Prints `{"ok", "message"}`. `--deck-name` picks the deck (default `Arete Study Queue`); `--no-reschedule` stops reviews in it from counting. |
 | `arete anki suspend` | Suspend cards by CID. |
 | `arete anki unsuspend` | Unsuspend cards by CID. |
 | `arete anki model-css MODEL` | Get CSS styling for a model. |
 | `arete anki model-templates MODEL` | Get templates for a model. |
-
-### Servers (`arete serve`)
-
-| Command | Description |
-| :--- | :--- |
-| `arete serve daemon` | Start the persistent HTTP server (uvicorn). |
-| `arete serve mcp` | Start MCP server for AI agent integration. |
 
 ### Other
 
@@ -99,22 +94,15 @@ uv run arete queue --deck "Research Methodology" --include-new --cross-deck
 # Preview without creating deck
 uv run arete queue --dry-run
 
+# Print the preview as JSON: deck, due_count, total_with_prereqs, queue
+uv run arete queue PATH --dry-run --json
+
 # All due cards across all decks
 uv run arete queue
 
 # Use dynamic ready-frontier ordering
 uv run arete queue --algo dynamic
 ```
-
-## Servers
-
-The `serve daemon` command starts a local API that the Obsidian plugin uses for near-instant interaction.
-
-```bash
-uv run arete serve daemon --port 8080
-```
-
-The default is `127.0.0.1:8777` (`--host`, `--port`).
 
 ## Configuration (`~/.config/arete/config.toml`)
 

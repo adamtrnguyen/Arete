@@ -38,7 +38,7 @@ interface → composition → application → infrastructure → domain
 - `src/arete/domain/` — Models, role ports (`NoteStorePort`, `SyncPort`, `QueuePort`, `CardStatsPort`, `AnkiAdminPort`; `AnkiBridge` combines them), constants
 - `src/arete/infrastructure/` — Adapters (AnkiConnect HTTP, AnkiDirect file-based, stats)
 - `src/arete/application/` — Use cases (sync, queue builder, graph resolver, config, stats)
-- `src/arete/interface/` — CLI (Typer), MCP server (MCPServer, mcp 2.x), HTTP server
+- `src/arete/interface/` — CLI (Typer), the only interface
 - `src/arete/composition/` — the composition root: the only package that builds adapters (`factory.py`)
 
 Import rules:
@@ -112,12 +112,12 @@ just qa               # the gate; the pre-push hook runs it too
 
 Details (image, ports, `ANKI_CONNECT_URL`) are in `tests/integration/conftest.py`.
 
-## CLI and MCP
+## CLI
 
 Commands: `docs/CLI.md` or `arete <cmd> --help`. Agent workflows: `skills/arete`.
-MCP server: `arete serve mcp` (stdio); its tools are the `@mcp.tool()` functions in
-`src/arete/interface/mcp_server.py`. `build_study_queue` covers every deck unless `deck` is
-set, and a named deck is an isolated set unless `cross_deck` is true, like the CLI.
+The Obsidian plugin and agents call the CLI and read its JSON output. `arete queue` covers
+every deck unless `--deck` is set, and a named deck is an isolated set unless `--cross-deck`
+is given.
 
 ### CLI Safety Rules
 
@@ -176,10 +176,7 @@ the reload (they keep running the old code).
 **Backend**
 
 - [ ] `arete vault check` does not detect a duplicate Arete id; only a sync refuses one.
-- [ ] The three surfaces duplicate their wiring: `http_server` resolves config and builds
-      a bridge inline in each route (`grep -c 'resolve_config(\|get_anki_bridge('
-      src/arete/interface/http_server.py`). Five Anki admin verbs are called only from
-      `interface/`, with no use-case between.
+- [ ] Five Anki admin verbs are called only from `interface/`, with no use-case between.
 
 **Release plumbing**
 

@@ -31,8 +31,7 @@ Arete syncs cards written in note frontmatter (Obsidian) to Anki. **Obsidian is 
 | vault MCP `obsidian_screenshot`, `obsidian_dom` | See exactly what the user sees. |
 | `obsidian dev:console limit=<n> level=<level>` (Obsidian CLI) | Read render errors from the console. |
 | vault MCP `obsidian_click` on the toolbar button with the tooltip "Preview mode" (`.arete-toolbar-btn`) | Switch the Card Editor to the rendered Anki preview (`.arete-preview-side-btn` toggles Front/Back). |
-| `arete` CLI (`uv tool`) | `sync`, `vault check/fix/format`, `graph check/export`, `queue`, `report`, `anki stats`. |
-| arete MCP | `list_file_cards`, `get_dep_subgraph`, `check_graph`, `sync_file`, `get_due_cards`, `build_study_queue`. |
+| `arete` CLI (`uv tool`) | `sync`, `vault check/fix/format`, `graph check/export`, `queue`, `report`, `anki stats/decks/browse/queue-deck`. |
 
 ## Workflows
 
@@ -56,7 +55,7 @@ Arete syncs cards written in note frontmatter (Obsidian) to Anki. **Obsidian is 
 
 1. `arete sync "<note>.md" --dry-run` → read what it would send.
 2. `arete sync "<note>.md"` → Anki gets the cards; Arete writes `id` and `anki: {nid, cid}` back into the note.
-3. **Verify:** the note now carries ids; `arete anki browse` or arete MCP `browse_card` opens it in Anki.
+3. **Verify:** the note now carries ids; `arete anki browse` opens it in Anki.
 
 Whole vault: `arete sync --dry-run`, then `arete sync`. Orphans: `arete sync --prune` (previews, asks).
 
@@ -67,7 +66,7 @@ Whole vault: `arete sync --dry-run`, then `arete sync`. Orphans: `arete sync --p
 3. **Ambiguous basename** (two files share a name): use `folder/Name`.
 4. **Duplicate id:** two cards share an `id`; keep one (usually the one with deps/anki data). Sync refuses every card that shares an id.
 
-Wire deps with arete MCP `get_dep_subgraph` for the batch, `requires` for true prerequisites, `related` for peers.
+Wire deps with `arete graph export` for the batch, `requires` for true prerequisites, `related` for peers.
 
 ### 5. Fix cards flagged during review
 
@@ -77,7 +76,7 @@ Wire deps with arete MCP `get_dep_subgraph` for the batch, `requires` for true p
 
 ### 6. Study queue
 
-`arete queue --deck "<Deck>" --dry-run` to preview, then without `--dry-run`. `--include-new`, `--depth N`, `--cross-deck`, `--algo static|dynamic`. Output deck: `Arete::Queue`. Sync first. With `--deck` and no `--cross-deck` the queue stays inside that deck. arete MCP `build_study_queue` takes the same options and covers every deck when `deck` is omitted.
+`arete queue --deck "<Deck>" --dry-run` to preview, then without `--dry-run`. `--include-new`, `--depth N`, `--cross-deck`, `--algo static|dynamic`. Output deck: `Arete::Queue`. Sync first. With `--deck` and no `--cross-deck` the queue stays inside that deck; without `--deck` it covers every deck.
 
 ### 7. Vault maintenance
 

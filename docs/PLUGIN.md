@@ -37,9 +37,6 @@ Build a filtered deck that puts prerequisites first:
 
 ## Settings
 
-- **Execution mode**:
-    - `CLI (run once)`: starts a process for each action. This is the default.
-    - `Server (background)`: talks to a persistent `arete serve daemon`, faster for the UI. Setting `Server port` defaults to 8777.
 - **Python executable**: path to `python3` or the `arete` executable.
 - **Project root**: the Arete checkout (the folder with `pyproject.toml`). Needed only when the plugin runs Arete through `uv run`.
 - **Parallel workers**: sync workers, 1 to 16.

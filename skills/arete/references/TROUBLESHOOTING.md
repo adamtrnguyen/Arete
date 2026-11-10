@@ -13,7 +13,7 @@
 | Symptom | Cause | Fix |
 |---|---|---|
 | Local Graph: "These cards have no Arete IDs yet" | Draft cards; the graph is keyed by id | Sync the note. |
-| Local Graph shows "Loading graph…" | First fetch asks the Python side (`arete graph export`, or `POST /graph` in server mode) | Wait; later opens are cached. |
+| Local Graph shows "Loading graph…" | First fetch asks the Python side (`arete graph export`) | Wait; later opens are cached. |
 | Dashboard numbers look wrong after a plugin reload | A view left from before the reload, still running old code | Close and reopen the view after reloading. |
 
 ## Agent tooling
