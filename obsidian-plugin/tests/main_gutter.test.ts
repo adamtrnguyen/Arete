@@ -45,6 +45,13 @@ describe('AretePlugin: what a click in the card gutter does', () => {
 		expect(registered).toContainEqual({ gutter: true });
 	});
 
+	it('gives the gutter the live threshold settings, read at each call', () => {
+		const getThresholds = (createCardGutter as jest.Mock).mock.calls[0][3];
+		expect(getThresholds).toEqual(expect.any(Function));
+		plugin.settings.stats_lapse_threshold = 10;
+		expect(getThresholds().stats_lapse_threshold).toBe(10);
+	});
+
 	describe('clicking a card marker', () => {
 		beforeEach(() => {
 			plugin.highlightCardLines = jest.fn();

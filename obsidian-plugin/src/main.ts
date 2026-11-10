@@ -345,6 +345,7 @@ export default class AretePlugin extends Plugin {
 					return null;
 				},
 				this.settings.stats_algorithm,
+				() => this.settings,
 			),
 		);
 
