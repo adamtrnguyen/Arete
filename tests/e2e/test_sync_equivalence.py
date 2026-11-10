@@ -12,8 +12,8 @@ differences in the shared-sync design (`/tmp/arete-audit/design-shared-sync.md`,
 2. Named differences: two backends' snapshots differ only at paths claimed by the named,
    expected differences of that case, and each named difference is still there. When the
    shared sync logic removes one, its test fails until the name is deleted from `EXPECTED`.
-3. Invariant 3 (both backends behave the same): the strict xfail that holds once `EXPECTED`
-   is empty for the direct/AnkiConnect pairs.
+3. Invariant 3 (both backends behave the same): every case ends in the same state on the
+   direct backend and on each AnkiConnect side.
 """
 
 from __future__ import annotations
@@ -212,42 +212,12 @@ class Difference:
         return re.search(self.paths, path) is not None
 
 
-FIELD_CASE = Difference(
-    "a card field named in another case (`front`): the add-on and NoteSync fill `Front`, "
-    "the AnkiConnect adapter over the fake leaves it empty and still reports ok",
-    "1a #10b",
-    r"^notes/case\.md#1/0/fields/(Front|Back)$",
-)
-DUPLICATE_REFUSED = Difference(
-    "two cards with the same first field in one deck: the add-on refuses the second card's "
-    "addNote as a duplicate; direct and the fake add both",
-    "1a #8",
-    r"^runs/0/twins\.md#2/",
-)
-CONTENT_ADOPTS_OTHER_CARD = Difference(
-    "next run the refused card is healed by content onto the first card's note, which then "
-    "carries the second card's fields and id: two vault cards share one note, and the first "
-    "card's text is gone from Anki",
-    "1a #7",
-    r"^(notes/twins\.md#[12]/|runs/[01]/twins\.md#1/|runs/1/twins\.md#2/|vault_ids/twins\.md#1/)",
-)
-
+# Every named difference between the backends, per pair and case. Empty: since both
+# backends sync through NoteSync, each case ends in the same state on each. A difference
+# found later is named here, with its census row, until it is removed.
 EXPECTED: dict[tuple[str, str], dict[str, list[Difference]]] = {
-    ("direct", "fake"): {
-        **{case: [] for case in CASES},
-        "field_name_case": [FIELD_CASE],
-    },
-    ("direct", "addon"): {
-        **{case: [] for case in CASES},
-        "same_front_twice": [DUPLICATE_REFUSED, CONTENT_ADOPTS_OTHER_CARD],
-    },
-    # Where the fake is not the add-on: it has no duplicate check and matches field names
-    # case-sensitively. Not a backend difference; it says what the fake cannot show.
-    ("fake", "addon"): {
-        **{case: [] for case in CASES},
-        "field_name_case": [FIELD_CASE],
-        "same_front_twice": [DUPLICATE_REFUSED, CONTENT_ADOPTS_OTHER_CARD],
-    },
+    pair: {case: [] for case in CASES}
+    for pair in (("direct", "fake"), ("direct", "addon"), ("fake", "addon"))
 }
 PAIRS = sorted(EXPECTED)
 
@@ -269,12 +239,6 @@ async def test_backends_differ_only_in_the_named_ways(
     assert not gone, f"no longer different, delete from EXPECTED[{pair}][{case!r}]: {gone}"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="Invariant 3 does not hold: the AnkiConnect adapter still decides in its own "
-    "sync_notes, so field-name case (census 1a #10b, over the fake), the duplicate first "
-    "field (#8) and the adoption by content (#7, on the add-on) differ. See EXPECTED.",
-)
 @pytest.mark.asyncio
 @pytest.mark.parametrize("ac", ["fake", "addon"])
 async def test_invariant_3_both_backends_leave_the_same_state(ac: str, tmp_path_factory):

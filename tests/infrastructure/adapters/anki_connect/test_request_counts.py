@@ -1,19 +1,30 @@
-"""Request counts of AnkiConnectAdapter against an in-memory AnkiConnect.
+"""Request counts of a sync over AnkiConnect against an in-memory AnkiConnect.
 
-Each test pins how many requests of each action a fixed batch costs, so a change that
-adds round trips fails here. The fake answers as the add-on does (``fake_anki.py``).
+The sync is `NoteSync` over the adapter's session, as the pipeline runs it. Each test pins
+how many requests of each action a fixed batch costs, so a change that adds round trips
+fails here. The fake answers as the add-on does (``fake_anki.py``).
+
+The first request of a run reads the batch's note types and the deck names in one `multi`
+(`modelFieldNames`, `modelTemplates`, `deckNames`); the counts below include it.
 """
 
+import asyncio
 from pathlib import Path
 
 import pytest
 
+from arete.application.sync.note_sync import NoteSync
 from arete.domain.models import AnkiNote, WorkItem
 from arete.infrastructure.adapters.anki_connect import AnkiConnectAdapter
 
 from .fake_anki import FakeAnki
 
 N = 50
+TYPE_READS = {"modelFieldNames": 1, "modelTemplates": 1, "deckNames": 1}
+
+
+def _id(i: int) -> str:
+    return f"arete_{i:026d}"
 
 
 def _item(
@@ -27,12 +38,13 @@ def _item(
         model="Basic",
         deck=deck,
         fields={"Front": front or f"q{i}", "Back": "b", "_obsidian_source": f"v|f.md|{i}|x"},
-        tags=[f"arete_{i:026d}"] if tags is None else tags,
+        tags=[_id(i)] if tags is None else tags,
         start_line=1,
         end_line=2,
         nid=str(nid) if nid else None,
         source_file=Path("f.md"),
         source_index=i,
+        arete_id=_id(i) if tags is None or _id(i) in tags else None,
     )
     return WorkItem(note=note, source_file=Path("f.md"), source_index=i)
 
@@ -43,31 +55,47 @@ def _adapter(fake: FakeAnki) -> AnkiConnectAdapter:
     return adapter
 
 
+def _sync_of(fake: FakeAnki) -> NoteSync:
+    return NoteSync(_adapter(fake))
+
+
+# ---------------------------------------------------------------------------
+# Creates and heals
+# ---------------------------------------------------------------------------
+
+
 @pytest.mark.asyncio
-async def test_new_notes_read_their_cids_in_one_request():
+async def test_new_notes_cost_a_fixed_number_of_requests():
+    """N new cards: one id search, one content scan, one add per 50, one read of the cids."""
     fake = FakeAnki()
-    results = await _adapter(fake).sync_notes([_item(i) for i in range(N)])
+    results = await _sync_of(fake).sync_notes([_item(i) for i in range(N)])
 
     assert all(r.ok for r in results)
-    assert fake.requests["addNote"] == N
-    assert fake.requests["notesInfo"] == 1
+    assert fake.requests == {
+        "multi": 3,  # types and decks; the id searches; the adds
+        "findNotes": 1,  # the content scan of Basic
+        "createDeck": 1,
+        "notesInfo": 1,
+        "getDecks": 1,
+    }
+    assert fake.sub_actions["addNote"] == N
     for r in results:
         assert r.new_cid == str(fake.notes[int(r.new_nid or 0)]["cards"][0])
 
 
 @pytest.mark.asyncio
-async def test_a_note_healed_by_its_tag_is_read_once_plus_the_batch_cid_read():
+async def test_a_note_healed_by_its_tag_is_read_once():
     fake = FakeAnki()
-    nid = fake.add({"Front": "q1"}, deck="Old", tags=[f"arete_{1:026d}"])
+    nid = fake.add({"Front": "q1"}, deck="Old", tags=[_id(1)])
 
-    [result] = await _adapter(fake).sync_notes([_item(1)])
+    [result] = await _sync_of(fake).sync_notes([_item(1)])
 
     assert result.ok and result.new_nid == str(nid)
     assert result.new_cid == str(fake.notes[nid]["cards"][0])
     assert fake.card_deck[fake.notes[nid]["cards"][0]] == "D"
-    # tag candidates (1) + the batch cid read (1); no notesInfo of its own for the heal
-    assert fake.requests["notesInfo"] == 2
+    assert fake.requests["notesInfo"] == 1  # the id search's read serves the comparison too
     assert fake.requests["addNote"] == 0
+    assert sum(fake.requests.values()) == 7
 
 
 # ---------------------------------------------------------------------------
@@ -95,8 +123,9 @@ def _assert_matches_vault(fake: FakeAnki, item: WorkItem) -> None:
 
 
 async def _sync(fake: FakeAnki, items: list[WorkItem]):
+    fake.decks.add("D")
     fake.reset_counts()
-    return await _adapter(fake).sync_notes(items)
+    return await _sync_of(fake).sync_notes(items)
 
 
 @pytest.mark.asyncio
@@ -109,7 +138,8 @@ async def test_unchanged_updates_send_no_write():
     results = await _sync(fake, items)
 
     assert all(r.ok for r in results)
-    assert fake.requests == {"createDeck": 1, "modelFieldNames": 1, "notesInfo": 1, "getDecks": 1}
+    assert fake.requests == {"multi": 1, "notesInfo": 1, "getDecks": 1}
+    assert fake.sub_actions == TYPE_READS
 
 
 @pytest.mark.asyncio
@@ -122,14 +152,8 @@ async def test_one_changed_field_per_note_is_one_multi():
     results = await _sync(fake, items)
 
     assert all(r.ok for r in results)
-    assert fake.requests == {
-        "createDeck": 1,
-        "modelFieldNames": 1,
-        "notesInfo": 1,
-        "getDecks": 1,
-        "multi": 1,
-    }
-    assert fake.sub_actions == {"updateNoteFields": N}
+    assert fake.requests == {"multi": 2, "notesInfo": 1, "getDecks": 1}
+    assert fake.sub_actions == {**TYPE_READS, "updateNoteFields": N}
     for item in items:
         _assert_matches_vault(fake, item)
 
@@ -137,15 +161,16 @@ async def test_one_changed_field_per_note_is_one_multi():
 @pytest.mark.asyncio
 async def test_moved_and_retagged_notes_keep_the_write_order():
     fake = FakeAnki()
-    items = [_item(i, tags=[f"arete_{i:026d}", "new"]) for i in range(N)]
-    for item in items:
-        _held(fake, item, fields={"Front": "old"}, deck="Elsewhere", tags=["old"])
+    items = [_item(i, tags=[_id(i), "new"]) for i in range(N)]
+    for i, item in enumerate(items):
+        _held(fake, item, fields={"Front": "old"}, deck="Elsewhere", tags=[_id(i), "old"])
 
     results = await _sync(fake, items)
 
     assert all(r.ok for r in results)
-    assert fake.requests["multi"] == 4
+    assert fake.requests["multi"] == 5  # the type read, then one per write step
     assert fake.sub_actions == {
+        **TYPE_READS,
         "updateNoteFields": N,
         "addTags": N,
         "removeTags": N,
@@ -153,7 +178,7 @@ async def test_moved_and_retagged_notes_keep_the_write_order():
     }
     for item in items:
         _assert_matches_vault(fake, item)
-    order = [a for a, _ in fake.log if a not in ("multi", "createDeck", "modelFieldNames")]
+    order = [a for a, _ in fake.log if a not in ("multi", *TYPE_READS)]
     assert order == ["notesInfo", "getDecks"] + [
         a for a in ("updateNoteFields", "addTags", "removeTags", "changeDeck") for _ in range(N)
     ]
@@ -168,7 +193,7 @@ async def test_a_single_note_sends_its_writes_as_plain_actions():
     [result] = await _sync(fake, [item])
 
     assert result.ok
-    sent = [a for a, _ in fake.log if a not in ("createDeck", "modelFieldNames")]
+    sent = [a for a, _ in fake.log if a not in ("multi", *TYPE_READS)]
     assert sent == ["notesInfo", "getDecks", "updateNoteFields", "changeDeck"]
 
 
@@ -176,7 +201,7 @@ async def test_a_single_note_sends_its_writes_as_plain_actions():
 async def test_a_failed_write_stops_that_note_only():
     """Note 1's field write fails: its later writes are not sent, the others complete."""
     fake = FakeAnki()
-    items = [_item(i, tags=[f"arete_{i:026d}", "new"]) for i in range(3)]
+    items = [_item(i, tags=[_id(i), "new"]) for i in range(3)]
     nids = [_held(fake, item, fields={"Front": "old"}, deck="Elsewhere") for item in items]
     fake.fail = lambda action, params: (
         "note was not found"
@@ -203,7 +228,11 @@ async def test_a_failed_multi_fails_the_notes_in_it():
     items = [_item(i) for i in range(3)]
     for item in items:
         _held(fake, item, fields={"Front": "old"})
-    fake.fail = lambda action, params: "Anki is busy" if action == "multi" else None
+    fake.fail = lambda action, params: (
+        "Anki is busy"
+        if action == "multi" and any(a["action"] == "updateNoteFields" for a in params["actions"])
+        else None
+    )
 
     results = await _sync(fake, items)
 
@@ -222,7 +251,7 @@ async def test_moves_are_sent_when_getdecks_fails():
     results = await _sync(fake, items)
 
     assert all(r.ok for r in results)
-    assert fake.sub_actions == {"changeDeck": 3}
+    assert fake.sub_actions == {**TYPE_READS, "changeDeck": 3}
 
 
 @pytest.mark.asyncio
@@ -242,7 +271,7 @@ async def test_a_card_reported_in_default_or_another_deck_is_moved():
     results = await _sync(fake, [in_default, queued])
 
     assert all(r.ok for r in results)
-    assert fake.sub_actions == {"createDeck": 2, "changeDeck": 2}  # two decks, one multi
+    assert fake.sub_actions == {**TYPE_READS, "changeDeck": 2}  # one multi
     assert fake.card_deck[fake.notes[nid]["cards"][0]] == "D"
 
 
@@ -261,19 +290,19 @@ async def test_a_note_with_a_card_out_of_place_is_moved_whole():
 
 
 @pytest.mark.asyncio
-async def test_two_items_on_one_note_both_write_in_item_order():
+async def test_two_items_on_one_note_fail_the_second():
+    """One note belongs to one card per run; the second item writes nothing."""
     fake = FakeAnki()
-    first, second = _item(0, front="A"), _item(1, front="B")
+    first, second = _item(0, front="A"), _item(1, front="B", tags=[_id(0)])
     nid = _held(fake, first)
     second.note.nid = str(nid)
+    second.note.arete_id = _id(0)
 
     results = await _sync(fake, [first, second])
 
-    assert all(r.ok for r in results)
-    sent = [a for a, _ in fake.log]
-    assert sent.count("updateNoteFields") == 2
-    assert sent.count("changeDeck") == 2
-    assert fake.notes[nid]["fields"]["Front"] == "B"
+    assert [r.ok for r in results] == [True, False]
+    assert "already synced" in (results[1].error or "")
+    assert fake.notes[nid]["fields"]["Front"] == "A"
 
 
 @pytest.mark.asyncio
@@ -292,7 +321,7 @@ async def test_a_field_the_note_type_lacks_is_no_difference():
 @pytest.mark.asyncio
 @pytest.mark.parametrize("seed", range(5))
 async def test_random_batches_end_with_anki_as_the_vault_says(seed):
-    """Whatever Anki holds, after one sync every note matches the vault."""
+    """Whatever Anki holds, after one sync every note it accepted matches the vault."""
     import random
 
     rng = random.Random(seed)
@@ -309,10 +338,12 @@ async def test_random_batches_end_with_anki_as_the_vault_says(seed):
         _held(fake, item, **change)
         if rng.random() < 0.1:
             item.note.fields["Back"] = item.note.fields["Back"] + "́"  # combining mark
-    fake.fail = lambda action, params: "boom" if rng.random() < 0.05 else None
+    writes = {"updateNoteFields", "addTags", "removeTags", "changeDeck", "getDecks"}
+    fake.fail = lambda action, params: "boom" if action in writes and rng.random() < 0.05 else None
 
     results = await _sync(fake, items)
 
+    assert any(r.ok for r in results)
     for item, result in zip(items, results, strict=True):
         if result.ok:
             _assert_matches_vault(fake, item)
@@ -324,7 +355,7 @@ async def test_random_batches_end_with_anki_as_the_vault_says(seed):
 
 
 @pytest.mark.asyncio
-async def test_concurrent_new_cards_share_one_content_index_build():
+async def test_new_cards_share_one_content_index_build():
     fake = FakeAnki()
     for j in range(1200):
         fake.add({"Front": f"old {j}"})
@@ -336,32 +367,34 @@ async def test_concurrent_new_cards_share_one_content_index_build():
     scans = [p for a, p in fake.log if a == "findNotes"]
     assert scans == [{"query": '"note:Basic"'}]
     assert fake.requests == {
-        "createDeck": 1,
-        "modelFieldNames": 1,
+        "multi": 2,  # types and decks; the 19 adds
         "findNotes": 1,
         # ceil(1201 / 500) for the index, 1 for the healed twin, 1 for the new cids
         "notesInfo": 3 + 1 + 1,
-        "addNote": 19,
-        "getDecks": 1,
+        "getDecks": 2,
         "updateNoteFields": 1,
         "changeDeck": 1,
     }
+    assert fake.sub_actions["addNote"] == 19
     assert results[7].new_nid == str(twin)
 
 
 @pytest.mark.asyncio
-async def test_a_failed_index_build_is_retried_by_the_next_batch():
+async def test_a_failed_index_build_fails_its_cards_and_the_next_batch_scans_again():
     fake = FakeAnki()
+    fake.decks.add("D")
     fake.fail = lambda action, params: "busy" if action == "findNotes" else None
-    adapter = _adapter(fake)
+    sync = _sync_of(fake)
 
-    first = await adapter.sync_notes([_item(i, tags=[]) for i in range(3)])
+    first = await sync.sync_notes([_item(i, tags=[]) for i in range(3)])
     fake.fail = lambda action, params: None
     fake.reset_counts()
-    second = await adapter.sync_notes([_item(i, tags=[]) for i in range(3, 6)])
+    second = await sync.sync_notes([_item(i, tags=[]) for i in range(3, 6)])
 
-    assert all(r.ok for r in first + second)
-    assert fake.requests["findNotes"] == 1  # retried once for the whole second batch
+    assert not any(r.ok for r in first)
+    assert all(r.ok for r in second)
+    assert len(fake.notes) == 3  # no twin from the failed batch
+    assert fake.requests["findNotes"] == 1  # scanned once for the whole second batch
 
 
 # ---------------------------------------------------------------------------
@@ -371,18 +404,16 @@ async def test_a_failed_index_build_is_retried_by_the_next_batch():
 
 @pytest.mark.asyncio
 async def test_concurrent_batches_create_each_deck_and_check_each_type_once():
-    import asyncio
-
     fake = FakeAnki()
     fake.models["Basic"].remove("_obsidian_source")
-    adapter = _adapter(fake)
+    sync = _sync_of(fake)
 
     batches = [[_item(10 * b + i, deck="Shared") for i in range(3)] for b in range(4)]
-    results = await asyncio.gather(*(adapter.sync_notes(batch) for batch in batches))
+    results = await asyncio.gather(*(sync.sync_notes(batch) for batch in batches))
 
     assert all(r.ok for batch in results for r in batch)
     assert fake.requests["createDeck"] == 1
-    assert fake.requests["modelFieldNames"] == 1
+    assert fake.sub_actions["modelFieldNames"] == 1
     assert fake.requests["modelFieldAdd"] == 1
 
 
@@ -402,16 +433,19 @@ async def test_a_batch_creates_its_decks_in_one_request():
 @pytest.mark.asyncio
 async def test_a_deck_that_failed_is_retried_and_the_others_are_kept():
     fake = FakeAnki()
-    adapter = _adapter(fake)
+    sync = _sync_of(fake)
     fake.fail = lambda action, params: (
         "bad name" if action == "createDeck" and params["deck"] == "B" else None
     )
 
-    assert await adapter._ensure_decks({"A", "B", "C"}) == {"A": True, "B": False, "C": True}
+    first = await sync.sync_notes([_item(i, deck=d) for i, d in enumerate("ABC")])
     fake.fail = lambda action, params: None
     fake.reset_counts()
-    assert await adapter._ensure_decks({"A", "B", "C"}) == {"A": True, "B": True, "C": True}
-    assert fake.log == [("createDeck", {"deck": "B"})]
+    second = await sync.sync_notes([_item(i, deck=d) for i, d in enumerate("ABC", start=3)])
+
+    assert [r.ok for r in first] == [True, False, True]
+    assert all(r.ok for r in second)
+    assert [p for a, p in fake.log if a == "createDeck"] == [{"deck": "B"}]
 
 
 # ---------------------------------------------------------------------------

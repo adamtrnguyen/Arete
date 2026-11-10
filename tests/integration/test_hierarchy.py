@@ -73,20 +73,13 @@ cards:
 
     match = re.search(r"nid:\s*['\"]?(\d+)['\"]?", content)
     assert match, "NID not found in file after first sync"
-    nid = match.group(1)
 
-    md_file.write_text(
-        f"""---
-deck: IntegrationTest::DeckB
-arete: true
-cards:
-  - nid: {nid}
-    Front: Moving Question
-    Back: Moving Answer
----
-""",
-        encoding="utf-8",
-    )
+    # Change only the deck; the card keeps the id and anki block the first sync wrote
+    from arete.application.utils.text import parse_frontmatter, rebuild_markdown_with_frontmatter
+
+    meta, body = parse_frontmatter(content)
+    meta["deck"] = "IntegrationTest::DeckB"
+    md_file.write_text(rebuild_markdown_with_frontmatter(meta, body), encoding="utf-8")
 
     # Run sync again
     run_arete(tmp_path, anki_url)

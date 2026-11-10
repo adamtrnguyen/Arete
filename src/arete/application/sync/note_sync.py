@@ -168,7 +168,14 @@ class NoteSync:
         await self._resolve_by_id(s, [c for c in cards if c.open])
         await self._resolve_by_content(s, [c for c in cards if c.open])
         await self._create(s, [c for c in cards if c.open])
-        await self._read_adopted(s, [c for c in cards if c.how == "adopt" and c.error is None])
+        await self._read_adopted(
+            s,
+            [
+                c
+                for c in cards
+                if c.how == "adopt" and c.error is None and not (c.held and c.held.cards)
+            ],
+        )
         await self._load_types(s, {c.held.model for c in cards if c.held})
         await self._write(s, cards)
 
@@ -176,7 +183,10 @@ class NoteSync:
 
     async def _load_types(self, s: NoteStoreSession, names: Collection[str]) -> None:
         async with self._types_lock:
-            todo = sorted(n for n in names if n not in self._types)
+            # A type whose read failed is read again by the next batch that needs it.
+            todo = sorted(
+                n for n in names if n not in self._types or isinstance(self._types[n], Exception)
+            )
             if not todo:
                 return
             try:
@@ -359,6 +369,7 @@ class NoteSync:
                 "(the rest are duplicates -- prune them)"
             )
         if self._claim(card, chosen.nid, "adopt"):
+            card.held = chosen
             self._log.info(f" -> Healed by arete ID {card.lookup_id}: nid={chosen.nid}")
 
     async def _resolve_by_content(self, s: NoteStoreSession, cards: list[_Card]) -> None:
@@ -460,7 +471,9 @@ class NoteSync:
                 if isinstance(result, Exception)
                 else [h for h in result if self._free(card, h.nid)]
             )
-            if free and self._claim(card, min(h.nid for h in free), "adopt"):
+            landed = min(free, key=lambda h: h.nid) if free else None
+            if landed is not None and self._claim(card, landed.nid, "adopt"):
+                card.held = landed
                 self._log.warning(f"[adopt] {error}; Anki holds {card.lookup_id} as nid={card.nid}")
                 continue
             card.fail(
@@ -469,7 +482,7 @@ class NoteSync:
             )
 
     async def _read_adopted(self, s: NoteStoreSession, cards: list[_Card]) -> None:
-        """Read each adopted note whole, cards and home decks included, before comparing."""
+        """Read whole each adopted note its lookup read without cards (a content match)."""
         nids = sorted({c.nid for c in cards if c.nid is not None})
         if not nids:
             return

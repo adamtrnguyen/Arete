@@ -9,7 +9,9 @@ from pathlib import Path
 
 import pytest
 
+from arete.application.sync.note_sync import NoteSync
 from arete.domain.models import AnkiNote, OutcomeUnknown, WorkItem
+from arete.domain.ownership import is_arete_id
 from arete.infrastructure.adapters import anki_connect
 from arete.infrastructure.adapters.anki_connect import AnkiConnectAdapter
 
@@ -44,6 +46,7 @@ def _item(
         nid=str(nid) if nid else None,
         source_file=Path("f.md"),
         source_index=index,
+        arete_id=next((t for t in (tags if tags is not None else [ID]) if is_arete_id(t)), None),
     )
     return WorkItem(note=note, source_file=Path("f.md"), source_index=index)
 
@@ -52,6 +55,11 @@ def _adapter(fake: FakeAnki) -> AnkiConnectAdapter:
     adapter = AnkiConnectAdapter(url="http://fake-anki:8765")
     adapter._http_request = fake.http  # type: ignore[method-assign]
     return adapter
+
+
+def _synced(fake: FakeAnki) -> NoteSync:
+    """The adapter as the pipeline drives it: through the shared NoteSync."""
+    return NoteSync(_adapter(fake))
 
 
 def _held(fake: FakeAnki, front: str = "q", back: str = "OLD") -> int:
@@ -67,7 +75,7 @@ def _held(fake: FakeAnki, front: str = "q", back: str = "OLD") -> int:
 @pytest.mark.asyncio
 async def test_a_nid_that_is_not_a_number_fails_the_card_and_creates_nothing():
     fake = FakeAnki()
-    [result] = await _adapter(fake).sync_notes([_item(nid="not-a-number")])
+    [result] = await _synced(fake).sync_notes([_item(nid="not-a-number")])
     assert not result.ok
     assert result.new_nid is None
     assert fake.notes == {}
@@ -80,7 +88,7 @@ async def test_when_notesinfo_errors_the_card_fails_and_no_twin_is_added():
     nid = _held(fake)
     fake.fail = lambda action, _p: "collection is locked" if action == "notesInfo" else None
 
-    [result] = await _adapter(fake).sync_notes([_item(nid=nid, back="NEW")])
+    [result] = await _synced(fake).sync_notes([_item(nid=nid, back="NEW")])
 
     assert not result.ok
     assert "collection is locked" in (result.error or "")
@@ -95,7 +103,7 @@ async def test_when_notesinfo_answers_the_wrong_count_the_card_fails_untouched()
     nid = _held(fake)
     fake._a_notesInfo = lambda notes: []  # type: ignore[method-assign]
 
-    [result] = await _adapter(fake).sync_notes([_item(nid=nid, back="NEW")])
+    [result] = await _synced(fake).sync_notes([_item(nid=nid, back="NEW")])
 
     assert not result.ok
     assert "notesInfo answered" in (result.error or "")
@@ -114,7 +122,7 @@ async def test_one_failing_write_fails_only_its_own_card():
         "note is read-only" if action == "updateNoteFields" and p["note"]["id"] == first else None
     )
 
-    bad, good = await _adapter(fake).sync_notes(
+    bad, good = await _synced(fake).sync_notes(
         [
             _item(front="q1", nid=first, back="NEW", index=1),
             _item(front="q2", nid=second, back="NEW", index=2),
@@ -151,7 +159,7 @@ async def test_a_malformed_multi_reply_fails_the_cards_whose_writes_it_carried(b
 
     fake._a_multi = multi  # type: ignore[method-assign]
 
-    results = await _adapter(fake).sync_notes(
+    results = await _synced(fake).sync_notes(
         [
             _item(front="q1", nid=first, back="NEW", index=1),
             _item(front="q2", nid=second, back="NEW", index=2),
@@ -168,7 +176,7 @@ async def test_an_add_that_answers_null_fails_the_card():
     fake.decks.add("D")
     fake._a_addNote = lambda note: None  # type: ignore[method-assign]
 
-    [result] = await _adapter(fake).sync_notes([_item()])
+    [result] = await _synced(fake).sync_notes([_item()])
 
     assert not result.ok
     assert "addNote returned null ID" in (result.error or "")
@@ -198,7 +206,7 @@ async def test_a_retype_whose_reply_was_lost_and_whose_reread_fails_is_reported(
         (True, TimeoutError()) if action == "changeNoteType" else None
     )
 
-    [result] = await _adapter(fake).sync_notes([_item(nid=nid, model="Swapped")])
+    [result] = await _synced(fake).sync_notes([_item(nid=nid, model="Swapped")])
 
     assert not result.ok
     assert f"Re-reading note {nid} failed: collection is locked" in (result.error or "")
@@ -209,7 +217,8 @@ async def test_a_retype_whose_reply_was_lost_and_whose_reread_fails_is_reported(
 
 
 @pytest.mark.asyncio
-async def test_a_failed_tag_search_falls_back_to_content_and_heals_without_a_twin(caplog):
+async def test_a_failed_tag_search_fails_the_card_without_a_twin():
+    """A failed lookup is not "no such note": creating then would duplicate the card."""
     fake = FakeAnki()
     nid = _held(fake)
     fake.fail = lambda action, p: (
@@ -218,30 +227,30 @@ async def test_a_failed_tag_search_falls_back_to_content_and_heals_without_a_twi
         else None
     )
 
-    with caplog.at_level(logging.WARNING):
-        [result] = await _adapter(fake).sync_notes([_item(back="NEW")])
+    [result] = await _synced(fake).sync_notes([_item(back="NEW")])
 
-    assert result.ok, result.error
-    assert result.new_nid == str(nid)
+    assert not result.ok
+    assert "search is broken" in (result.error or "")
     assert len(fake.notes) == 1
-    assert fake.notes[nid]["fields"]["Back"] == "NEW"
-    assert "Healing tag query failed: search is broken" in caplog.text
+    assert fake.notes[nid]["fields"]["Back"] == "OLD"
+    assert fake.requests["addNote"] == 0
 
 
 @pytest.mark.asyncio
-async def test_an_id_tag_copied_onto_an_unrelated_note_is_not_taken_for_identity(caplog):
+async def test_of_two_notes_carrying_the_id_the_one_whose_content_matches_is_taken(caplog):
     fake = FakeAnki()
     fake.decks.add("D")
     stranger = fake.add({"Front": "something else"}, deck="D", tags=[ID])
+    own = fake.add({"Front": "q"}, deck="D", tags=[ID])
 
     with caplog.at_level(logging.WARNING):
-        [result] = await _adapter(fake).sync_notes([_item(front="q")])
+        [result] = await _synced(fake).sync_notes([_item(front="q")])
 
     assert result.ok, result.error
-    assert result.new_nid != str(stranger)
+    assert result.new_nid == str(own)
     assert fake.notes[stranger]["fields"]["Front"] == "something else"
     assert len(fake.notes) == 2
-    assert "none match content" in caplog.text
+    assert f"using nid={own}" in caplog.text
 
 
 @pytest.mark.asyncio
@@ -252,22 +261,23 @@ async def test_duplicates_sharing_an_id_heal_to_the_oldest_note_and_warn(caplog)
     newer = fake.add({"Front": "q"}, deck="D", tags=[ID])
 
     with caplog.at_level(logging.WARNING):
-        [result] = await _adapter(fake).sync_notes([_item(front="q", back="NEW")])
+        [result] = await _synced(fake).sync_notes([_item(front="q", back="NEW")])
 
     assert older < newer
     assert result.new_nid == str(older)
     assert fake.notes[older]["fields"]["Back"] == "NEW"
     assert fake.notes[newer]["fields"]["Back"] == ""
-    assert f"using oldest nid={older}" in caplog.text
+    assert f"using nid={older}" in caplog.text
 
 
 @pytest.mark.asyncio
 async def test_a_card_with_an_empty_first_field_is_never_matched_to_a_note():
+    """Not by content: an empty first field matches nothing (the note carries no id)."""
     fake = FakeAnki()
     fake.decks.add("D")
-    fake.add({"Front": ""}, deck="D", tags=[ID])
+    fake.add({"Front": ""}, deck="D", tags=[])
 
-    [result] = await _adapter(fake).sync_notes([_item(front="")])
+    [result] = await _synced(fake).sync_notes([_item(front="")])
 
     assert not result.ok
     assert "empty" in (result.error or "")
@@ -282,7 +292,7 @@ async def test_the_arete_id_field_on_the_note_wins_over_tags():
     item = _item(front="q", tags=[ID])
     item.note.arete_id = OTHER_ID
 
-    [result] = await _adapter(fake).sync_notes([item])
+    [result] = await _synced(fake).sync_notes([item])
 
     assert result.new_nid == str(own)
     assert len(fake.notes) == 1

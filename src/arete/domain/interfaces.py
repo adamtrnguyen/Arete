@@ -136,11 +136,17 @@ class NoteStoreSession(Protocol):
     async def find_by_arete_ids(
         self, arete_ids: Sequence[str]
     ) -> dict[str, list[HeldNote] | Exception]:
-        """Per Arete id, every note carrying it as a tag (case-insensitive), oldest first."""
+        """Per Arete id, every note carrying it as a tag (case-insensitive), oldest first.
+
+        Each note comes whole, as `read_notes` gives it.
+        """
         ...
 
     async def scan_model(self, model: str) -> list[HeldNote]:
-        """Every note of the type, for matching by content; raise if the scan fails."""
+        """Every note of the type, for matching by content; raise if the scan fails.
+
+        A note may come without its cards.
+        """
         ...
 
     async def create_notes(self, notes: Sequence[NewNote]) -> list[int | Exception]:

@@ -74,21 +74,16 @@ cards:
     # Instead, let's just constructing v2 content using the known nids from Anki
     # (since arete syncs nids to file matching anki).
 
-    md_file.write_text(
-        f"""---
-deck: {test_deck}
-arete: true
-cards:
-  - nid: {nid_b}
-    Front: Card B
-    Back: Back B Modified
-  - nid: {nid_a}
-    Front: Card A
-    Back: Back A Modified
----
-""",
-        encoding="utf-8",
-    )
+    # Swap the two card blocks as the first sync left them (each keeps its id and anki
+    # block) and edit both answers.
+    from arete.application.utils.text import parse_frontmatter, rebuild_markdown_with_frontmatter
+
+    meta, body = parse_frontmatter(md_file.read_text(encoding="utf-8"))
+    card_a, card_b = meta["cards"]
+    assert {str(card_a["anki"]["nid"]), str(card_b["anki"]["nid"])} == {str(nid_a), str(nid_b)}
+    card_a["Back"], card_b["Back"] = "Back A Modified", "Back B Modified"
+    meta["cards"] = [card_b, card_a]
+    md_file.write_text(rebuild_markdown_with_frontmatter(meta, body), encoding="utf-8")
 
     # 3. Sync
     run_arete(tmp_path, anki_url)

@@ -1,4 +1,4 @@
-"""One sync_notes batch against real Anki: one read per batch, writes only where Anki differs.
+"""One NoteSync batch against real Anki: one read per batch, writes only where Anki differs.
 
 The writes of several notes travel in one ``multi`` request, so this checks the add-on's
 real ``multi`` and ``getDecks`` replies, not a fake's.
@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 import requests
 
+from arete.application.sync.note_sync import NoteSync
 from arete.domain.models import AnkiNote, WorkItem
 from arete.infrastructure.adapters.anki_connect import AnkiConnectAdapter
 
@@ -26,6 +27,7 @@ def _item(i: int, deck: str, nid: int | None = None, back: str = "b", extra_tag:
         nid=str(nid) if nid else None,
         source_file=Path("batched.md"),
         source_index=i,
+        arete_id=tags[0],
     )
     return WorkItem(note=note, source_file=Path("batched.md"), source_index=i)
 
@@ -42,7 +44,7 @@ async def test_one_batch_writes_only_what_differs(anki_url, setup_anki, caplog):
     moved = f"{deck}::Moved"
     adapter = AnkiConnectAdapter(url=anki_url)
     try:
-        created = await adapter.sync_notes([_item(i, deck) for i in range(4)])
+        created = await NoteSync(adapter).sync_notes([_item(i, deck) for i in range(4)])
         assert all(r.ok and r.new_cid for r in created), [r.error for r in created]
         nids = [int(r.new_nid or 0) for r in created]
 
@@ -56,7 +58,7 @@ async def test_one_batch_writes_only_what_differs(anki_url, setup_anki, caplog):
             return await real_request(payload)
 
         adapter._http_request = counting  # type: ignore[method-assign]
-        results = await adapter.sync_notes(
+        results = await NoteSync(adapter).sync_notes(
             [
                 _item(0, deck, nids[0], back="changed"),
                 _item(1, moved, nids[1]),
@@ -71,10 +73,13 @@ async def test_one_batch_writes_only_what_differs(anki_url, setup_anki, caplog):
     # A getDecks lost to the add-on's dropped connections sends every move (the safe side).
     moved_anyway = any("getDecks failed" in r.getMessage() for r in caplog.records)
     assert sent == {
+        "multi": 2,  # the note types with the deck names; the writes, one step each note
+        "multi:modelFieldNames": 1,
+        "multi:modelTemplates": 1,
+        "multi:deckNames": 1,
         "createDeck": 1,  # the new subdeck
         "notesInfo": 1,
         "getDecks": 1,
-        "multi": 2 if moved_anyway else 1,
         "multi:updateNoteFields": 1,
         "multi:changeDeck": 4 if moved_anyway else 1,
         "multi:addTags": 1,

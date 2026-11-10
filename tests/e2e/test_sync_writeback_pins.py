@@ -18,7 +18,7 @@ from arete.domain.models import AnkiNote, UpdateItem, WorkItem
 from tests.e2e.sync_harness import BACKENDS, Backend, make_backend
 
 ID = "arete_01J00000000000000000000009"
-SHARED = {"direct"}  # the backends the pipeline syncs through NoteSync
+SHARED = {"direct", "fake", "addon"}  # the backends the pipeline syncs through NoteSync
 
 
 def _item(nid: int | str | None = None, model: str = "Basic", **fields: str) -> WorkItem:

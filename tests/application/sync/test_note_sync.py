@@ -591,3 +591,17 @@ async def test_a_collection_that_cannot_be_opened_fails_every_card():
     assert [r.ok for r in results] == [False, False]
     assert all("collection is locked" in (r.error or "") for r in results)
     assert all(r.note is not None for r in results)
+
+
+@pytest.mark.asyncio
+async def test_a_failed_type_read_is_read_again_by_the_next_batch():
+    store = FakeNoteStore()
+    store.fail = lambda op, key: Exception("busy") if op == "note_types" else None
+    sync = NoteSync(store)
+
+    [first] = await sync.sync_notes([card(1)])
+    store.fail = lambda op, key: None
+    [second] = await sync.sync_notes([card(2, arete_id=ID2)])
+
+    assert not first.ok and "busy" in (first.error or "")
+    assert second.ok and store.calls["note_types"] == 2

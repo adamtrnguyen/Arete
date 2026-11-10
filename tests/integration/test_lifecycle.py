@@ -114,20 +114,13 @@ cards:
     assert len(resp.json()["result"]) == 1
     nid = resp.json()["result"][0]
 
-    # Change tags
-    md_file.write_text(
-        f"""---
-deck: {test_deck}
-arete: true
-tags: [tag_v2, tag_complex_👍]
-cards:
-  - nid: {nid}
-    Front: Tag Test
-    Back: Content
----
-""",
-        encoding="utf-8",
-    )
+    # Change tags; the card keeps the id and anki block the first sync wrote
+    from arete.application.utils.text import parse_frontmatter, rebuild_markdown_with_frontmatter
+
+    meta, body = parse_frontmatter(md_file.read_text(encoding="utf-8"))
+    assert str(meta["cards"][0]["anki"]["nid"]) == str(nid)
+    meta["tags"] = ["tag_v2", "tag_complex_👍"]
+    md_file.write_text(rebuild_markdown_with_frontmatter(meta, body), encoding="utf-8")
 
     run_arete(tmp_path, anki_url)
 

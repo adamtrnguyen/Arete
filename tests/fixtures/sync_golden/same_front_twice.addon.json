@@ -1,5 +1,21 @@
 {
   "notes": {
+    "twins.md#1": [
+      {
+        "decks": [
+          "S::Twins"
+        ],
+        "fields": {
+          "Back": "<p>First answer</p>",
+          "Front": "<p>Same question</p>",
+          "_obsidian_source": "vault|twins.md|6|<id of twins.md#1>"
+        },
+        "model": "Basic",
+        "tags": [
+          "<id of twins.md#1>"
+        ]
+      }
+    ],
     "twins.md#2": [
       {
         "decks": [
@@ -8,7 +24,7 @@
         "fields": {
           "Back": "<p>Second answer</p>",
           "Front": "<p>Same question</p>",
-          "_obsidian_source": "vault|twins.md|13|<id of twins.md#2>"
+          "_obsidian_source": "vault|twins.md|9|<id of twins.md#2>"
         },
         "model": "Basic",
         "tags": [
@@ -22,24 +38,8 @@
       {
         "card": "twins.md#1",
         "error": null,
-        "new_cid": "card ord 0 of the note of twins.md#2",
-        "new_nid": "the note of twins.md#2",
-        "ok": true
-      },
-      {
-        "card": "twins.md#2",
-        "error": "cannot create note because it is a duplicate",
-        "new_cid": null,
-        "new_nid": null,
-        "ok": false
-      }
-    ],
-    [
-      {
-        "card": "twins.md#1",
-        "error": null,
-        "new_cid": null,
-        "new_nid": "the note of twins.md#2",
+        "new_cid": "card ord 0 of its note",
+        "new_nid": "its note",
         "ok": true
       },
       {
@@ -49,12 +49,13 @@
         "new_nid": "its note",
         "ok": true
       }
-    ]
+    ],
+    []
   ],
   "vault_ids": {
     "twins.md#1": {
-      "cid": "card ord 0 of the note of twins.md#2",
-      "nid": "the note of twins.md#2"
+      "cid": "card ord 0 of its note",
+      "nid": "its note"
     },
     "twins.md#2": {
       "cid": "card ord 0 of its note",

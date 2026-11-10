@@ -239,15 +239,7 @@ async def test_inv2_a_dangling_nid_is_resolved_by_the_arete_id(world: World):
 
 
 @pytest.mark.asyncio
-@on(
-    *ALL,
-    xfail={
-        "fake": "AnkiConnect accepts a tag match only if the first field still matches "
-        "(_match_by_tag), then falls back to content, which no longer matches: observed 2 "
-        "notes carrying the same Arete id",
-        "addon": "as on the fake: tag match needs the old first field, observed 2 notes",
-    },
-)
+@on(*ALL)
 async def test_inv2_a_card_whose_text_changed_is_found_by_its_id(world: World):
     """The card lost its nid (copied, or the crash window of design 3.2) and was edited."""
     await world.sync()

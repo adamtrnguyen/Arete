@@ -11,9 +11,12 @@ def adapter(anki_url) -> AnkiConnectAdapter:
 
 
 @pytest.mark.asyncio
-async def test_ensure_deck_hierarchy(adapter, setup_anki):
-    """ensure_deck creates nested deck hierarchy."""
-    await adapter.ensure_deck("IntegrationTest::Sub::Deep")
+async def test_create_decks_makes_the_nested_hierarchy(adapter, setup_anki):
+    """The session's create_decks creates a nested deck and its parents."""
+    async with adapter.session() as s:
+        assert await s.create_decks(["IntegrationTest::Sub::Deep"]) == {
+            "IntegrationTest::Sub::Deep": None
+        }
 
     decks = await adapter.get_deck_names()
     assert "IntegrationTest::Sub::Deep" in decks

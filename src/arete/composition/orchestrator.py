@@ -12,6 +12,7 @@ from arete.application.sync.prune import PruneConfirm
 from arete.application.sync.vault_service import VaultService
 from arete.application.utils.logging import setup_logging
 from arete.composition.factory import get_anki_bridge, get_cache
+from arete.infrastructure.adapters.anki_connect import AnkiConnectAdapter
 from arete.infrastructure.adapters.anki_direct import AnkiDirectAdapter
 
 
@@ -62,9 +63,10 @@ async def execute_sync(
     )
 
     anki_bridge = await get_anki_bridge(config)
-    # The backends whose notes the shared NoteSync decides for; the others still decide
-    # in their own sync_notes.
-    note_store = anki_bridge if isinstance(anki_bridge, AnkiDirectAdapter) else None
+    # Both backends' notes are decided by the shared NoteSync over the adapter's session.
+    note_store = (
+        anki_bridge if isinstance(anki_bridge, (AnkiDirectAdapter, AnkiConnectAdapter)) else None
+    )
     try:
         stats = await run_pipeline(
             config,

@@ -3,6 +3,7 @@ from typing import Any, Protocol
 
 import requests
 
+from arete.application.sync.note_sync import NoteSync
 from arete.domain.models import UpdateItem, WorkItem
 from arete.infrastructure.adapters.anki_connect import AnkiConnectAdapter
 from arete.infrastructure.adapters.anki_direct import AnkiDirectAdapter
@@ -28,7 +29,7 @@ class ConnectBridgeRunner:
         self.url = url
 
     async def sync_notes(self, work_items: list[WorkItem]) -> list[UpdateItem]:
-        return await self.adapter.sync_notes(work_items)
+        return await NoteSync(self.adapter).sync_notes(work_items)  # type: ignore[arg-type]
 
     async def get_note_fields(self, nid: str) -> dict[str, Any]:
         resp = requests.post(
@@ -62,7 +63,7 @@ class DirectBridgeRunner:
         self.anki_base = anki_base
 
     async def sync_notes(self, work_items: list[WorkItem]) -> list[UpdateItem]:
-        return await self.adapter.sync_notes(work_items)
+        return await NoteSync(self.adapter).sync_notes(work_items)  # type: ignore[arg-type]
 
     async def get_note_fields(self, nid: str) -> dict[str, Any]:
         with AnkiRepository(self.anki_base) as repo:

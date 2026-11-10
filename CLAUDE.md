@@ -8,8 +8,8 @@ Each invariant gets a test that fails when it breaks; its status changes only wi
 | # | Invariant | Holds today |
 |---|---|---|
 | 1 | **Obsidian is ground truth.** After any sync, Anki's fields, tags, deck and note type for a card id equal the vault's. An edit made in Anki is overwritten. | Not yet: a field, tag, deck or note-type edit made in Anki survives a sync on every backend |
-| 2 | **The Arete id is the identity.** A card is found by its id, whichever backend runs. | Holds on the direct backend. Not yet over AnkiConnect: a card whose first field changed is not found by its id |
-| 3 | **Both backends behave the same.** Whether Anki is open changes how Arete reaches the collection, never what it does. | Not yet: the differences are named in `tests/e2e/test_sync_equivalence.py` |
+| 2 | **The Arete id is the identity.** A card is found by its id, whichever backend runs. | Holds |
+| 3 | **Both backends behave the same.** Whether Anki is open changes how Arete reaches the collection, never what it does. | Not yet for a card in `Arete::Queue`: the direct backend keeps it queued, AnkiConnect takes it out. Every case in `tests/e2e/test_sync_equivalence.py` ends the same on both |
 | 4 | **Arete never touches scheduling.** Review history, due dates and suspension belong to Anki. | Holds on the direct backend, a card in `Arete::Queue` included. Over AnkiConnect holds for a card in its home deck; not yet for a card in `Arete::Queue`: any update takes it out of the queue |
 | 5 | **A sync writes only ids into the vault.** The Arete id, the note id and the card id. | Note bodies hold. Not yet for frontmatter: a rewritten file loses comments and formatting, and a `\|` block becomes `\|-` |
 | 6 | **Nothing is deleted without confirmation.** | Holds |

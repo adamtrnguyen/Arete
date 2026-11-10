@@ -14,7 +14,9 @@ from pathlib import Path
 import httpx
 import pytest
 
+from arete.application.sync.note_sync import NoteSync
 from arete.domain.models import AnkiNote, WorkItem
+from arete.domain.ownership import is_arete_id
 from arete.infrastructure.adapters import anki_connect
 from arete.infrastructure.adapters.anki_connect import AnkiConnectAdapter
 
@@ -42,6 +44,7 @@ def _item(tags: list[str] | None = None, nid: int | None = None, model: str = "B
         nid=str(nid) if nid else None,
         source_file=Path("f.md"),
         source_index=1,
+        arete_id=next((t for t in (tags if tags is not None else [ID]) if is_arete_id(t)), None),
     )
     return WorkItem(note=note, source_file=Path("f.md"), source_index=1)
 
@@ -50,6 +53,11 @@ def _adapter(fake: FakeAnki) -> AnkiConnectAdapter:
     adapter = AnkiConnectAdapter(url="http://fake-anki:8765")
     adapter._http_request = fake.http  # type: ignore[method-assign]
     return adapter
+
+
+def _synced(fake: FakeAnki) -> NoteSync:
+    """The adapter as the pipeline drives it: through the shared NoteSync."""
+    return NoteSync(_adapter(fake))
 
 
 def _first(action: str, applied: bool, exc: BaseException):
@@ -77,7 +85,7 @@ async def test_an_add_that_landed_is_adopted_not_sent_again(lost):
     fake = FakeAnki()
     fake.interrupt = _first("addNote", applied=True, exc=lost)
 
-    [result] = await _adapter(fake).sync_notes([_item()])
+    [result] = await _synced(fake).sync_notes([_item()])
 
     assert fake.requests["addNote"] == 1
     assert len(fake.notes) == 1
@@ -92,7 +100,7 @@ async def test_an_add_that_never_landed_fails_the_card_and_is_not_sent_again():
     fake = FakeAnki()
     fake.interrupt = _first("addNote", applied=False, exc=TimeoutError())
 
-    [result] = await _adapter(fake).sync_notes([_item()])
+    [result] = await _synced(fake).sync_notes([_item()])
 
     assert fake.requests["addNote"] == 1
     assert fake.notes == {}
@@ -108,7 +116,7 @@ async def test_a_refused_connection_on_add_is_retried():
     fake = FakeAnki()
     fake.interrupt = _first("addNote", applied=False, exc=REFUSED)
 
-    [result] = await _adapter(fake).sync_notes([_item()])
+    [result] = await _synced(fake).sync_notes([_item()])
 
     assert result.ok, result.error
     assert fake.requests["addNote"] == 2
@@ -125,7 +133,7 @@ async def test_a_card_heals_to_the_note_with_its_own_id_not_one_sharing_a_file_t
     other = fake.add({"Front": "q"}, deck="D", tags=["arete_review", f"arete_{0:026d}"])
     own = fake.add({"Front": "q"}, deck="Old", tags=["arete_review", ID])
 
-    [result] = await _adapter(fake).sync_notes([_item(tags=["arete_review", ID])])
+    [result] = await _synced(fake).sync_notes([_item(tags=["arete_review", ID])])
 
     assert result.ok, result.error
     assert result.new_nid == str(own)
@@ -140,7 +148,7 @@ async def test_an_add_that_landed_is_adopted_when_a_file_tag_precedes_the_id():
     fake.add({"Front": "another card"}, deck="D", tags=["arete_review"])
     fake.interrupt = _first("addNote", applied=True, exc=TimeoutError())
 
-    [result] = await _adapter(fake).sync_notes([_item(tags=["arete_review", ID])])
+    [result] = await _synced(fake).sync_notes([_item(tags=["arete_review", ID])])
 
     assert fake.requests["addNote"] == 1
     [created] = [nid for nid, n in fake.notes.items() if ID in n["tags"]]
@@ -201,7 +209,7 @@ async def test_a_retype_that_landed_counts_as_done():
     fake, nid = _retype_fake()
     fake.interrupt = _first("changeNoteType", applied=True, exc=TimeoutError())
 
-    [result] = await _adapter(fake).sync_notes([_item(nid=nid, model="Swapped")])
+    [result] = await _synced(fake).sync_notes([_item(nid=nid, model="Swapped")])
 
     assert fake.requests["changeNoteType"] == 1
     assert result.ok, result.error
@@ -216,7 +224,7 @@ async def test_a_retype_that_never_landed_fails_the_card_and_is_not_sent_again()
     fake, nid = _retype_fake()
     fake.interrupt = _first("changeNoteType", applied=False, exc=TimeoutError())
 
-    [result] = await _adapter(fake).sync_notes([_item(nid=nid, model="Swapped")])
+    [result] = await _synced(fake).sync_notes([_item(nid=nid, model="Swapped")])
 
     assert fake.requests["changeNoteType"] == 1
     assert not result.ok
@@ -249,7 +257,7 @@ async def test_a_field_write_whose_reply_is_lost_is_sent_again():
     item.note.nid = str(nid)
     fake.interrupt = _first("updateNoteFields", applied=True, exc=TimeoutError())
 
-    [result] = await _adapter(fake).sync_notes([item])
+    [result] = await _synced(fake).sync_notes([item])
 
     assert result.ok, result.error
     assert fake.requests["updateNoteFields"] == 2
@@ -266,12 +274,24 @@ async def test_a_multi_of_state_writes_whose_reply_is_lost_is_sent_again():
         nid = fake.add({"Front": f"q{i}", "Back": "old"}, deck="Elsewhere", tags=item.note.tags)
         item.note.nid = str(nid)
         items.append(item)
-    fake.interrupt = _first("multi", applied=True, exc=TimeoutError())
+    lost = False
 
-    results = await _adapter(fake).sync_notes(items)
+    def interrupt(action: str, params: dict):
+        nonlocal lost
+        subs = [a["action"] for a in params.get("actions", [])]
+        if action == "multi" and "updateNoteFields" in subs and not lost:
+            lost = True
+            return True, TimeoutError()
+        return None
+
+    fake.interrupt = interrupt
+
+    results = await _synced(fake).sync_notes(items)
 
     assert all(r.ok for r in results), [r.error for r in results]
-    assert fake.requests["multi"] == 3  # the field writes twice, then the moves
+    # the note-type read, the field writes twice, then the moves
+    assert fake.requests["multi"] == 4
+    assert fake.sub_actions["updateNoteFields"] == 6
     assert {fake.card_deck[c] for n in fake.notes.values() for c in n["cards"]} == {"D"}
 
 
