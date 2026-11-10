@@ -10,6 +10,8 @@ import * as ts from 'typescript';
 const src = path.resolve(__dirname, '../../src');
 const EXEMPT = 'prose: ok';
 
+// A pointer to docs/history/<file> is a reference, not a record; its path may carry a date.
+const HISTORY_POINTER = /docs\/history\/\S+/g;
 const DATE = /\b(19|20)\d\d-\d\d(-\d\d)?\b/;
 const EMOJI = /[\u{1F300}-\u{1FAFF}⚠⛔✅❌]/u;
 const NARRATIVE =
@@ -85,7 +87,7 @@ function comments(): Line[] {
 
 const offenders = (re: RegExp, lines: Line[]) =>
 	lines
-		.filter((l) => re.test(l.text) && !l.text.includes(EXEMPT))
+		.filter((l) => re.test(l.text.replace(HISTORY_POINTER, '')) && !l.text.includes(EXEMPT))
 		.map((l) => `${l.file}:${l.line}`);
 
 describe('comments in src carry no record', () => {
@@ -111,6 +113,7 @@ describe('comments in src carry no record', () => {
 		expect(offenders(NARRATIVE, bad('// this used to crash prose: ok quoting'))).toHaveLength(
 			0,
 		);
+		expect(offenders(DATE, bad('// see docs/history/2026-09-08-x.md'))).toHaveLength(0);
 	});
 
 	test('no comment carries a date', () => {

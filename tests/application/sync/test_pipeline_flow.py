@@ -102,7 +102,8 @@ async def test_run_pipeline_no_files(mock_components, tmp_path):
 async def test_run_pipeline_dry_run_never_writes(mock_components, tmp_path):
     """--dry-run plans through a read-only NoteSync, mutates no cache, persists no nid.
 
-    Every stage honours the flag, not only the nid write-back and prune.
+    Every stage honours the flag, not only the nid write-back and prune
+    (docs/history/2026-09-08-duplicate-storm.md).
     """
     logger, vault, parser, bridge, cache = mock_components
 

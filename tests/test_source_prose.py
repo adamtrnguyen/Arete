@@ -20,6 +20,8 @@ import tokenize
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SRC = (ROOT / "src", ROOT / "scripts", ROOT / "tests")
 EXEMPT = "prose: ok"
+# A pointer to docs/history/<file> is a reference, not a record; its path may carry a date.
+HISTORY_POINTER = re.compile(r"docs/history/\S+")
 DATE = re.compile(r"\b(19|20)\d\d-\d\d(-\d\d)?\b")
 # Pictographs and warning marks; a symbol the code is QUOTING (a star in a title) is not emphasis.
 EMOJI = re.compile("[\U0001f300-\U0001faff\u26a0\u26d4\u2705\u274c]")
@@ -69,7 +71,7 @@ def _offenders(pattern: re.Pattern[str]) -> list[str]:
         found.extend(
             f"{path.relative_to(ROOT)}:{n}"
             for n, text in prose
-            if pattern.search(text) and EXEMPT not in text
+            if pattern.search(HISTORY_POINTER.sub("", text)) and EXEMPT not in text
         )
     return found
 
