@@ -31,7 +31,7 @@ uv sync
 
 | Command | Description |
 | :--- | :--- |
-| `arete vault check PATH` | Validate a single file for arete compatibility (`--json`). It cannot see ids shared between files: `arete graph check` reports them, and a sync refuses them. |
+| `arete vault check PATH` | Validate a single file for arete compatibility (`--json`). Reports an Arete id declared by two cards of the file (case-insensitive). It cannot see ids shared between files: `arete graph check` reports them, and a sync refuses them. |
 | `arete vault fix PATH` | Auto-fix common format errors in a file. |
 | `arete vault format [PATH]` | Normalize YAML frontmatter serialization. |
 

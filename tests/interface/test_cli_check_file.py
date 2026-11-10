@@ -164,3 +164,48 @@ def test_check_file_generic_exception(tmp_path):
         result = runner.invoke(app, ["vault", "check", str(f), "--json"])
         assert result.exit_code == 0
         assert "Generic Error" in result.stdout
+
+
+# --- Duplicate Arete ids within one file ---
+
+_DUP = (
+    "---\narete: true\ndeck: D\ncards:\n"
+    "  - id: arete_01ARZ3NDEKTSV4RRFFQ69G5FAV\n    Front: Q1\n    Back: A1\n"
+    "  - id: arete_01ARZ3NDEKTSV4RRFFQ69G5FAW\n    Front: Q2\n    Back: A2\n"
+    "  - id: {dup}\n    Front: Q3\n    Back: A3\n---\n"
+)
+
+
+@pytest.mark.parametrize(
+    "dup", ["arete_01ARZ3NDEKTSV4RRFFQ69G5FAV", "ARETE_01arz3ndektsv4rrffq69g5fav"]
+)
+def test_check_file_duplicate_id_text(tmp_path, dup):
+    f = tmp_path / "dup.md"
+    f.write_text(_DUP.format(dup=dup), encoding="utf-8")
+
+    result = runner.invoke(app, ["vault", "check", str(f)])
+    assert result.exit_code == 1
+    assert "Duplicate Arete id arete_01ARZ3NDEKTSV4RRFFQ69G5FAV" in result.stdout
+    assert "L5, L11" in result.stdout
+
+
+def test_check_file_duplicate_id_json(tmp_path):
+    f = tmp_path / "dup.md"
+    f.write_text(_DUP.format(dup="arete_01ARZ3NDEKTSV4RRFFQ69G5FAV"), encoding="utf-8")
+
+    data = json.loads(runner.invoke(app, ["vault", "check", str(f), "--json"]).stdout)
+    assert data["ok"] is False
+    (err,) = data["errors"]
+    assert err["line"] == 11
+    assert "arete_01ARZ3NDEKTSV4RRFFQ69G5FAV" in err["message"]
+    assert "L5, L11" in err["message"]
+
+
+def test_check_file_distinct_ids_pass_and_say_what_is_not_checked(tmp_path):
+    f = tmp_path / "ok.md"
+    f.write_text(_DUP.format(dup="arete_01ARZ3NDEKTSV4RRFFQ69G5FAX"), encoding="utf-8")
+
+    result = runner.invoke(app, ["vault", "check", str(f)])
+    assert result.exit_code == 0
+    assert "Valid arete file" in result.stdout
+    assert "arete graph check" in result.stdout

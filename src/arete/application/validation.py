@@ -218,6 +218,38 @@ def _validate_cards_list(meta: dict, result: ValidationResult) -> None:
     for i, card in enumerate(cards):
         _check_single_card(card, i, cards, result)
 
+    _check_duplicate_ids(cards, result)
+
+
+def _check_duplicate_ids(cards: list, result: ValidationResult) -> None:
+    """Report an Arete id declared by more than one card of this file.
+
+    A sync refuses every card of such an id, so the check names them. Cards in other
+    files are out of reach here; `arete graph check` reports those.
+    """
+    from arete.application.sync.parser import MarkdownParser
+    from arete.domain.ownership import group_duplicate_ids
+
+    # `__line__` counts from the first line after the opening `---`.
+    declared = (
+        ((i, card.get("__line__", i) + 1), card_id)
+        for i, card in enumerate(cards)
+        if (card_id := MarkdownParser.declared_id(card))
+    )
+    for group in group_duplicate_ids(declared).values():
+        lines = [line for (_, line), _ in group]
+        shown = ", ".join(f"L{n}" for n in lines)
+        result.ok = False
+        result.errors.append(
+            {
+                "line": lines[1],
+                "message": (
+                    f"Duplicate Arete id {group[0][1]}: declared by {len(group)} cards "
+                    f"({shown}). A sync refuses all of them."
+                ),
+            }
+        )
+
 
 # ---------------------------------------------------------------------------
 # Top-level validation entry point

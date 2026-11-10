@@ -46,6 +46,10 @@ def check(
             typer.secho("✅ Valid arete file!", fg="green")
             typer.echo(f"  Deck: {result.stats['deck']}")
             typer.echo(f"  Cards: {result.stats['cards_found']}")
+            typer.echo(
+                "  Ids shared with other files are not checked here: "
+                "`arete graph check` reports them and a sync refuses them."
+            )
         else:
             typer.secho("❌ Validation Failed:", fg="red")
             for err in result.errors:

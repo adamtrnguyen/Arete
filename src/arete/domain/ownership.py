@@ -25,3 +25,15 @@ def is_arete_id(tag: str) -> bool:
 def is_arete_owned(tags: Iterable[str]) -> bool:
     """True if a note with these tags was created by Arete."""
     return any(is_arete_id(t) for t in tags)
+
+
+def group_duplicate_ids[T](entries: Iterable[tuple[T, str]]) -> dict[str, list[tuple[T, str]]]:
+    """Group `(where, arete_id)` pairs by id, keeping the ids declared more than once.
+
+    Anki matches tags case-insensitively, so ids differing only in case are one id; the
+    key is the casefolded id and each entry keeps the id as written.
+    """
+    grouped: dict[str, list[tuple[T, str]]] = {}
+    for where, arete_id in entries:
+        grouped.setdefault(arete_id.casefold(), []).append((where, arete_id))
+    return {key: group for key, group in grouped.items() if len(group) > 1}

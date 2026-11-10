@@ -175,7 +175,6 @@ the reload (they keep running the old code).
 
 **Backend**
 
-- [ ] `arete vault check` does not detect a duplicate Arete id; only a sync refuses one.
 - [ ] Five Anki admin verbs are called only from `interface/`, with no use-case between.
 
 **Release plumbing**
