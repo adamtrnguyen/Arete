@@ -266,7 +266,10 @@ export class DependencySelectionModal extends Modal {
 		if (this.previewTimer) clearTimeout(this.previewTimer);
 		this.previewTimer = setTimeout(() => {
 			this.previewTimer = null;
-			void this.renderPreview();
+			// A note that cannot be read leaves the pane as it is.
+			this.renderPreview().catch((error) =>
+				console.error('[Arete] Dependency preview failed:', error),
+			);
 		}, PREVIEW_DELAY_MS);
 	}
 

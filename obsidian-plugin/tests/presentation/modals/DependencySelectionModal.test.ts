@@ -88,8 +88,12 @@ describe('DependencySelectionModal search and preview', () => {
 });
 
 describe('DependencySelectionModal key hint', () => {
+	const opened: any[] = [];
+
 	afterEach(() => {
 		Platform.isMacOS = false;
+		// Listing files schedules a preview; closing cancels it, so it cannot fire in a later test.
+		for (const modal of opened.splice(0)) modal.onClose();
 	});
 
 	/** A modal with its lists mocked; `onOpen` is not run, so no layout is needed. */
@@ -103,6 +107,7 @@ describe('DependencySelectionModal key hint', () => {
 		modal.resultsContainer = createMockElement('div', { children: [] });
 		modal.previewContainer = createMockElement('div');
 		modal.searchInput = { setPlaceholder: jest.fn(), setValue: jest.fn() };
+		opened.push(modal);
 		return modal;
 	}
 
