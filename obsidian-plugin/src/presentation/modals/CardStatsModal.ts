@@ -294,7 +294,7 @@ export class CardStatsModal extends Modal {
 				'circle',
 				currentR >= targetR
 					? 'arete-curve-point mod-success'
-					: 'arete-curve-point mod-error',
+					: 'arete-curve-point mod-warning',
 				{ cx: currentX, cy: currentY, r: 6 },
 			),
 		);

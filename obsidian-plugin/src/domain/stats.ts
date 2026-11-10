@@ -181,7 +181,7 @@ export interface CardStateResult {
 /** Warning cut-offs that are not settings. Each warns at the value or beyond it, or below it where noted. */
 export const LAPSES_WARNING_AT = 1;
 export const DIFFICULTY_WARNING_AT = 0.7;
-export const RETRIEVABILITY_ERROR_BELOW = 0.85;
+export const RETRIEVABILITY_WARNING_BELOW = 0.85;
 export const STABILITY_WARNING_BELOW = 7;
 export const INTERVAL_GROWTH_WARNING_BELOW = 1.2;
 export const PRESS_FATIGUE_ERROR_ABOVE = 0.3;
@@ -204,8 +204,8 @@ function atLeast(
 
 /**
  * Each metric against the cut-offs. Lapses and FSRS difficulty warn from a fixed value and
- * err at the user's threshold; retrievability errs below 0.85; stability warns below 7
- * days; SM-2 ease warns below the user's threshold and only under the SM-2 algorithm
+ * err at the user's threshold; retrievability warns below 0.85, because a card nearing
+ * its due date sits there in normal use and is no fault; stability warns below 7 days; SM-2 ease warns below the user's threshold and only under the SM-2 algorithm
  * (a zero factor is a card Anki has not scheduled, so it is `none`).
  */
 export function metricStates(
@@ -222,8 +222,8 @@ export function metricStates(
 		),
 		retrievability: !present(retrievability)
 			? 'none'
-			: retrievability < RETRIEVABILITY_ERROR_BELOW
-				? 'error'
+			: retrievability < RETRIEVABILITY_WARNING_BELOW
+				? 'warning'
 				: 'ok',
 		stability: !present(stability)
 			? 'none'

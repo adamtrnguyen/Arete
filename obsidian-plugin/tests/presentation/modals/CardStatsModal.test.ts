@@ -172,7 +172,7 @@ describe('CardStatsModal', () => {
 
 		expect(cells['Difficulty (1-10)'].flag).toBe('mod-warning'); // 0.7 <= 0.8 < 0.9
 		expect(cells['Stability'].flag).toBe('mod-warning');
-		expect(cells['Retrievability'].flag).toBe('mod-error');
+		expect(cells['Retrievability'].flag).toBe('mod-warning'); // never an error
 		expect(cells['Interval growth'].flag).toBe('mod-warning');
 		expect(cells['Press fatigue (hard %)'].flag).toBe('mod-error');
 		expect(cells['Days overdue'].flag).toBe('mod-error');
@@ -266,10 +266,10 @@ describe('CardStatsModal', () => {
 			expect(dot.attrs.class).toBe('arete-curve-point mod-success');
 		});
 
-		it('colours the current point red when retrievability is under target', () => {
+		it('marks the current point as a warning when retrievability is under target', () => {
 			open({ ...fullCard, stability: 10, retrievability: 0.5, desiredRetention: 0.9 });
 			const dot = svgs[0].children.find((c: any) => c.tag === 'circle');
-			expect(dot.attrs.class).toBe('arete-curve-point mod-error');
+			expect(dot.attrs.class).toBe('arete-curve-point mod-warning');
 			// elapsed = 9 * 10 * (1 / 0.5 - 1) = 90 days, clamped to the right edge (axis is 30 days)
 			expect(Number(dot.attrs.cx)).toBe(295);
 		});

@@ -247,7 +247,7 @@ describe('DashboardView overview', () => {
 			'mod-count': [],
 			'mod-difficulty': ['mod-warning'],
 			'mod-stability': ['mod-warning'],
-			'mod-retrievability': ['mod-error'],
+			'mod-retrievability': ['mod-warning'],
 			'mod-lapses': ['mod-error'],
 		});
 	});
@@ -349,7 +349,7 @@ describe('DashboardView overview', () => {
 				'mod-difficulty': ['mod-error'], // 0.95 >= 0.9
 				'mod-stability': ['mod-warning'], // 5 < 7
 				'mod-growth': ['mod-success'], // 1.5 >= 1.2
-				'mod-retrievability': ['mod-error'], // 0.5 < 0.85
+				'mod-retrievability': ['mod-warning'], // 0.5 < 0.85, never an error
 				'mod-lapses': ['mod-error'], // 4 >= 3
 				'mod-flags': [],
 			});

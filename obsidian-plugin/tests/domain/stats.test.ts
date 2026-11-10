@@ -88,7 +88,8 @@ describe('metricStates', () => {
 	});
 
 	it.each([
-		[0.84, 'error'],
+		[0, 'warning'],
+		[0.84, 'warning'],
 		[0.85, 'ok'],
 		[0.86, 'ok'],
 		[1, 'ok'],
@@ -183,17 +184,21 @@ describe('cardState', () => {
 		['lapses', { lapses: 3 }, 'error'],
 		['difficulty', { difficulty: 0.7 }, 'warning'],
 		['difficulty', { difficulty: 0.9 }, 'error'],
-		['retrievability', { retrievability: 0.84 }, 'error'],
+		['retrievability', { retrievability: 0.84 }, 'warning'],
 		['stability', { stability: 6 }, 'warning'],
 	])('one flagged %s makes the card %s', (_name, over, expected) => {
 		expect(cardState(stats(over), true, settings).state).toBe(expected);
 	});
 
 	it('the card shows its worst metric', () => {
-		const r = cardState(stats({ lapses: 1, retrievability: 0.5 }), true, settings);
+		const r = cardState(stats({ lapses: 3, retrievability: 0.5 }), true, settings);
 		expect(r.state).toBe('error');
-		expect(r.metrics.lapses).toBe('warning');
-		expect(r.metrics.retrievability).toBe('error');
+		expect(r.metrics.lapses).toBe('error');
+		expect(r.metrics.retrievability).toBe('warning');
+	});
+
+	it('low retrievability alone never makes a card an error', () => {
+		expect(cardState(stats({ retrievability: 0 }), true, settings).state).toBe('warning');
 	});
 
 	it('SM-2 ease warns the card; FSRS ignores it', () => {

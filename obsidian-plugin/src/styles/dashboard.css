@@ -601,8 +601,8 @@
 	fill: var(--color-green);
 }
 
-.arete-curve-point.mod-error {
-	fill: var(--color-red);
+.arete-curve-point.mod-warning {
+	fill: var(--color-orange);
 }
 
 .arete-curve-label {
