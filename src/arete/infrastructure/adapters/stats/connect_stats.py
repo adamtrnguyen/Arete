@@ -165,9 +165,9 @@ class ConnectStatsRepository(StatsRepository):
     async def get_deck_params(self, deck_names: list[str]) -> dict[str, dict]:
         """Fetch FSRS parameters for the given decks via AnkiConnect.
 
-        Falls back to defaults if the custom action isn't available. Every deck is read
-        in one request (a multi when there are several); a deck whose read fails gets the
-        defaults without affecting the others.
+        Every deck is read in one request (a multi when there are several); a deck whose
+        read fails, or that Anki does not hold, gets the defaults without affecting the
+        others.
         """
         params: dict[str, dict] = {}
         names = list(dict.fromkeys(deck_names))
