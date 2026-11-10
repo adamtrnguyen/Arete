@@ -1,4 +1,4 @@
-import { App, Modal, Notice } from 'obsidian';
+import { App, Modal, setIcon } from 'obsidian';
 import * as path from 'path';
 
 /** What this modal needs from the plugin (main.ts satisfies it; no import of main). */
@@ -29,7 +29,9 @@ export class CheckResultModal extends Modal {
 		header.createEl('span', { text: path.basename(this.filePath), cls: 'arete-filename' });
 
 		if (this.result.ok) {
-			contentEl.createDiv({ text: '✅ Valid', cls: 'arete-success' });
+			const status = contentEl.createDiv({ cls: 'arete-success' });
+			setIcon(status.createSpan(), 'check');
+			status.createSpan({ text: 'Valid' });
 
 			const ul = contentEl.createEl('ul', { cls: 'arete-stats' });
 
@@ -44,7 +46,9 @@ export class CheckResultModal extends Modal {
 				cls: 'arete-stats-val',
 			});
 		} else {
-			contentEl.createDiv({ text: '❌ Validation failed', cls: 'arete-error' });
+			const status = contentEl.createDiv({ cls: 'arete-error' });
+			setIcon(status.createSpan(), 'circle-x');
+			status.createSpan({ text: 'Validation failed' });
 
 			const table = contentEl.createEl('table', { cls: 'arete-error-table' });
 			const head = table.createEl('thead');
@@ -75,7 +79,7 @@ export class CheckResultModal extends Modal {
 					attr: { style: 'margin-top: 1rem; text-align: right;' },
 				});
 				const btn = btnContainer.createEl('button', {
-					text: '✨ Auto-fix issues',
+					text: 'Auto-fix issues',
 					cls: 'mod-cta',
 				});
 				btn.addEventListener('click', async () => {

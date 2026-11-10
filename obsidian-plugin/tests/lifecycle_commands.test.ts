@@ -1,5 +1,5 @@
 import './test-setup';
-import { App } from 'obsidian';
+import { App, setIcon } from 'obsidian';
 import AretePlugin from '@/main';
 
 describe('AretePlugin Lifecycle and Commands', () => {
@@ -95,20 +95,39 @@ describe('AretePlugin Lifecycle and Commands', () => {
 		integritySpy.mockRestore();
 	});
 
-	test('updateStatusBar all states', () => {
+	test('updateStatusBar draws a Lucide icon and a label, with no emoji', () => {
 		plugin.statusBarItem = plugin.addStatusBarItem() as any;
+		(setIcon as jest.Mock).mockClear();
+		const icons = () => (setIcon as jest.Mock).mock.calls.map((c) => c[1]);
+		const labels = () =>
+			(plugin.statusBarItem.createSpan as jest.Mock).mock.calls
+				.map((c) => c[0]?.text)
+				.filter(Boolean);
 
 		plugin.updateStatusBar('idle');
 		expect(plugin.statusBarItem.empty).toHaveBeenCalled();
+		expect(icons()).toEqual(['layers']);
+		expect(labels()).toEqual(['Arete']);
 
 		plugin.updateStatusBar('syncing');
 		expect(plugin.statusBarItem.createSpan).toHaveBeenCalledWith(
 			expect.objectContaining({ text: 'Syncing...' }),
 		);
+		expect(icons()).toContain('refresh-cw');
 
 		plugin.updateStatusBar('error', 'Auth Failed');
-		expect(plugin.statusBarItem.setText).toHaveBeenCalledWith('❌ Error');
+		expect(icons()).toContain('circle-x');
+		expect(labels()).toContain('Error');
 		expect(plugin.statusBarItem.title).toBe('Auth Failed');
+
+		jest.useFakeTimers();
+		plugin.updateStatusBar('success');
+		jest.useRealTimers();
+		expect(icons()).toContain('check');
+		expect(labels()).toContain('Synced');
+
+		const emoji = /\p{Extended_Pictographic}/u;
+		for (const label of labels()) expect(label).not.toMatch(emoji);
 	});
 
 	test('onunload empties status bar', () => {

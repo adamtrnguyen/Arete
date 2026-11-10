@@ -5,6 +5,7 @@ import {
 	Plugin,
 	FileSystemAdapter,
 	TFile,
+	setIcon,
 	CachedMetadata,
 	editorInfoField,
 } from 'obsidian';
@@ -572,26 +573,30 @@ export default class AretePlugin extends Plugin {
 			// Show last sync time
 			const lastSync = this.settings.last_sync_time;
 			if (lastSync) {
-				const ago = this.formatTimeAgo(lastSync);
-				this.statusBarItem.setText(`🃏 ${ago}`);
+				this.setStatusBar('layers', this.formatTimeAgo(lastSync));
 				this.statusBarItem.title = 'Click to sync to Anki';
 			} else {
-				this.statusBarItem.setText('🃏 Arete');
+				this.setStatusBar('layers', 'Arete');
 				this.statusBarItem.title = 'Never synced. Click to sync.';
 			}
 			return;
 		}
 
 		if (state === 'syncing') {
-			this.statusBarItem.createSpan({ cls: 'arete-sb-icon', text: '🔄 ' });
-			this.statusBarItem.createSpan({ text: 'Syncing...' });
+			this.setStatusBar('refresh-cw', 'Syncing...');
 		} else if (state === 'success') {
-			this.statusBarItem.setText('✅ Synced');
+			this.setStatusBar('check', 'Synced');
 			setTimeout(() => this.updateStatusBar('idle'), 3000);
 		} else if (state === 'error') {
-			this.statusBarItem.setText('❌ Error');
+			this.setStatusBar('circle-x', 'Error');
 			this.statusBarItem.title = msg || 'Check logs';
 		}
+	}
+
+	/** One status-bar entry: a Lucide icon followed by its label. */
+	private setStatusBar(icon: string, label: string) {
+		setIcon(this.statusBarItem.createSpan({ cls: 'status-bar-item-icon' }), icon);
+		this.statusBarItem.createSpan({ text: label });
 	}
 
 	private formatTimeAgo(timestamp: number): string {

@@ -1,5 +1,5 @@
 import '../../test-setup';
-import { App } from 'obsidian';
+import { App, setIcon } from 'obsidian';
 import O2APlugin from '@/main';
 import { CheckResultModal } from '@presentation/modals/CheckResultModal';
 import { createMockElement } from '../../test-setup';
@@ -53,6 +53,25 @@ describe('CheckResultModal Deep Coverage', () => {
 		modal = new CheckResultModal(app, plugin, result, '/path/to/note.md');
 		modal.onOpen();
 		expect(modal.contentEl.createEl).toHaveBeenCalledWith('ul', expect.any(Object));
+	});
+
+	test('the status line is a Lucide icon plus text, with no emoji', () => {
+		const spanTexts = (el: any) =>
+			(el.createDiv as jest.Mock).mock.results.flatMap((r) =>
+				(r.value.createSpan as jest.Mock).mock.calls.map((c) => c[0]?.text),
+			);
+		(setIcon as jest.Mock).mockClear();
+
+		modal = new CheckResultModal(app, plugin, { ok: true, stats: { cards_found: 1 } }, 'a.md');
+		modal.onOpen();
+		expect((setIcon as jest.Mock).mock.calls.map((c) => c[1])).toEqual(['check']);
+		expect(spanTexts(modal.contentEl)).toContain('Valid');
+
+		(setIcon as jest.Mock).mockClear();
+		modal = new CheckResultModal(app, plugin, { ok: false, errors: [] }, 'a.md');
+		modal.onOpen();
+		expect((setIcon as jest.Mock).mock.calls.map((c) => c[1])).toEqual(['circle-x']);
+		expect(spanTexts(modal.contentEl)).toContain('Validation failed');
 	});
 
 	test('onClose empties contentEl', () => {
