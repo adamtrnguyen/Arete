@@ -612,12 +612,8 @@ class AnkiConnect:
     @util.api()
     def deleteDecks(self, decks, cardsToo=False):
         if not cardsToo:
-            # since f592672fa952260655881a75a2e3c921b2e23857 (2.1.28)
-            # (see anki$ git log "-Gassert cardsToo")
-            # you can't delete decks without deleting cards as well.
-            # however, since 62c23c6816adf912776b9378c008a52bb50b2e8d (2.1.45)
-            # passing cardsToo to `rem` (long deprecated) won't raise an error!
-            # this is dangerous, so let's raise our own exception
+            # Anki deletes a deck's cards with the deck, and its delete call takes no flag
+            # to keep them, so a request to keep them is refused rather than ignored.
             raise Exception(
                 "Since Anki 2.1.28 it's not possible to delete decks without deleting cards as well"
             )
