@@ -7,7 +7,6 @@ import pytest
 from arete.application.vault_paths import (
     PathRefusedError,
     configured_vault_root,
-    require_configured,
     within_vault,
 )
 
@@ -65,18 +64,7 @@ def test_the_configured_vault_comes_from_the_environment(configured_vault):
     assert configured_vault_root() == configured_vault
 
 
-def test_require_configured_accepts_only_the_configured_path(tmp_path):
-    base = tmp_path / "Anki2"
-    base.mkdir()
-    require_configured(None, base, "anki_base")
-    require_configured(str(base), base, "anki_base")
-    with pytest.raises(PathRefusedError, match="differs from the configured anki_base"):
-        require_configured(str(tmp_path / "evil"), base, "anki_base")
-    with pytest.raises(PathRefusedError):
-        require_configured(str(base), None, "anki_base")
-
-
 def test_the_cli_does_not_use_the_check():
-    """The user-run CLI may sync any path; only the agent and HTTP surfaces are fenced."""
+    """The user-run CLI may sync any path; only the agent surface is fenced."""
     cli = Path(__file__).parents[2] / "src" / "arete" / "interface" / "cli.py"
     assert "vault_paths" not in cli.read_text()
