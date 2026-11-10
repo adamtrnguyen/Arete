@@ -1,35 +1,13 @@
+"""Prepare docker/anki_data for the Anki container: preferences, media folder, permissions.
+
+The container mounts arete_ankiconnect as its only add-on (docker/docker-compose.yml).
+"""
+
 import os
 from pathlib import Path
 
-# AnkiConnect ID and GitHub URL
-ADDON_ID = "2055492159"
-DOWNLOAD_URL = "https://github.com/FooSoft/anki-connect/releases/latest/download/AnkiConnect.zip"
-# Fallback if specific release needed, usually "AnkiConnect.zip" is in assets.
-# Actually, FooSoft/anki-connect releases often just have source code.
-# Let's check a known stable download or standard AnkiWeb link (harder to script).
-# Better to use the source code from master if no built artifact,
-# BUT AnkiConnect source IS the addon.
-# Let's try downloading the repo zip.
-REPO_ZIP_URL = "https://github.com/FooSoft/anki-connect/archive/refs/heads/master.zip"
-
 
 def install_ankiconnect():
-    # We now mount 'arete_ankiconnect' via Docker volume, so we DO NOT install the official addon.
-    # This prevents port 8765 conflicts.
-
-    # Clean up official addon if it exists to avoid conflicts
-    official_addon_path = (
-        Path(__file__).parent.parent / "docker/anki_data/.local/share/Anki2/addons21/2055492159"
-    )
-    if official_addon_path.exists():
-        print(f"Removing official AnkiConnect to avoid conflict: {official_addon_path}")
-        try:
-            import shutil
-
-            shutil.rmtree(official_addon_path)
-        except Exception as e:
-            print(f"Warning: Failed to remove official addon: {e}")
-
     # Seed 'prefs21.db' to skip First Run Wizard
     # The container runs as user 1000 (abc), mapping $HOME to /config (which is docker/anki_data)
     # Location: docker/anki_data/.local/share/Anki2/prefs21.db
