@@ -14,7 +14,7 @@ from arete.domain.stats.models import FsrsMemoryState
 
 def fsrs_state_of(card: Any) -> FsrsMemoryState | None:
     """Return the card's FSRS state, or None if it has never been reviewed under FSRS."""
-    ms = card.memory_state  # Optional[FsrsMemoryState protobuf] on anki 25.9.2
+    ms = card.memory_state  # Optional[FsrsMemoryState protobuf]
     if not ms:
         return None
     return FsrsMemoryState(
