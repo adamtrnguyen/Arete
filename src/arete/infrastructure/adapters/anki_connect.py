@@ -27,6 +27,7 @@ from arete.domain.models import (
     NoteTypeInfo,
     OutcomeUnknown,
 )
+from arete.infrastructure.anki.search import search_term
 
 # Writes sent in one multi request. Every write resets Anki's UI on its main thread, so
 # one request holds no more than a consumer batch.
@@ -178,7 +179,7 @@ class ConnectNoteSession:
         if not ids:
             return {}
         replies = await self._a._send_writes(
-            [("findNotes", {"query": f"tag:{i}"}) for i in ids], results=True
+            [("findNotes", {"query": search_term("tag", i)}) for i in ids], results=True
         )
         hits = {i: r for i, r in zip(ids, replies, strict=True) if isinstance(r, list)}
         held = await self.read_notes(sorted({int(n) for found in hits.values() for n in found}))
@@ -192,12 +193,25 @@ class ConnectNoteSession:
         return out
 
     async def scan_model(self, model: str) -> list[HeldNote]:
-        candidates = await self._a._invoke("findNotes", query=f'"note:{model}"')
+        """Every note of this type, and no note of another.
+
+        Each hit's own type is checked against the name, ignoring case as Anki does: Anki
+        keeps note type names unique ignoring case, and the direct backend finds the type
+        the same way (`models.by_name`).
+        """
+        candidates = await self._a._invoke("findNotes", query=search_term("note", model))
         infos = await self._a._read_notes([int(n) for n in candidates or []])
         failed = [i for i in infos.values() if isinstance(i, Exception)]
         if failed:
             raise failed[0]
-        return [_held(i, {}) for i in infos.values() if isinstance(i, dict) and i.get("noteId")]
+        wanted = model.casefold()
+        return [
+            _held(i, {})
+            for i in infos.values()
+            if isinstance(i, dict)
+            and i.get("noteId")
+            and str(i.get("modelName", "")).casefold() == wanted
+        ]
 
     # -- writes --------------------------------------------------------------
 
@@ -583,7 +597,7 @@ class AnkiConnectAdapter(AnkiBridge):
         self, deck_name: str | None = None, include_new: bool = False
     ) -> list[int]:
         """Fetch NIDs of due cards, optionally including new cards."""
-        deck_filter = f'deck:"{deck_name}" ' if deck_name else ""
+        deck_filter = f"{search_term('deck', deck_name)} " if deck_name else ""
         query = f"{deck_filter}(is:due)" if not include_new else f"{deck_filter}(is:due OR is:new)"
 
         # No fallback: an empty list here would build an empty queue and report
@@ -613,7 +627,7 @@ class AnkiConnectAdapter(AnkiBridge):
 
     async def get_notes_in_deck(self, deck_name: str) -> dict[str, int]:
         """Every note in the deck, keyed by its note id as a string (as the direct backend)."""
-        nids = await self._invoke("findNotes", query=f'"deck:{deck_name}"')
+        nids = await self._invoke("findNotes", query=search_term("deck", deck_name))
         return {str(nid): nid for nid in nids or []}
 
     async def get_note_tags(self, nids: list[int]) -> dict[int, list[str]]:
@@ -683,7 +697,8 @@ class AnkiConnectAdapter(AnkiBridge):
             for start in range(0, len(arete_ids), CHUNK):
                 chunk = arete_ids[start : start + CHUNK]
                 actions = [
-                    {"action": "findCards", "params": {"query": f"tag:{aid}"}} for aid in chunk
+                    {"action": "findCards", "params": {"query": search_term("tag", aid)}}
+                    for aid in chunk
                 ]
                 results = await self._invoke("multi", actions=actions)
                 for result in results:

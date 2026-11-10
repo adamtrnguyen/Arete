@@ -14,6 +14,7 @@ from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any, cast
 
 from arete.domain.models import HeldCard, HeldNote, NewNote, NoteChange, NoteTypeInfo
+from arete.infrastructure.anki.search import search_term
 
 if TYPE_CHECKING:
     from anki.collection import Collection
@@ -76,7 +77,7 @@ class DirectNoteSession:
         out: dict[str, list[HeldNote] | Exception] = {}
         for arete_id in arete_ids:
             try:
-                nids = sorted(self.col.find_notes(f"tag:{arete_id}"))
+                nids = sorted(self.col.find_notes(search_term("tag", arete_id)))
                 key = arete_id.casefold()
                 held = self._read_chunk([int(n) for n in nids])
                 out[arete_id] = [

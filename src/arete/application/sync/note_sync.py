@@ -552,7 +552,10 @@ class NoteSync:
                 except Exception as e:
                     return e
                 index: dict[str, list[tuple[int, frozenset[str]]]] = {}
-                for held in sorted(scanned, key=lambda h: h.nid):
+                # A note of another type is never adopted as this type's, whatever the
+                # store's search returned.
+                of_type = [h for h in scanned if h.model.casefold() == model.casefold()]
+                for held in sorted(of_type, key=lambda h: h.nid):
                     if key := _held_first_key(held):
                         index.setdefault(key, []).append((held.nid, frozenset(_arete_ids_of(held))))
                 self._index[model] = index

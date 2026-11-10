@@ -15,6 +15,7 @@ from arete.domain.constants import (
 from arete.domain.interfaces import AnkiBridge
 from arete.infrastructure.anki.note_session import DirectNoteSession
 from arete.infrastructure.anki.repository import AnkiRepository
+from arete.infrastructure.anki.search import search_term
 
 if TYPE_CHECKING:  # importing these eagerly cycles inside the anki package
     pass
@@ -60,7 +61,7 @@ class AnkiDirectAdapter(AnkiBridge):
             if not repo.col:
                 return []
 
-            deck_filter = f'deck:"{deck_name}" ' if deck_name else ""
+            deck_filter = f"{search_term('deck', deck_name)} " if deck_name else ""
             query = f"{deck_filter}(is:due OR is:new)" if include_new else f"{deck_filter}(is:due)"
 
             nids = repo.find_notes(query)
@@ -91,7 +92,7 @@ class AnkiDirectAdapter(AnkiBridge):
         """Every note in the deck, keyed by its note id as a string."""
         with AnkiRepository(self.anki_base) as repo:
             if repo.col:
-                nids = repo.find_notes(f'"deck:{deck_name}"')
+                nids = repo.find_notes(search_term("deck", deck_name))
                 return {str(nid): nid for nid in nids}
 
         return {}
@@ -260,7 +261,7 @@ class AnkiDirectAdapter(AnkiBridge):
 
             seen: set[int] = set()
             for aid in arete_ids:
-                found = repo.col.find_cards(f"tag:{aid}")
+                found = repo.col.find_cards(search_term("tag", aid))
                 # Append all cards found (if multiple cards per note, they all go in queue)
                 for cid in found:
                     if cid not in seen:

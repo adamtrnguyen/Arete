@@ -205,11 +205,11 @@ async def test_get_due_cards(adapter):
 
         # Case 2: With deck filter
         res = await adapter.get_due_cards("Math::Calc")
-        instance.find_notes.assert_called_with('deck:"Math::Calc" (is:due)')
+        instance.find_notes.assert_called_with('"deck:Math::Calc" (is:due)')
 
         # Case 3: Include new cards
         res = await adapter.get_due_cards("Math::Calc", include_new=True)
-        instance.find_notes.assert_called_with('deck:"Math::Calc" (is:due OR is:new)')
+        instance.find_notes.assert_called_with('"deck:Math::Calc" (is:due OR is:new)')
 
 
 # ---------------------------------------------------------------------------

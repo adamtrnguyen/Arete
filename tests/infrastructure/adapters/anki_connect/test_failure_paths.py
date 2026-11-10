@@ -223,7 +223,7 @@ async def test_a_failed_tag_search_fails_the_card_without_a_twin():
     nid = _held(fake)
     fake.fail = lambda action, p: (
         "search is broken"
-        if action == "findNotes" and p.get("query", "").startswith("tag:")
+        if action == "findNotes" and p.get("query", "").startswith('"tag:')
         else None
     )
 

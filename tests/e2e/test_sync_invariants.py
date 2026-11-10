@@ -239,6 +239,31 @@ async def test_inv2_a_card_whose_text_changed_is_found_by_its_id(world: World):
     assert [n.nid for n in world.backend.notes()] == [nid]
 
 
+@pytest.mark.asyncio
+@on(*ALL)
+async def test_inv2_a_hand_made_note_of_a_lookalike_type_is_never_adopted(world: World):
+    """`My_Type` searched as it is also finds `MyXType`: Anki reads `_` as any character.
+
+    The vault's new card has the hand-made note's first field, so matching by content would
+    take the note over if the scan returned it.
+    """
+    world.backend.copy_note_type("Basic", "My_Type")
+    world.backend.copy_note_type("Basic", "MyXType")
+    hand = world.backend.add_note(
+        "MyXType", "Other", {"Front": "What does the vault hold?", "Back": "hand-made"}, ["mine"]
+    )
+    edit_vault(world.md, lambda t: t.replace("model: Basic", "model: My_Type"))
+
+    stats, _ = await world.sync()
+
+    assert stats.total_errors == 0
+    held = world.backend.note(hand)
+    assert (held.model, held.fields["Back"], held.tags) == ("MyXType", "hand-made", ["mine"])
+    assert [c.home_deck for c in held.cards] == ["Other"]
+    [new] = [n for n in world.backend.notes() if n.nid != hand]
+    assert (new.model, ID in new.tags) == ("My_Type", True)
+
+
 COPY_ID = "arete_01J00000000000000000000077"
 
 

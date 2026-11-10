@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import inspect
 from collections.abc import Callable, Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import pytest
@@ -18,7 +18,7 @@ import pytest
 from arete.domain.interfaces import NoteStorePort, NoteStoreSession
 from arete.domain.models import AddonOutdated, HeldNote, NewNote, NoteChange, OutcomeUnknown
 from arete.infrastructure.adapters.anki_direct import AnkiDirectAdapter
-from tests.e2e.sync_harness import AddonBackend, DirectBackend, FakeBackend, make_backend
+from tests.e2e.sync_harness import AddonBackend, Backend, DirectBackend, FakeBackend, make_backend
 from tests.fakes.note_store import ContractViolation, FakeNoteStore
 
 ID = "arete_01J00000000000000000000101"
@@ -34,16 +34,22 @@ class StoreUnderTest:
     seed: Callable[..., int]  # (model, deck, fields, tags) -> nid
     queue: Callable[[list[int]], None]
     close: Callable[[], None]
+    copy_type: Callable[[str, str], None]  # (source, name): a copy of a note type
 
 
 def _fake(_root: Path) -> StoreUnderTest:
     fake = FakeNoteStore()
+
+    def copy_type(source: str, name: str) -> None:
+        fake.types[name] = replace(fake.types[source], name=name)
+
     return StoreUnderTest(
         "fake",
         fake,
         lambda model, deck, fields, tags: fake.add(model, deck, fields, tags),
         fake.queue,
         lambda: None,
+        copy_type,
     )
 
 
@@ -56,6 +62,7 @@ def _direct(root: Path) -> StoreUnderTest:
         backend.add_note,
         lambda nids: None if backend.queue(nids) else None,
         backend.close,
+        backend.copy_note_type,
     )
 
 
@@ -63,7 +70,12 @@ def _ac_fake(root: Path) -> StoreUnderTest:
     backend = make_backend("fake", root)
     assert isinstance(backend, FakeBackend)
     return StoreUnderTest(
-        "ac-fake", backend.bridge(), backend.add_note, backend.fake.queue, backend.close
+        "ac-fake",
+        backend.bridge(),
+        backend.add_note,
+        backend.fake.queue,
+        backend.close,
+        backend.copy_note_type,
     )
 
 
@@ -76,6 +88,7 @@ def _ac_addon(root: Path) -> StoreUnderTest:
         backend.add_note,
         lambda nids: None if backend.queue(nids) else None,
         backend.close,
+        backend.copy_note_type,
     )
 
 
@@ -163,6 +176,7 @@ async def test_find_by_arete_ids_matches_the_whole_tag_in_any_case(sut: StoreUnd
         "Basic", "C", {"Front": "two", "Back": "x"}, [ID.upper().replace("ARETE", "arete")]
     )
     sut.seed("Basic", "C", {"Front": "three", "Back": "x"}, [OTHER, "arete_review"])
+    sut.seed("Basic", "C", {"Front": "four", "Back": "x"}, ["areteX" + ID.removeprefix("arete_")])
 
     async with sut.store.session() as s:
         got = await s.find_by_arete_ids([ID, "arete_01J00000000000000000000999"])
@@ -184,6 +198,27 @@ async def test_scan_model_lists_every_note_of_the_type(sut: StoreUnderTest):
 
     assert sorted(h.nid for h in scanned) == [a, b]
     assert {h.fields["Front"] for h in scanned} == {"one", "two"}
+
+
+# Anki's search reads `_` as any one character and `*` as any run, so each pair's first name,
+# searched as it is, also finds the second.
+LOOKALIKE_TYPES = [("My_Type", "MyXType"), ("Star*", "Start"), ("Pa(ren) \\x", "Pa(ren) \\y")]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("model", "lookalike"), LOOKALIKE_TYPES)
+async def test_scan_model_lists_no_note_of_a_lookalike_type(sut: StoreUnderTest, model, lookalike):
+    sut.copy_type("Basic", model)
+    sut.copy_type("Basic", lookalike)
+    mine = sut.seed(model, "C", {"Front": "same", "Back": "vault"}, [])
+    other = sut.seed(lookalike, "C", {"Front": "same", "Back": "hand-made"}, [])
+
+    async with sut.store.session() as s:
+        scanned = await s.scan_model(model)
+        scanned_other = await s.scan_model(lookalike)
+
+    assert [h.nid for h in scanned] == [mine]
+    assert [h.nid for h in scanned_other] == [other]
 
 
 # ---------------------------------------------------------------------------
@@ -431,3 +466,71 @@ async def test_the_addon_without_an_arete_action_stops_with_the_fix(tmp_path: Pa
         assert not {"getDecks", "changeDeck", "modelFieldNames"} & set(backend.host.actions)
     finally:
         backend.close()
+
+
+# ---------------------------------------------------------------------------
+# Searches built from a deck name or an Arete id: prune's and the queue's reads
+# ---------------------------------------------------------------------------
+
+# Each pair's first name, put into a search as it is, also finds the second, or breaks it.
+LOOKALIKE_DECKS = [
+    ("Stats_A", "StatsXA"),
+    ("Star*", "Start"),
+    ("A::B_C", "A::BXC"),
+    ('Say "hi"', "Say hi"),
+    ("Back\\slash", "Backslash"),
+]
+LOOKALIKE_ID = "areteX" + ID.removeprefix("arete_")
+
+
+@pytest.fixture(params=["direct", "ac-fake", "ac-addon"])
+def adapter_backend(request, tmp_path: Path) -> Iterator[Backend]:
+    backend = make_backend(
+        {"ac-fake": "fake", "ac-addon": "addon"}.get(request.param, "direct"), tmp_path
+    )
+    yield backend
+    backend.close()
+
+
+@pytest.fixture(params=["direct", "ac-addon"])
+def real_backend(request, tmp_path: Path) -> Iterator[Backend]:
+    """A backend over a real collection, which runs Anki's own search."""
+    backend = make_backend("addon" if request.param == "ac-addon" else "direct", tmp_path)
+    yield backend
+    backend.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("deck", "lookalike"), LOOKALIKE_DECKS)
+async def test_notes_in_deck_are_the_deck_and_its_subdecks_only(adapter_backend, deck, lookalike):
+    mine = adapter_backend.add_note("Basic", deck, {"Front": "a", "Back": "x"}, [ID])
+    child = adapter_backend.add_note("Basic", f"{deck}::Sub", {"Front": "b", "Back": "x"}, [])
+    adapter_backend.add_note("Basic", lookalike, {"Front": "c", "Back": "x"}, [OTHER])
+    bridge = adapter_backend.bridge()
+
+    got = await bridge.get_notes_in_deck(deck)
+
+    assert sorted(got.values()) == sorted([mine, child])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("deck", "lookalike"), LOOKALIKE_DECKS)
+async def test_due_cards_of_a_deck_are_that_decks_only(real_backend, deck, lookalike):
+    mine = real_backend.add_note("Basic", deck, {"Front": "a", "Back": "x"}, [ID])
+    real_backend.add_note("Basic", lookalike, {"Front": "c", "Back": "x"}, [OTHER])
+    bridge = real_backend.bridge()
+
+    got = await bridge.get_due_cards(deck_name=deck, include_new=True)
+
+    assert got == [mine]
+
+
+@pytest.mark.asyncio
+async def test_card_ids_of_an_arete_id_are_its_notes_only(real_backend):
+    mine = real_backend.add_note("Basic", "C", {"Front": "a", "Back": "x"}, [ID])
+    real_backend.add_note("Basic", "C", {"Front": "b", "Back": "x"}, [LOOKALIKE_ID])
+    bridge = real_backend.bridge()
+
+    got = await bridge.get_card_ids_for_arete_ids([ID])
+
+    assert got == [c.cid for c in real_backend.note(mine).cards]

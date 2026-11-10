@@ -5,6 +5,7 @@ import logging
 import pytest
 
 from arete.infrastructure.adapters.anki_connect import AnkiConnectAdapter
+from arete.infrastructure.anki.search import search_term
 
 from .fake_anki import FakeAnki
 
@@ -95,7 +96,11 @@ async def test_browse_reports_failure_instead_of_raising(caplog):
 @pytest.mark.asyncio
 async def test_card_ids_keep_the_input_order_and_drop_repeats():
     fake = Fake()
-    fake.find_cards = {"tag:arete_b": [20, 21], "tag:arete_a": [10, 21], "tag:arete_c": []}
+    fake.find_cards = {
+        search_term("tag", "arete_b"): [20, 21],
+        search_term("tag", "arete_a"): [10, 21],
+        search_term("tag", "arete_c"): [],
+    }
     cids = await _adapter(fake).get_card_ids_for_arete_ids(["arete_b", "arete_a", "arete_c"])
     assert cids == [20, 21, 10]
 
@@ -111,7 +116,7 @@ async def test_card_ids_for_no_ids_ask_anki_nothing():
 async def test_card_ids_are_looked_up_fifty_ids_per_request():
     fake = Fake()
     ids = [f"arete_{i:03d}" for i in range(120)]
-    fake.find_cards = {f"tag:{a}": [i] for i, a in enumerate(ids)}
+    fake.find_cards = {search_term("tag", a): [i] for i, a in enumerate(ids)}
     cids = await _adapter(fake).get_card_ids_for_arete_ids(ids)
     assert cids == list(range(120))
     assert fake.requests["multi"] == 3

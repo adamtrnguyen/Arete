@@ -161,26 +161,25 @@ class FakeAnki:
         return [self._note_info(nid) for nid in notes]
 
     def _a_findNotes(self, query=None):
+        r"""One `tag:`, `note:` or `deck:` term, matched as Anki matches it.
+
+        `_` is any one character, `*` any run, `\` escapes the next character, case is
+        ignored, and `tag:`/`deck:` also match the children of the name (`A` finds `A::B`).
+        """
         if query is None:
             return []
-        if m := re.fullmatch(r"tag:(\S+)", query):  # Anki matches tags ignoring case
-            tag = m.group(1).casefold()
+        key, pattern = _search_term(query)
+        if key == "tag":
             return [
-                nid for nid, n in self.notes.items() if tag in {t.casefold() for t in n["tags"]}
+                nid for nid, n in self.notes.items() if any(_names(pattern, t) for t in n["tags"])
             ]
-        if m := re.fullmatch(r'"note:(.+)"', query):
-            return [nid for nid, n in self.notes.items() if n["model"] == m.group(1)]
-        if m := re.fullmatch(r'"deck:(.+)"', query):
-            deck = m.group(1)
-            return [
-                nid
-                for nid, n in self.notes.items()
-                if any(
-                    self.card_deck[c] == deck or self.card_deck[c].startswith(deck + "::")
-                    for c in n["cards"]
-                )
-            ]
-        raise Exception(f"fake cannot search {query!r}")
+        if key == "note":
+            return [nid for nid, n in self.notes.items() if pattern.fullmatch(n["model"])]
+        return [
+            nid
+            for nid, n in self.notes.items()
+            if any(_names(pattern, self.card_deck[c]) for c in n["cards"])
+        ]
 
     def _a_addNote(self, note):
         if note["modelName"] not in self.models:
@@ -301,6 +300,31 @@ class FakeAnki:
     def _a_deleteDecks(self, decks, cardsToo=False):
         for deck in decks:
             self.decks.discard(deck)
+
+
+def _search_term(query: str) -> tuple[str, re.Pattern[str]]:
+    """The key and the name pattern of one search term, quoted or not."""
+    m = re.fullmatch(r'"(tag|note|deck):((?:[^"\\]|\\.)*)"', query) or re.fullmatch(
+        r"(tag|note|deck):(\S+)", query
+    )
+    if m is None:
+        raise Exception(f"fake cannot search {query!r}")
+    value, out, i = m.group(2), [], 0
+    while i < len(value):
+        ch = value[i]
+        if ch == "\\" and i + 1 < len(value):
+            out.append(re.escape(value[i + 1]))
+            i += 2
+            continue
+        out.append("." if ch == "_" else ".*" if ch == "*" else re.escape(ch))
+        i += 1
+    return m.group(1), re.compile("".join(out), re.IGNORECASE | re.DOTALL)
+
+
+def _names(pattern: re.Pattern[str], name: str) -> bool:
+    """Whether the name or one of its parents matches, as a `tag:` or `deck:` search does."""
+    parts = name.split("::")
+    return any(pattern.fullmatch("::".join(parts[:i])) for i in range(1, len(parts) + 1))
 
 
 def _checksum_text(value: str) -> str:
