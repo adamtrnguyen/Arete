@@ -1,8 +1,8 @@
 """A plain note is read once, then skipped by its stat until it changes.
 
-The stat cache used to hold Arete files only, so every plain note was read again on
-every sync to look for `arete:`. A note that is not an Arete file is now remembered as
-such, keyed by its mtime and size, and any change to the file makes the scan read it.
+A note that is not an Arete file is remembered as such, keyed by its mtime and size, so
+it is not re-read on every sync to look for `arete:`. Any change to the file makes the
+scan read it.
 """
 
 from __future__ import annotations

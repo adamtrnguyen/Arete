@@ -50,7 +50,7 @@ def test_rotate_logs(tmp_path):
 
 
 def test_setup_logging_rotates_old_run_logs(tmp_path):
-    """rotate_logs used to be defined and tested but never called, so logs grew forever."""
+    """setup_logging calls rotate_logs, so run logs do not grow forever."""
     for i in range(60):
         (tmp_path / f"run_old_{i:02d}.log").write_text(str(i))
     logger, _, _ = setup_logging(tmp_path, verbose=0)

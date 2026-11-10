@@ -330,7 +330,7 @@ async def test_cid_fetching_on_heal(adapter):
 
 # ---------------------------------------------------------------------------
 # Reconcile: ID tag, collection-wide content, dangling nid, deck move
-# (regression for the 2026-09-07 duplicate storm: 6814 twins across decks)
+# (docs/history/2026-09-08-duplicate-storm.md)
 # ---------------------------------------------------------------------------
 
 

@@ -152,7 +152,7 @@ def test_parse_hot_cache_hit(parser_fixture):
     # is_fresh=False
     notes, skipped, inventory = parser.parse_file(Path("test.md"), meta, mock_cache, is_fresh=False)
 
-    # C3 (2026-09-25): an unchanged, already-synced card is not re-sent; it stays in
+    # An unchanged, already-synced card is not re-sent; it stays in
     # the prune inventory so its note is protected.
     assert notes == []
     assert {"nid": "123", "deck": "Default"} in inventory
@@ -242,8 +242,7 @@ def test_parse_cid_equals_nid_is_preserved(parser_fixture, mock_cache):
     Anki assigns a single-card note's first card id equal to the note id, so the
     two coincide for the large majority of real cards (Arete itself writes them
     back equal). Treating equality as fabrication would strip valid ids and
-    re-create the note as a duplicate on the next sync — this is a regression
-    test for that bug.
+    re-create the note as a duplicate on the next sync.
     """
     parser, vault = parser_fixture
     parser.logger = MagicMock()
@@ -290,7 +289,7 @@ def test_find_duplicate_nids_helper():
         {"anki": {"nid": "111"}},
         {"anki": {"nid": "111"}},  # same id -> duplicate
         {"anki": {"nid": "222"}},  # unique
-        {"nid": "111"},  # legacy root-level nid is ignored (v1 support removed)
+        {"nid": "111"},  # a card-level nid outside the anki block is ignored
         "not a dict",  # ignored
         {"anki": {}},  # no nid
     ]
@@ -339,7 +338,7 @@ def test_parse_card_level_tags_merge_with_file_tags(parser_fixture, mock_cache):
 
 
 def test_custom_model_does_not_send_arete_keys_as_fields(tmp_path):
-    """B1: id/deps/anki/__line__ were sent to Anki as fields for any non-Basic/Cloze model."""
+    """id/deps/anki/__line__ are never sent to Anki as fields, whatever the model."""
     import logging
 
     from arete.application.sync.parser import MarkdownParser

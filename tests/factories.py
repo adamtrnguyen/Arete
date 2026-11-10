@@ -1,13 +1,8 @@
 """One place that knows the shape of a card, a note and a config.
 
-Every test used to hand-write these. 28 `AnkiNote(...)` literals across 8 files, raw
-card YAML in 23 files, and the app config built 8 different ways. The cost showed up
-in the Obsidian plugin, where three separate test files each hand-wrote a card with a
-flat `nid:` key. Arete writes `anki: {nid: ...}` nested, and has for a long time. All
-three files agreed with each other and disagreed with the product, so they passed
-while testing nothing.
-
-A factory only helps if it stays true, so `tests/test_factories.py` feeds this
+A hand-written card can agree with other tests and disagree with what Arete writes, and
+pass while testing nothing (docs/history/test-factories.md). A factory only helps if it
+stays true, so `tests/test_factories.py` feeds this
 module's output through Arete's own parser and fails when the two disagree.
 """
 

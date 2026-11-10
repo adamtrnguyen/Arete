@@ -99,8 +99,8 @@ async def test_run_pipeline_no_files(mock_components, tmp_path):
 async def test_run_pipeline_dry_run_never_writes(mock_components, tmp_path):
     """--dry-run must not call the Anki bridge, mutate the cache, or persist nids.
 
-    Regression: 2026-09-07, two dry-runs created 555 Anki notes each because only the
-    nid write-back and prune stages honoured the flag.
+    Every stage honours the flag, not only the nid write-back and prune
+    (docs/history/2026-09-08-duplicate-storm.md).
     """
     logger, vault, parser, bridge, cache = mock_components
 
@@ -124,8 +124,7 @@ async def test_run_pipeline_dry_run_never_writes(mock_components, tmp_path):
 async def test_run_pipeline_refreshes_hot_cache_with_nid(mock_components, tmp_path):
     """After a real sync the cached note carries the nid Anki assigned.
 
-    Regression: set_hash only refreshed the hash column, so the cached note kept
-    nid=None and every warm run re-sent the card as new.
+    A cached note with nid=None would make every warm run re-send the card as new.
     """
     logger, vault, parser, bridge, cache = mock_components
     note = parser.parse_file.return_value[0][0]

@@ -81,10 +81,7 @@ async def test_a_second_sync_creates_nothing(single_card_vault: Path, anki_base:
 async def test_dry_run_writes_to_neither_anki_nor_the_vault(
     single_card_vault: Path, anki_base: Path, make_config
 ):
-    """A dry run reports what it would do and changes nothing.
-
-    Two dry runs created 555 notes each before this was fixed.
-    """
+    """A dry run reports what it would do and changes nothing."""
     md = single_card_vault / "Transformer.md"
     before = md.read_text(encoding="utf-8")
 
@@ -162,8 +159,8 @@ async def test_changing_a_card_to_cloze_converts_the_note_and_keeps_its_reviews(
 ):
     """A card whose model changes is converted in place, not dropped or duplicated.
 
-    Updating a Basic note with Cloze fields used to match no field names, so the
-    card silently stopped updating (21 such cards in a real vault).
+    Updating a Basic note with Cloze fields would match no field name, so the card
+    would silently stop updating.
     """
     from arete.application.utils.text import parse_frontmatter, rebuild_markdown_with_frontmatter
 

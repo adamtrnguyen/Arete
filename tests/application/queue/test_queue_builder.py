@@ -395,7 +395,7 @@ def _chain_graph(edges, nodes):
 
 @patch("arete.application.queue.builder.build_graph")
 def test_prereq_within_depth_is_found_by_its_shortest_path(mock_build_graph):
-    """G2: a shared `visited` set let a long path claim B, so E (3 hops via B) was lost."""
+    """A card reached first by a long path is expanded from its shortest one."""
     # D requires A and B; A -> B -> C -> E. E is 3 hops from D via D->B->C->E.
     mock_build_graph.return_value = _chain_graph(
         [("D", "A"), ("D", "B"), ("A", "B"), ("B", "C"), ("C", "E")], "ABCDE"
@@ -406,7 +406,7 @@ def test_prereq_within_depth_is_found_by_its_shortest_path(mock_build_graph):
 
 @patch("arete.application.queue.builder.build_graph")
 def test_max_cards_keeps_the_nearest_prereqs_and_reports_what_it_dropped(mock_build_graph):
-    """G3: the cap kept alphabetically-first ids and dropped others without a word."""
+    """The cap keeps the nearest prerequisites, not the alphabetically first, and reports the rest."""
     # Due -> A -> B -> Z ; ids chosen so alphabetical order != distance order
     mock_build_graph.return_value = _chain_graph(
         [("Due", "Z"), ("Z", "B"), ("B", "A")], ["Due", "Z", "B", "A"]

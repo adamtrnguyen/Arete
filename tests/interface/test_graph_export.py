@@ -1,4 +1,4 @@
-"""PL1: the plugin's graph views read `arete graph export` (CLI mode) or POST /graph."""
+"""The plugin's graph views read `arete graph export` (CLI mode) or POST /graph."""
 
 import json
 

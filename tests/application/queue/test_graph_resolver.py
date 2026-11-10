@@ -511,7 +511,7 @@ class TestFilterGraphByDeck:
         (tmp_path / "mixed.md").write_text(md)
 
         graph = build_graph(tmp_path)
-        # full deck name: matching is exact-or-subdeck (G4), no longer substring
+        # full deck name: matching is exact-or-subdeck, not substring
         filtered = filter_graph_by_deck(graph, "SpecialDeck")
         assert "arete_A" in filtered.nodes
         assert "arete_B" not in filtered.nodes
@@ -627,7 +627,7 @@ def test_unparseable_file_is_reported_not_dropped(tmp_path: Path):
 
 
 class TestCycleDoesNotScrambleTheQueue:
-    """G1 (2026-09-25): a cycle anywhere made topological_sort return set order."""
+    """A cycle anywhere in the vault leaves topological_sort deterministic."""
 
     @staticmethod
     def _graph():
@@ -674,22 +674,22 @@ def _deck_vault(tmp_path):
 
 
 class TestDeckFilter:
-    """G4/G8 (2026-09-25)."""
+    """filter_graph_by_deck matches decks the way sync and Anki's `deck:` search do."""
 
     def test_deck_matches_exactly_or_as_a_subdeck(self, tmp_path):
-        """G4: substring match let "Math" keep "Applied Mathematics"."""
+        """Deck "Math" keeps Math and its subdecks, not "Applied Mathematics"."""
         graph = filter_graph_by_deck(build_graph(_deck_vault(tmp_path)), "Math")
         assert "arete_AM1" not in graph.nodes
         assert "arete_H1" in graph.nodes  # card deck Math::Algebra is a Math subdeck
 
     def test_card_deck_wins_over_file_deck_like_sync(self, tmp_path):
-        """G4: a matching file deck used to override the card's own deck."""
+        """A card's own deck decides, not its file's."""
         graph = filter_graph_by_deck(build_graph(_deck_vault(tmp_path)), "Math")
         assert "arete_M2" not in graph.nodes  # file says Math, card says History
         assert "arete_M1" in graph.nodes
 
     def test_cross_deck_prereq_is_not_called_isolated(self, tmp_path):
-        """G8: M1 requires P1 (deck Prob); filtered to Math, M1 was reported isolated."""
+        """M1 requires P1 (deck Prob); filtered to Math, M1 is not isolated."""
         health = check_graph_health(_deck_vault(tmp_path), deck_filter="Math")
         assert "arete_M1" not in [e.card_id for e in health.isolated_nodes]
 
@@ -735,7 +735,7 @@ class TestDeckFilter:
 
 
 class TestSilentGraphProblemsAreReported:
-    """G5-G7 (2026-09-25): references and ids that vanished without a word."""
+    """A reference or id the graph cannot use is reported, never dropped."""
 
     @staticmethod
     def _note(root, rel, cards):
@@ -745,7 +745,7 @@ class TestSilentGraphProblemsAreReported:
         path.write_text(f"---\narete: true\ndeck: D\ncards:\n{body}---\n")
 
     def test_same_basename_in_two_folders_is_reported_not_merged(self, tmp_path):
-        """G5a: `Intro` resolved to math/Intro AND bio/Intro."""
+        """`Intro` in both math/ and bio/ is ambiguous: reported, resolved to neither."""
         self._note(tmp_path, "math/Intro.md", [("arete_M1", "")])
         self._note(tmp_path, "bio/Intro.md", [("arete_B1", "")])
         self._note(tmp_path, "Calc.md", [("arete_C", "    deps:\n      requires: [Intro]\n")])
@@ -754,14 +754,14 @@ class TestSilentGraphProblemsAreReported:
         assert any("ambiguous" in r for r in graph.unresolved_refs["arete_C"])
 
     def test_a_path_qualified_ref_picks_one_file(self, tmp_path):
-        """G5: `math/Intro` is how to say which Intro."""
+        """`math/Intro` picks one of several namesakes."""
         self._note(tmp_path, "math/Intro.md", [("arete_M1", "")])
         self._note(tmp_path, "bio/Intro.md", [("arete_B1", "")])
         self._note(tmp_path, "Calc.md", [("arete_C", "    deps:\n      requires: [math/Intro]\n")])
         assert build_graph(tmp_path).get_prerequisites("arete_C") == ["arete_M1"]
 
     def test_a_cross_folder_namesake_is_not_skipped_as_self(self, tmp_path):
-        """G5b: bio/Intro requiring math/Intro was dropped as a same-file reference."""
+        """bio/Intro requiring math/Intro is an edge, not a same-file reference."""
         self._note(tmp_path, "math/Intro.md", [("arete_M1", "")])
         self._note(
             tmp_path, "bio/Intro.md", [("arete_B1", "    deps:\n      requires: [math/Intro]\n")]
@@ -769,7 +769,7 @@ class TestSilentGraphProblemsAreReported:
         assert build_graph(tmp_path).get_prerequisites("arete_B1") == ["arete_M1"]
 
     def test_scalar_and_non_string_refs_are_resolved_or_reported(self, tmp_path):
-        """G6: `requires: Algebra` (not a list) and `[2024]` vanished silently."""
+        """A scalar `requires: Algebra` and an int `[2024]` resolve like string list items."""
         self._note(tmp_path, "Algebra.md", [("arete_A", "")])
         self._note(tmp_path, "2024.md", [("arete_Y", "")])
         self._note(
@@ -785,7 +785,7 @@ class TestSilentGraphProblemsAreReported:
         assert graph.get_prerequisites("arete_X2") == ["arete_Y"]
 
     def test_a_duplicate_card_id_is_reported_and_fails_the_check(self, tmp_path):
-        """G7: the second file silently overwrote the first; health said ok."""
+        """Two files with one id: both are reported and the health check fails."""
         self._note(tmp_path, "a.md", [("arete_DUP", "")])
         self._note(tmp_path, "b.md", [("arete_DUP", "")])
         health = check_graph_health(tmp_path)
@@ -798,7 +798,7 @@ class TestSilentGraphProblemsAreReported:
 
 
 def test_export_graph_is_what_the_plugin_draws(tmp_path: Path):
-    """PL1: the plugin reads this instead of resolving refs itself (it missed G5/G6)."""
+    """The plugin draws this export; it resolves no reference itself."""
     from arete.application.queue.graph_resolver import export_graph
 
     def note(rel: str, body: str) -> None:

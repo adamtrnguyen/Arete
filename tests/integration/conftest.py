@@ -152,7 +152,7 @@ def anki_media_dir(_anki_container):
 
 
 # ---------------------------------------------------------------------------
-# Application-level fixtures (Phase 2)
+# Application-level fixtures
 # ---------------------------------------------------------------------------
 
 

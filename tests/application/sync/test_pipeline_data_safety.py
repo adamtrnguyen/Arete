@@ -1,7 +1,6 @@
 """The sync pipeline must never lose a note, a card, or its review history.
 
-Each test is a reproduction from the 2026-09-25 bug hunt, driven through the real
-`run_pipeline` with an in-memory Anki. The fake mirrors the direct backend's prune view
+Each test drives the real `run_pipeline` with an in-memory Anki. The fake mirrors the direct backend's prune view
 (`get_notes_in_deck` -> {str(nid): nid}).
 """
 
@@ -228,7 +227,7 @@ def test_write_back_matches_the_card_by_id_not_position(vault):
 
 
 def test_an_unchanged_vault_sends_nothing(vault):
-    """C3: the warm stat-cache path re-sent every card on every run."""
+    """The warm stat-cache path re-sends no card."""
     root, cache, anki = vault
     (root / "a.md").write_text(note_file(card("arete_A1"), card("arete_A2")))
     sync(root, anki, cache)
@@ -239,7 +238,7 @@ def test_an_unchanged_vault_sends_nothing(vault):
 
 
 def test_a_card_tag_edit_reaches_anki(vault):
-    """C4: card-level tags were not in the content hash, so a tag edit was never sent."""
+    """Card-level tags are in the content hash, so a tag edit is sent."""
     root, cache, anki = vault
     (root / "a.md").write_text(note_file(card("arete_A1")))
     sync(root, anki, cache)
@@ -251,7 +250,7 @@ def test_a_card_tag_edit_reaches_anki(vault):
 
 
 def test_an_empty_card_deck_falls_back_to_the_file_deck(tmp_path):
-    """D1: `deck: ''` on a card sent it to Default instead of the file's deck."""
+    """`deck: ''` on a card takes the file's deck, not Default."""
     from arete.application.utils.text import parse_frontmatter
 
     md = tmp_path / "a.md"

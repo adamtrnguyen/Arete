@@ -193,7 +193,7 @@ def test_card_content_hash_ignores_cid_once_there_is_a_nid():
 
 
 def test_a_horizontal_rule_inside_a_block_scalar_does_not_end_the_frontmatter():
-    """R5: an indented `---` in `Back: |` closed the frontmatter and silently cut the card."""
+    """An indented `---` in `Back: |` is content; it does not close the frontmatter."""
     text = "---\ncards:\n  - Front: Q\n    Back: |\n      part one\n      ---\n      part two\n---\nbody\n"
     meta, body = parse_frontmatter(text)
     assert meta["cards"][0]["Back"].rstrip("\n") == "part one\n---\npart two"

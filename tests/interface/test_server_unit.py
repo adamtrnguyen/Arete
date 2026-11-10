@@ -197,7 +197,7 @@ def test_stats_closes_its_anki_client(monkeypatch):
     assert [c for c in opened if not c.is_closed] == []
 
 
-# --- Blocking work on the event loop (P11) ---
+# --- Blocking work on the event loop ---
 # Each test sends /health while a slow route runs, with the blocking piece stubbed to wait
 # for /health. While the blocking piece runs on the event loop, /health waits for it.
 
