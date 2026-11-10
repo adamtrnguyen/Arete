@@ -1,8 +1,9 @@
-"""A cache file written by an earlier Arete opens and keeps working without manual steps.
+"""The cache's `SCHEMA_VERSION` check: a file at the version keeps its rows, any other is rebuilt.
 
-`fixtures/cache_6653b9f.db` was written by Arete at commit 6653b9f: four syncs of
-tests/mock_vault through the direct backend. The schema version is unchanged, so its
-rows must survive the open and be read back as they were written.
+`fixtures/cache_6653b9f.db` is a real cache file (four syncs of tests/mock_vault through
+the direct backend, written at commit 6653b9f) at the current schema version. A table
+change made without bumping `SCHEMA_VERSION` fails here: the fixture's rows no longer
+read back.
 """
 
 import shutil
@@ -18,7 +19,7 @@ FIXTURE = Path(__file__).parent / "fixtures" / "cache_6653b9f.db"
 
 
 @pytest.fixture
-def old_db(tmp_path: Path) -> Path:
+def fixture_db(tmp_path: Path) -> Path:
     db = tmp_path / "cache.db"
     shutil.copy(FIXTURE, db)
     return db
@@ -32,22 +33,22 @@ def _rows(db: Path, table: str) -> list[tuple]:
         con.close()
 
 
-def test_an_old_cache_opens_without_a_rebuild(old_db: Path):
-    cards, files = _rows(old_db, "cards"), _rows(old_db, "files")
+def test_a_cache_at_the_schema_version_keeps_its_rows(fixture_db: Path):
+    cards, files = _rows(fixture_db, "cards"), _rows(fixture_db, "files")
     assert cards and files
 
-    ContentCache(old_db)
+    ContentCache(fixture_db)
 
-    assert _rows(old_db, "cards") == cards
-    assert _rows(old_db, "files") == files
-    (version,) = sqlite3.connect(old_db).execute("PRAGMA user_version").fetchone()
+    assert _rows(fixture_db, "cards") == cards
+    assert _rows(fixture_db, "files") == files
+    (version,) = sqlite3.connect(fixture_db).execute("PRAGMA user_version").fetchone()
     assert version == SCHEMA_VERSION == 2
 
 
-def test_old_rows_read_back_and_new_rows_fit_beside_them(old_db: Path):
-    path, idx, h, note_json = _rows(old_db, "cards")[0]
-    fpath, _fh, mtime, size, meta_json = _rows(old_db, "files")[0]
-    cache = ContentCache(old_db)
+def test_its_rows_read_back_and_new_rows_fit_beside_them(fixture_db: Path):
+    path, idx, h, note_json = _rows(fixture_db, "cards")[0]
+    fpath, _fh, mtime, size, meta_json = _rows(fixture_db, "files")[0]
+    cache = ContentCache(fixture_db)
 
     assert cache.get_note(Path(path), idx) == (h, note_json)
     meta = cache.get_file_meta_by_stat(Path(fpath), mtime, size)
@@ -60,6 +61,20 @@ def test_old_rows_read_back_and_new_rows_fit_beside_them(old_db: Path):
     assert cache.get_file_meta_by_stat(plain, 12.5, 41) is None
     assert cache.get_hash(Path("/v/new.md"), 1) == "h"
     assert cache.get_note(Path(path), idx) == (h, note_json)
+
+
+def test_a_cache_at_another_schema_version_is_dropped_and_rebuilt(fixture_db: Path):
+    con = sqlite3.connect(fixture_db)
+    con.execute(f"PRAGMA user_version = {SCHEMA_VERSION - 1}")
+    con.commit()
+    con.close()
+
+    ContentCache(fixture_db)
+
+    assert _rows(fixture_db, "cards") == []
+    assert _rows(fixture_db, "files") == []
+    (version,) = sqlite3.connect(fixture_db).execute("PRAGMA user_version").fetchone()
+    assert version == SCHEMA_VERSION
 
 
 def test_set_file_metas_round_trips_every_column(tmp_path: Path):
