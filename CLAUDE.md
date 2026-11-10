@@ -35,17 +35,19 @@ Arete is a one-way sync tool: Obsidian → Anki. Obsidian is the source of truth
 **Domain-Driven Design** with strict layered architecture enforced by `import-linter`:
 
 ```
-interface → application → infrastructure → domain
+interface → composition → application → infrastructure → domain
 ```
 
-- `src/arete/domain/` — Models, interfaces (`AnkiBridge` ABC), constants
+- `src/arete/domain/` — Models, role ports (`SyncPort`, `QueuePort`, `CardStatsPort`, `AnkiAdminPort`; `AnkiBridge` combines them), constants
 - `src/arete/infrastructure/` — Adapters (AnkiConnect HTTP, AnkiDirect file-based, stats)
 - `src/arete/application/` — Use cases (sync, queue builder, graph resolver, config, stats)
 - `src/arete/interface/` — CLI (Typer), MCP server (MCPServer, mcp 2.x), HTTP server
+- `src/arete/composition/` — the composition root: the only package that builds adapters (`factory.py`)
 
 Import rules:
 - Domain imports nothing from other layers
 - Application cannot import from `infrastructure.adapters` (uses interfaces)
+- Interface reaches adapters only through `composition/`
 - Verified by `just layers` (`lint-imports`)
 
 ## Anki Adapters
@@ -103,7 +105,7 @@ just qa               # the gate; the pre-push hook runs it too
 | `tests/e2e` | nothing | whole syncs against a collection in `tmp_path` |
 | `tests/integration` | OrbStack running | a throwaway Anki container per session (`just test-integration`) |
 
-Details (image, ports, `ANKI_CONNECT_URL`) are in `docs/CONTRIBUTING.md`.
+Details (image, ports, `ANKI_CONNECT_URL`) are in `tests/integration/conftest.py`.
 
 ## CLI and MCP
 
@@ -160,7 +162,7 @@ the reload (they keep running the old code).
 
 - TypeScript 6, esbuild bundler
 - Jest for tests, ESLint 10 (flat config `eslint.config.mjs`) + Prettier for lint/format
-- Dependencies: CodeMirror 6 (YAML editor), D3 + three.js (3D force graph), Mustache (templates)
+- Dependencies: CodeMirror 6 (YAML editor), D3 + 3d-force-graph (3D graph, on three.js), Mustache (templates)
 
 ## Open work
 
@@ -173,7 +175,7 @@ lives in `docs/history/`.
       has some (`docs/history/vault-data-findings.md`).
 - [ ] Reconcile-by-Arete-id lives in the AnkiConnect adapter only. The direct backend
       creates a second copy when a vault carries a note id Anki never issued. A strict
-      xfail at `tests/e2e/test_local_sync.py:119` records it and fails the day it is fixed.
+      xfail in `tests/e2e/test_local_sync.py` records it and fails the day it is fixed.
 - [ ] An edit made inside Anki (deck, fields, tags) is not reverted by an ordinary sync:
       a file whose stat is unchanged is skipped before its cards are compared with Anki.
       Only `--force` or `--clear-cache` restores the vault's version.
