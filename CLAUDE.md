@@ -175,6 +175,7 @@ the reload (they keep running the old code).
 
 **Backend**
 
+- [ ] `arete vault check` does not detect a duplicate Arete id; only a sync refuses one.
 - [ ] The three surfaces duplicate their wiring: `http_server` resolves config and builds
       a bridge inline in each route (`grep -c 'resolve_config(\|get_anki_bridge('
       src/arete/interface/http_server.py`). Five Anki admin verbs are called only from
@@ -185,6 +186,7 @@ the reload (they keep running the old code).
 - [ ] PyPI trusted publishing is unconfigured. `release.yml:64` runs the publish step
       under `continue-on-error: true`, so it cannot block a release. Configure a
       trusted publisher, or drop the step.
+- [ ] Delete the dangling `v2.2.1` tag on origin: `git push origin :v2.2.1`.
 - [ ] Bump the GitHub Actions versions (Dependabot PR #48).
 
 ## Key Conventions
