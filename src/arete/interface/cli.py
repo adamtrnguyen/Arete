@@ -118,6 +118,16 @@ def sync(
         Path | None, typer.Option(help="Custom Anki media directory.")
     ] = None,
     workers: Annotated[int | None, typer.Option(help="Parallel sync workers.")] = None,
+    json_output: Annotated[
+        bool,
+        typer.Option(
+            "--json",
+            help=(
+                "Print one JSON object on stdout: {ok, generated, changed, errors, message, "
+                "prune}. Never asks: an unconfirmed prune returns its preview. See docs/CLI.md."
+            ),
+        ),
+    ] = False,
 ):
     """[bold green]Sync[/bold green] your Obsidian notes to Anki."""
     config = _resolve_with_overrides(
@@ -137,10 +147,56 @@ def sync(
 
     from arete.composition.orchestrator import SyncFailedError, run_sync_logic
 
+    if json_output:
+        _sync_with_json(config, confirm_prune=yes)
+        return
+
     try:
         asyncio.run(run_sync_logic(config, confirm_prune=yes, prompt=_confirm_prune_at_prompt))
     except SyncFailedError as e:
         raise typer.Exit(1) from e
+
+
+def _sync_with_json(config, *, confirm_prune: bool) -> None:
+    """Sync, then print the report as one JSON object. Exit codes match the plain command.
+
+    Everything the run prints goes to stderr, so stdout holds the JSON alone. A run that
+    stops early (an outdated add-on, an exception) still prints the object, with its
+    reason in `message`; the traceback goes to the log on stderr.
+    """
+    import asyncio
+
+    from arete.composition.orchestrator import execute_sync
+    from arete.domain.models import AddonOutdated
+
+    stats = None
+    message: str | None = None
+    with stdout_to_stderr():
+        try:
+            stats = asyncio.run(execute_sync(config, confirm_prune=confirm_prune, prompt=None))
+        except AddonOutdated as e:
+            logger.error(f"[sync] stopped: {e}")
+            message = str(e)
+        except Exception as e:
+            logger.exception("[sync] stopped by an error")
+            message = str(e) or type(e).__name__
+    if stats is not None and stats.total_errors and not config.keep_going:
+        message = f"{stats.total_errors} errors during sync"
+    typer.echo(json.dumps(_sync_json(stats, message)))
+    if message is not None:
+        raise typer.Exit(1)
+
+
+def _sync_json(stats, message: str | None) -> dict:
+    """The sync report: the shape is documented in docs/CLI.md (sync, --json)."""
+    return {
+        "ok": message is None,
+        "generated": stats.total_generated if stats else 0,
+        "changed": stats.total_imported if stats else 0,
+        "errors": stats.total_errors if stats else 0,
+        "message": message,
+        "prune": stats.prune.to_dict() if stats and stats.prune else None,
+    }
 
 
 def _confirm_prune_at_prompt(_report) -> bool:

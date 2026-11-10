@@ -10,6 +10,14 @@ import {
 	vaultBasePath,
 } from '@infrastructure/arete/PythonProcess';
 import { debugLog } from '@domain/debugLog';
+import {
+	parseSyncReport,
+	pendingPrune,
+	PruneReport,
+	pruneSummary,
+	SyncReport,
+	syncSummary,
+} from '@domain/syncReport';
 
 /** A log larger than this is cut to its last LOG_KEEP_BYTES when a run starts. */
 export const LOG_MAX_BYTES = 1024 * 1024;
@@ -77,11 +85,18 @@ export type SyncStatus = 'idle' | 'syncing' | 'error' | 'success';
 /** How a sync ended: it ran, it failed, another sync held the lock, or the plugin stopped it. */
 export type SyncOutcome = 'success' | 'failed' | 'busy' | 'stopped';
 
-/** What one `arete` process left behind. `spawnError` is set when it never started. */
+/** Shows the user a prune preview; resolves true when they confirm the deletion. */
+export type ConfirmPrune = (preview: PruneReport) => Promise<boolean>;
+
+/**
+ * What one `arete` process left behind. `spawnError` is set when it never started;
+ * `report` is the JSON it printed, null when stdout held none.
+ */
 interface ProcessResult {
 	code: number | null;
 	signal: NodeJS.Signals | null;
 	stderr: string;
+	report: SyncReport | null;
 	spawnError?: Error;
 }
 
@@ -112,12 +127,17 @@ export class SyncService {
 	/**
 	 * Run `arete sync` on the vault or on one file, and resolve once it has exited.
 	 * Progress goes to the log and the status bar; the result goes to a notice.
+	 *
+	 * Prune runs without `--yes` first, so the CLI deletes nothing and returns a preview.
+	 * When the preview lists notes or decks, `confirmPrune` shows it, and only a yes runs
+	 * `sync --prune --yes`. With no `confirmPrune`, nothing is deleted.
 	 */
 	async runSync(
 		prune = false,
 		targetPath: string | null = null,
 		force = false,
 		updateStatusBar: (state: SyncStatus, msg?: string) => void,
+		confirmPrune?: ConfirmPrune,
 	): Promise<SyncOutcome> {
 		updateStatusBar('syncing');
 		new Notice(targetPath ? 'Syncing file...' : 'Starting sync...');
@@ -141,20 +161,42 @@ export class SyncService {
 		log(`Vault: ${vaultPath}`);
 
 		const resolved = resolvePythonCommand(this.settings, vaultPath);
-		const args = [...resolved.args, ...this.syncArgs(prune, force), targetPath || vaultPath];
-		log(`Spawning: ${resolved.cmd} ${args.join(' ')}`);
+		const run = (confirmed: boolean) => {
+			const target = targetPath || vaultPath;
+			const args = [...resolved.args, ...this.syncArgs(prune, force, confirmed), target];
+			log(`Spawning: ${resolved.cmd} ${args.join(' ')}`);
+			return this.runProcess(resolved, args, log);
+		};
 
-		const result = await this.runProcess(resolved, args, log);
+		let result = await run(false);
+		const preview = result.code === 0 ? pendingPrune(result.report) : null;
+		if (preview && !this.disposed) {
+			void syncLog.flush();
+			new Notice(syncSummary(result.report!));
+			const confirmed = confirmPrune ? await confirmPrune(preview) : false;
+			if (this.disposed) return 'stopped';
+			if (!confirmed) {
+				log('Prune cancelled: nothing was deleted.');
+				void syncLog.flush();
+				new Notice('Prune cancelled, nothing was deleted.');
+				updateStatusBar('success');
+				return 'success';
+			}
+			updateStatusBar('syncing');
+			new Notice('Deleting from Anki...');
+			result = await run(true);
+		}
 		void syncLog.flush();
 		return this.report(result, updateStatusBar);
 	}
 
 	/** The options after `sync`, from the command and the settings. */
-	private syncArgs(prune: boolean, force: boolean): string[] {
+	private syncArgs(prune: boolean, force: boolean, confirmed: boolean): string[] {
 		const args: string[] = [];
 		if (this.settings.debug_mode) args.push('--verbose');
-		args.push('sync');
+		args.push('sync', '--json');
 		if (prune) args.push('--prune');
+		if (prune && confirmed) args.push('--yes');
 		// Forcing re-sends every card, so the content cache is cleared with it.
 		if (force) args.push('--force', '--clear-cache');
 		if (this.settings.backend && this.settings.backend !== 'auto') {
@@ -180,19 +222,22 @@ export class SyncService {
 		log: (msg: string) => void,
 	): Promise<ProcessResult> {
 		return new Promise((resolve) => {
+			let stdout = '';
 			let stderr = '';
 			let child: ChildProcess;
 			try {
 				child = this.processes.spawn(resolved, args, resolved.env);
 			} catch (e: any) {
 				log(`Exception during spawn: ${e.message}`);
-				resolve({ code: null, signal: null, stderr, spawnError: e });
+				resolve({ code: null, signal: null, stderr, report: null, spawnError: e });
 				return;
 			}
 
 			child.stdout?.on('data', (data) => {
 				if (!data) return;
-				for (const l of data.toString().split('\n')) if (l) log(`STDOUT: ${l}`);
+				const str = data.toString();
+				stdout += str;
+				for (const l of str.split('\n')) if (l) log(`STDOUT: ${l}`);
 			});
 			child.stderr?.on('data', (data) => {
 				if (!data) return;
@@ -203,11 +248,11 @@ export class SyncService {
 			// A process that fails to start may emit 'close' after 'error'; the first wins.
 			child.once('error', (err) => {
 				log(`Process Error: ${err.message}`);
-				resolve({ code: null, signal: null, stderr, spawnError: err });
+				resolve({ code: null, signal: null, stderr, report: null, spawnError: err });
 			});
 			child.once('close', (code, signal) => {
 				log(signal ? `Process stopped (${signal})` : `Process exited with code ${code}`);
-				resolve({ code, signal, stderr });
+				resolve({ code, signal, stderr, report: parseSyncReport(stdout) });
 			});
 		});
 	}
@@ -232,6 +277,27 @@ export class SyncService {
 			updateStatusBar('idle');
 			return 'busy';
 		}
+		const report = result.report;
+		if (report) {
+			// A failed sync's preview is never offered for confirmation.
+			const unoffered = result.code !== 0 && report.prune?.status === 'unconfirmed';
+			const prune = !report.prune
+				? ''
+				: unoffered
+					? ' Nothing was deleted, because the sync did not complete.'
+					: ` ${pruneSummary(report.prune)}`;
+			if (result.code === 0) {
+				new Notice(syncSummary(report) + prune);
+				updateStatusBar('success');
+				return 'success';
+			}
+			const why = report.message ? `Sync stopped: ${report.message}` : syncSummary(report);
+			new Notice(why + prune);
+			updateStatusBar('error');
+			return 'failed';
+		}
+
+		// No report on stdout: the CLI predates --json or crashed before printing it.
 		if (result.code === 0) {
 			new Notice('Sync completed.');
 			updateStatusBar('success');

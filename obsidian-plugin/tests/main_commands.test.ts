@@ -2,6 +2,7 @@ import './test-setup';
 import { App, Notice, TFile, setIcon, setTooltip } from 'obsidian';
 import AretePlugin from '@/main';
 import { LocalGraphView } from '@presentation/views/LocalGraphView';
+import { PruneConfirmModal } from '@presentation/modals/PruneConfirmModal';
 
 jest.mock('@infrastructure/arete/SyncService');
 jest.mock('@infrastructure/arete/CheckService');
@@ -103,6 +104,25 @@ describe('AretePlugin commands, views and status bar', () => {
 	});
 
 	describe('runSync / runCheck', () => {
+		test('the prune preview is confirmed in the prune modal', async () => {
+			(plugin.syncService.runSync as jest.Mock).mockResolvedValue('success');
+			await plugin.runSync(true);
+			const confirm = (plugin.syncService.runSync as jest.Mock).mock.calls[0][4];
+			const open = jest.spyOn(PruneConfirmModal.prototype, 'open');
+
+			const answer = confirm({
+				status: 'unconfirmed',
+				message: '',
+				notes: [],
+				decks: ['Old'],
+				note_count: 0,
+				deck_count: 1,
+			});
+			expect(open).toHaveBeenCalledTimes(1);
+			(open.mock.instances[0] as unknown as PruneConfirmModal).onClose();
+			expect(await answer).toBe(false);
+		});
+
 		test('a failed sync leaves last_sync_time alone', async () => {
 			(plugin.syncService.runSync as jest.Mock).mockResolvedValue('failed');
 			plugin.settings.last_sync_time = 5;
@@ -123,6 +143,7 @@ describe('AretePlugin commands, views and status bar', () => {
 				true,
 				'/v/x.md',
 				true,
+				expect.any(Function),
 				expect.any(Function),
 			);
 			expect(plugin.settings.last_sync_time).toBe(1_700_000_000_000);

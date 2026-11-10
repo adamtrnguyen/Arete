@@ -161,6 +161,116 @@ describe('SyncService', () => {
 		expect(updateStatusBar).not.toHaveBeenCalled();
 	});
 
+	describe('the JSON report and prune', () => {
+		const report = (prune: unknown = null, over: Record<string, unknown> = {}) =>
+			JSON.stringify({
+				ok: true,
+				generated: 3,
+				changed: 2,
+				errors: 0,
+				message: null,
+				prune,
+				...over,
+			});
+		const preview = {
+			status: 'unconfirmed',
+			message: 'Prune not confirmed, so nothing was deleted.',
+			notes: [{ nid: 7, arete_id: 'arete_X', deck: 'Old' }],
+			decks: ['Old'],
+			note_count: 1,
+			deck_count: 1,
+		};
+		const deleted = { ...preview, status: 'deleted', message: 'Deleted 1 notes and 1 decks.' };
+
+		/** Each spawn prints the next stdout and exits with the next code. */
+		function scriptedRuns(...runs: [string, number][]) {
+			(spawn as jest.Mock).mockImplementation(() => {
+				const child = createMockChildProcess();
+				const [stdout, code] = runs.shift()!;
+				setImmediate(() => {
+					child.stdout.emit('data', Buffer.from(stdout));
+					child.emit('close', code);
+				});
+				return child;
+			});
+		}
+		const argvs = () => (spawn as jest.Mock).mock.calls.map((c) => c[1] as string[]);
+		const notices = () => (Notice as unknown as jest.Mock).mock.calls.map((c) => c[0]);
+		const lastNotice = () => notices()[notices().length - 1];
+
+		test('every sync asks for --json and reports cards changed from it', async () => {
+			scriptedRuns([report(), 0]);
+			expect(await service.runSync(false, null, false, updateStatusBar)).toBe('success');
+			expect(argvs()[0]).toEqual(expect.arrayContaining(['sync', '--json']));
+			expect(notices()).toContain('Sync completed, 2 cards changed in Anki.');
+		});
+
+		test('prune runs without --yes, shows the preview, and deletes only after a yes', async () => {
+			scriptedRuns([report(preview), 0], [report(deleted, { changed: 0 }), 0]);
+			const confirm = jest.fn().mockResolvedValue(true);
+
+			const outcome = await service.runSync(true, null, false, updateStatusBar, confirm);
+
+			expect(outcome).toBe('success');
+			expect(confirm).toHaveBeenCalledWith(expect.objectContaining({ note_count: 1 }));
+			expect(argvs()).toHaveLength(2);
+			expect(argvs()[0]).toContain('--prune');
+			expect(argvs()[0]).not.toContain('--yes');
+			expect(argvs()[1]).toEqual(expect.arrayContaining(['--prune', '--yes', '--json']));
+			expect(lastNotice()).toBe(
+				'Sync completed, Anki was already up to date. Deleted 1 note and 1 deck from Anki.',
+			);
+		});
+
+		test('cancelling the preview deletes nothing and says so', async () => {
+			scriptedRuns([report(preview), 0]);
+			const confirm = jest.fn().mockResolvedValue(false);
+
+			await service.runSync(true, null, false, updateStatusBar, confirm);
+
+			expect(argvs()).toHaveLength(1);
+			expect(lastNotice()).toBe('Prune cancelled, nothing was deleted.');
+		});
+
+		test('without a way to ask, prune deletes nothing', async () => {
+			scriptedRuns([report(preview), 0]);
+			await service.runSync(true, null, false, updateStatusBar);
+			expect(argvs()).toHaveLength(1);
+			expect(argvs()[0]).not.toContain('--yes');
+		});
+
+		test('nothing to prune asks nothing and says so', async () => {
+			scriptedRuns([report({ ...preview, status: 'clean', notes: [], decks: [] }), 0]);
+			const confirm = jest.fn();
+			await service.runSync(true, null, false, updateStatusBar, confirm);
+			expect(confirm).not.toHaveBeenCalled();
+			expect(lastNotice()).toBe('Sync completed, 2 cards changed in Anki. Nothing to prune.');
+		});
+
+		test('a sync that failed is not offered for deletion', async () => {
+			scriptedRuns([report(preview, { ok: false, errors: 2, message: '2 errors' }), 1]);
+			const confirm = jest.fn();
+			expect(await service.runSync(true, null, false, updateStatusBar, confirm)).toBe(
+				'failed',
+			);
+			expect(confirm).not.toHaveBeenCalled();
+			expect(lastNotice()).toMatch(/Nothing was deleted, because the sync did not complete/);
+		});
+
+		test('a prune status the plugin does not know is shown as not deleted', async () => {
+			const odd = { ...preview, status: 'held_back', message: 'Some cards failed.' };
+			scriptedRuns([report(odd), 0]);
+			await service.runSync(true, null, false, updateStatusBar, jest.fn());
+			expect(lastNotice()).toMatch(/Nothing was deleted\. Some cards failed\.$/);
+		});
+
+		test('stdout that is not JSON falls back to the exit code', async () => {
+			scriptedRuns(['INFO: done', 0]);
+			expect(await service.runSync(false, null, false, updateStatusBar)).toBe('success');
+			expect(notices()).toContain('Sync completed.');
+		});
+	});
+
 	describe('another sync holds the lock', () => {
 		test('the lock exit is reported as a running sync, not as a failure', async () => {
 			const mockChild = createMockChildProcess();

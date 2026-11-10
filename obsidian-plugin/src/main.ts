@@ -21,6 +21,7 @@ import { CardYamlEditorView, YAML_EDITOR_VIEW_TYPE } from '@presentation/views/C
 import { DashboardView, DASHBOARD_VIEW_TYPE } from '@presentation/views/DashboardView';
 import { AreteSettingTab } from '@presentation/settings/SettingTab';
 import { CheckResultModal } from '@presentation/modals/CheckResultModal';
+import { PruneConfirmModal } from '@presentation/modals/PruneConfirmModal';
 import { SyncService, SyncStatus } from '@infrastructure/arete/SyncService';
 import { SyncRequest, SyncScheduler } from '@application/services/SyncScheduler';
 import { CheckService } from '@infrastructure/arete/CheckService';
@@ -670,6 +671,7 @@ export default class AretePlugin extends Plugin {
 			request.targetPath,
 			request.force,
 			this.updateStatusBar.bind(this),
+			(preview) => new PruneConfirmModal(this.app, preview).ask(),
 		);
 		if (outcome !== 'success') return;
 		this.settings.last_sync_time = Date.now();

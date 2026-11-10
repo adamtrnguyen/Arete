@@ -47,6 +47,7 @@ describe('AretePlugin Composition', () => {
 			null,
 			false,
 			expect.any(Function),
+			expect.any(Function),
 		);
 	});
 

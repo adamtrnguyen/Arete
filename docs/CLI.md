@@ -72,6 +72,18 @@ uv sync
 - `--force`: Re-send every card, ignoring the content cache. It does not confirm a prune.
 - `--backend`: Select backend (`auto`, `ankiconnect`, `direct`).
 - `--workers`: Override parallel sync worker count.
+- `--json`: Print one JSON object on stdout and nothing else; logs go to stderr. It never
+  asks: without `--yes` a prune returns its preview and deletes nothing. Exit codes are
+  those of the plain command.
+
+| Key | Type | Meaning |
+| :--- | :--- | :--- |
+| `ok` | bool | The run completed without a failure (exit code 0). |
+| `generated` | int | Cards compared with Anki. |
+| `changed` | int | Cards added or updated in Anki. |
+| `errors` | int | Errors recorded during the run. |
+| `message` | str or null | Why the run failed or stopped early, such as an outdated add-on. |
+| `prune` | object or null | Null without `--prune`. Otherwise `{status, message, notes: [{nid, arete_id, deck}], decks, note_count, deck_count, empty_decks_not_deleted, decks_kept}`. `status` is `deleted` when the listed notes and decks were deleted, `unconfirmed` for a preview, and `failed` when Anki refused a delete (its `message` says which). Any other value means nothing was deleted. |
 
 One sync runs at a time per cache database. A sync started while another holds the lock
 (`cache.db.lock` beside the cache) does nothing: it prints one line on stderr, starting

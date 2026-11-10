@@ -119,6 +119,7 @@ export const createMockElement = (tag?: string, opts?: any): any => {
 		setText: jest.fn().mockReturnThis(),
 		setButtonText: jest.fn().mockReturnThis(),
 		setDisabled: jest.fn().mockReturnThis(),
+		focus: jest.fn(),
 		addEventListener: jest.fn().mockImplementation(function (this: any, name, cb) {
 			this._listeners = this._listeners || {};
 			this._listeners[name] = cb;

@@ -148,10 +148,18 @@ async function pluginCommandLines(): Promise<{
 		workers: 4,
 		debug_mode: true,
 	};
-	const children: any[] = [];
-	(spawn as jest.Mock).mockImplementation(() => {
+	// A prune without --yes answers with a preview, so the confirmed run is spawned too.
+	const preview = JSON.stringify({
+		ok: true,
+		prune: { status: 'unconfirmed', notes: [], decks: ['Old'], note_count: 0, deck_count: 1 },
+	});
+	(spawn as jest.Mock).mockImplementation((_cmd: string, argv: string[]) => {
 		const child = createMockChildProcess();
-		children.push(child);
+		const previewing = argv.includes('--prune') && !argv.includes('--yes');
+		setImmediate(() => {
+			child.stdout.emit('data', previewing ? preview : '{}');
+			child.emit('close', 0);
+		});
 		return child;
 	});
 
@@ -177,12 +185,9 @@ async function pluginCommandLines(): Promise<{
 		...Object.values(calls).map((call) => call()),
 		check.getCheckResult('/vault/A.md'),
 		check.runFix('/vault/A.md'),
-		sync.runSync(true, '/vault/A.md', true, jest.fn()),
+		sync.runSync(false, '/vault/A.md', true, jest.fn()),
+		sync.runSync(true, null, false, jest.fn(), async () => true),
 	];
-	for (const child of children) {
-		child.stdout.emit('data', '{}');
-		child.emit('close', 0);
-	}
 	await Promise.allSettled(pending);
 
 	const prefix = resolvePythonCommand(settings).args.length;
@@ -218,7 +223,10 @@ describe('plugin command lines against the registered CLI', () => {
 	test('every command line names a registered command and its own options', async () => {
 		jest.spyOn(console, 'error').mockImplementation(() => undefined);
 		const { lines } = await pluginCommandLines();
-		expect(lines).toHaveLength(13);
+		expect(lines).toHaveLength(15);
+		expect(lines).toContainEqual(
+			expect.arrayContaining(['sync', '--json', '--prune', '--yes']),
+		);
 		const errors = lines.flatMap((argv) =>
 			check(cli, argv).map((e) => `${argv.join(' ')}: ${e}`),
 		);
@@ -228,7 +236,7 @@ describe('plugin command lines against the registered CLI', () => {
 	test('every command runs with the vault as ARETE_VAULT_ROOT', async () => {
 		jest.spyOn(console, 'error').mockImplementation(() => undefined);
 		const { vaultRoots } = await pluginCommandLines();
-		expect(vaultRoots).toHaveLength(13);
+		expect(vaultRoots).toHaveLength(15);
 		expect(vaultRoots).toEqual(vaultRoots.map(() => '/vault'));
 	});
 
