@@ -132,6 +132,8 @@ Cards declare prerequisites via `deps.requires` in YAML frontmatter. The queue b
 
 Location: `obsidian-plugin/` — an Obsidian community plugin bundled with esbuild.
 
+Style rules for plugin code and UI: [`obsidian-plugin/CLAUDE.md`](obsidian-plugin/CLAUDE.md). The plugin looks and behaves like part of Obsidian.
+
 Same DDD layer structure as the Python backend: `domain/`, `infrastructure/`, `application/`, `presentation/`.
 
 ### Plugin Recipes
