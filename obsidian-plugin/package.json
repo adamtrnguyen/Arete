@@ -9,6 +9,7 @@
     "version": "node version-bump.mjs && git add manifest.json versions.json",
     "lint": "eslint . --pass-on-unpruned-suppressions",
     "lint:tighten": "eslint . --prune-suppressions",
+    "check:min-app-version": "node scripts/min-app-version.cjs",
     "lint:deps": "depcruise src --config .dependency-cruiser.js",
     "format": "prettier --write .",
     "test": "jest"

@@ -120,6 +120,10 @@ lint-obsidian:
 lint-deps-obsidian:
     {{NPM}} run lint:deps
 
+# manifest.json minAppVersion covers every Obsidian API the plugin references (not in qa until the manifest is raised)
+min-app-version-obsidian:
+    {{NPM}} run check:min-app-version
+
 # Type-check Obsidian plugin
 types-obsidian:
     cd {{PLUGIN}} && npx tsc --noEmit
