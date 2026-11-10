@@ -231,7 +231,7 @@ async def test_a_retype_that_never_landed_fails_the_card_and_is_not_sent_again()
     assert fake.notes[nid]["model"] == "Basic"
     assert "may or may not" in (result.error or "")
     sent = [a for a, _ in fake.log]
-    assert "updateNoteFields" not in sent and "changeDeck" not in sent
+    assert "updateNoteFields" not in sent and "setHomeDeck" not in sent
 
 
 # ---------------------------------------------------------------------------
@@ -313,12 +313,12 @@ async def test_a_read_that_keeps_timing_out_fails_after_three_attempts():
 def _actions_in_source() -> set[str]:
     """Action names written in the adapter.
 
-    From ``_invoke`` and ``_lacks`` calls, write tuples and multi entries.
+    From ``_invoke`` calls, write tuples and multi entries.
     """
     tree = ast.parse(inspect.getsource(anki_connect))
     names: set[str] = set()
     for node in ast.walk(tree):
-        if isinstance(node, ast.Call) and getattr(node.func, "attr", None) in ("_invoke", "_lacks"):
+        if isinstance(node, ast.Call) and getattr(node.func, "attr", None) == "_invoke":
             first = node.args[0] if node.args else None
             if isinstance(first, ast.Constant) and isinstance(first.value, str):
                 names.add(first.value)
@@ -343,8 +343,12 @@ def _actions_in_source() -> set[str]:
 
 def test_every_action_the_adapter_sends_is_in_the_retry_table():
     sent = _actions_in_source()
-    assert {"addNote", "changeNoteType", "notesInfo", "multi", "changeDeck", "setHomeDeck"} <= sent
+    assert {"addNote", "changeNoteType", "notesInfo", "multi", "setHomeDeck"} <= sent
     assert sent <= set(anki_connect._RESEND_SAFE) | {"multi"}
+
+
+def test_the_retry_table_names_only_actions_the_adapter_sends():
+    assert set(anki_connect._RESEND_SAFE) <= _actions_in_source()
 
 
 def test_the_non_idempotent_actions_are_never_resent():

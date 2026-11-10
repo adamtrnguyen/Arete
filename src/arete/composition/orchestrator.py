@@ -12,6 +12,7 @@ from arete.application.sync.prune import PruneConfirm
 from arete.application.sync.vault_service import VaultService
 from arete.application.utils.logging import setup_logging
 from arete.composition.factory import get_anki_bridge, get_cache
+from arete.domain.models import AddonOutdated
 
 
 async def execute_sync(
@@ -86,8 +87,12 @@ async def run_sync_logic(
     config: AppConfig, *, confirm_prune: bool = False, prompt: PruneConfirm | None = None
 ):
     """Orchestrates the sync process using the provided config."""
-    stats = await execute_sync(config, confirm_prune=confirm_prune, prompt=prompt)
     logger = logging.getLogger("arete.main")
+    try:
+        stats = await execute_sync(config, confirm_prune=confirm_prune, prompt=prompt)
+    except AddonOutdated as e:
+        logger.error(f"[sync] stopped: {e}")
+        raise SyncFailedError(str(e)) from e
 
     logger.info(
         f"=== summary === generated={stats.total_generated} "

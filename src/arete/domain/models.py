@@ -116,6 +116,10 @@ class OutcomeUnknown(Exception):
     """A write that is not safe to send twice lost its reply: it may or may not have landed."""
 
 
+class AddonOutdated(Exception):
+    """The Anki add-on lacks an action the sync needs, so the sync stops."""
+
+
 # ---------------------------------------------------------------------------
 # What a note store holds and is asked to write (`interfaces.NoteStoreSession`).
 # Scheduling (due, interval, ease, queue, suspension, flags, review history) is absent on
@@ -128,8 +132,8 @@ class HeldCard:
     """One card of a note as Anki holds it.
 
     `home_deck` is the deck the card belongs to: the deck it returns to while it sits in a
-    filtered deck. None means the store cannot prove it (a failed read, or a deck reported
-    under a stand-in name), which counts as different from any deck.
+    filtered deck. None means the store cannot prove it (a failed read, or a deck the
+    collection does not hold), which counts as different from any deck.
     `in_filtered` is True while the card sits in a filtered deck, None when unknown.
     """
 

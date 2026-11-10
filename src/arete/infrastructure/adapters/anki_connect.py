@@ -19,6 +19,7 @@ from arete.domain.constants import (
 )
 from arete.domain.interfaces import AnkiBridge
 from arete.domain.models import (
+    AddonOutdated,
     HeldCard,
     HeldNote,
     NewNote,
@@ -39,19 +40,16 @@ _RESEND_SAFE: dict[str, bool] = {
     # reads
     "version": True,
     "deckNames": True,
-    "getDecks": True,
     "findNotes": True,
     "findCards": True,
     "notesInfo": True,
     "cardsInfo": True,
-    "modelFieldNames": True,
     "modelTemplates": True,
     "modelStyling": True,
     "getModelInfo": True,
     "getHomeDecks": True,
     # writes that set a state: a second run finds it set
     "createDeck": True,  # decks.id() returns the existing deck
-    "changeDeck": True,  # sets the deck of the listed cards
     "setHomeDeck": True,  # sets the home deck of the listed cards
     "updateNoteFields": True,  # sets the listed fields
     "addTags": True,
@@ -90,9 +88,14 @@ def _unknown_text(action: str, how: str) -> str:
     return f"AnkiConnect '{action}' {how}: Anki may or may not have applied it"
 
 
-# getDecks names the Default deck for a card whose deck id no longer exists, so a card
-# reported there is no proof that a changeDeck would change nothing.
-_UNPROVABLE_DECK = "Default"
+def _outdated(action: str, error: object) -> AddonOutdated | None:
+    """The error to stop the sync with, when the add-on answered that it lacks the action."""
+    if isinstance(error, Exception) and "unsupported action" in str(error):
+        return AddonOutdated(
+            f"The Anki add-on lacks the '{action}' action the sync needs. Update the "
+            "arete_ankiconnect add-on and restart Anki."
+        )
+    return None
 
 
 class ConnectNoteSession:
@@ -103,11 +106,8 @@ class ConnectNoteSession:
     `getModelInfo`, home decks from `getHomeDecks`, and a card is filed with `setHomeDeck`,
     which leaves a queued card in its filtered deck.
 
-    An add-on without those actions answers "unsupported action"; the adapter then uses
-    `modelFieldNames` and `modelTemplates` (a type is cloze when a template holds a cloze
-    field), `getDecks` (which names the deck a card sits in, a filtered deck while it is
-    queued, and `Default` for a deck that is gone, read as unknown) and `changeDeck`
-    (which takes a card out of its filtered deck), and logs that it did.
+    An add-on that answers "unsupported action" to one of those three is too old for the
+    sync: the reads raise `AddonOutdated`, and a filing fails its note with it.
     """
 
     def __init__(self, adapter: AnkiConnectAdapter):
@@ -115,19 +115,6 @@ class ConnectNoteSession:
         self._a = adapter
         # The deck names, read along with the note types (one request for both).
         self._deck_names: set[str] | None = None
-
-    def _lacks(self, action: str, error: object) -> bool:
-        """True, and remembered for the run, when the add-on does not know the action."""
-        if action in self._a._missing_actions:
-            return True
-        if isinstance(error, Exception) and "unsupported action" in str(error):
-            self._a._missing_actions.add(action)
-            self._a.logger.warning(
-                f"[anki] the add-on lacks '{action}'; using today's actions instead. Update "
-                "the arete add-on and restart Anki."
-            )
-            return True
-        return False
 
     # -- reads ---------------------------------------------------------------
 
@@ -137,28 +124,16 @@ class ConnectNoteSession:
         ordered = sorted(names)
         if not ordered:
             return {}
-        if not self._lacks("getModelInfo", None):
-            info, decks = await self._a._send_writes(
-                [("getModelInfo", {"models": ordered}), ("deckNames", {})], results=True
-            )
-            if isinstance(decks, list):
-                self._deck_names = set(decks)
-            if not self._lacks("getModelInfo", info):
-                if isinstance(info, Exception):
-                    return dict.fromkeys(ordered, info)
-                return {name: _model_info(name, info.get(name)) for name in ordered}
-        reads: list[tuple[str, dict]] = []
-        for name in ordered:
-            reads.append(("modelFieldNames", {"modelName": name}))
-            reads.append(("modelTemplates", {"modelName": name}))
-        reads.append(("deckNames", {}))
-        replies = await self._a._send_writes(reads, results=True)
-        if isinstance(replies[-1], list):
-            self._deck_names = set(replies[-1])
-        return {
-            name: _type_info(name, replies[2 * i], replies[2 * i + 1])
-            for i, name in enumerate(ordered)
-        }
+        info, decks = await self._a._send_writes(
+            [("getModelInfo", {"models": ordered}), ("deckNames", {})], results=True
+        )
+        if isinstance(decks, list):
+            self._deck_names = set(decks)
+        if outdated := _outdated("getModelInfo", info):
+            raise outdated
+        if isinstance(info, Exception):
+            return dict.fromkeys(ordered, info)
+        return {name: _model_info(name, info.get(name)) for name in ordered}
 
     async def deck_names(self) -> set[str]:
         if self._deck_names is None:
@@ -186,34 +161,16 @@ class ConnectNoteSession:
         homes: dict[int, tuple[str | None, bool | None]] = {}
         for i in range(0, len(cids), CHUNK_SIZE):
             chunk = [int(c) for c in cids[i : i + CHUNK_SIZE]]
-            if not self._lacks("getHomeDecks", None):
-                try:
-                    reply = await self._a._invoke("getHomeDecks", cards=chunk)
-                    for cid, home in zip(chunk, reply, strict=True):
-                        if home:
-                            homes[cid] = (home.get("homeDeck"), bool(home.get("filteredDeck")))
-                    continue
-                except Exception as e:
-                    if not self._lacks("getHomeDecks", e):
-                        self._a.logger.warning(f"[anki] getHomeDecks failed; decks unknown: {e}")
-                        continue
-            homes.update(await self._decks_by_get_decks(chunk))
+            try:
+                reply = await self._a._invoke("getHomeDecks", cards=chunk)
+                for cid, home in zip(chunk, reply, strict=True):
+                    if home:
+                        homes[cid] = (home.get("homeDeck"), bool(home.get("filteredDeck")))
+            except Exception as e:
+                if outdated := _outdated("getHomeDecks", e):
+                    raise outdated from e
+                self._a.logger.warning(f"[anki] getHomeDecks failed; decks unknown: {e}")
         return homes
-
-    async def _decks_by_get_decks(
-        self, cids: list[int]
-    ) -> dict[int, tuple[str | None, bool | None]]:
-        """Each card's current deck by `getDecks`, read as its home deck (queued: unknown)."""
-        try:
-            reply = await self._a._invoke("getDecks", cards=cids)
-        except Exception as e:
-            self._a.logger.warning(f"[anki] getDecks failed; those decks count as unknown: {e}")
-            return {}
-        out: dict[int, tuple[str | None, bool | None]] = {}
-        for deck_name, deck_cids in reply.items():
-            known = None if deck_name == _UNPROVABLE_DECK else deck_name
-            out.update((int(c), (known, None)) for c in deck_cids)
-        return out
 
     async def find_by_arete_ids(
         self, arete_ids: Sequence[str]
@@ -274,8 +231,7 @@ class ConnectNoteSession:
 
     async def apply_changes(self, changes: Sequence[NoteChange]) -> list[Exception | None]:
         """Each note's steps in order, the k-th step of every note in one request."""
-        filing = "changeDeck" if self._lacks("setHomeDeck", None) else "setHomeDeck"
-        steps = [_steps_of(c, filing) for c in changes]
+        steps = [_steps_of(c) for c in changes]
         errors: list[Exception | None] = [None] * len(changes)
         k = 0
         while due := [i for i, s in enumerate(steps) if errors[i] is None and k < len(s)]:
@@ -290,16 +246,13 @@ class ConnectNoteSession:
     async def _settle(
         self, change: NoteChange, step: tuple[str, dict], error: Exception | None
     ) -> Exception | None:
-        """A step's final error: a lost retype is confirmed, an unknown filing redone."""
+        """A step's final error: a lost retype is confirmed, an unknown action named."""
         if error is None:
             return None
-        action, params = step
+        action, _params = step
         if action == "changeNoteType":
             return await self._confirm_retype(change, error)
-        if action == "setHomeDeck" and self._lacks("setHomeDeck", error):
-            [again] = await self._a._send_writes([("changeDeck", params)])
-            return again
-        return error
+        return _outdated(action, error) or error
 
     async def _confirm_retype(self, change: NoteChange, error: Exception) -> Exception | None:
         """A lost `changeNoteType` reply: done if the note has the new type, else the error.
@@ -321,21 +274,6 @@ def _model_info(name: str, info: Any) -> NoteTypeInfo | None:
         return None
     fields = tuple(str(f) for f in info.get("fields") or [])
     return NoteTypeInfo(name, fields, info.get("type") == 1, int(info.get("templates") or 0))
-
-
-def _type_info(name: str, fields: Any, templates: Any) -> NoteTypeInfo | None | Exception:
-    """A note type from the results of `modelFieldNames` and `modelTemplates`.
-
-    Without a model-info action a type counts as cloze when a template's front holds a
-    cloze field, as Anki's own cloze type's does.
-    """
-    for reply in (fields, templates):
-        if isinstance(reply, Exception):
-            return None if "model was not found" in str(reply) else reply
-    if not isinstance(fields, list) or not isinstance(templates, dict):
-        return ValueError(f"note type {name}: unexpected replies {fields!r:.40} {templates!r:.40}")
-    is_cloze = any("{{cloze:" in str((t or {}).get("Front", "")) for t in templates.values())
-    return NoteTypeInfo(name, tuple(fields), is_cloze, len(templates))
 
 
 def _held(info: dict, homes: dict[int, tuple[str | None, bool | None]]) -> HeldNote:
@@ -381,11 +319,8 @@ def _add_params(new: NewNote) -> dict:
     }
 
 
-def _steps_of(change: NoteChange, filing: str) -> list[tuple[str, dict]]:
-    """The note's writes in the port's order: retype, fields, add tags, remove tags, deck.
-
-    `filing` is the action that files the cards under the home deck.
-    """
+def _steps_of(change: NoteChange) -> list[tuple[str, dict]]:
+    """The note's writes in the port's order: retype, fields, add tags, remove tags, deck."""
     nid = change.nid
     steps: list[tuple[str, dict]] = []
     if change.retype:
@@ -401,7 +336,7 @@ def _steps_of(change: NoteChange, filing: str) -> list[tuple[str, dict]]:
         steps.append(("removeTags", {"notes": [nid], "tags": " ".join(change.remove_tags)}))
     if change.home_deck:
         cids, deck = change.home_deck
-        steps.append((filing, {"cards": list(cids), "deck": deck}))
+        steps.append(("setHomeDeck", {"cards": list(cids), "deck": deck}))
     return steps
 
 
@@ -411,8 +346,6 @@ class AnkiConnectAdapter(AnkiBridge):
     def __init__(self, url: str = "http://127.0.0.1:8765"):
         """Initialize with AnkiConnect URL, auto-detecting WSL bridge if needed."""
         self.logger = logging.getLogger(__name__)
-        # Arete actions the add-on answered "unsupported action" to; their fallbacks are used.
-        self._missing_actions: set[str] = set()
         self.use_windows_curl = False
         self._client: httpx.AsyncClient | None = None
         self._invoke_sem = asyncio.Semaphore(SYNC_CONCURRENCY)

@@ -10,14 +10,13 @@ from __future__ import annotations
 
 import inspect
 from collections.abc import Callable, Iterator
-from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
 
 from arete.domain.interfaces import NoteStorePort, NoteStoreSession
-from arete.domain.models import HeldNote, NewNote, NoteChange, OutcomeUnknown
+from arete.domain.models import AddonOutdated, HeldNote, NewNote, NoteChange, OutcomeUnknown
 from arete.infrastructure.adapters.anki_direct import AnkiDirectAdapter
 from tests.e2e.sync_harness import AddonBackend, DirectBackend, FakeBackend, make_backend
 from tests.fakes.note_store import ContractViolation, FakeNoteStore
@@ -80,51 +79,12 @@ def _ac_addon(root: Path) -> StoreUnderTest:
     )
 
 
-ARETE_ACTIONS = ("getModelInfo", "getHomeDecks", "setHomeDeck")
-
-
-def _ac_addon_legacy(root: Path) -> StoreUnderTest:
-    """The add-on as a version without Arete's model-info and home-deck actions."""
-    backend = make_backend("addon", root)
-    assert isinstance(backend, AddonBackend)
-    for action in ARETE_ACTIONS:
-        backend.host._addon.actions.pop(action)
-    return StoreUnderTest(
-        "ac-addon-legacy",
-        backend.bridge(),
-        backend.add_note,
-        lambda nids: None if backend.queue(nids) else None,
-        backend.close,
-    )
-
-
 STORES: dict[str, Callable[[Path], StoreUnderTest]] = {
     "fake": _fake,
     "direct": _direct,
     "ac-fake": _ac_fake,
     "ac-addon": _ac_addon,
-    "ac-addon-legacy": _ac_addon_legacy,
 }
-
-# Stores that do not meet a contract test, and why. Each acts as a strict xfail: the test
-# fails once the store meets it, until its entry is deleted.
-HOME_DECK_GAP = {
-    "ac-addon-legacy": "without getHomeDecks and setHomeDeck, getDecks names the filtered "
-    "deck a queued card sits in, and changeDeck takes it out of that deck",
-}
-
-
-@contextmanager
-def known_gap(sut: StoreUnderTest, gaps: dict[str, str]) -> Iterator[None]:
-    if sut.name not in gaps:
-        yield
-        return
-    try:
-        yield
-    except AssertionError:
-        pytest.xfail(gaps[sut.name])
-    else:
-        pytest.fail(f"{sut.name} now meets this; delete its entry: {gaps[sut.name]}")
 
 
 @pytest.fixture(params=sorted(STORES))
@@ -164,8 +124,7 @@ async def test_read_notes_returns_the_note_in_field_and_card_order(sut: StoreUnd
     assert (held.fields["Front"], held.fields["Back"]) == ("<p>Q</p>", "<p>A</p>")
     assert _tags(held) == {ID.casefold(), "t"}
     assert [(c.ord, c.home_deck) for c in held.cards] == [(0, "C::Deck")]
-    with known_gap(sut, HOME_DECK_GAP):
-        assert [c.in_filtered for c in held.cards] == [False]
+    assert [c.in_filtered for c in held.cards] == [False]
     assert got[1111111111111] is None
 
 
@@ -176,8 +135,7 @@ async def test_a_queued_card_reads_its_home_deck(sut: StoreUnderTest):
 
     held = await _read(sut, nid)
 
-    with known_gap(sut, HOME_DECK_GAP):
-        assert [(c.home_deck, c.in_filtered) for c in held.cards] == [("C::Home", True)]
+    assert [(c.home_deck, c.in_filtered) for c in held.cards] == [("C::Home", True)]
 
 
 @pytest.mark.asyncio
@@ -326,8 +284,7 @@ async def test_a_queued_card_gets_a_new_home_deck_and_stays_queued(sut: StoreUnd
 
     assert error is None
     after = await _read(sut, nid)
-    with known_gap(sut, HOME_DECK_GAP):
-        assert [(c.home_deck, c.in_filtered) for c in after.cards] == [("C::Moved", True)]
+    assert [(c.home_deck, c.in_filtered) for c in after.cards] == [("C::Moved", True)]
 
 
 @pytest.mark.asyncio
@@ -428,3 +385,49 @@ async def test_the_fake_stops_a_note_at_its_failed_step():
     assert str(error) == "boom"
     held = fake.held(nid)
     assert (held.fields["Front"], held.tags) == ("new", ("old",))
+
+
+# ---------------------------------------------------------------------------
+# The add-on without one of Arete's actions: the store stops and names the fix
+# ---------------------------------------------------------------------------
+
+
+FIX = "Update the arete_ankiconnect add-on and restart Anki"
+
+
+async def _call_needing(missing: str, s: NoteStoreSession, nid: int, cids: tuple[int, ...]):
+    """The session call that sends `missing`; a filing answers its error per note."""
+    if missing == "getModelInfo":
+        await s.note_types(["Basic"])
+    elif missing == "getHomeDecks":
+        await s.read_notes([nid])
+    else:
+        await s.create_decks(["C::Moved"])
+        [error] = await s.apply_changes([NoteChange(nid, home_deck=(cids, "C::Moved"))])
+        assert error is not None
+        raise error
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("missing", ["getModelInfo", "getHomeDecks", "setHomeDeck"])
+async def test_the_addon_without_an_arete_action_stops_with_the_fix(tmp_path: Path, missing):
+    backend = make_backend("addon", tmp_path)
+    assert isinstance(backend, AddonBackend)
+    try:
+        nid = backend.add_note("Basic", "C::Home", {"Front": "Q", "Back": "A"}, [ID])
+        store = backend.bridge()
+        async with store.session() as s:
+            held = (await s.read_notes([nid]))[nid]
+        assert isinstance(held, HeldNote)
+        cids = tuple(c.cid for c in held.cards)
+        backend.host._addon.actions.pop(missing)
+        backend.host.actions.clear()
+
+        async with store.session() as s:
+            with pytest.raises(AddonOutdated, match=f"'{missing}'.*{FIX}"):
+                await _call_needing(missing, s, nid, cids)
+
+        assert missing in backend.host.actions
+        assert not {"getDecks", "changeDeck", "modelFieldNames"} & set(backend.host.actions)
+    finally:
+        backend.close()

@@ -42,6 +42,7 @@ from dataclasses import dataclass, field
 from arete.domain.identity import ANKI_OWNED_TAGS, anki_tags, first_field_key
 from arete.domain.interfaces import NoteStorePort, NoteStoreSession
 from arete.domain.models import (
+    AddonOutdated,
     HeldNote,
     NewNote,
     NoteChange,
@@ -241,7 +242,8 @@ class NoteSync:
 
         Batches then compare against this snapshot instead of reading per batch. A note
         whose read failed is read again by its own batch. An edit made in Anki after the
-        prefetch can survive this run; the next run overwrites it.
+        prefetch can survive this run; the next run overwrites it. An `AddonOutdated`
+        propagates: no batch can sync against that add-on.
         """
         try:
             async with self._store.session() as s:
@@ -250,6 +252,8 @@ class NoteSync:
                     if self._decks is None:
                         self._decks = {d.casefold() for d in await s.deck_names()}
                 held = await s.read_notes(sorted(set(nids)))
+        except AddonOutdated:
+            raise
         except Exception as e:
             self._log.warning(f"[sync] prefetch failed; each batch reads its own notes: {e}")
             return
@@ -320,6 +324,8 @@ class NoteSync:
                 return
             try:
                 self._types.update(await s.note_types(todo))
+            except AddonOutdated:
+                raise
             except Exception as e:
                 self._log.error(f"[sync] reading note types {todo} failed: {e}")
                 return  # not cached: the cards fail now, a later batch reads again

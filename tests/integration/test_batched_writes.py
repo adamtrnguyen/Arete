@@ -1,7 +1,7 @@
 """One NoteSync batch against real Anki: one read per batch, writes only where Anki differs.
 
 The writes of several notes travel in one ``multi`` request, so this checks the add-on's
-real ``multi`` and ``getDecks`` replies, not a fake's.
+real ``multi`` and ``getHomeDecks`` replies, not a fake's.
 """
 
 from collections import Counter

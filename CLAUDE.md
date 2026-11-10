@@ -10,7 +10,7 @@ Each invariant gets a test that fails when it breaks; its status changes only wi
 | 1 | **Obsidian is ground truth.** After any sync, Anki's fields, tags, deck and note type for a card id equal the vault's. An edit made in Anki is overwritten. Anki's own `leech` and `marked` tags stay. | Holds. An edit made in Anki while a sync runs can survive that sync; the next one overwrites it |
 | 2 | **The Arete id is the identity.** A card is found by its id, whichever backend runs. | Holds |
 | 3 | **Both backends behave the same.** Whether Anki is open changes how Arete reaches the collection, never what it does. | Holds |
-| 4 | **Arete never touches scheduling.** Review history, due dates and suspension belong to Anki. | Holds, a card in `Arete::Queue` included. Over an add-on without `setHomeDeck`, an update still takes a queued card out of the queue |
+| 4 | **Arete never touches scheduling.** Review history, due dates and suspension belong to Anki. | Holds, a card in `Arete::Queue` included |
 | 5 | **A sync writes only ids into the vault.** The Arete id, the note id and the card id. | Note bodies hold. Not yet for frontmatter: a rewritten file loses comments and formatting, and a `\|` block becomes `\|-` |
 | 6 | **Nothing is deleted without confirmation.** | Holds |
 
@@ -74,8 +74,8 @@ Fork of AnkiConnect with custom actions:
 - `getHomeDecks(cards)` — Per card: the deck it belongs to and the filtered deck it sits in
 - `setHomeDeck(cards, deck)` — Files cards under a deck; a queued card stays queued
 
-The sync falls back to today's actions when the add-on lacks the last three, so a queued
-card then leaves its queue on an update.
+The sync needs the last three. An add-on without one stops the sync with `AddonOutdated`,
+whose message says to update the add-on and restart Anki.
 
 Plugin must be reloaded (restart Anki) after code changes.
 

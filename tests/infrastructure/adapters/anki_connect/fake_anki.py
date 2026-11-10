@@ -128,11 +128,6 @@ class FakeAnki:
     def _a_deckNames(self):
         return sorted(self.decks)
 
-    def _a_modelFieldNames(self, modelName):
-        if modelName not in self.models:
-            raise Exception(f"model was not found: {modelName}")
-        return list(self.models[modelName])
-
     def _a_modelFieldAdd(self, modelName, fieldName):
         if modelName not in self.models:
             raise Exception(f"model was not found: {modelName}")
@@ -258,13 +253,6 @@ class FakeAnki:
                 t for t in self.notes[nid]["tags"] if t.casefold() not in gone
             ]
 
-    def _a_changeDeck(self, cards, deck):
-        """The add-on's changeDeck: a queued card leaves its filtered deck first."""
-        self.decks.add(deck)
-        for cid in cards:
-            self.card_home.pop(cid, None)
-            self.card_deck[cid] = deck
-
     def queue(self, nids, deck="Arete::Queue"):
         """Pull the notes' cards into a filtered deck, as createFilteredDeck does."""
         self.decks.add(deck)
@@ -304,12 +292,6 @@ class FakeAnki:
             else None
             for name in models
         }
-
-    def _a_getDecks(self, cards):
-        decks: dict[str, list[int]] = {}
-        for cid in cards:
-            decks.setdefault(self.card_deck[cid], []).append(cid)
-        return decks
 
     def _a_deleteNotes(self, notes):
         for nid in notes:

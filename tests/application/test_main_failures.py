@@ -6,6 +6,7 @@ import pytest
 from arete.application.config import AppConfig
 from arete.application.sync.pipeline import RunStats
 from arete.composition.orchestrator import SyncFailedError, run_sync_logic
+from arete.domain.models import AddonOutdated
 
 
 @pytest.mark.asyncio
@@ -41,6 +42,23 @@ async def test_run_sync_logic_failure_exit():
 
             with pytest.raises(SyncFailedError):
                 await run_sync_logic(config)
+
+
+@pytest.mark.asyncio
+async def test_an_outdated_addon_stops_the_sync_with_its_message(tmp_path: Path, caplog):
+    config = AppConfig(
+        root_input=tmp_path, vault_root=tmp_path, anki_media_dir=tmp_path / "m", keep_going=True
+    )
+    outdated = AddonOutdated("Update the arete_ankiconnect add-on and restart Anki.")
+
+    with patch("arete.composition.orchestrator.run_pipeline", AsyncMock(side_effect=outdated)):
+        with patch("arete.composition.factory.AnkiConnectAdapter") as mock_adapter:
+            mock_adapter.return_value.is_responsive = AsyncMock(return_value=True)
+            mock_adapter.return_value.close = AsyncMock()
+            with pytest.raises(SyncFailedError, match="restart Anki"):
+                await run_sync_logic(config)
+
+    assert any("restart Anki" in r.getMessage() for r in caplog.records)
 
 
 def test_main_module_invoke():

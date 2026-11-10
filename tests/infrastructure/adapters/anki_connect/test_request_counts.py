@@ -5,7 +5,7 @@ how many requests of each action a fixed batch costs, so a change that adds roun
 fails here. The fake answers as the add-on does (``fake_anki.py``).
 
 The first request of a run reads the batch's note types and the deck names in one `multi`
-(`modelFieldNames`, `modelTemplates`, `deckNames`); the counts below include it.
+(`getModelInfo`, `deckNames`); the counts below include it.
 """
 
 import asyncio
@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 
 from arete.application.sync.note_sync import NoteSync
-from arete.domain.models import AnkiNote, WorkItem
+from arete.domain.models import AddonOutdated, AnkiNote, WorkItem
 from arete.infrastructure.adapters.anki_connect import AnkiConnectAdapter
 
 from .fake_anki import FakeAnki
@@ -99,7 +99,7 @@ async def test_a_note_healed_by_its_tag_is_read_once():
 
 
 # ---------------------------------------------------------------------------
-# Updates: one notesInfo and one getDecks per batch, writes only where Anki differs
+# Updates: one notesInfo and one getHomeDecks per batch, writes only where Anki differs
 # ---------------------------------------------------------------------------
 
 
@@ -279,27 +279,61 @@ async def test_home_decks_decide_which_cards_are_filed():
     assert fake.card_deck[fake.notes[stray_nid]["cards"][0]] == "D"
 
 
+# An add-on without one of Arete's actions answers "unsupported action"; the sync stops
+# and says how to fix it, and sends nothing in place of the action.
+OUTDATED = "Update the arete_ankiconnect add-on and restart Anki"
+STOCK_STAND_INS = {"getDecks", "changeDeck", "modelFieldNames", "modelTemplates"}
+
+
+def _decks_of(fake: FakeAnki) -> set[str]:
+    return {fake.card_deck[c] for n in fake.notes.values() for c in n["cards"]}
+
+
 @pytest.mark.asyncio
-async def test_an_addon_without_the_home_deck_actions_falls_back_to_getdecks_and_changedeck():
-    """Each action is tried once, answered "unsupported action", then not asked again."""
+@pytest.mark.parametrize("missing", ["getModelInfo", "getHomeDecks"])
+async def test_an_addon_without_an_arete_read_stops_the_prefetch(missing):
     fake = FakeAnki()
-    fake.missing_actions = {"getModelInfo", "getHomeDecks", "setHomeDeck"}
+    fake.missing_actions = {missing}
+    items = [_item(i) for i in range(3)]
+    nids = [_held(fake, item, deck="Other") for item in items]
+
+    with pytest.raises(AddonOutdated, match=f"'{missing}'.*{OUTDATED}"):
+        await _sync_of(fake).prefetch(nids, {"Basic"})
+
+    assert not STOCK_STAND_INS & {a for a, _ in fake.log}
+
+
+@pytest.mark.asyncio
+async def test_a_batch_against_an_addon_without_getmodelinfo_fails_every_card_and_writes_nothing():
+    fake = FakeAnki()
+    fake.missing_actions = {"getModelInfo"}
     items = [_item(i) for i in range(3)]
     for item in items:
         _held(fake, item, deck="Other")
-    sync = _sync_of(fake)
 
-    first = await sync.sync_notes(items)
-    fake.reset_counts()
+    results = await _sync_of(fake).sync_notes(items)
+
+    assert [r.ok for r in results] == [False] * 3
+    assert all(OUTDATED in (r.error or "") for r in results)
+    assert _decks_of(fake) == {"Other"}
+    assert not STOCK_STAND_INS & {a for a, _ in fake.log}
+
+
+@pytest.mark.asyncio
+async def test_a_filing_the_addon_lacks_fails_the_note_with_the_reason():
+    fake = FakeAnki()
+    fake.missing_actions = {"setHomeDeck"}
+    items = [_item(i) for i in range(3)]
     for item in items:
-        item.note.deck = "E"
-    second = await sync.sync_notes(items)
+        _held(fake, item, deck="Other")
 
-    assert all(r.ok for r in first + second)
-    assert {fake.card_deck[c] for n in fake.notes.values() for c in n["cards"]} == {"E"}
-    assert fake.requests["getDecks"] == 1
-    assert "getHomeDecks" not in fake.requests and "setHomeDeck" not in fake.sub_actions
-    assert fake.sub_actions["changeDeck"] == 3
+    results = await _sync_of(fake).sync_notes(items)
+
+    assert [r.ok for r in results] == [False] * 3
+    assert all("'setHomeDeck'" in (r.error or "") for r in results)
+    assert all(OUTDATED in (r.error or "") for r in results)
+    assert _decks_of(fake) == {"Other"}
+    assert not STOCK_STAND_INS & {a for a, _ in fake.log}
 
 
 @pytest.mark.asyncio
