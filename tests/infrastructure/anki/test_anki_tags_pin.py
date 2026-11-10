@@ -6,9 +6,8 @@ always its last word (`:<tab>:` is stored as `::`, and the next edit makes that
 so the pins:
 
 - a note added with `anki_tags(x)` holds exactly that, and still does after an edit;
-- a note added with the raw strings `x` (as the sync before 4.0 sent them) holds
-  `anki_tags(x)` once it has been edited, and before that differs only where Anki's own
-  first pass is not final;
+- a note added with the raw strings `x` holds `anki_tags(x)` once it has been edited a
+  few times, and before that differs only where Anki's own passes are not final;
 - `anki_tags` is a fixed point of itself.
 
 Each check uses a new collection in a temporary directory: Anki also bends a new tag
@@ -66,6 +65,11 @@ def folded(tags: list[str]) -> list[str]:
     return sorted(t.casefold() for t in tags)
 
 
+# Anki can take more than one save to finish with a raw tag: `:<em space>:<tab>:` is
+# `:::blank` after one edit and `blank:::blank` after the second.
+_EDITS_TO_SETTLE = 3
+
+
 def check(tags: list[str]) -> None:
     expected = anki_tags(tags)
     assert anki_tags(expected) == expected, "a fixed point"
@@ -74,7 +78,11 @@ def check(tags: list[str]) -> None:
         assert folded(tags_of(col, sent)) == folded(expected), "kept as sent"
         assert folded(edited(col, sent)) == folded(expected), "and after an edit"
         raw = added(col, tags)
-        assert folded(edited(col, raw)) == folded(expected), "raw strings settle there"
+        held = tags_of(col, raw)
+        for _ in range(_EDITS_TO_SETTLE):
+            held = edited(col, raw)
+        assert folded(held) == folded(expected), "raw strings settle there"
+        assert folded(edited(col, raw)) == folded(expected), "and stay there"
 
 
 CASES = [
@@ -87,6 +95,7 @@ CASES = [
     "nl\nhere",
     "\t",
     ":\t:",
+    ": :\t:",
     "nbsp inside",
     " nbsp-edge ",
     "ideo　space",
@@ -117,7 +126,7 @@ def test_a_tag_is_kept_as_anki_tags_says(tag):
     "tag", ["Cognitive Science", "double  space", "Parent::Child", "nbsp inside", "a,b"]
 )
 def test_an_ordinary_tag_sent_raw_is_stored_as_anki_tags_says_at_once(tag):
-    """For such tags the sync's tags equal what the sync before 4.0 left in Anki."""
+    """For such tags the sync's tags equal what Anki makes of the raw strings on the add."""
     with fresh_collection() as col:
         assert folded(tags_of(col, added(col, [tag]))) == folded(anki_tags([tag]))
 
