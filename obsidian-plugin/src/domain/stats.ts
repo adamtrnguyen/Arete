@@ -4,6 +4,8 @@
  * Pure data structures with no UI or I/O dependencies.
  */
 
+import type { AretePluginSettings } from '@/domain/settings';
+
 export interface AnkiCardStats {
 	cardId: number;
 	noteId: number;
@@ -126,4 +128,156 @@ export function uniqueCardStats(cardStats: Record<number, AnkiCardStats>): AnkiC
 		if (!byCard.has(stat.cardId)) byCard.set(stat.cardId, stat);
 	}
 	return [...byCard.values()];
+}
+
+/** A metric against its cut-offs. `none`: the stat is absent, so there is nothing to judge. */
+export type MetricState = 'none' | 'ok' | 'warning' | 'error';
+
+/**
+ * A card as the views show it. `muted`: not synced to Anki. `accent`: synced, no stats
+ * yet. `success`, `warning`, `error`: the worst state among the five metrics below.
+ */
+export type CardState = 'muted' | 'accent' | 'success' | 'warning' | 'error';
+
+/** The settings that decide a card's state. */
+export type CardStateSettings = Pick<
+	AretePluginSettings,
+	| 'stats_algorithm'
+	| 'stats_lapse_threshold'
+	| 'stats_difficulty_threshold'
+	| 'stats_ease_threshold'
+>;
+
+/** Raw values to judge. A deck row passes its aggregates here; a card passes its stats. */
+export interface CardMetricValues {
+	lapses?: number | null;
+	difficulty?: number | null; // 0..1
+	retrievability?: number | null; // 0..1
+	stability?: number | null; // days
+	ease?: number | null; // SM-2 factor, 2100 = 210%
+	intervalGrowth?: number | null;
+	pressFatigue?: number | null;
+	daysOverdue?: number | null;
+}
+
+export interface CardMetricStates {
+	// The five metrics that decide `CardStateResult.state`.
+	lapses: MetricState;
+	difficulty: MetricState;
+	retrievability: MetricState;
+	stability: MetricState;
+	ease: MetricState;
+	// Shown by the card stats modal only; they never change a card's state.
+	intervalGrowth: MetricState;
+	pressFatigue: MetricState;
+	daysOverdue: MetricState;
+}
+
+export interface CardStateResult {
+	state: CardState;
+	metrics: CardMetricStates;
+}
+
+/** Warning cut-offs that are not settings. Each warns at the value or beyond it, or below it where noted. */
+export const LAPSES_WARNING_AT = 1;
+export const DIFFICULTY_WARNING_AT = 0.7;
+export const RETRIEVABILITY_ERROR_BELOW = 0.85;
+export const STABILITY_WARNING_BELOW = 7;
+export const INTERVAL_GROWTH_WARNING_BELOW = 1.2;
+export const PRESS_FATIGUE_ERROR_ABOVE = 0.3;
+export const DAYS_OVERDUE_ERROR_ABOVE = 7;
+
+function present(value: number | null | undefined): value is number {
+	return value != null && !Number.isNaN(value);
+}
+
+function atLeast(
+	value: number | null | undefined,
+	warningAt: number | null,
+	errorAt: number | null,
+): MetricState {
+	if (!present(value)) return 'none';
+	if (errorAt !== null && value >= errorAt) return 'error';
+	if (warningAt !== null && value >= warningAt) return 'warning';
+	return 'ok';
+}
+
+/**
+ * Each metric against the cut-offs. Lapses and FSRS difficulty warn from a fixed value and
+ * err at the user's threshold; retrievability errs below 0.85; stability warns below 7
+ * days; SM-2 ease warns below the user's threshold and only under the SM-2 algorithm
+ * (a zero factor is a card Anki has not scheduled, so it is `none`).
+ */
+export function metricStates(
+	values: CardMetricValues,
+	settings: CardStateSettings,
+): CardMetricStates {
+	const { ease, retrievability, stability, intervalGrowth, pressFatigue, daysOverdue } = values;
+	return {
+		lapses: atLeast(values.lapses, LAPSES_WARNING_AT, settings.stats_lapse_threshold),
+		difficulty: atLeast(
+			values.difficulty,
+			DIFFICULTY_WARNING_AT,
+			settings.stats_difficulty_threshold,
+		),
+		retrievability: !present(retrievability)
+			? 'none'
+			: retrievability < RETRIEVABILITY_ERROR_BELOW
+				? 'error'
+				: 'ok',
+		stability: !present(stability)
+			? 'none'
+			: stability < STABILITY_WARNING_BELOW
+				? 'warning'
+				: 'ok',
+		ease:
+			settings.stats_algorithm !== 'sm2' || !present(ease) || ease <= 0
+				? 'none'
+				: ease < settings.stats_ease_threshold
+					? 'warning'
+					: 'ok',
+		intervalGrowth: !present(intervalGrowth)
+			? 'none'
+			: intervalGrowth < INTERVAL_GROWTH_WARNING_BELOW
+				? 'warning'
+				: 'ok',
+		pressFatigue: !present(pressFatigue)
+			? 'none'
+			: pressFatigue > PRESS_FATIGUE_ERROR_ABOVE
+				? 'error'
+				: 'ok',
+		daysOverdue: !present(daysOverdue)
+			? 'none'
+			: daysOverdue > DAYS_OVERDUE_ERROR_ABOVE
+				? 'error'
+				: 'ok',
+	};
+}
+
+/**
+ * A card's state, for every view that colours a card. An unsynced card is `muted`; a synced
+ * card without stats is `accent`; otherwise the state is the worst of the five metrics,
+ * or `success` when none is flagged.
+ */
+export function cardState(
+	stats: AnkiCardStats | null | undefined,
+	isSynced: boolean,
+	settings: CardStateSettings,
+): CardStateResult {
+	const metrics = metricStates(stats ?? {}, settings);
+	if (!isSynced) return { state: 'muted', metrics };
+	if (!stats) return { state: 'accent', metrics };
+	const worst = [
+		metrics.lapses,
+		metrics.difficulty,
+		metrics.retrievability,
+		metrics.stability,
+		metrics.ease,
+	];
+	const state = worst.includes('error')
+		? 'error'
+		: worst.includes('warning')
+			? 'warning'
+			: 'success';
+	return { state, metrics };
 }
