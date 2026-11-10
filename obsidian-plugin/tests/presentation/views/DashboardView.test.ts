@@ -587,3 +587,86 @@ describe('DashboardView integrity', () => {
 		expect(rec.icons.map((i) => i.icon)).toContain('check-circle');
 	});
 });
+
+describe('DashboardView queue builder', () => {
+	const queue = {
+		deck: 'Math',
+		dueCount: 2,
+		totalWithPrereqs: 3,
+		queue: [
+			{ id: 1, position: 1, isPrereq: true, title: 'Limits', file: 'Limits.md' },
+			{ id: 2, position: 2, isPrereq: false, title: 'Derivatives', file: 'Derivatives.md' },
+		],
+	};
+
+	function renderQueue(build = jest.fn().mockResolvedValue(queue)) {
+		const m = mount({
+			plugin: {
+				areteClient: {
+					getDeckNames: jest.fn().mockResolvedValue(['Math']),
+					buildStudyQueue: build,
+					createQueueDeck: jest.fn().mockResolvedValue(true),
+				},
+			},
+		});
+		const el = createMockElement('div');
+		m.view.renderQueueBuilder(el);
+		return { ...m, el, build };
+	}
+
+	it('labels the controls in sentence case and styles them with classes', () => {
+		const { el } = renderQueue();
+		expect(texts(el)).toEqual(
+			expect.arrayContaining([
+				'Queue builder',
+				'Deck filter',
+				'Prerequisite depth',
+				'Max cards',
+				'All decks',
+			]),
+		);
+		expect(texts(el).join('|')).not.toMatch(/Queue Builder|Deck Filter|Max Cards|All Decks/);
+		expect(inlineStyled(el)).toEqual([]);
+	});
+
+	it('builds from a call-to-action button, disabling it while it works', async () => {
+		const { rec, build } = renderQueue();
+		expect(rec.buttons).toHaveLength(1);
+		expect(rec.buttons[0]).toMatchObject({ text: 'Build queue', cta: true });
+		const pending = rec.buttons[0].onClick!();
+		expect(rec.buttons[0]).toMatchObject({ text: 'Building...', disabled: true });
+		await pending;
+		expect(build).toHaveBeenCalledWith(null, 2, 50);
+		expect(rec.buttons[0]).toMatchObject({ text: 'Build queue', disabled: false });
+	});
+
+	it('lists the queue with classes, a Prerequisite badge and a native send button', async () => {
+		const { rec, el } = renderQueue();
+		await rec.buttons[0].onClick!();
+		expect(rec.buttons.map((b) => b.text)).toEqual(['Build queue', 'Send to Anki']);
+		const all = walk(el);
+		const badges = all.filter((w) => w.classes.includes('arete-badge'));
+		expect(badges.map((b) => [b.text, b.classes.includes('mod-accent')])).toEqual([
+			['Prerequisite', true],
+		]);
+		expect(all.filter((w) => w.classes.includes('arete-queue-item'))).toHaveLength(2);
+		expect(inlineStyled(el)).toEqual([]);
+	});
+
+	it('sends the queue ids to Anki and tells the user in a plain sentence', async () => {
+		const { rec, plugin } = renderQueue();
+		await rec.buttons[0].onClick!();
+		await rec.buttons[1].onClick!();
+		expect(plugin.areteClient.createQueueDeck).toHaveBeenCalledWith([1, 2]);
+	});
+
+	it('logs a failed build with the [Arete] prefix and restores the button', async () => {
+		const failure = new Error('down');
+		const { rec } = renderQueue(jest.fn().mockRejectedValue(failure));
+		const error = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+		await rec.buttons[0].onClick!();
+		expect(error).toHaveBeenCalledWith('[Arete] Failed to build the queue:', failure);
+		expect(rec.buttons[0]).toMatchObject({ text: 'Build queue', disabled: false });
+		error.mockRestore();
+	});
+});

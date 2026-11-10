@@ -393,6 +393,59 @@
 	color: var(--text-muted);
 }
 
+/* Queue builder tab */
+.arete-queue-controls {
+	padding: var(--size-4-4);
+	background: var(--background-secondary);
+	border-radius: var(--radius-m);
+	margin-bottom: var(--size-4-4);
+}
+
+.arete-queue-field {
+	margin-left: auto;
+}
+
+.arete-queue-field.mod-number {
+	width: calc(var(--size-4-1) * 15);
+}
+
+.arete-queue-build {
+	margin-top: var(--size-4-4);
+}
+
+.arete-queue-summary {
+	padding: var(--size-4-2);
+	background: var(--background-primary-alt);
+	border-radius: var(--radius-s);
+	margin-bottom: var(--size-4-2);
+}
+
+.arete-queue-send {
+	margin-bottom: var(--size-4-2);
+}
+
+.arete-queue-list {
+	max-height: calc(var(--size-4-1) * 75);
+	overflow-y: auto;
+}
+
+.arete-queue-item {
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-2);
+	padding: var(--size-2-2) var(--size-4-2);
+	border-bottom: var(--border-width) solid var(--background-modifier-border);
+}
+
+.arete-queue-pos {
+	width: calc(var(--size-4-1) * 7.5);
+	font-weight: var(--font-bold);
+}
+
+.arete-queue-title {
+	flex: 1;
+}
+
 /* Card stats modal. Widths are multiples of --size-4-1 (4px). */
 .arete-stats-layout {
 	display: flex;

@@ -650,25 +650,20 @@ export class DashboardView extends ItemView {
 		container.empty();
 
 		// Header
-		container.createEl('h3', { text: 'Queue Builder' });
+		container.createEl('h3', { text: 'Queue builder' });
 		container.createEl('p', {
 			text: 'Build a study queue that includes prerequisite cards before your due cards.',
 			cls: 'setting-item-description',
 		});
 
 		// Controls
-		const controls = container.createDiv();
-		controls.style.padding = '1rem';
-		controls.style.background = 'var(--background-secondary)';
-		controls.style.borderRadius = '8px';
-		controls.style.marginBottom = '1rem';
+		const controls = container.createDiv({ cls: 'arete-queue-controls' });
 
 		// Deck selector
 		const deckRow = controls.createDiv({ cls: 'setting-item' });
-		deckRow.createDiv({ text: 'Deck Filter', cls: 'setting-item-name' });
-		const deckSelect = deckRow.createEl('select');
-		deckSelect.style.marginLeft = 'auto';
-		deckSelect.createEl('option', { value: '', text: 'All Decks' });
+		deckRow.createDiv({ text: 'Deck filter', cls: 'setting-item-name' });
+		const deckSelect = deckRow.createEl('select', { cls: 'dropdown arete-queue-field' });
+		deckSelect.createEl('option', { value: '', text: 'All decks' });
 
 		// Load decks async
 		this.plugin.areteClient.getDeckNames().then((decks) => {
@@ -677,32 +672,35 @@ export class DashboardView extends ItemView {
 
 		// Depth control
 		const depthRow = controls.createDiv({ cls: 'setting-item' });
-		depthRow.createDiv({ text: 'Prerequisite Depth', cls: 'setting-item-name' });
-		const depthInput = depthRow.createEl('input', { type: 'number', value: '2' });
-		depthInput.style.width = '60px';
-		depthInput.style.marginLeft = 'auto';
+		depthRow.createDiv({ text: 'Prerequisite depth', cls: 'setting-item-name' });
+		const depthInput = depthRow.createEl('input', {
+			type: 'number',
+			value: '2',
+			cls: 'arete-queue-field mod-number',
+		});
 		depthInput.min = '1';
 		depthInput.max = '5';
 
 		// Max cards control
 		const maxRow = controls.createDiv({ cls: 'setting-item' });
-		maxRow.createDiv({ text: 'Max Cards', cls: 'setting-item-name' });
-		const maxInput = maxRow.createEl('input', { type: 'number', value: '50' });
-		maxInput.style.width = '60px';
-		maxInput.style.marginLeft = 'auto';
+		maxRow.createDiv({ text: 'Max cards', cls: 'setting-item-name' });
+		const maxInput = maxRow.createEl('input', {
+			type: 'number',
+			value: '50',
+			cls: 'arete-queue-field mod-number',
+		});
 		maxInput.min = '10';
 		maxInput.max = '200';
 
 		// Build button
-		const buildBtn = controls.createEl('button', { text: 'Build Queue', cls: 'mod-cta' });
-		buildBtn.style.marginTop = '1rem';
+		const buildBtn = new ButtonComponent(controls).setButtonText('Build queue').setCta();
+		buildBtn.buttonEl.addClass('arete-queue-build');
 
 		// Results area
 		const resultsArea = container.createDiv({ cls: 'arete-queue-results' });
 
-		buildBtn.onclick = async () => {
-			buildBtn.textContent = 'Building...';
-			buildBtn.disabled = true;
+		buildBtn.onClick(async () => {
+			buildBtn.setButtonText('Building...').setDisabled(true);
 
 			try {
 				const result = await this.plugin.areteClient.buildStudyQueue(
@@ -714,66 +712,49 @@ export class DashboardView extends ItemView {
 				resultsArea.empty();
 
 				// Summary
-				const summary = resultsArea.createDiv();
-				summary.style.padding = '0.5rem';
-				summary.style.background = 'var(--background-primary-alt)';
-				summary.style.borderRadius = '4px';
-				summary.style.marginBottom = '0.5rem';
+				const summary = resultsArea.createDiv({ cls: 'arete-queue-summary' });
 				summary.createEl('strong', { text: result.deck });
 				summary.createSpan({
 					text: ` — ${result.dueCount} due, ${result.totalWithPrereqs} total`,
 				});
 
 				// Send button
-				const sendBtn = resultsArea.createEl('button', { text: 'Send to Anki' });
-				sendBtn.style.marginBottom = '0.5rem';
-				sendBtn.onclick = async () => {
+				const sendBtn = new ButtonComponent(resultsArea).setButtonText('Send to Anki');
+				sendBtn.buttonEl.addClass('arete-queue-send');
+				sendBtn.onClick(async () => {
 					const ok = await this.plugin.areteClient.createQueueDeck(
 						result.queue.map((c) => c.id),
 					);
-					new Notice(ok ? 'Queue sent to Anki!' : 'Failed to create deck.');
-				};
+					new Notice(ok ? 'Queue sent to Anki.' : 'Failed to create deck.');
+				});
 
 				// Queue list
-				const list = resultsArea.createDiv();
-				list.style.maxHeight = '300px';
-				list.style.overflowY = 'auto';
+				const list = resultsArea.createDiv({ cls: 'arete-queue-list' });
 
 				result.queue.forEach((card) => {
-					const item = list.createDiv();
-					item.style.display = 'flex';
-					item.style.padding = '4px 8px';
-					item.style.borderBottom = '1px solid var(--background-modifier-border)';
+					const item = list.createDiv({ cls: 'arete-queue-item' });
 
-					const pos = item.createSpan({ text: String(card.position) });
-					pos.style.width = '30px';
-					pos.style.fontWeight = 'bold';
+					item.createSpan({ text: String(card.position), cls: 'arete-queue-pos' });
 
 					if (card.isPrereq) {
-						const badge = item.createSpan({ text: 'PREREQ' });
-						badge.style.fontSize = '0.7em';
-						badge.style.padding = '2px 4px';
-						badge.style.background = 'var(--interactive-accent)';
-						badge.style.color = 'var(--text-on-accent)';
-						badge.style.borderRadius = '4px';
-						badge.style.marginRight = '8px';
+						item.createSpan({ text: 'Prerequisite', cls: 'arete-badge mod-accent' });
 					}
 
-					const title = item.createSpan({ text: card.title });
-					title.style.flex = '1';
-					title.style.cursor = 'pointer';
+					const title = item.createSpan({
+						text: card.title,
+						cls: 'arete-queue-title arete-clickable',
+					});
 					title.onclick = () => this.openFile(card.file);
 				});
 
 				new Notice(`Queue built: ${result.totalWithPrereqs} cards`);
 			} catch (e) {
-				console.error('[QueueBuilder] Error:', e);
+				console.error('[Arete] Failed to build the queue:', e);
 				new Notice('Failed to build queue.');
 			} finally {
-				buildBtn.textContent = 'Build Queue';
-				buildBtn.disabled = false;
+				buildBtn.setButtonText('Build queue').setDisabled(false);
 			}
-		};
+		});
 	}
 
 	// --- Helpers ---
