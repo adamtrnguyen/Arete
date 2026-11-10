@@ -102,8 +102,7 @@ async def test_run_pipeline_no_files(mock_components, tmp_path):
 async def test_run_pipeline_dry_run_never_writes(mock_components, tmp_path):
     """--dry-run plans through a read-only NoteSync, mutates no cache, persists no nid.
 
-    Every stage honours the flag, not only the nid write-back and prune
-    (docs/history/2026-09-08-duplicate-storm.md).
+    Every stage honours the flag, not only the nid write-back and prune.
     """
     logger, vault, parser, bridge, cache = mock_components
 
@@ -154,14 +153,8 @@ async def test_run_pipeline_consumer_error(mock_components, tmp_path):
 
     stats = await run_pipeline(config, logger, "run", vault, parser, bridge, cache)
 
-    # Expect 0 generated because it crashed before appending to updates?
-    # Or handled by exception block?
-    # In pipeline consumer:
-    # except Exception as e: logger.error... recorder.add_error...
-    # updates list is NOT appended to in exception block unless we mock sync_notes to return error UpdateItem
-
-    # If side_effect raises exception, it goes to except block
-    # updates list remains empty.
+    # A raised exception goes to the consumer's error path: it is logged, and no update is
+    # recorded, so nothing counts as generated.
 
     assert stats.total_generated == 0
     assert logger.error.called

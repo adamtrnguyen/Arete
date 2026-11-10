@@ -147,7 +147,7 @@ def vault(tmp_path):
 
 
 def test_prune_keeps_notes_created_in_the_same_run(vault):
-    """New cards were inventoried with nid=None, so prune deleted what it had just made."""
+    """A card created in this run is inventoried with its new nid, so prune keeps it."""
     root, cache, anki = vault
     (root / "a.md").write_text(note_file(card(ID_A1)))
     sync(root, anki, cache, prune=True)
@@ -194,7 +194,7 @@ def test_prune_refuses_while_a_file_cannot_be_read(vault):
 
 
 def test_a_failed_sync_is_retried_next_run(vault):
-    """The hash was cached before the sync succeeded, so a failed card never reached Anki."""
+    """A card is cached only once its sync succeeded, so a failed card is sent again next run."""
     root, cache, anki = vault
     (root / "a.md").write_text(note_file(card("arete_A1"), card("arete_A2")))
     anki.fail = True

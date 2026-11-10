@@ -62,7 +62,7 @@ def test_quick_check_cache_hit(tmp_path, mock_cache):
     f = tmp_path / "cached.md"
     f.write_text("Dummy content on disk", encoding="utf-8")
 
-    # Simulate cache hit: logic uses get_file_meta_by_stat now
+    # Simulate cache hit: the vault service reads get_file_meta_by_stat
     mock_cache.get_file_meta_by_stat.return_value = {"arete": True, "cards": [1, 2, 3], "deck": "D"}
 
     service = VaultService(root=tmp_path, cache=mock_cache)

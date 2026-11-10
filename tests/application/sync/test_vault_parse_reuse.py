@@ -37,7 +37,7 @@ def root(tmp_path: Path) -> Path:
 
 
 def test_a_new_file_is_parsed_once_per_text_it_has(root: Path, tmp_path: Path, parses):
-    """Read, ids added, nids written back: three texts, three parses (it was five)."""
+    """Read, ids added, nids written back: three texts, three parses."""
     md = root / "n.md"
     md.write_text(NO_IDS)
     cache = ContentCache(tmp_path / "c.db")

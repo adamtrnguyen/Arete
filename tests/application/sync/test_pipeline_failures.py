@@ -58,7 +58,7 @@ async def test_pipeline_consumer_error(config):
         source_index=1,
         content_hash="h1",
     )
-    # Fix: Return (notes, skipped, inventory)
+    # parse_file returns (notes, skipped, inventory)
     parser.parse_file.return_value = ([note], [], [note])
 
     # Bridge raises Exception

@@ -46,11 +46,11 @@ def test_parse_simple_card(parser_fixture, mock_cache):
     assert len(skipped) == 0
     note = notes[0]
 
-    # Check fields that caused the crash
+    # The note keeps its source position
     assert note.source_file == md_file
     assert note.source_index == 1
     assert len(notes) == 1
-    # Parser now renders HTML. Markdown default behavior wraps text in <p>
+    # The parser renders HTML; Markdown wraps a paragraph in <p>
     assert "<p>Question</p>" in notes[0].fields["Front"]
 
 

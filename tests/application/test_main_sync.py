@@ -90,8 +90,8 @@ async def test_summary_output(mock_setup_logging, mock_run_pipeline, mock_config
     mock_stats.total_imported = 25
     mock_run_pipeline.return_value = mock_stats
 
-    # run_sync_logic now uses logging.getLogger("arete.composition.orchestrator") for the summary log,
-    # so we need to mock that specific logger.
+    # run_sync_logic writes the summary through logging.getLogger("arete.composition.orchestrator"),
+    # so that specific logger is the one to mock.
     mock_summary_logger = MagicMock()
 
     with (

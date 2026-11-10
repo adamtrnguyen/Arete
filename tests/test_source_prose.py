@@ -1,6 +1,6 @@
-"""What a docstring or comment under SRC may not carry: a date, emoji, narrative or a finding id.
+"""What a docstring or comment under SRC (src/, scripts/, tests/) may not carry: a date, emoji, narrative or a finding id.
 
-A date or a "this used to ..." sentence is a record. In the code it reads as a claim about the
+A date, or a sentence about what the code did before, is a record. In the code it reads as a claim about the
 present and rots; in docs/history/<topic>.md it sits beside the measurement that explains it. An
 emoji is emphasis, and emphasis belongs in a runbook, not in a contract. A docstring or comment
 keeps the contract and the present-tense rationale, nothing else.
@@ -18,7 +18,7 @@ import re
 import tokenize
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-SRC = (ROOT / "src", ROOT / "scripts")
+SRC = (ROOT / "src", ROOT / "scripts", ROOT / "tests")
 EXEMPT = "prose: ok"
 DATE = re.compile(r"\b(19|20)\d\d-\d\d(-\d\d)?\b")
 # Pictographs and warning marks; a symbol the code is QUOTING (a star in a title) is not emphasis.
@@ -28,8 +28,9 @@ NARRATIVE = re.compile(
     r"hotfix|regression|the fix for|bug hunt)\b|\b(NEW|FIX):",
     re.IGNORECASE,
 )
-# An audit finding id ("(G5)", "(G4/G8)", a leading "D1:") or a work-batch label. The id points
-# into a report the reader does not have; the reason belongs in the sentence itself.
+# An audit finding id (a letter and digits in parentheses, or as a leading label before a colon)
+# or a work-batch label. The id points into a report the reader does not have; the reason
+# belongs in the sentence itself.
 FINDING = re.compile(
     r"\([A-Z]{1,2}\d{1,2}[a-z]?(?:[/,-] ?[A-Z]{1,2}\d{1,2}[a-z]?)*(?:\)| in\b)"
     r'|(?:^|#|""")\s*[A-Z]{1,2}\d{1,2}[a-z]?(?:[/-][A-Z]{1,2}\d{1,2}[a-z]?)*:'

@@ -42,13 +42,13 @@ class TestDependencyGraph:
         assert graph.get_dependents("a2") == ["a1"]
 
     def test_add_requires_new_id(self):
-        """Test add_requires with an ID that wasn't previously added via add_node."""
+        """Test add_requires with an ID that add_node never saw."""
         graph = DependencyGraph()
         graph.add_requires("parent", "child")
         assert "child" in graph.get_prerequisites("parent")
 
     def test_add_related_new_id(self):
-        """Test add_related with an ID that wasn't previously added via add_node."""
+        """Test add_related with an ID that add_node never saw."""
         graph = DependencyGraph()
         graph.add_related("a", "b")
         assert "b" in graph.get_related("a")
@@ -178,8 +178,7 @@ cards:
 """
         (tmp_path / "UMVUE.md").write_text(dependent_md, encoding="utf-8")
 
-        # Sanity check the test setup actually exercises the bug — the two
-        # forms must be byte-distinct, otherwise the test is vacuous.
+        # The two forms must be byte-distinct, otherwise the test proves nothing.
         assert target_name_nfd != ref_nfc, "NFD and NFC must differ for this test to be meaningful"
 
         graph = build_graph(tmp_path)

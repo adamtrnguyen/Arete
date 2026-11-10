@@ -115,7 +115,7 @@ def test_apply_fixes_template_tags():
 
 
 def test_apply_fixes_keeps_the_anki_block():
-    """A synced card's nid/cid stay under ``anki:``; a text fixer once dedented them."""
+    """A synced card's nid/cid stay under ``anki:``; the text fixer leaves their indentation alone."""
     raw = "---\ncards:\n  - Front: Q\n    Back: A\n    anki:\n      nid: '1'\n      cid: '2'\n---\n"
     meta, _ = parse_frontmatter(apply_fixes(raw))
     anki = meta["cards"][0]["anki"]
