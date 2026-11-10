@@ -135,6 +135,8 @@ def _collection_fingerprint(base: Path) -> dict[str, tuple[int, int]]:
 
 _guard_before: dict[str, dict[str, tuple[int, int]]] = {}
 _guard_failures: list[str] = []
+# Where a worker hands the controller the AnkiConnect connections it refused.
+_BLOCKED_KEY = "blocked_ankiconnect"
 
 
 def _is_xdist_worker() -> bool:
@@ -155,14 +157,19 @@ def pytest_sessionfinish(session, exitstatus):
     its write-ahead log on its own schedule, so the mtime moves without any test touching it.
     That case reports a false positive, and the message says so.
     """
-    if _is_xdist_worker() or not _guard_before:
+    if _is_xdist_worker():
+        session.config.workeroutput[_BLOCKED_KEY] = [str(a) for a in blocked_ankiconnect_attempts]
+        return
+    if not _guard_before:
         return
     checks = (
         ("config", _snapshot(_REAL_ARETE_CONFIG), f"tests touched the real {_REAL_ARETE_CONFIG}"),
         (
             "collection",
             _collection_fingerprint(_REAL_ANKI_BASE),
-            f"tests touched a real Anki collection under {_REAL_ANKI_BASE}",
+            f"tests touched a real Anki collection under {_REAL_ANKI_BASE} (if Anki was open "
+            "during this run, its own checkpoint may explain it: close Anki and run again "
+            "before you trust this failure)",
         ),
     )
     for key, after, message in checks:
@@ -280,10 +287,16 @@ def integration_vault(tmp_path):
     return dest
 
 
+@pytest.hookimpl(optionalhook=True)
+def pytest_testnodedown(node, error):
+    """Collect, in the controller, the connections each pytest-xdist worker refused."""
+    blocked_ankiconnect_attempts.extend(getattr(node, "workeroutput", {}).get(_BLOCKED_KEY, []))
+
+
 def pytest_terminal_summary(terminalreporter):
+    """Report a failed session guard and the connections to a live AnkiConnect refused."""
     for failure in _guard_failures:
         terminalreporter.write_line(f"SESSION GUARD FAILED: {failure}", red=True)
-    """Say how many connections to a live AnkiConnect the guard refused this run."""
     if blocked_ankiconnect_attempts:
         terminalreporter.write_line(
             f"AnkiConnect guard: refused {len(blocked_ankiconnect_attempts)} connection(s) "
