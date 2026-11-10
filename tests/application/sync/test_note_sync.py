@@ -605,3 +605,53 @@ async def test_a_failed_type_read_is_read_again_by_the_next_batch():
 
     assert not first.ok and "busy" in (first.error or "")
     assert second.ok and store.calls["note_types"] == 2
+
+
+# ---------------------------------------------------------------------------
+# Dry run: the same decisions, no write
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_a_dry_run_reports_every_decision_and_writes_nothing():
+    types = {**STOCK_TYPES, "Basic": NoteTypeInfo("Basic", ("Front", "Back"), False, 1)}
+    store = FakeNoteStore(types)
+    changed = card(
+        1,
+        arete_id=ID,
+        tags=["t"],
+        deck="S::Moved",
+        **{"Front": "<p>Q</p>", "Back": "new", SRC: "s"},
+    )
+    held = store.add("Basic", "S::Deck", {"Front": "<p>Q</p>", "Back": "old"}, [ID, "stale"])
+    changed.note.nid = str(held)
+    lost = store.add("Basic", "S::Deck", {"Front": "<p>Lost</p>", "Back": "x"}, [ID2])
+    adopted = card(2, arete_id=ID2, nid=1111111111111, Front="<p>Lost</p>", Back="x")
+    refused = card(
+        3, arete_id="arete_01J00000000000000000000203", nid=held, Front="<p>Other</p>", Back="y"
+    )
+    new = card(4, arete_id="arete_01J00000000000000000000204", deck="S::Fresh", Front="n", Back="m")
+    store.read_only = True
+    sync = NoteSync(store, dry_run=True)
+
+    results = await sync.sync_notes([changed, adopted, refused, new])
+
+    assert [r.ok for r in results] == [True, True, False, True]
+    assert [r.new_nid for r in results] == [str(held), str(lost), None, None]
+    assert all(r.new_cid is None for r in results)
+    report = "\n".join(sync.report)
+    assert (
+        f"would overwrite nid={held} for c.md #1: fields Back, {SRC}; tags +t -stale; deck S::Deck -> S::Moved"
+        in report
+    )
+    assert f"would adopt nid={lost} for c.md #2" in report
+    assert "would refuse c.md #3" in report
+    assert "would create c.md #4 in deck 'S::Fresh' (Basic)" in report
+    assert "would create deck 'S::Moved'" in report and "would create deck 'S::Fresh'" in report
+    assert f"would add field {SRC} to note type 'Basic'" in report
+    assert (
+        sum(
+            store.calls[op] for op in ("add_field", "create_decks", "create_notes", "apply_changes")
+        )
+        == 0
+    )

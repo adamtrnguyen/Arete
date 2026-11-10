@@ -160,10 +160,11 @@ async def run_pipeline(
             recorder.add_error(
                 p, f"Arete id {card_id} is declared by {len(c)} cards; none is synced", f"#{i}"
             )
-    sync_notes = (
-        NoteSync(note_store, vault_claims(compatible, parser), logger).sync_notes
+    # A dry run decides through the same NoteSync, reading Anki and writing nothing.
+    note_sync = (
+        NoteSync(note_store, vault_claims(compatible, parser), logger, dry_run=config.dry_run)
         if note_store is not None
-        else anki_bridge.sync_notes
+        else None
     )
 
     # -------- Stage 2: media index, walked on the first image lookup --------
@@ -224,9 +225,13 @@ async def run_pipeline(
                     break
 
             try:
-                if config.dry_run:
-                    # Dry run: never touch Anki. Report what WOULD happen and keep the
-                    # cache untouched so the next real run still sees these cards as pending.
+                if note_sync is not None:
+                    # A dry run's NoteSync reads and reports; the cache stays untouched
+                    # below, so the next real run still sees these cards as pending.
+                    async with sync_semaphore:
+                        batch_updates = await note_sync.sync_notes(batch)
+                elif config.dry_run:
+                    # Dry run without a note store: never touch Anki.
                     batch_updates = []
                     for wi in batch:
                         action = "update" if wi.note.nid else "create"
@@ -246,7 +251,7 @@ async def run_pipeline(
                         )
                 else:
                     async with sync_semaphore:
-                        batch_updates = await sync_notes(batch)
+                        batch_updates = await anki_bridge.sync_notes(batch)
 
                 async with updates_lock:
                     synced_rows: list[tuple[Path, int, str, str]] = []

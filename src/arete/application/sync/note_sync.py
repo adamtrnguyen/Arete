@@ -134,11 +134,18 @@ class NoteSync:
         store: NoteStorePort,
         claims: VaultClaims | None = None,
         logger: logging.Logger | None = None,
+        dry_run: bool = False,
     ):
-        """One instance per run: its caches and claims hold for the run."""
+        """One instance per run: its caches and claims hold for the run.
+
+        With `dry_run` it reads and decides exactly as a sync does, writes nothing, and
+        puts what a sync would do in `report`, one line per card, deck and field.
+        """
         self._store = store
         self._claims = claims or VaultClaims()
         self._log = logger or logging.getLogger(__name__)
+        self._dry = dry_run
+        self.report: list[str] = []
         self._types: dict[str, NoteTypeInfo | None | Exception] = {}
         self._types_lock = asyncio.Lock()
         self._source_tried: set[str] = set()
@@ -179,6 +186,11 @@ class NoteSync:
         await self._load_types(s, {c.held.model for c in cards if c.held})
         await self._write(s, cards)
 
+    def _plan(self, line: str) -> None:
+        """Record and log what a sync would do (a dry run only)."""
+        self.report.append(line)
+        self._log.info(f"[dry-run] {line}")
+
     # -- note types and decks, cached for the run ----------------------------
 
     async def _load_types(self, s: NoteStoreSession, names: Collection[str]) -> None:
@@ -213,12 +225,15 @@ class NoteSync:
                 if not isinstance(info, NoteTypeInfo) or SOURCE_FIELD in info.fields:
                     continue
                 self._source_tried.add(name)
-                try:
-                    await s.add_field(info.name, SOURCE_FIELD)
-                except Exception as e:
-                    self._log.warning(f"Could not add {SOURCE_FIELD} to '{info.name}': {e}")
-                    continue
-                self._log.info(f"Added '{SOURCE_FIELD}' field to model '{info.name}'")
+                if self._dry:
+                    self._plan(f"would add field {SOURCE_FIELD} to note type '{info.name}'")
+                else:
+                    try:
+                        await s.add_field(info.name, SOURCE_FIELD)
+                    except Exception as e:
+                        self._log.warning(f"Could not add {SOURCE_FIELD} to '{info.name}': {e}")
+                        continue
+                    self._log.info(f"Added '{SOURCE_FIELD}' field to model '{info.name}'")
                 self._types[name] = NoteTypeInfo(
                     info.name, (*info.fields, SOURCE_FIELD), info.is_cloze, info.n_templates
                 )
@@ -231,7 +246,12 @@ class NoteSync:
                     self._decks = {d.casefold() for d in await s.deck_names()}
                 known = self._decks
                 todo = sorted({n for n in names if n.casefold() not in known})
-                created = await s.create_decks(todo) if todo else {}
+                if self._dry:
+                    for name in todo:
+                        self._plan(f"would create deck '{name}'")
+                    created: dict[str, Exception | None] = dict.fromkeys(todo)
+                else:
+                    created = await s.create_decks(todo) if todo else {}
             except Exception as e:
                 return {n: f"deck '{n}' could not be checked or created: {e}" for n in names}
             failed: dict[str, str] = {}
@@ -416,6 +436,11 @@ class NoteSync:
         todo = await self._creatable(s, cards)
         if not todo:
             return
+        if self._dry:
+            for card, new in todo:
+                card.how = "create"
+                self._plan(f"would create {card.label} in deck '{new.deck}' ({new.model})")
+            return
         try:
             results: list[int | Exception] = await s.create_notes([n for _, n in todo])
         except Exception as e:
@@ -500,6 +525,25 @@ class NoteSync:
     # -- compare and write ---------------------------------------------------
 
     async def _write(self, s: NoteStoreSession, cards: list[_Card]) -> None:
+        planned = await self._changes(s, cards)
+        if self._dry:
+            for card, change in planned:
+                self._plan(_describe(card, change))
+            return
+        if planned:
+            try:
+                errors = await s.apply_changes([c for _, c in planned])
+            except Exception as e:
+                errors = [e] * len(planned)
+            for (card, _), error in zip(planned, errors, strict=True):
+                if error is not None:
+                    card.fail(error)
+        await self._read_created(s, [c for c in cards if c.how == "create" and c.error is None])
+
+    async def _changes(
+        self, s: NoteStoreSession, cards: list[_Card]
+    ) -> list[tuple[_Card, NoteChange]]:
+        """Each resolved note's change, its home deck made first; empty changes left out."""
         planned: list[tuple[_Card, NoteChange]] = []
         for card in cards:
             if card.error is None and card.held is not None and card.how != "create":
@@ -511,16 +555,7 @@ class NoteSync:
         for card, change in planned:
             if change.home_deck and change.home_deck[1] in failed:
                 card.fail(failed[change.home_deck[1]])
-        planned = [(card, change) for card, change in planned if card.error is None]
-        if planned:
-            try:
-                errors = await s.apply_changes([c for _, c in planned])
-            except Exception as e:
-                errors = [e] * len(planned)
-            for (card, _), error in zip(planned, errors, strict=True):
-                if error is not None:
-                    card.fail(error)
-        await self._read_created(s, [c for c in cards if c.how == "create" and c.error is None])
+        return [(card, change) for card, change in planned if card.error is None]
 
     def _change_for(self, card: _Card, held: HeldNote) -> NoteChange | None:
         """What the note needs to equal the vault, or None after failing the card."""
@@ -575,6 +610,8 @@ class NoteSync:
 
     def _result(self, card: _Card) -> UpdateItem:
         work = card.work
+        if self._dry:
+            return self._planned(card)
         if card.error is not None or card.nid is None:
             error = card.error or "no decision was reached for this card"
             self._log.error(f"ERR file={work.source_file} card={work.source_index} error={error}")
@@ -594,6 +631,37 @@ class NoteSync:
         return UpdateItem(
             work.source_file, work.source_index, str(card.nid), new_cid, True, None, work.note
         )
+
+    def _planned(self, card: _Card) -> UpdateItem:
+        """A dry run's result: the note the card resolved to, or the refusal; no cid."""
+        work = card.work
+        if card.error is not None:
+            self._plan(f"would refuse {card.label}: {card.error}")
+            return UpdateItem(
+                work.source_file, work.source_index, None, None, False, card.error, work.note
+            )
+        if card.how == "adopt":
+            self._plan(f"would adopt nid={card.nid} for {card.label}")
+        nid = None if card.nid is None else str(card.nid)
+        return UpdateItem(work.source_file, work.source_index, nid, None, True, None, work.note)
+
+
+def _describe(card: _Card, change: NoteChange) -> str:
+    """One line saying what a sync would overwrite on the card's note."""
+    held = card.held
+    parts = []
+    if change.retype and held is not None:
+        parts.append(f"type {held.model} -> {change.retype[0]}")
+    if change.fields and held is not None:
+        names = [k for k, v in change.fields.items() if held.fields.get(k) != v]
+        parts.append(f"fields {', '.join(names or list(change.fields))}")
+    if change.add_tags or change.remove_tags:
+        tags = [f"+{t}" for t in change.add_tags] + [f"-{t}" for t in change.remove_tags]
+        parts.append(f"tags {' '.join(tags)}")
+    if change.home_deck and held is not None:
+        before = sorted({str(c.home_deck) for c in held.cards})
+        parts.append(f"deck {', '.join(before)} -> {change.home_deck[1]}")
+    return f"would overwrite nid={change.nid} for {card.label}: {'; '.join(parts)}"
 
 
 def _tag_change(
