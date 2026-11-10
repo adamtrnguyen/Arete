@@ -70,18 +70,17 @@ async def test_one_batch_writes_only_what_differs(anki_url, setup_anki, caplog):
         await adapter.close()
 
     assert all(r.ok for r in results), [r.error for r in results]
-    # A getDecks lost to the add-on's dropped connections sends every move (the safe side).
-    moved_anyway = any("getDecks failed" in r.getMessage() for r in caplog.records)
+    # A getHomeDecks lost to the add-on's dropped connections files every card (the safe side).
+    moved_anyway = any("getHomeDecks failed" in r.getMessage() for r in caplog.records)
     assert sent == {
         "multi": 2,  # the note types with the deck names; the writes, one step each note
-        "multi:modelFieldNames": 1,
-        "multi:modelTemplates": 1,
+        "multi:getModelInfo": 1,
         "multi:deckNames": 1,
         "createDeck": 1,  # the new subdeck
         "notesInfo": 1,
-        "getDecks": 1,
+        "getHomeDecks": 1,
         "multi:updateNoteFields": 1,
-        "multi:changeDeck": 4 if moved_anyway else 1,
+        "multi:setHomeDeck": 4 if moved_anyway else 1,
         "multi:addTags": 1,
     }
 

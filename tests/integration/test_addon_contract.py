@@ -166,3 +166,73 @@ def test_every_reply_says_the_connection_closes(anki_url):
     empty = requests.post(anki_url, data=b"")
     assert ok.headers.get("Connection") == "close"
     assert empty.headers.get("Connection") == "close"
+
+
+# ---------------------------------------------------------------------------
+# Arete's actions for the shared sync: note-type info, home decks
+# ---------------------------------------------------------------------------
+
+
+def test_get_model_info_gives_kind_fields_and_templates(anki_url):
+    reply = call(anki_url, "getModelInfo", models=["Basic", "Cloze", "No Such Type"])
+    assert reply["error"] is None
+    basic, cloze = reply["result"]["Basic"], reply["result"]["Cloze"]
+    assert (basic["type"], basic["fields"][:2], basic["templates"]) == (0, ["Front", "Back"], 1)
+    assert (cloze["type"], cloze["fields"][:2], cloze["templates"]) == (
+        1,
+        ["Text", "Back Extra"],
+        1,
+    )
+    assert reply["result"]["No Such Type"] is None
+
+
+def test_get_home_decks_names_a_queued_cards_home(anki_url, notes):
+    a, b, _ = (cid for _, cid in notes)
+    name = f"{DECK}::HomeQueue"
+    call(anki_url, "createFilteredDeck", name=name, cids=[a])
+    try:
+        reply = call(anki_url, "getHomeDecks", cards=[a, MISSING, b])
+    finally:
+        call(anki_url, "deleteDecks", decks=[name], cardsToo=True)
+    assert reply == {
+        "result": [
+            {"homeDeck": DECK, "filteredDeck": name},
+            None,
+            {"homeDeck": DECK, "filteredDeck": None},
+        ],
+        "error": None,
+    }
+
+
+def test_set_home_deck_moves_a_card_and_keeps_a_queued_one_queued(anki_url, notes):
+    a, b, _ = (cid for _, cid in notes)
+    name, moved = f"{DECK}::SetQueue", f"{DECK}::Moved"
+    call(anki_url, "createDeck", deck=moved)
+    call(anki_url, "createFilteredDeck", name=name, cids=[a])
+    try:
+        before = call(anki_url, "cardsInfo", cards=[a])["result"][0]
+        assert call(anki_url, "setHomeDeck", cards=[a, b], deck=moved) == {
+            "result": None,
+            "error": None,
+        }
+        homes = call(anki_url, "getHomeDecks", cards=[a, b])["result"]
+        after = call(anki_url, "cardsInfo", cards=[a])["result"][0]
+    finally:
+        call(anki_url, "deleteDecks", decks=[name], cardsToo=True)
+    assert homes == [
+        {"homeDeck": moved, "filteredDeck": name},
+        {"homeDeck": moved, "filteredDeck": None},
+    ]
+    assert (after["deckName"], after["due"], after["queue"]) == (
+        name,
+        before["due"],
+        before["queue"],
+    )
+
+
+def test_set_home_deck_refuses_a_deck_that_does_not_exist(anki_url, notes):
+    _, b, _ = (cid for _, cid in notes)
+    assert call(anki_url, "setHomeDeck", cards=[b], deck=f"{DECK}::Nowhere") == {
+        "result": None,
+        "error": f"deck was not found: {DECK}::Nowhere",
+    }

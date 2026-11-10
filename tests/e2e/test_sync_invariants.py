@@ -198,13 +198,7 @@ async def test_inv1_a_note_type_change_in_anki_is_changed_back(world: World):
 
 
 @pytest.mark.asyncio
-@on(
-    *REAL,
-    xfail={
-        "addon": "the edited card is sent; getDecks reports Arete::Queue, so changeDeck runs "
-        "and the add-on's remFromDyn takes it out: observed deck Inv::Home, no longer queued",
-    },
-)
+@on(*REAL)
 async def test_inv1_an_edited_card_in_the_queue_stays_queued_with_its_home_deck(world: World):
     """Companion: Arete::Queue is a view; syncing an edit must not take the card out of it."""
     backend = world.real
@@ -357,19 +351,8 @@ async def test_inv4_a_note_type_change_that_keeps_the_cards_keeps_scheduling(wor
     assert world.real.scheduling() == before
 
 
-LEAVES_QUEUE = (
-    "observed did Arete::Queue -> {deck}, due -100000 -> 1 (odue restored), odue 1 -> 0, odid "
-    "Inv::Home -> 0; type, queue, ivl, factor, reps, lapses, left, flags and the revlog count "
-    "unchanged"
-)
-QUEUED_DECK_CHANGE = {
-    "addon": "changeDeck calls sched.remFromDyn before it sets did; "
-    + LEAVES_QUEUE.format(deck="Inv::Moved"),
-}
-
-
 @pytest.mark.asyncio
-@on(*REAL, xfail=QUEUED_DECK_CHANGE)
+@on(*REAL)
 async def test_inv4_a_deck_change_of_a_queued_card_keeps_scheduling_and_the_queue(world: World):
     """The card stays in Arete::Queue; only its home deck (`odid`) becomes the new deck."""
     backend = world.real
@@ -388,13 +371,7 @@ async def test_inv4_a_deck_change_of_a_queued_card_keeps_scheduling_and_the_queu
 
 
 @pytest.mark.asyncio
-@on(
-    *REAL,
-    xfail={
-        "addon": "getDecks reports the filtered deck, so changeDeck (remFromDyn) runs on a "
-        "field edit too; " + LEAVES_QUEUE.format(deck="Inv::Home"),
-    },
-)
+@on(*REAL)
 async def test_inv4_a_field_change_of_a_queued_card_keeps_scheduling(world: World):
     backend = world.real
     nid, _ = await _reviewed(world)
@@ -481,6 +458,28 @@ async def test_inv6_a_conversion_that_would_delete_cards_is_refused(name: str, t
         assert "would delete 2 of its 3 cards" in (updates[0].error or "")
         note = world.backend.note(nid)
         assert (note.model, len(note.cards)) == ("Cloze", 3)
+    finally:
+        world.backend.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("name", ALL)
+async def test_inv3_a_note_converts_to_a_custom_cloze_type_on_every_backend(
+    name: str, tmp_path: Path
+):
+    """Cloze is the type's kind, not its name: a 3-card note converts and keeps its cards."""
+    world = _world(name, tmp_path, CLOZE_3)
+    try:
+        await world.sync()
+        nid = world.nid()
+        world.backend.copy_note_type("Cloze", "My Cloze")
+        edit_card(world.md, _set(model="My Cloze"))
+
+        stats, updates = await world.sync()
+
+        assert stats.total_errors == 0, [u.error for u in updates]
+        note = world.backend.note(nid)
+        assert (note.model, len(note.cards)) == ("My Cloze", 3)
     finally:
         world.backend.close()
 

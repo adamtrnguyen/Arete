@@ -42,6 +42,10 @@ class FakeAnki:
         )
         self.templates: dict[str, int] = {}  # model -> number of card templates (default 1)
         self.cloze_models: set[str] = {"Cloze"}
+        # card -> the deck it returns to, while `card_deck` names the filtered deck it sits in
+        self.card_home: dict[int, str] = {}
+        # actions answered "unsupported action", as an add-on without them answers
+        self.missing_actions: set[str] = set()
         self._next_id = 1000
 
     # -- state helpers -------------------------------------------------------
@@ -95,7 +99,10 @@ class FakeAnki:
             error = self.fail(action, params)
             if error is not None:
                 raise Exception(error)
-            result = getattr(self, f"_a_{action}")(**params)
+            method = getattr(self, f"_a_{action}", None)
+            if method is None or action in self.missing_actions:
+                raise Exception("unsupported action")
+            result = method(**params)
         except Exception as e:
             return {"result": None, "error": str(e)}
         return result if version <= 4 else {"result": result, "error": None}
@@ -246,9 +253,51 @@ class FakeAnki:
         return self._a_addTags(notes, tags, False)
 
     def _a_changeDeck(self, cards, deck):
+        """The add-on's changeDeck: a queued card leaves its filtered deck first."""
         self.decks.add(deck)
         for cid in cards:
+            self.card_home.pop(cid, None)
             self.card_deck[cid] = deck
+
+    def queue(self, nids, deck="Arete::Queue"):
+        """Pull the notes' cards into a filtered deck, as createFilteredDeck does."""
+        self.decks.add(deck)
+        for nid in nids:
+            for cid in self.notes[nid]["cards"]:
+                self.card_home.setdefault(cid, self.card_deck[cid])
+                self.card_deck[cid] = deck
+
+    def _a_getHomeDecks(self, cards):
+        out = []
+        for cid in cards:
+            if cid not in self.card_deck:
+                out.append(None)
+            elif cid in self.card_home:
+                out.append({"homeDeck": self.card_home[cid], "filteredDeck": self.card_deck[cid]})
+            else:
+                out.append({"homeDeck": self.card_deck[cid], "filteredDeck": None})
+        return out
+
+    def _a_setHomeDeck(self, cards, deck):
+        if deck not in self.decks:
+            raise Exception(f"deck was not found: {deck}")
+        for cid in cards:
+            if cid in self.card_home:
+                self.card_home[cid] = deck
+            else:
+                self.card_deck[cid] = deck
+
+    def _a_getModelInfo(self, models):
+        return {
+            name: {
+                "type": 1 if name in self.cloze_models else 0,
+                "fields": list(self.models[name]),
+                "templates": 1 if name in self.cloze_models else self.templates.get(name, 1),
+            }
+            if name in self.models
+            else None
+            for name in models
+        }
 
     def _a_getDecks(self, cards):
         decks: dict[str, list[int]] = {}

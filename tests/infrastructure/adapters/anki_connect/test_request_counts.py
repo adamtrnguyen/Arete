@@ -20,7 +20,7 @@ from arete.infrastructure.adapters.anki_connect import AnkiConnectAdapter
 from .fake_anki import FakeAnki
 
 N = 50
-TYPE_READS = {"modelFieldNames": 1, "modelTemplates": 1, "deckNames": 1}
+TYPE_READS = {"getModelInfo": 1, "deckNames": 1}
 
 
 def _id(i: int) -> str:
@@ -76,7 +76,7 @@ async def test_new_notes_cost_a_fixed_number_of_requests():
         "findNotes": 1,  # the content scan of Basic
         "createDeck": 1,
         "notesInfo": 1,
-        "getDecks": 1,
+        "getHomeDecks": 1,
     }
     assert fake.sub_actions["addNote"] == N
     for r in results:
@@ -138,7 +138,7 @@ async def test_unchanged_updates_send_no_write():
     results = await _sync(fake, items)
 
     assert all(r.ok for r in results)
-    assert fake.requests == {"multi": 1, "notesInfo": 1, "getDecks": 1}
+    assert fake.requests == {"multi": 1, "notesInfo": 1, "getHomeDecks": 1}
     assert fake.sub_actions == TYPE_READS
 
 
@@ -152,7 +152,7 @@ async def test_one_changed_field_per_note_is_one_multi():
     results = await _sync(fake, items)
 
     assert all(r.ok for r in results)
-    assert fake.requests == {"multi": 2, "notesInfo": 1, "getDecks": 1}
+    assert fake.requests == {"multi": 2, "notesInfo": 1, "getHomeDecks": 1}
     assert fake.sub_actions == {**TYPE_READS, "updateNoteFields": N}
     for item in items:
         _assert_matches_vault(fake, item)
@@ -174,13 +174,13 @@ async def test_moved_and_retagged_notes_keep_the_write_order():
         "updateNoteFields": N,
         "addTags": N,
         "removeTags": N,
-        "changeDeck": N,
+        "setHomeDeck": N,
     }
     for item in items:
         _assert_matches_vault(fake, item)
     order = [a for a, _ in fake.log if a not in ("multi", *TYPE_READS)]
-    assert order == ["notesInfo", "getDecks"] + [
-        a for a in ("updateNoteFields", "addTags", "removeTags", "changeDeck") for _ in range(N)
+    assert order == ["notesInfo", "getHomeDecks"] + [
+        a for a in ("updateNoteFields", "addTags", "removeTags", "setHomeDeck") for _ in range(N)
     ]
 
 
@@ -194,7 +194,7 @@ async def test_a_single_note_sends_its_writes_as_plain_actions():
 
     assert result.ok
     sent = [a for a, _ in fake.log if a not in ("multi", *TYPE_READS)]
-    assert sent == ["notesInfo", "getDecks", "updateNoteFields", "changeDeck"]
+    assert sent == ["notesInfo", "getHomeDecks", "updateNoteFields", "setHomeDeck"]
 
 
 @pytest.mark.asyncio
@@ -246,33 +246,60 @@ async def test_moves_are_sent_when_getdecks_fails():
     items = [_item(i) for i in range(3)]
     for item in items:
         _held(fake, item)
-    fake.fail = lambda action, params: "boom" if action == "getDecks" else None
+    fake.fail = lambda action, params: "boom" if action == "getHomeDecks" else None
 
     results = await _sync(fake, items)
 
     assert all(r.ok for r in results)
-    assert fake.sub_actions == {**TYPE_READS, "changeDeck": 3}
+    assert fake.sub_actions == {**TYPE_READS, "setHomeDeck": 3}
 
 
 @pytest.mark.asyncio
-async def test_a_card_reported_in_default_or_another_deck_is_moved():
-    """Neither a card reported in Default nor one in a filtered deck proves a move unneeded.
+async def test_home_decks_decide_which_cards_are_filed():
+    """A card in Default and a queued card in their home decks stay; a stray one is filed.
 
-    The add-on's getDecks says Default for a card whose deck is gone, and a filtered card
-    names its filtered deck.
+    getHomeDecks names a queued card's home deck and Default as itself; setHomeDeck files
+    the stray card, alone in its request.
     """
     fake = FakeAnki()
     in_default = _item(0, deck="Default")
     _held(fake, in_default)
     queued = _item(1)
     nid = _held(fake, queued)
-    fake.card_deck[fake.notes[nid]["cards"][0]] = "Arete::Queue"
+    fake.queue([nid])
+    stray = _item(2)
+    stray_nid = _held(fake, stray, deck="Other")
 
-    results = await _sync(fake, [in_default, queued])
+    results = await _sync(fake, [in_default, queued, stray])
 
     assert all(r.ok for r in results)
-    assert fake.sub_actions == {**TYPE_READS, "changeDeck": 2}  # one multi
-    assert fake.card_deck[fake.notes[nid]["cards"][0]] == "D"
+    assert fake.requests["setHomeDeck"] == 1
+    [queued_card] = fake.notes[nid]["cards"]
+    assert (fake.card_deck[queued_card], fake.card_home[queued_card]) == ("Arete::Queue", "D")
+    assert fake.card_deck[fake.notes[stray_nid]["cards"][0]] == "D"
+
+
+@pytest.mark.asyncio
+async def test_an_addon_without_the_home_deck_actions_falls_back_to_getdecks_and_changedeck():
+    """Each action is tried once, answered "unsupported action", then not asked again."""
+    fake = FakeAnki()
+    fake.missing_actions = {"getModelInfo", "getHomeDecks", "setHomeDeck"}
+    items = [_item(i) for i in range(3)]
+    for item in items:
+        _held(fake, item, deck="Other")
+    sync = _sync_of(fake)
+
+    first = await sync.sync_notes(items)
+    fake.reset_counts()
+    for item in items:
+        item.note.deck = "E"
+    second = await sync.sync_notes(items)
+
+    assert all(r.ok for r in first + second)
+    assert {fake.card_deck[c] for n in fake.notes.values() for c in n["cards"]} == {"E"}
+    assert fake.requests["getDecks"] == 1
+    assert "getHomeDecks" not in fake.requests and "setHomeDeck" not in fake.sub_actions
+    assert fake.sub_actions["changeDeck"] == 3
 
 
 @pytest.mark.asyncio
@@ -286,7 +313,7 @@ async def test_a_note_with_a_card_out_of_place_is_moved_whole():
     [result] = await _sync(fake, [item])
 
     assert result.ok
-    assert ("changeDeck", {"cards": fake.notes[nid]["cards"], "deck": "D"}) in fake.log
+    assert ("setHomeDeck", {"cards": fake.notes[nid]["cards"], "deck": "D"}) in fake.log
 
 
 @pytest.mark.asyncio
@@ -338,7 +365,7 @@ async def test_random_batches_end_with_anki_as_the_vault_says(seed):
         _held(fake, item, **change)
         if rng.random() < 0.1:
             item.note.fields["Back"] = item.note.fields["Back"] + "́"  # combining mark
-    writes = {"updateNoteFields", "addTags", "removeTags", "changeDeck", "getDecks"}
+    writes = {"updateNoteFields", "addTags", "removeTags", "setHomeDeck", "getHomeDecks"}
     fake.fail = lambda action, params: "boom" if action in writes and rng.random() < 0.05 else None
 
     results = await _sync(fake, items)
@@ -371,9 +398,9 @@ async def test_new_cards_share_one_content_index_build():
         "findNotes": 1,
         # ceil(1201 / 500) for the index, 1 for the healed twin, 1 for the new cids
         "notesInfo": 3 + 1 + 1,
-        "getDecks": 2,
+        "getHomeDecks": 2,
         "updateNoteFields": 1,
-        "changeDeck": 1,
+        "setHomeDeck": 1,
     }
     assert fake.sub_actions["addNote"] == 19
     assert results[7].new_nid == str(twin)
@@ -413,7 +440,7 @@ async def test_concurrent_batches_create_each_deck_and_check_each_type_once():
 
     assert all(r.ok for batch in results for r in batch)
     assert fake.requests["createDeck"] == 1
-    assert fake.sub_actions["modelFieldNames"] == 1
+    assert fake.sub_actions["getModelInfo"] == 1
     assert fake.requests["modelFieldAdd"] == 1
 
 

@@ -311,11 +311,14 @@ async def test_a_read_that_keeps_timing_out_fails_after_three_attempts():
 
 
 def _actions_in_source() -> set[str]:
-    """Action names written in the adapter: ``_invoke`` calls, write tuples, multi entries."""
+    """Action names written in the adapter.
+
+    From ``_invoke`` and ``_lacks`` calls, write tuples and multi entries.
+    """
     tree = ast.parse(inspect.getsource(anki_connect))
     names: set[str] = set()
     for node in ast.walk(tree):
-        if isinstance(node, ast.Call) and getattr(node.func, "attr", None) == "_invoke":
+        if isinstance(node, ast.Call) and getattr(node.func, "attr", None) in ("_invoke", "_lacks"):
             first = node.args[0] if node.args else None
             if isinstance(first, ast.Constant) and isinstance(first.value, str):
                 names.add(first.value)
@@ -324,7 +327,7 @@ def _actions_in_source() -> set[str]:
             if (
                 isinstance(name, ast.Constant)
                 and isinstance(name.value, str)
-                and isinstance(params, ast.Dict)
+                and isinstance(params, (ast.Dict, ast.Name))
             ):
                 names.add(name.value)
         elif isinstance(node, ast.Dict):
@@ -340,7 +343,7 @@ def _actions_in_source() -> set[str]:
 
 def test_every_action_the_adapter_sends_is_in_the_retry_table():
     sent = _actions_in_source()
-    assert {"addNote", "changeNoteType", "notesInfo", "multi", "changeDeck"} <= sent
+    assert {"addNote", "changeNoteType", "notesInfo", "multi", "changeDeck", "setHomeDeck"} <= sent
     assert sent <= set(anki_connect._RESEND_SAFE) | {"multi"}
 
 

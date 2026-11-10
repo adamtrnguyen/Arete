@@ -740,6 +740,83 @@ class AnkiConnect:
             self.stopEditing()
 
     @util.api()
+    def getHomeDecks(self, cards):
+        """Per card id, in order: the deck it belongs to and the filtered deck it sits in.
+
+        `{"homeDeck": name, "filteredDeck": name or None}`; a card queued in a filtered
+        deck belongs to the deck it returns to (`odid`). A deck that no longer exists has
+        the name None. A card the collection does not hold gets None. One query.
+        """
+        ids = [cid for cid in cards if type(cid) is int]
+        rows = {}
+        if ids:
+            for cid, did, odid in self.database().all(
+                "select id, did, odid from cards where id in %s" % anki.utils.ids2str(ids)
+            ):
+                rows[cid] = (did, odid)
+        names = {}
+
+        def name(did):
+            if did not in names:
+                deck = self.decks().get(did, default=False)
+                names[did] = deck["name"] if deck else None
+            return names[did]
+
+        result = []
+        for cid in cards:
+            if cid not in rows:
+                result.append(None)
+                continue
+            did, odid = rows[cid]
+            if odid:
+                result.append({"homeDeck": name(odid), "filteredDeck": name(did)})
+            else:
+                result.append({"homeDeck": name(did), "filteredDeck": None})
+        return result
+
+    @util.api()
+    def setHomeDeck(self, cards, deck):
+        """File the cards under an existing deck without taking any out of a filtered deck.
+
+        A card queued in a filtered deck gets the deck as the one it returns to (`odid`)
+        and stays queued; any other card moves to it (`did`). Due dates, queues and the
+        rest of the scheduling are untouched.
+        """
+        did = self.decks().id(deck, create=False)
+        if not did:
+            raise Exception("deck was not found: {}".format(deck))
+        ids = anki.utils.ids2str([cid for cid in cards if type(cid) is int])
+        mod = int_time()
+        usn = self.collection().usn()
+        db = self.database()
+        db.execute(
+            "update cards set usn=?, mod=?, odid=? where odid != 0 and id in " + ids, usn, mod, did
+        )
+        db.execute(
+            "update cards set usn=?, mod=?, did=? where odid = 0 and id in " + ids, usn, mod, did
+        )
+        self.scheduleRefresh()
+
+    @util.api()
+    def getModelInfo(self, models):
+        """Per note type name: its kind (0 standard, 1 cloze), field names and template count.
+
+        A name the collection does not hold gets None.
+        """
+        result = {}
+        for modelName in models:
+            model = self.collection().models.by_name(modelName)
+            if model is None:
+                result[modelName] = None
+                continue
+            result[modelName] = {
+                "type": model["type"],
+                "fields": [field["name"] for field in model["flds"]],
+                "templates": len(model["tmpls"]),
+            }
+        return result
+
+    @util.api()
     def getDeckConfig(self, deck):
         if deck not in self.deckNames():
             return False

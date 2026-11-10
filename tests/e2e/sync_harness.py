@@ -172,6 +172,10 @@ class Backend(ABC):
     def close(self) -> None:
         """Release what the backend holds open."""
 
+    @abstractmethod
+    def copy_note_type(self, source: str, name: str) -> None:
+        """Add a note type that is a copy of `source` under another name."""
+
     def note(self, nid: int) -> HeldNote:
         return next(n for n in self.notes() if n.nid == nid)
 
@@ -231,6 +235,14 @@ class CollectionBackend(Backend):
                 [f["name"] for f in old["flds"]], [f["name"] for f in new["flds"]]
             )
             col.models.change_notetype_of_notes(request)
+
+    def copy_note_type(self, source: str, name: str) -> None:
+        with self.collection() as col:
+            original = col.models.by_name(source)
+            assert original is not None
+            copy = col.models.copy(original, add=False)
+            copy["name"] = name
+            col.models.add_dict(copy)
 
     def review_everything(self) -> None:
         """Answer every card Good twice through the scheduler, so it has review history."""
@@ -334,7 +346,12 @@ class FakeBackend(Backend):
         for nid in sorted(self.fake.notes):
             n = self.fake.notes[nid]
             cards = [
-                HeldCard(cid, i, self.fake.card_deck[cid], self.fake.card_deck[cid])
+                HeldCard(
+                    cid,
+                    i,
+                    self.fake.card_deck[cid],
+                    self.fake.card_home.get(cid, self.fake.card_deck[cid]),
+                )
                 for i, cid in enumerate(n["cards"])
             ]
             out.append(HeldNote(nid, n["model"], dict(n["fields"]), sorted(n["tags"]), cards))
@@ -357,6 +374,11 @@ class FakeBackend(Backend):
     def move_card(self, cid: int, deck: str) -> None:
         self.fake.decks.add(deck)
         self.fake.card_deck[cid] = deck
+
+    def copy_note_type(self, source: str, name: str) -> None:
+        self.fake.models[name] = list(self.fake.models[source])
+        if source in self.fake.cloze_models:
+            self.fake.cloze_models.add(name)
 
     def retype(self, nid: int, model: str) -> None:
         note = self.fake.notes[nid]

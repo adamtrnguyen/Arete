@@ -63,16 +63,9 @@ def _direct(root: Path) -> StoreUnderTest:
 def _ac_fake(root: Path) -> StoreUnderTest:
     backend = make_backend("fake", root)
     assert isinstance(backend, FakeBackend)
-    fake = backend.fake
-
-    def queue(nids: list[int]) -> None:
-        """The fake has no filtered decks: the cards sit in the queue, as getDecks says."""
-        fake.decks.add("Arete::Queue")
-        for nid in nids:
-            for cid in fake.notes[nid]["cards"]:
-                fake.card_deck[cid] = "Arete::Queue"
-
-    return StoreUnderTest("ac-fake", backend.bridge(), backend.add_note, queue, backend.close)
+    return StoreUnderTest(
+        "ac-fake", backend.bridge(), backend.add_note, backend.fake.queue, backend.close
+    )
 
 
 def _ac_addon(root: Path) -> StoreUnderTest:
@@ -87,20 +80,37 @@ def _ac_addon(root: Path) -> StoreUnderTest:
     )
 
 
+ARETE_ACTIONS = ("getModelInfo", "getHomeDecks", "setHomeDeck")
+
+
+def _ac_addon_legacy(root: Path) -> StoreUnderTest:
+    """The add-on as a version without Arete's model-info and home-deck actions."""
+    backend = make_backend("addon", root)
+    assert isinstance(backend, AddonBackend)
+    for action in ARETE_ACTIONS:
+        backend.host._addon.actions.pop(action)
+    return StoreUnderTest(
+        "ac-addon-legacy",
+        backend.bridge(),
+        backend.add_note,
+        lambda nids: None if backend.queue(nids) else None,
+        backend.close,
+    )
+
+
 STORES: dict[str, Callable[[Path], StoreUnderTest]] = {
     "fake": _fake,
     "direct": _direct,
     "ac-fake": _ac_fake,
     "ac-addon": _ac_addon,
+    "ac-addon-legacy": _ac_addon_legacy,
 }
 
-# Stores that do not yet meet a contract test, and why. Each acts as a strict xfail: the
-# test fails once the store meets it, until its entry is deleted.
+# Stores that do not meet a contract test, and why. Each acts as a strict xfail: the test
+# fails once the store meets it, until its entry is deleted.
 HOME_DECK_GAP = {
-    "ac-fake": "AnkiConnect's getDecks names the filtered deck a queued card sits in, and "
-    "changeDeck takes it out of that deck: no action reads or sets a home deck",
-    "ac-addon": "AnkiConnect's getDecks names the filtered deck a queued card sits in, and "
-    "changeDeck takes it out of that deck: no action reads or sets a home deck",
+    "ac-addon-legacy": "without getHomeDecks and setHomeDeck, getDecks names the filtered "
+    "deck a queued card sits in, and changeDeck takes it out of that deck",
 }
 
 

@@ -9,8 +9,8 @@ Each invariant gets a test that fails when it breaks; its status changes only wi
 |---|---|---|
 | 1 | **Obsidian is ground truth.** After any sync, Anki's fields, tags, deck and note type for a card id equal the vault's. An edit made in Anki is overwritten. | Not yet: a field, tag, deck or note-type edit made in Anki survives a sync on every backend |
 | 2 | **The Arete id is the identity.** A card is found by its id, whichever backend runs. | Holds |
-| 3 | **Both backends behave the same.** Whether Anki is open changes how Arete reaches the collection, never what it does. | Not yet for a card in `Arete::Queue`: the direct backend keeps it queued, AnkiConnect takes it out. Every case in `tests/e2e/test_sync_equivalence.py` ends the same on both |
-| 4 | **Arete never touches scheduling.** Review history, due dates and suspension belong to Anki. | Holds on the direct backend, a card in `Arete::Queue` included. Over AnkiConnect holds for a card in its home deck; not yet for a card in `Arete::Queue`: any update takes it out of the queue |
+| 3 | **Both backends behave the same.** Whether Anki is open changes how Arete reaches the collection, never what it does. | Holds |
+| 4 | **Arete never touches scheduling.** Review history, due dates and suspension belong to Anki. | Holds, a card in `Arete::Queue` included. Over an add-on without `setHomeDeck`, an update still takes a queued card out of the queue |
 | 5 | **A sync writes only ids into the vault.** The Arete id, the note id and the card id. | Note bodies hold. Not yet for frontmatter: a rewritten file loses comments and formatting, and a `\|` block becomes `\|-` |
 | 6 | **Nothing is deleted without confirmation.** | Holds |
 
@@ -68,6 +68,12 @@ Location: `~/Library/Application Support/Anki2/addons21/arete_ankiconnect/`
 Fork of AnkiConnect with custom actions:
 - `createFilteredDeck(name, cids, reschedule)` — Creates a filtered (dynamic) deck with cards in specified CID order
 - `getFSRSStats(cards)` — Fetches FSRS difficulty scores for cards
+- `getModelInfo(models)` — Per note type: kind (cloze or not), field names, template count
+- `getHomeDecks(cards)` — Per card: the deck it belongs to and the filtered deck it sits in
+- `setHomeDeck(cards, deck)` — Files cards under a deck; a queued card stays queued
+
+The sync falls back to today's actions when the add-on lacks the last three, so a queued
+card then leaves its queue on an update.
 
 Plugin must be reloaded (restart Anki) after code changes.
 
@@ -176,8 +182,6 @@ lives in `docs/history/`.
 - [ ] An edit made inside Anki (deck, fields, tags) is not reverted by an ordinary sync:
       a file whose stat is unchanged is skipped before its cards are compared with Anki.
       Only `--force` or `--clear-cache` restores the vault's version.
-- [ ] Over AnkiConnect a note type counts as cloze only if it is named `Cloze`, so a
-      conversion to a custom cloze type is refused instead of done.
 - [ ] The three surfaces duplicate their wiring: `http_server` resolves config and builds
       a bridge inline in each route (`grep -c 'resolve_config(\|get_anki_bridge('
       src/arete/interface/http_server.py`). Five Anki admin verbs are called only from
