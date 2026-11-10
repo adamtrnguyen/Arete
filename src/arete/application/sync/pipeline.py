@@ -61,8 +61,13 @@ async def run_pipeline(
         logger.info("No compatible markdown files found.")
         return RunStats(0, 0, 0)
 
+    failed_files: set[Path] = set()  # a card here did not reach Anki; do not mark it synced
+
     # -------- Stage 1.5: ensure all cards have Arete IDs --------
     ids_total = 0
+    # A file whose new ids could not be written: none of its cards is sent, because Anki
+    # would receive ids the vault does not hold. Its declared nids stay in the inventory.
+    unwritten_ids: set[Path] = set()
     updated_compatible: list[tuple[Path, dict[str, Any], bool]] = []
     for path, meta, is_fresh in compatible:
         assigned = ensure_card_ids(meta)
@@ -82,15 +87,23 @@ async def run_pipeline(
                 new_meta, _ = vault_service.parse(path, new_text)
                 updated_compatible.append((path, new_meta, True))
             except Exception as e:
-                logger.error(f"[id-error] Failed to rewrite {path}: {e}")
+                logger.error(f"[id-error] Failed to rewrite {path}: {e}. Not syncing this file.")
+                recorder.add_error(path, f"could not write new Arete ids: {e}")
+                failed_files.add(path)
+                unwritten_ids.add(path)
+                recorder.add_inventory(
+                    [
+                        {"nid": nid, "deck": None}
+                        for c in meta.get("cards") or []
+                        if isinstance(c, dict) and (nid := parser._extract_raw_nid(c))
+                    ]
+                )
                 updated_compatible.append((path, meta, is_fresh))
         else:
             updated_compatible.append((path, meta, is_fresh))
     compatible = updated_compatible
     if ids_total > 0:
         logger.info(f"[id] Assigned {ids_total} new Arete IDs across vault")
-
-    failed_files: set[Path] = set()  # a card here did not reach Anki; do not mark it synced
 
     # -------- Stage 1.6: one Anki note claimed by cards in different files --------
     claims: dict[str, list[tuple[Path, int]]] = {}
@@ -250,6 +263,7 @@ async def run_pipeline(
     producer_tasks = [
         asyncio.create_task(bounded_producer(p, meta, is_fresh))
         for (p, meta, is_fresh) in compatible
+        if p not in unwritten_ids
     ]
 
     # disable=None: tqdm shows the bar only when stderr is a terminal.
