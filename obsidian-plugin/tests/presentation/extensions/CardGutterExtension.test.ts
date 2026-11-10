@@ -380,6 +380,15 @@ describe('card gutter state', () => {
 		expect(stateOf(lenient)[0]).toBe('warning');
 	});
 
+	it('a card due long ago, with only low retrievability, is a warning, not an error', () => {
+		const g = setup(threeCards());
+		g.statsByNid.set(
+			NIDS[0],
+			ankiCardStats({ noteId: NIDS[0], cardId: NIDS[0], lapses: 0, retrievability: 0.04 }),
+		);
+		expect(stateOf(g)[0]).toBe('warning');
+	});
+
 	it('rebuilds the markers when only a threshold changed, and not otherwise', () => {
 		let lapseThreshold = 3;
 		const g = setup(threeCards(), () => ({
