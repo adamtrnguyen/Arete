@@ -20,36 +20,23 @@ class LearningInsightsService:
 
     @staticmethod
     def clean_note_name(raw_name: str) -> str:
-        """Clean raw _obsidian_source strings.
+        """The note's name from its `_obsidian_source`, or the text itself.
 
-        Example: 'Obsidian Vault|My Note.md|89' -> 'My Note'.
+        A source is `vault|path|line|arete_id`, as the sync writes it: its name is the
+        file's basename without `.md` ('Vault|Folder/My Note.md|89|arete_…' -> 'My Note').
+        Text in any other shape (a first field, 'Unknown') has no source and is returned
+        with its HTML stripped.
         """
         import re
 
-        # 1. Strip HTML if any
-        name = re.sub("<[^<]+?>", "", raw_name)
-
-        # 2. Handle the "Vault|Path|ID" or "Vault|Path" format
-        if "|" in name:
-            parts = name.split("|")
-            # If multiple pipes, usually Vault|Path|ID
-            if len(parts) >= 2:
-                # Part 1 is usually the path/name
-                name = parts[1]
-            else:
-                name = parts[0]
-
-        # 3. Strip .md extension
-        if name.lower().endswith(".md"):
-            name = name[:-3]
-
-        # 4. Take only the basename if it's a path
-        if "/" in name:
-            name = name.split("/")[-1]
-        elif "\\" in name:
-            name = name.split("\\")[-1]
-
-        return name.strip()
+        name = re.sub("<[^<]+?>", "", raw_name).strip()
+        parts = name.split("|")
+        if len(parts) != 4 or not parts[2].isdigit():
+            return name
+        path = parts[1]
+        if path.lower().endswith(".md"):
+            path = path[:-3]
+        return path.rsplit("/", 1)[-1].strip()
 
     async def get_learning_insights(self, lapse_threshold: int = 3) -> LearningStats:
         """Fetch stats via the bridge (Connect or Direct)."""
