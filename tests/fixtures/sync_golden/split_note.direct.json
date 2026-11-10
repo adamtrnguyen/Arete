@@ -9,7 +9,7 @@
         "fields": {
           "Back Extra": "<p>edited</p>",
           "Text": "<p>{{c1::one}} and {{c2::two}}</p>",
-          "_obsidian_source": "vault|split.md|7|<id of split.md#1>"
+          "_obsidian_source": "vault|split.md|6|<id of split.md#1>"
         },
         "model": "Cloze",
         "tags": [

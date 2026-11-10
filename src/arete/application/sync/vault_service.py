@@ -6,6 +6,13 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
+from arete.application.sync.id_service import generate_arete_id
+from arete.application.sync.id_writeback import (
+    CardIds,
+    read_exact,
+    write_card_ids,
+    write_exact,
+)
 from arete.application.utils.common import sanitize
 from arete.application.utils.fs import iter_markdown_files
 from arete.application.utils.text import parse_frontmatter, rebuild_markdown_with_frontmatter
@@ -35,6 +42,8 @@ class VaultService:
         self._not_arete: list[tuple[Path, float, int]] = []
         # This run's frontmatter parses by path: (text, untouched meta, body).
         self._parsed: dict[Path, tuple[str, dict[str, Any], str]] = {}
+        # The last apply_updates' cards whose ids could not be written: (file, index, why).
+        self.write_refused: list[tuple[Path, int, str]] = []
 
     def parse(self, md_path: Path, text: str) -> tuple[dict[str, Any], str]:
         """parse_frontmatter(text), reusing this run's parse of the same text of this file.
@@ -226,9 +235,40 @@ class VaultService:
             if isinstance(card, dict) and "__line__" in card
         }
 
+    def assign_ids(
+        self, md_path: Path, dry_run: bool = False
+    ) -> tuple[int, dict[str, Any], dict[int, str]]:
+        """Give each card without an `id` a new Arete id, one inserted line per card.
+
+        Returns (ids assigned, the file's meta with them, refused cards by 0-based index).
+        A refusal writes nothing and assigns nothing; a dry run writes nothing and returns
+        the meta the write would give. Raises when the file cannot be read or written.
+        """
+        text = read_exact(md_path)
+        meta, _ = self.parse(md_path, text)
+        cards = meta.get("cards")
+        edits = [
+            CardIds(i, id=generate_arete_id())
+            for i, card in enumerate(cards if isinstance(cards, list) else [])
+            if isinstance(card, dict) and "id" not in card
+        ]
+        result = write_card_ids(text, edits)
+        if result.refused or result.text == text:
+            return 0, meta, result.refused
+        if not dry_run:
+            write_exact(md_path, result.text)
+        new_meta, _ = self.parse(md_path, result.text)
+        return len(edits), new_meta, {}
+
     def apply_updates(self, updates: list[UpdateItem], dry_run: bool = False) -> set[Path]:
-        """Write back new NIDs/CIDs to the markdown files; the files rewritten."""
+        """Write new nids/cids into the cards' frontmatter; the files written.
+
+        Only the id lines change (`id_writeback`). A card whose ids cannot be written that
+        way is listed in `write_refused` as (file, card index, reason), and its file is left
+        as it was.
+        """
         written: set[Path] = set()
+        self.write_refused = []
         by_file: dict[Path, list[UpdateItem]] = defaultdict(list)
         for u in updates:
             if u.ok and (u.new_nid or u.new_cid):
@@ -236,47 +276,34 @@ class VaultService:
 
         for md_path, ups in by_file.items():
             try:
-                text = md_path.read_text(encoding="utf-8")
-                meta, body = self.parse(md_path, text)
+                text = read_exact(md_path)
+                meta, _ = self.parse(md_path, text)
                 if not meta or "__yaml_error__" in meta:
                     continue
                 cards = meta.get("cards", [])
-                changed = False
+                edits: list[tuple[UpdateItem, CardIds]] = []
                 for u in ups:
                     i = self._card_position(cards, u)
                     if i is not None:
-                        card_data = cards[i]
-                        # V2 format: write nid/cid into anki block
-                        anki_block = card_data.get("anki", {})
-                        if not isinstance(anki_block, dict):
-                            anki_block = {}
-
-                        if u.new_nid and sanitize(anki_block.get("nid", "")) != u.new_nid:
-                            anki_block["nid"] = u.new_nid
-                            changed = True
-                        if u.new_cid and sanitize(anki_block.get("cid", "")) != u.new_cid:
-                            anki_block["cid"] = u.new_cid
-                            changed = True
-
-                        if anki_block:
-                            card_data["anki"] = anki_block
-                # A forced sync (ignore_cache) always rewrites the file, which normalizes
-                # its YAML (|- block style).
-                if self.ignore_cache:
-                    changed = True
-
-                if changed:
-                    meta["cards"] = cards
-                    new_text = rebuild_markdown_with_frontmatter(meta, body)
-                    if new_text != text:
-                        if dry_run:
-                            self.logger.info(f"[dry-run] Would write normalized YAML to {md_path}")
-                        else:
-                            md_path.write_text(new_text, encoding="utf-8")
-                            written.add(md_path)
-                            self.logger.debug(
-                                f"[write] {md_path}: persisted nid/cid into frontmatter"
+                        edits.append((u, CardIds(i, nid=u.new_nid, cid=u.new_cid)))
+                result = write_card_ids(text, [e for _, e in edits])
+                if result.refused:
+                    for u, e in edits:
+                        if e.index in result.refused:
+                            why = result.refused[e.index]
+                            self.write_refused.append((md_path, u.source_index, why))
+                            self.logger.error(
+                                f"[write] {md_path.name} #{u.source_index}: not writing its "
+                                f"Anki ids, {why}; the file is unchanged"
                             )
+                    continue
+                if result.text != text:
+                    if dry_run:
+                        self.logger.info(f"[dry-run] Would write nid/cid into {md_path}")
+                    else:
+                        write_exact(md_path, result.text)
+                        written.add(md_path)
+                        self.logger.debug(f"[write] {md_path}: persisted nid/cid into frontmatter")
             except Exception as e:
                 self.logger.error(f"[error] write-updates {md_path}: {e}")
         return written

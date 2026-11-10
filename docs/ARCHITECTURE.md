@@ -33,6 +33,7 @@ src/arete/
 │   ├── sync/                     
 │   │   ├── converter.py           Markdown to Anki HTML conversion logic
 │   │   ├── id_service.py          Service for managing stable Arete IDs for cards
+│   │   ├── id_writeback.py        Write card ids into a note's frontmatter as line edits; every other byte stays
 │   │   ├── note_sync.py           Bring Anki's notes to what the vault says: the one copy of the sync decision logic
 │   │   ├── parser.py              MarkdownParser
 │   │   ├── pipeline.py            vault_claims, vault_models, true_source_lines...
@@ -85,7 +86,7 @@ src/arete/
 |---|---|---|---|
 | `interface` | 4 | 975 | application, composition |
 | `composition` | 2 | 183 | application, infrastructure, domain |
-| `application` | 23 | 5414 | domain (ports only) |
+| `application` | 24 | 5829 | domain (ports only) |
 | `infrastructure` | 9 | 2112 | domain |
 | `domain` | 9 | 869 | nothing in arete |
 

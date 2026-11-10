@@ -75,7 +75,7 @@ def test_dry_run_write_back_leaves_the_file_alone(vault, cache, caplog):
     with caplog.at_level(logging.INFO):
         VaultService(vault, cache).apply_updates([_update(path, arete_id="arete_A")], dry_run=True)
     assert path.read_text(encoding="utf-8") == before
-    assert "Would write normalized YAML" in caplog.text
+    assert "Would write nid/cid" in caplog.text
 
 
 # --- the stat cache fails ---

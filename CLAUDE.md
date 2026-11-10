@@ -11,7 +11,7 @@ Each invariant gets a test that fails when it breaks; its status changes only wi
 | 2 | **The Arete id is the identity.** A card is found by its Anki note id, then its Arete id tag, then its first field, and is created only if none matches. The same id on two cards, or the same first field in one deck and note type, is refused. Both backends do the same. | Holds |
 | 3 | **Both backends behave the same.** Whether Anki is open changes how Arete reaches the collection, never what it does. | Holds |
 | 4 | **Arete never touches scheduling.** Review history, due dates and suspension belong to Anki. | Holds, a card in `Arete::Queue` included |
-| 5 | **A sync writes only ids into the vault.** The Arete id, the note id and the card id. | Note bodies hold. Not yet for frontmatter: a rewritten file loses comments and formatting, and a `\|` block becomes `\|-` |
+| 5 | **A sync writes only ids into the vault.** The Arete id, the note id and the card id. | Holds. Each id is an inserted line or a new value on its own line; a card whose shape allows neither (a flow mapping, a flow `anki`) fails and its file is left as it was |
 | 6 | **Nothing is deleted without confirmation.** | Holds |
 
 The proving tests are `tests/e2e/test_sync_invariants.py` and `tests/e2e/test_sync_equivalence.py`.

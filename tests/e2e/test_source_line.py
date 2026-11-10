@@ -1,9 +1,9 @@
 """After a sync, `_obsidian_source` holds the card's line in the file as the sync left it.
 
-A sync writes nid and cid back into the file, and rewriting the frontmatter also puts a
-`::` deck on two lines: every card below moves. The line Anki stores must be the one on
-disk afterwards, so "Open in Obsidian" lands on the card, and the next sync and a dry
-run plan nothing.
+A sync writes nid and cid back into the file as lines inserted at the end of each card, so
+every card below a written one moves. The line Anki stores must be the one on disk
+afterwards, so "Open in Obsidian" lands on the card, and the next sync and a dry run plan
+nothing.
 """
 
 from __future__ import annotations
@@ -70,7 +70,8 @@ async def test_the_stored_line_is_the_cards_line_after_write_back(world, n_cards
     await _sync(world)
 
     after = _lines_on_disk(md)
-    assert after != before, "the write-back moved the cards"
+    # The lines go in after each card: only a card below another one moves.
+    assert (after != before) == (n_cards > 1)
     assert _lines_in_anki(backend) == after
 
     dry = await _sync(world, dry_run=True)

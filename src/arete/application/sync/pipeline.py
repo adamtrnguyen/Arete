@@ -8,7 +8,6 @@ from typing import Any
 from tqdm import tqdm
 
 from arete.application.config import AppConfig
-from arete.application.sync.id_service import ensure_card_ids
 from arete.application.sync.note_sync import NoteSync, VaultClaims
 from arete.application.sync.parser import MarkdownParser
 from arete.application.sync.prune import PruneConfirm, PruneReport, prune_orphans
@@ -16,7 +15,6 @@ from arete.application.sync.vault_service import VaultService
 from arete.application.utils.common import sanitize
 from arete.application.utils.logging import RunRecorder
 from arete.application.utils.media import FilenameIndex
-from arete.application.utils.text import rebuild_markdown_with_frontmatter
 from arete.domain.constants import CONSUMER_BATCH_SIZE
 from arete.domain.interfaces import ContentCache, SyncBackend
 from arete.domain.models import UpdateItem, WorkItem
@@ -164,37 +162,40 @@ async def run_pipeline(
     unwritten_ids: set[Path] = set()
     updated_compatible: list[tuple[Path, dict[str, Any], bool]] = []
     for path, meta, is_fresh in compatible:
-        assigned = ensure_card_ids(meta)
-        if assigned > 0:
-            ids_total += assigned
-            # Rewrite the file so the parser sees the new id: fields
-            try:
-                text = path.read_text(encoding="utf-8")
-                _, body = vault_service.parse(path, text)
-                new_text = rebuild_markdown_with_frontmatter(meta, body)
-                if config.dry_run:
-                    logger.info(f"[dry-run] would assign {assigned} new IDs in {path.name}")
-                else:
-                    path.write_text(new_text, encoding="utf-8")
-                    logger.info(f"[id] Assigned {assigned} new IDs in {path.name}")
-                # Re-parse so downstream stages see the updated meta
-                new_meta, _ = vault_service.parse(path, new_text)
-                updated_compatible.append((path, new_meta, True))
-            except Exception as e:
-                logger.error(f"[id-error] Failed to rewrite {path}: {e}. Not syncing this file.")
-                recorder.add_error(path, f"could not write new Arete ids: {e}")
-                failed_files.add(path)
-                unwritten_ids.add(path)
-                recorder.add_inventory(
-                    [
-                        {"nid": nid, "deck": None}
-                        for c in meta.get("cards") or []
-                        if isinstance(c, dict) and (nid := parser._extract_raw_nid(c))
-                    ]
-                )
-                updated_compatible.append((path, meta, is_fresh))
-        else:
+        if not any(isinstance(c, dict) and "id" not in c for c in meta.get("cards") or []):
             updated_compatible.append((path, meta, is_fresh))
+            continue
+        # Each new id is one inserted line; the downstream stages see the meta it gives.
+        problems: list[tuple[str, str | None]] = []
+        assigned, new_meta = 0, meta
+        try:
+            assigned, new_meta, refused = vault_service.assign_ids(path, dry_run=config.dry_run)
+            problems = [
+                (f"could not write new Arete ids: {why}; the file is unchanged", f"#{i + 1}")
+                for i, why in refused.items()
+            ]
+        except Exception as e:
+            problems = [(f"could not write new Arete ids: {e}", None)]
+        if problems:
+            logger.error(f"[id-error] {path}: {problems[0][0]}. Not syncing this file.")
+            for msg, where in problems:
+                recorder.add_error(path, msg, where)
+            failed_files.add(path)
+            unwritten_ids.add(path)
+            recorder.add_inventory(
+                [
+                    {"nid": nid, "deck": None}
+                    for c in meta.get("cards") or []
+                    if isinstance(c, dict) and (nid := parser._extract_raw_nid(c))
+                ]
+            )
+            updated_compatible.append((path, meta, is_fresh))
+            continue
+        if assigned:
+            ids_total += assigned
+            verb = "would assign" if config.dry_run else "Assigned"
+            logger.info(f"[id] {verb} {assigned} new IDs in {path.name}")
+        updated_compatible.append((path, new_meta, True))
     compatible = updated_compatible
     if ids_total > 0:
         logger.info(f"[id] Assigned {ids_total} new Arete IDs across vault")
@@ -395,6 +396,11 @@ async def run_pipeline(
     if updates:
         logger.info("[pipeline] Persisting NIDs/CIDs to frontmatter...")
         written = vault_service.apply_updates(updates, dry_run=config.dry_run)
+        for path, index, why in vault_service.write_refused:
+            failed_files.add(path)
+            recorder.add_error(
+                path, f"could not write its Anki ids: {why}; the file is unchanged", f"#{index}"
+            )
         if not config.dry_run:
             failed_files |= await true_source_lines(
                 written, updates, vault_service, parser, note_sync, cache, logger

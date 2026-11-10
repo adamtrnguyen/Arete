@@ -1,11 +1,15 @@
-"""Property-based tests for ID generation and assignment."""
+"""Property-based tests for ID generation, and for the sync giving cards their ids."""
 
 import re
+from pathlib import Path
+from unittest.mock import MagicMock
 
-from hypothesis import given, settings
+from hypothesis import assume, given, settings
 from hypothesis import strategies as st
 
-from arete.application.sync.id_service import ensure_card_ids, generate_arete_id
+from arete.application.sync.id_service import generate_arete_id
+from arete.application.sync.vault_service import VaultService
+from arete.application.utils.text import parse_frontmatter
 
 ARETE_ID_RE = re.compile(r"^arete_[0-9A-Z]{26}$")
 
@@ -24,78 +28,57 @@ def test_ids_unique():
     assert len(ids) == 100
 
 
-@given(
-    cards=st.lists(
-        st.fixed_dictionaries(
-            {"Front": st.text(min_size=1, max_size=50), "Back": st.text(min_size=1, max_size=50)}
-        ),
-        min_size=1,
-        max_size=5,
+def _note(tmp_path: Path, cards: str) -> Path:
+    path = tmp_path / "n.md"
+    path.write_bytes(f"---\narete: true\ndeck: D\ncards:\n{cards}---\nbody\n".encode())
+    return path
+
+
+def _ids(path: Path) -> list[object]:
+    meta, _ = parse_frontmatter(path.read_text(encoding="utf-8"))
+    return [c.get("id") if isinstance(c, dict) else None for c in meta["cards"]]
+
+
+@given(n_with=st.integers(0, 3), n_without=st.integers(0, 3))
+@settings(max_examples=30)
+def test_assign_ids_gives_an_id_to_each_card_without_one(tmp_path_factory, n_with, n_without):
+    assume(n_with + n_without > 0)
+    path = _note(
+        tmp_path_factory.mktemp("ids"),
+        "".join(f"- id: {generate_arete_id()}\n  Front: q\n" for _ in range(n_with))
+        + "".join("- Front: q\n" for _ in range(n_without)),
     )
-)
-@settings(max_examples=50)
-def test_ensure_ids_idempotent(cards):
-    """ensure_card_ids(ensure_card_ids(meta)) assigns 0 on second call."""
-    meta = {"cards": cards}
-    first = ensure_card_ids(meta)
-    assert first == len(cards)
-    second = ensure_card_ids(meta)
-    assert second == 0
+    held = _ids(path)[:n_with]
+    service = VaultService(path.parent, MagicMock())
+
+    assigned, meta, refused = service.assign_ids(path)
+
+    assert (assigned, refused) == (n_without, {})
+    ids = _ids(path)
+    assert ids[:n_with] == held, "an existing id is kept"
+    assert all(ARETE_ID_RE.match(str(i)) for i in ids)
+    assert [c["id"] for c in meta["cards"]] == ids
+    assert service.assign_ids(path)[0] == 0, "a second run assigns nothing"
 
 
-@given(
-    cards=st.lists(
-        st.fixed_dictionaries(
-            {
-                "Front": st.text(min_size=1, max_size=50),
-                "Back": st.text(min_size=1, max_size=50),
-                "id": st.from_regex(r"arete_[A-Z0-9]{26}", fullmatch=True),
-            }
-        ),
-        min_size=1,
-        max_size=5,
-    )
-)
-@settings(max_examples=50)
-def test_ensure_ids_preserves_existing(cards):
-    """Cards with existing id field are untouched."""
-    original_ids = [c["id"] for c in cards]
-    meta = {"cards": cards}
-    assigned = ensure_card_ids(meta)
-    assert assigned == 0
-    for card, orig_id in zip(meta["cards"], original_ids, strict=False):
-        assert card["id"] == orig_id
+def test_assign_ids_skips_cards_that_are_not_mappings(tmp_path: Path):
+    path = _note(tmp_path, "- not a mapping\n- Front: q\n")
+    assigned, _meta, refused = VaultService(tmp_path, MagicMock()).assign_ids(path)
+    assert (assigned, refused) == (1, {})
+    assert _ids(path)[0] is None
 
 
-@given(
-    n_with=st.integers(min_value=0, max_value=3),
-    n_without=st.integers(min_value=0, max_value=3),
-)
-@settings(max_examples=50)
-def test_ensure_ids_count_matches(n_with, n_without):
-    """Return value == number of cards that lacked id."""
-    cards_with = [{"Front": "Q", "Back": "A", "id": generate_arete_id()} for _ in range(n_with)]
-    cards_without = [{"Front": "Q", "Back": "A"} for _ in range(n_without)]
-    meta = {"cards": cards_with + cards_without}
-    assigned = ensure_card_ids(meta)
-    assert assigned == n_without
+def test_assign_ids_on_a_dry_run_writes_nothing_and_returns_the_ids(tmp_path: Path):
+    path = _note(tmp_path, "- Front: q\n")
+    before = path.read_bytes()
+    assigned, meta, _ = VaultService(tmp_path, MagicMock()).assign_ids(path, dry_run=True)
+    assert path.read_bytes() == before
+    assert assigned == 1 and ARETE_ID_RE.match(meta["cards"][0]["id"])
 
 
-def test_ensure_ids_handles_non_dict_cards():
-    """Non-dict items in cards list are skipped, no crash."""
-    meta = {"cards": ["not a dict", 42, None, {"Front": "Q", "Back": "A"}]}
-    assigned = ensure_card_ids(meta)
-    assert assigned == 1
-    assert ARETE_ID_RE.match(meta["cards"][3]["id"])
-
-
-def test_ensure_ids_empty_meta():
-    """Empty/missing cards -> returns 0."""
-    assert ensure_card_ids({}) == 0
-    assert ensure_card_ids({"cards": []}) == 0
-    assert ensure_card_ids({"other": "stuff"}) == 0
-
-
-def test_ensure_ids_non_list_cards():
-    """Cards not a list -> returns 0."""
-    assert ensure_card_ids({"cards": "not a list"}) == 0
+def test_assign_ids_refuses_a_flow_card_and_writes_nothing(tmp_path: Path):
+    path = _note(tmp_path, "- Front: q\n- {Front: r}\n")
+    before = path.read_bytes()
+    assigned, _meta, refused = VaultService(tmp_path, MagicMock()).assign_ids(path)
+    assert path.read_bytes() == before
+    assert assigned == 0 and list(refused) == [1]

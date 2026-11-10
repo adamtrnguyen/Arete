@@ -66,14 +66,14 @@ def test_a_failed_id_rewrite_sends_none_of_the_files_cards(vault, monkeypatch):
     head, tail = path.read_text().replace("Back: a\n", "Back: a edited\n", 1).rsplit("---\n", 1)
     path.write_text(head + "- Front: new\n  Back: x\n---\n" + tail)
 
-    real_write = Path.write_text
+    real_write = Path.write_bytes
 
     def read_only(self: Path, *args: Any, **kwargs: Any) -> int:
         if self == path:
             raise OSError("read-only file system")
         return real_write(self, *args, **kwargs)
 
-    monkeypatch.setattr(Path, "write_text", read_only)
+    monkeypatch.setattr(Path, "write_bytes", read_only)
     sent_before = len(anki.sent)
     stats = run(root, anki, cache, prune=True)
 

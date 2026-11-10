@@ -12,7 +12,6 @@ observed. It fails the gate the day the behaviour is fixed; then delete the mark
 
 from __future__ import annotations
 
-import difflib
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -635,7 +634,27 @@ cards:
 Body.
 """
 
-INV5_FILES = ("new.md", "heal.md", "dangling.md", "untouched.md")
+# CRLF line endings, a 4-space card indent, a keep-chomped block scalar with a trailing blank
+# line, a comment inside a card, and a card that already has its id but no `anki`.
+CRLF = (
+    "---\r\n"
+    "arete: true\r\n"
+    "deck: 'Inv::Five'\r\n"
+    "cards:\r\n"
+    "    -   Front: |+\r\n"
+    "          Kept newline\r\n"
+    "\r\n"
+    "        # a comment inside the card\r\n"
+    '        Back: "Escaped \\u00e9"\r\n'
+    "    -   id: arete_01J00000000000000000000045\r\n"
+    "        Front: Has an id\r\n"
+    "        Back: >2\r\n"
+    "           indented fold\r\n"
+    "---\r\n"
+    "Body\r\n"
+)
+
+INV5_FILES = ("new.md", "heal.md", "dangling.md", "untouched.md", "crlf.md")
 ID_LINE = re.compile(r"^\s*(- )?(id|anki|nid|cid):")
 
 
@@ -660,8 +679,16 @@ def _scrub(value: Any) -> Any:
     return out
 
 
+def _without_id_lines(text: str) -> str:
+    """The whole file, bytes as stored, without the frontmatter's id lines."""
+    lines = text.split("\n")
+    end = next(i for i, line in enumerate(lines[1:], start=1) if line.rstrip() == "---")
+    kept = [line for line in lines[1:end] if not ID_LINE.match(line)]
+    return "\n".join([lines[0], *kept, *lines[end:]])
+
+
 async def _inv5_vault(name: str, root: Path) -> tuple[dict[str, str], dict[str, str]]:
-    """Sync the four-file vault once through one backend; each file's text before and after."""
+    """Sync the five-file vault once through one backend; each file's text before and after."""
     vault = root / "vault"
     vault.mkdir()
     backend = make_backend(name, root)
@@ -673,14 +700,17 @@ async def _inv5_vault(name: str, root: Path) -> tuple[dict[str, str], dict[str, 
             {"Front": "<p>Untouched question</p>", "Back": "<p>Untouched answer</p>"},
             ["arete_01J00000000000000000000044"],
         )
-        texts = [NEW_CARDS, HEAL, DANGLING, UNTOUCHED.format(nid=kept)]
+        texts = [NEW_CARDS, HEAL, DANGLING, UNTOUCHED.format(nid=kept), CRLF]
         before = dict(zip(INV5_FILES, texts, strict=True))
         for filename, text in before.items():
-            (vault / filename).write_text(text, encoding="utf-8")
+            (vault / filename).write_bytes(text.encode("utf-8"))
         stats, _ = await run_sync(backend, sync_config(root, vault, backend))
         assert stats.total_errors == 0
-        after = {f: (vault / f).read_text(encoding="utf-8") for f in INV5_FILES}
-        assert vault_cards(vault)["heal.md#1"]["nid"], "the healed card got its nid"
+        after = {f: (vault / f).read_bytes().decode("utf-8") for f in INV5_FILES}
+        held = vault_cards(vault)
+        assert len(held) == 7
+        assert all(c["id"] and c["nid"] for c in held.values()), held
+        assert held["dangling.md#1"]["nid"] != "1111111111111", "the dangling nid was replaced"
         return before, after
     finally:
         backend.close()
@@ -695,50 +725,19 @@ async def inv5(name: str, tmp_path_factory) -> tuple[dict[str, str], dict[str, s
     return _INV5[name]
 
 
-REDUMP = (
-    "write-back re-dumps the whole frontmatter (vault_service.apply_updates -> "
-    "rebuild_markdown_with_frontmatter); observed: "
-)
-DECK_AS_BLOCK = "`deck: Inv::Five` rewritten as the block scalar `deck: |-` / `  Inv::Five`"
-NEW_MD_TEXT = (
-    "new.md is re-dumped twice, at id assignment (pipeline stage 1.5) and at write-back; "
-    'observed: both comments dropped, `aliases: [One, "Two"]` turned into a block list, '
-    "the quotes on 'quoted tag' and both card values dropped, the blank line before `cards:` "
-    "dropped, the list indent 2 -> 0, `Back: >-` folded into one plain line, `Front: |` "
-    "turned into `|-`, and " + DECK_AS_BLOCK
-)
-INV5_TEXT_XFAIL = {
-    **{(b, "new.md"): NEW_MD_TEXT for b in ALL},
-    **{(b, "heal.md"): REDUMP + DECK_AS_BLOCK for b in ALL},
-    **{(b, "dangling.md"): REDUMP + DECK_AS_BLOCK for b in ALL},
-}
-INV5_PARSED_XFAIL = {
-    (b, "new.md"): "the literal block `Front: |` (clip: the value ends in a newline) is "
-    "re-dumped as `|-`, which strips it; observed Front 'Literal block\\nkept as written.\\n' "
-    "-> 'Literal block\\nkept as written.'"
-    for b in ALL
-}
-
-
-def _cases(xfails: dict[tuple[str, str], str]):
-    return [
-        pytest.param(b, f, marks=pytest.mark.xfail(strict=True, reason=xfails[b, f]))
-        if (b, f) in xfails
-        else pytest.param(b, f)
-        for b in ALL
-        for f in INV5_FILES
-    ]
+def _cases():
+    return [pytest.param(b, f) for b in ALL for f in INV5_FILES]
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(("backend", "filename"), _cases({}))
+@pytest.mark.parametrize(("backend", "filename"), _cases())
 async def test_inv5_the_body_bytes_are_unchanged(backend: str, filename: str, tmp_path_factory):
     before, after = await inv5(backend, tmp_path_factory)
     assert _split(after[filename])[1] == _split(before[filename])[1]
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(("backend", "filename"), _cases(INV5_PARSED_XFAIL))
+@pytest.mark.parametrize(("backend", "filename"), _cases())
 async def test_inv5_the_parsed_frontmatter_differs_only_in_ids(
     backend: str, filename: str, tmp_path_factory
 ):
@@ -749,12 +748,12 @@ async def test_inv5_the_parsed_frontmatter_differs_only_in_ids(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(("backend", "filename"), _cases(INV5_TEXT_XFAIL))
-async def test_inv5_the_frontmatter_text_gains_only_id_lines(
+@pytest.mark.parametrize(("backend", "filename"), _cases())
+async def test_inv5_the_file_bytes_differ_only_in_id_lines(
     backend: str, filename: str, tmp_path_factory
 ):
-    """Comments, key order, quoting, block-scalar style and blank lines are kept as written."""
+    """Comments, key order, quoting, block scalars, blank lines and CRLF keep their bytes."""
     before, after = await inv5(backend, tmp_path_factory)
-    diff = difflib.ndiff(_split(before[filename])[0], _split(after[filename])[0])
-    changed = [d for d in diff if d[:2] in ("- ", "+ ")]
-    assert [d for d in changed if not (d.startswith("+ ") and ID_LINE.match(d[2:]))] == []
+    assert _without_id_lines(after[filename]) == _without_id_lines(before[filename])
+    kept_ids = [line for line in _split(before[filename])[0] if re.match(r"^\s*(- )?id:", line)]
+    assert all(line in _split(after[filename])[0] for line in kept_ids), "an id was rewritten"
