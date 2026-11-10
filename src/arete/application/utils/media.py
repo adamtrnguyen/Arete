@@ -28,10 +28,6 @@ def _media_target(dest_dir: Path, src: Path) -> tuple[str, bool]:
     return f"{stem}_{short}{suf}", False
 
 
-def unique_media_name(dest_dir: Path, src: Path) -> str:
-    return _media_target(dest_dir, src)[0]
-
-
 def _copy_to_anki_media(src: Path, anki_media_dir: Path, logger: logging.Logger) -> str | None:
     try:
         anki_media_dir.mkdir(parents=True, exist_ok=True)

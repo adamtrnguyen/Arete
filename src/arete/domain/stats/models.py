@@ -97,7 +97,5 @@ class CardStatsAggregate:
     # Extended Metrics
     answer_distribution: dict[int, int] = field(default_factory=dict)
     days_overdue: int | None = None
-    interval_growth: float | None = None
-    press_fatigue: float | None = None  # Hard / (Good + Hard)
     volatility: float | None = None
     lapse_rate: float | None = None

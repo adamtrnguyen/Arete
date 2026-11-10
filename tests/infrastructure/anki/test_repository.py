@@ -108,8 +108,6 @@ def test_enter_error(repo):
 def test_runtime_errors_when_closed(repo):
     with pytest.raises(RuntimeError, match="Collection not open"):
         repo.find_notes("query")
-    with pytest.raises(RuntimeError, match="Collection not open"):
-        repo.get_model("Basic")
 
 
 def test_enter_exit(repo):

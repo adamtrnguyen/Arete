@@ -5,10 +5,10 @@ import pytest
 
 from arete.application.utils.media import (
     _copy_to_anki_media,
+    _media_target,
     _resolve_candidate_paths,
     build_filename_index,
     transform_images_in_text,
-    unique_media_name,
 )
 
 
@@ -17,43 +17,7 @@ def logger():
     return logging.getLogger("test_media")
 
 
-def test_unique_media_name_not_exists(tmp_path):
-    dest = tmp_path / "dest"
-    dest.mkdir()
-    src = tmp_path / "img.png"
-    src.write_text("content")
-
-    assert unique_media_name(dest, src) == "img.png"
-
-
-def test_unique_media_name_exists_same_content(tmp_path):
-    dest = tmp_path / "dest"
-    dest.mkdir()
-    src = tmp_path / "img.png"
-    src.write_text("content")
-
-    cand = dest / "img.png"
-    cand.write_text("content")
-
-    assert unique_media_name(dest, src) == "img.png"
-
-
-def test_unique_media_name_exists_diff_content(tmp_path):
-    dest = tmp_path / "dest"
-    dest.mkdir()
-    src = tmp_path / "img.png"
-    src.write_text("content_new")
-
-    cand = dest / "img.png"
-    cand.write_text("content_old")
-
-    res = unique_media_name(dest, src)
-    assert res != "img.png"
-    assert "img_" in res
-    assert res.endswith(".png")
-
-
-def test_unique_media_name_exception(tmp_path):
+def test_media_target_falls_back_to_a_unique_name_when_files_cannot_be_compared(tmp_path):
     dest = tmp_path / "dest"
     dest.mkdir()
     src = tmp_path / "img.png"
@@ -65,8 +29,9 @@ def test_unique_media_name_exception(tmp_path):
     # Mock exists to return True, but stat to fail
     with patch("pathlib.Path.exists", return_value=True):
         with patch("pathlib.Path.stat", side_effect=Exception("stat error")):
-            res = unique_media_name(dest, src)
+            res, present = _media_target(dest, src)
             assert "img_" in res
+            assert not present
 
 
 def test_copy_to_anki_media_success(tmp_path, logger):

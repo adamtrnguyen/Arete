@@ -157,7 +157,7 @@ def test_get_vault_service_clear_cache(tmp_path):
     """
     db = tmp_path / "c.db"
     seeded = ContentCache(db_path=db)
-    seeded.set_note(Path("/v/a.md"), 1, "h1", "{}")
+    seeded.set_notes([(Path("/v/a.md"), 1, "h1", "{}")])
     assert seeded.get_hash(Path("/v/a.md"), 1) == "h1"
 
     config = _make_config(vault_root=tmp_path, clear_cache=True, force=False, cache_db=str(db))

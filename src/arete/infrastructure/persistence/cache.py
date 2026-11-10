@@ -80,14 +80,6 @@ class ContentCache:
             row = cur.fetchone()
             return (row[0], row[1]) if row else None
 
-    def set_note(self, md_path: Path, card_index: int, content_hash: str, note_json: str):
-        with self._lock:
-            self._conn.execute(
-                "INSERT OR REPLACE INTO cards (path, idx, hash, note_json) VALUES (?, ?, ?, ?)",
-                (str(md_path), card_index, content_hash, note_json),
-            )
-            self._conn.commit()
-
     def set_notes(self, rows: Iterable[tuple[Path, int, str, str]]) -> None:
         """Write many (path, index, hash, note_json) rows in one transaction.
 

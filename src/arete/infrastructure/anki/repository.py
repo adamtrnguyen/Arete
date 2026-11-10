@@ -13,7 +13,6 @@ import sqlite3
 from pathlib import Path
 
 from anki.collection import Collection
-from anki.models import NotetypeDict
 
 logger = logging.getLogger(__name__)
 
@@ -106,8 +105,3 @@ class AnkiRepository:
         if not self.col:
             raise RuntimeError("Collection not open")
         return list(self.col.find_notes(query))
-
-    def get_model(self, model_name: str) -> NotetypeDict | None:
-        if not self.col:
-            raise RuntimeError("Collection not open")
-        return self.col.models.by_name(model_name)

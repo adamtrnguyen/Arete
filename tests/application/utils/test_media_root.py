@@ -8,55 +8,12 @@ from arete.application.utils.media import (
     _resolve_candidate_paths,
     build_filename_index,
     transform_images_in_text,
-    unique_media_name,
 )
 
 
 @pytest.fixture
 def mock_logger():
     return MagicMock(spec=logging.Logger)
-
-
-def test_unique_media_name_no_collision(tmp_path):
-    dest = tmp_path / "dest"
-    dest.mkdir()
-    src = tmp_path / "image.png"
-    src.write_text("content")
-
-    name = unique_media_name(dest, src)
-    assert name == "image.png"
-
-
-def test_unique_media_name_same_content(tmp_path):
-    dest = tmp_path / "dest"
-    dest.mkdir()
-
-    src = tmp_path / "image.png"
-    src.write_bytes(b"content")
-
-    # file exists in dest with SAME content
-    existing = dest / "image.png"
-    existing.write_bytes(b"content")
-
-    name = unique_media_name(dest, src)
-    assert name == "image.png"  # Should reuse name if content matches
-
-
-def test_unique_media_name_diff_content(tmp_path):
-    dest = tmp_path / "dest"
-    dest.mkdir()
-
-    src = tmp_path / "image.png"
-    src.write_bytes(b"new content")
-
-    # file exists in dest with DIFF content
-    existing = dest / "image.png"
-    existing.write_bytes(b"old content")
-
-    name = unique_media_name(dest, src)
-    assert name != "image.png"
-    assert name.startswith("image_")
-    assert name.endswith(".png")
 
 
 def test_build_filename_index_nested_dirs(tmp_path, mock_logger):

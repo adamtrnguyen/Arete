@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from arete.composition.orchestrator import execute_sync
-from arete.domain.ownership import is_arete_owned
+from arete.domain.ownership import is_arete_id
 from tests.e2e.conftest import deck_of, open_collection
 
 
@@ -259,7 +259,7 @@ async def test_prune_keeps_a_claimed_note_moved_to_a_stray_deck(
 
 
 def _arete_notes(col) -> set[int]:
-    return {n for n in col.find_notes("") if is_arete_owned(col.get_note(n).tags)}
+    return {n for n in col.find_notes("") if any(is_arete_id(t) for t in col.get_note(n).tags)}
 
 
 @pytest.mark.asyncio

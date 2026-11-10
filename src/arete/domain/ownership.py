@@ -22,11 +22,6 @@ def is_arete_id(tag: str) -> bool:
     return bool(_ARETE_ID.fullmatch(tag))
 
 
-def is_arete_owned(tags: Iterable[str]) -> bool:
-    """True if a note with these tags was created by Arete."""
-    return any(is_arete_id(t) for t in tags)
-
-
 def group_duplicate_ids[T](entries: Iterable[tuple[T, str]]) -> dict[str, list[tuple[T, str]]]:
     """Group `(where, arete_id)` pairs by id, keeping the ids declared more than once.
 

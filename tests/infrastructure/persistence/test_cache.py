@@ -21,7 +21,7 @@ def test_note_json_storage(tmp_path):
     assert cache.get_note(md_file, card_index) is None
 
     # Set note
-    cache.set_note(md_file, card_index, content_hash, note_json)
+    cache.set_notes([(md_file, card_index, content_hash, note_json)])
 
     # Verify retrieval
     # get_note returns (hash, content_json)
@@ -97,13 +97,13 @@ def test_card_hash_roundtrip(tmp_path):
     assert cache.get_hash(md_file, 1) is None
 
     # Set hash
-    cache.set_note(md_file, 1, "abc123hash", "{}")
+    cache.set_notes([(md_file, 1, "abc123hash", "{}")])
 
     # Verify retrieval
     assert cache.get_hash(md_file, 1) == "abc123hash"
 
     # Verify update
-    cache.set_note(md_file, 1, "newhash", "{}")
+    cache.set_notes([(md_file, 1, "newhash", "{}")])
     assert cache.get_hash(md_file, 1) == "newhash"
 
 
@@ -112,7 +112,7 @@ def test_persistence(tmp_path):
 
     # Open, write, close (implicitly by letting obj die or just opening new one)
     cache1 = ContentCache(db_path=db_path)
-    cache1.set_note(Path("f1"), 1, "h1", "{}")
+    cache1.set_notes([(Path("f1"), 1, "h1", "{}")])
 
     # Reopen
     cache2 = ContentCache(db_path=db_path)

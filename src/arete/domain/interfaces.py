@@ -41,10 +41,6 @@ class ContentCache(Protocol):
 
     def get_note(self, md_path: Path, card_index: int) -> tuple[str, str | None] | None: ...
 
-    def set_note(
-        self, md_path: Path, card_index: int, content_hash: str, note_json: str
-    ) -> None: ...
-
     def set_notes(self, rows: list[tuple[Path, int, str, str]]) -> None:
         """Write (path, index, hash, note_json) rows in one transaction, all or none.
 

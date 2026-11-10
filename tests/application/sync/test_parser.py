@@ -347,18 +347,6 @@ def test_find_duplicate_nids_helper():
     assert MarkdownParser._find_duplicate_nids(cards) == {"111"}
 
 
-def test_parse_cache_save_fail(parser_fixture):
-    parser, vault = parser_fixture
-    mock_cache = MagicMock()
-    mock_cache.set_note.side_effect = Exception("Write Fail")
-
-    meta = {"deck": "Default", "cards": [{"model": "Basic", "Front": "F", "Back": "B"}]}
-    notes, _, _ = parser.parse_file(vault / "test.md", meta, mock_cache)
-
-    assert len(notes) == 1
-    # Should catch exception and log warning (assert logic flows)
-
-
 def test_parse_card_level_tags_merge_with_file_tags(parser_fixture, mock_cache):
     parser, vault = parser_fixture
     md_file = vault / "test.md"

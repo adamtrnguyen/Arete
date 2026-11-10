@@ -44,7 +44,7 @@ src/arete/
 │   │   ├── consts.py
 │   │   ├── fs.py                  iter_markdown_files, file_md5
 │   │   ├── logging.py             LogEntry, RunRecorder, setup_logging...
-│   │   ├── media.py               unique_media_name, build_filename_index, FilenameIndex...
+│   │   ├── media.py               build_filename_index, FilenameIndex, transform_images_in_text...
 │   │   ├── text.py                normalize_filename, parse_frontmatter, UniqueKeyLoader...
 │   │   ├── yaml.py
 │   ├── config.py                  AppConfig, resolve_config
@@ -84,11 +84,11 @@ src/arete/
 
 | Layer | Modules | Lines | May import |
 |---|---|---|---|
-| `interface` | 4 | 975 | application, composition |
+| `interface` | 4 | 979 | application, composition |
 | `composition` | 2 | 183 | application, infrastructure, domain |
-| `application` | 24 | 5829 | domain (ports only) |
-| `infrastructure` | 9 | 2112 | domain |
-| `domain` | 9 | 869 | nothing in arete |
+| `application` | 24 | 5855 | domain (ports only) |
+| `infrastructure` | 9 | 2098 | domain |
+| `domain` | 9 | 870 | nothing in arete |
 
 The import rules in the last column are enforced by `just check-architecture`
 (import-linter), not by convention.

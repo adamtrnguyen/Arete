@@ -29,15 +29,10 @@ LOG = logging.getLogger("test-cache-batching")
 
 class SpyCache(ContentCache):
     def __init__(self, db_path: Path):
-        """Count per-card and per-batch writes."""
+        """Record the size of each batch write."""
         super().__init__(db_path)
-        self.single_writes = 0
         self.batches: list[int] = []
         self.fail_batches = False
-
-    def set_note(self, md_path, card_index, content_hash, note_json):
-        self.single_writes += 1
-        super().set_note(md_path, card_index, content_hash, note_json)
 
     def set_notes(self, rows):
         rows = list(rows)
@@ -111,7 +106,6 @@ def test_one_cache_transaction_per_batch_not_per_card(root: Path, tmp_path: Path
 
     sync(root, anki, cache)
 
-    assert cache.single_writes == 0, "every accepted card used to be its own commit"
     # One transaction per batch, then one for the cards the nid/cid write-back moved:
     # every card below the first in each file (3 x 39).
     assert len(cache.batches) == anki.calls + 1

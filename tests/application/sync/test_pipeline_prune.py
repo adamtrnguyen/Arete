@@ -19,7 +19,7 @@ from arete.application.sync.id_service import generate_arete_id
 from arete.application.sync.prune import prune_orphans
 from arete.application.utils.logging import RunRecorder
 from arete.domain.models import AnkiDeck
-from arete.domain.ownership import is_arete_id, is_arete_owned
+from arete.domain.ownership import is_arete_id
 from arete.infrastructure.adapters.anki_connect import AnkiConnectAdapter
 
 LOG = logging.getLogger("test-prune")
@@ -115,11 +115,12 @@ def test_every_generated_id_is_an_ownership_marker():
     ["arete_review", "arete_", "arete_A1", "Arete", "japanese", aid(1) + "X", "x" + aid(1)],
 )
 def test_a_tag_that_only_looks_like_an_arete_id_is_not_one(tag):
-    assert not is_arete_owned([tag])
+    assert not is_arete_id(tag)
 
 
-def test_an_arete_id_among_other_tags_marks_the_note():
-    assert is_arete_owned(["deep_learning", aid(7), "leech"])
+def test_a_generated_looking_id_is_one_in_either_case():
+    assert is_arete_id(aid(7))
+    assert is_arete_id(aid(7).lower())
 
 
 # ---------------------------------------------------------------------------

@@ -116,7 +116,6 @@ async def test_run_pipeline_dry_run_never_writes(mock_components, tmp_path):
     assert stats.total_generated == 1
     assert stats.total_errors == 0
     assert bridge.dry_run is True, "the run's NoteSync is built read-only"
-    cache.set_note.assert_not_called()
     cache.set_notes.assert_not_called()
     # Vault write-back is invoked but told it is a dry run
     vault.apply_updates.assert_called_once()
@@ -136,7 +135,6 @@ async def test_run_pipeline_refreshes_hot_cache_with_nid(mock_components, tmp_pa
     config = AppConfig.model_construct(vault_root=tmp_path, queue_size=10, workers=1, prune=False)
     await run_pipeline(config, logger, "run", vault, parser, bridge, cache)
 
-    cache.set_note.assert_not_called()
     cache.set_notes.assert_called_once()
     [(path, idx, content_hash, note_json)] = cache.set_notes.call_args.args[0]
     assert (path, idx, content_hash) == (Path("/vault/test.md"), 1, "abc123")

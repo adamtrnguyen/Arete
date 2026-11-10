@@ -33,8 +33,6 @@ class RunRecorder:
     # Details
     errors: list[LogEntry] = field(default_factory=list)
 
-    start_time: datetime = field(default_factory=datetime.now)
-
     def add_inventory(self, items: Iterable[Mapping[str, Any]]):
         """Record each item's `nid` and `deck` (either may be None) for prune to keep."""
         with self._inventory_lock:
