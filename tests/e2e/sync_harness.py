@@ -180,7 +180,7 @@ class Backend(ABC):
         return next(n for n in self.notes() if n.nid == nid)
 
 
-class _CollectionBackend(Backend):
+class CollectionBackend(Backend):
     """A backend with a real collection behind it; scheduling can be read and written."""
 
     @abstractmethod
@@ -276,7 +276,7 @@ class _CollectionBackend(Backend):
             return int(col.decks.id(name))  # type: ignore[arg-type]
 
 
-class DirectBackend(_CollectionBackend):
+class DirectBackend(CollectionBackend):
     name = "direct"
 
     def __init__(self, anki_base: Path):
@@ -298,7 +298,7 @@ class DirectBackend(_CollectionBackend):
             col.close()
 
 
-class AddonBackend(_CollectionBackend):
+class AddonBackend(CollectionBackend):
     name = "addon"
 
     def __init__(self, anki_base: Path):
@@ -407,7 +407,12 @@ def edit_vault(md: Path, change: Callable[[str], str]) -> None:
 
 
 def sync_config(root: Path, vault: Path, backend: Backend, **overrides: Any) -> AppConfig:
-    """A config entirely inside `root`. One worker, so batches run in one order."""
+    """A config entirely inside `root`. One worker, so batches run in one order.
+
+    The vault path is resolved, as the CLI resolves it: prune runs only when the scanned
+    root and the vault root are the same path.
+    """
+    vault = vault.resolve()
     media = root / "media"
     media.mkdir(exist_ok=True)
     anki_base = backend.anki_base if isinstance(backend, DirectBackend) else root
