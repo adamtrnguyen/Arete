@@ -11,7 +11,8 @@ import {
 	parseYaml,
 	TFile,
 } from 'obsidian';
-import { difficultyOutOfTen, dueEpochSeconds } from '@/domain/stats';
+import { difficultyOutOfTen, dueEpochSeconds, metricStates } from '@/domain/stats';
+import { flagClass } from '@/presentation/cardStateClass';
 import { EditorView, lineNumbers, keymap } from '@codemirror/view';
 import { EditorState, Annotation } from '@codemirror/state';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
@@ -365,20 +366,17 @@ export class CardYamlEditorView extends ItemView {
 				const stats = cache.cardStats[nid];
 				const statsContainer = leftGroup.createDiv({ cls: 'arete-toolbar-stats' });
 				const algo = this.plugin.settings.stats_algorithm;
+				// The same cut-offs as the gutter, dashboard and card stats modal.
+				const states = metricStates(stats, this.plugin.settings);
 
 				let badgeAdded = false;
 
 				if (algo === 'fsrs' && stats.difficulty !== undefined) {
 					if (stats.difficulty !== null) {
 						// difficulty is stored 0..1; scale only to display it
-						let diffCls = 'arete-stat-badge';
-						if (stats.difficulty > 0.8) diffCls += ' mod-warning';
-						else if (stats.difficulty > 0.5) diffCls += ' mod-orange';
-						else diffCls += ' mod-success';
-
 						this.addBadge(
 							statsContainer,
-							diffCls,
+							`arete-stat-badge ${flagClass(states.difficulty) ?? 'mod-success'}`,
 							`D: ${difficultyOutOfTen(stats.difficulty).toFixed(1)}`,
 							`FSRS difficulty: ${difficultyOutOfTen(stats.difficulty).toFixed(1)}/10`,
 						);
@@ -403,13 +401,10 @@ export class CardYamlEditorView extends ItemView {
 				}
 
 				if (stats.lapses > 0) {
-					let lapseCls = 'arete-stat-badge';
-					if (stats.lapses > 5) lapseCls += ' mod-warning';
-					else lapseCls += ' mod-orange';
-
+					const lapseFlag = flagClass(states.lapses);
 					this.addBadge(
 						statsContainer,
-						lapseCls,
+						lapseFlag ? `arete-stat-badge ${lapseFlag}` : 'arete-stat-badge',
 						`${stats.lapses}L`,
 						`Lapses: ${stats.lapses}`,
 					);

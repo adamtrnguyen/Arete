@@ -228,13 +228,13 @@
 }
 
 .arete-stat-badge.mod-warning {
-	color: var(--text-error);
-	background: color-mix(in oklch, var(--color-red) 10%, transparent);
-}
-
-.arete-stat-badge.mod-orange {
 	color: var(--text-warning);
 	background: color-mix(in oklch, var(--color-orange) 10%, transparent);
+}
+
+.arete-stat-badge.mod-error {
+	color: var(--text-error);
+	background: color-mix(in oklch, var(--color-red) 10%, transparent);
 }
 
 .arete-stat-badge.mod-success {

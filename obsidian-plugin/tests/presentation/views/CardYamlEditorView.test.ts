@@ -294,6 +294,53 @@ describe('CardYamlEditorView toolbar', () => {
 		expect(texts).toContain('SM-2 ease: 250%');
 		expect(texts).toContain('Lapses: 2');
 	});
+
+	describe('badge colours follow the card-state cut-offs, as the gutter does', () => {
+		const badges = (stats: object, thresholds: object = {}) => {
+			view.plugin.settings = {
+				stats_algorithm: 'fsrs',
+				stats_lapse_threshold: 3,
+				stats_difficulty_threshold: 0.9,
+				stats_ease_threshold: 2100,
+				...thresholds,
+			};
+			view.cards = [{ Front: 'F', anki: { nid: 7 }, id: 'arete_1' }];
+			view.plugin.statsService = {
+				getCache: () => ({ concepts: { 'N.md': { cardStats: { 7: stats } } } }),
+			};
+			view.toolbarContainer = createMockElement('div');
+			view.renderToolbar();
+			const leftGroup = view.toolbarContainer.createDiv.mock.results[0].value;
+			const statsContainer = leftGroup.createDiv.mock.results[0].value;
+			return statsContainer.createDiv.mock.calls.map((c: any[]) => [c[0].text, c[0].cls]);
+		};
+
+		it('leaves an unflagged difficulty green and warns from one lapse', () => {
+			expect(badges({ difficulty: 0.52, lapses: 1, due: 0 })).toEqual([
+				['D: 5.2', 'arete-stat-badge mod-success'],
+				['1L', 'arete-stat-badge mod-warning'],
+			]);
+		});
+
+		it('warns from difficulty 0.7 and errs at the difficulty and lapse thresholds', () => {
+			expect(badges({ difficulty: 0.75, lapses: 3, due: 0 })).toEqual([
+				['D: 7.5', 'arete-stat-badge mod-warning'],
+				['3L', 'arete-stat-badge mod-error'],
+			]);
+			expect(badges({ difficulty: 0.9, lapses: 0, due: 0 })).toEqual([
+				['D: 9.0', 'arete-stat-badge mod-error'],
+			]);
+		});
+
+		it('reads the lapse threshold from the settings', () => {
+			expect(
+				badges({ difficulty: 0.2, lapses: 4, due: 0 }, { stats_lapse_threshold: 4 }),
+			).toEqual([
+				['D: 2.0', 'arete-stat-badge mod-success'],
+				['4L', 'arete-stat-badge mod-error'],
+			]);
+		});
+	});
 });
 
 describe('CardYamlEditorView styling', () => {
