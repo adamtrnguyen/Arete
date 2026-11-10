@@ -16,8 +16,6 @@ class BridgeRunner(Protocol):
 
     async def delete_notes(self, nids: list[int]) -> bool: ...
 
-    async def get_card_stats(self, nids: list[int]) -> list[Any]: ...
-
     async def delete_deck(self, name: str) -> None:
         """Cleanup."""
         ...
@@ -45,9 +43,6 @@ class ConnectBridgeRunner:
 
     async def delete_notes(self, nids: list[int]) -> bool:
         return await self.adapter.delete_notes(nids)
-
-    async def get_card_stats(self, nids: list[int]) -> list[Any]:
-        return await self.adapter.get_card_stats(nids)
 
     async def delete_deck(self, name: str) -> None:
         requests.post(
@@ -84,9 +79,6 @@ class DirectBridgeRunner:
 
     async def delete_notes(self, nids: list[int]) -> bool:
         return await self.adapter.delete_notes(nids)
-
-    async def get_card_stats(self, nids: list[int]) -> list[Any]:
-        return await self.adapter.get_card_stats(nids)
 
     async def delete_deck(self, name: str) -> None:
         await self.adapter.delete_decks([name])
