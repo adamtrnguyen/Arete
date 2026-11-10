@@ -7,7 +7,7 @@ import {
 	Text,
 	Transaction,
 } from '@codemirror/state';
-import { Notice, setIcon, setTooltip } from 'obsidian';
+import { setIcon, setTooltip } from 'obsidian';
 import type {
 	AnkiCardStats,
 	CardState,
@@ -16,6 +16,7 @@ import type {
 	MetricState,
 } from '@/domain/stats';
 import { cardState } from '@/domain/stats';
+import { debugLog } from '@/domain/debugLog';
 import { DEFAULT_SETTINGS } from '@/domain/settings';
 import { cardStateClass, flagClass } from '@/presentation/cardStateClass';
 import { CardVisualsService } from '@/application/services/CardVisualsService';
@@ -211,11 +212,12 @@ class CardGutterMarker extends GutterMarker {
 			e.preventDefault();
 			e.stopPropagation();
 
-			// Debug Notice
-			const msg = this.stats
-				? `Card ${this.index + 1}: NID ${this.stats.noteId}, Diff: ${this.stats.difficulty}`
-				: `Card ${this.index + 1}: No stats found.`;
-			new Notice(msg);
+			debugLog(
+				'[Arete] Gutter click:',
+				this.stats
+					? `card ${this.index + 1}, NID ${this.stats.noteId}, difficulty ${this.stats.difficulty}`
+					: `card ${this.index + 1}, no stats`,
+			);
 
 			view.dom
 				.querySelectorAll<HTMLElement>('.arete-gutter-marker.is-active')

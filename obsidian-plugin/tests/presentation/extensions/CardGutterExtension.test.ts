@@ -319,6 +319,21 @@ describe('card gutter hover and click', () => {
 		);
 		expect(doc.querySelectorAll).not.toHaveBeenCalled();
 	});
+
+	it('a click shows no notice: the card ids are diagnostics, for debugLog (rules N6, G1)', () => {
+		const { Notice } = jest.requireMock('obsidian');
+		(Notice as jest.Mock).mockClear();
+		const g = setup(threeCards());
+		const marker = cardMarkers(g.markers())[0].marker;
+		const el = marker.toDOM({
+			dom: { querySelectorAll: jest.fn((): unknown[] => []) },
+			state: g.view.state,
+		});
+
+		el.listeners.click.call(el, { preventDefault: jest.fn(), stopPropagation: jest.fn() });
+
+		expect(Notice).not.toHaveBeenCalled();
+	});
 });
 
 describe('card gutter state', () => {
