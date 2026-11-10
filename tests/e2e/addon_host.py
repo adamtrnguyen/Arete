@@ -25,6 +25,7 @@ import json
 import os
 import platform
 import re
+import threading
 import time
 import types
 import unicodedata
@@ -74,9 +75,15 @@ def _addon_class() -> type:
     util = types.SimpleNamespace(
         api=util_ns["api"], MediaType=util_ns["MediaType"], setting=lambda _key: None
     )
+    anki_version = tuple(int(p) for p in anki.buildinfo.version.split("."))
     namespace: dict[str, Any] = {
         "anki": anki,
-        "anki_version": tuple(int(p) for p in anki.buildinfo.version.split(".")),
+        "anki_version": anki_version,
+        # Module-level names the class reads, defined as the add-on's module defines them.
+        "SAVE_VIA_UPDATE_NOTE": anki_version >= (23, 10),
+        "int_time": getattr(anki.utils, "int_time", None) or anki.utils.intTime,
+        "field_checksum": getattr(anki.utils, "field_checksum", None) or anki.utils.fieldChecksum,
+        "threading": threading,
         "util": util,
         "Card": Card,
         "Note": Note,
@@ -139,8 +146,16 @@ class AddonHost:
         self.col = Collection(str(collection_path))
         cls = _addon_class()
         addon = cls.__new__(cls)
+        # `__init__` is skipped because it starts the web server; set what it sets.
         addon.log = None
+        addon.timer = None
+        addon.refreshTimer = None
+        addon.refreshPendingSince = 0.0
+        addon.refreshing = False
+        addon.actions = addon.buildActionTable()
         addon.window = lambda: _Window(self.col)
+        # The add-on defers one UI refresh per burst of writes on a Qt timer; there is no UI.
+        addon.scheduleRefresh = lambda: None
         self._addon = addon
         self.actions: list[str] = []
 
