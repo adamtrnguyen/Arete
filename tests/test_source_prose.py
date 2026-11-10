@@ -1,4 +1,4 @@
-"""What a docstring or comment under SRC may not carry: a date, an emoji, or incident narrative.
+"""What a docstring or comment under SRC may not carry: a date, emoji, narrative or a finding id.
 
 A date or a "this used to ..." sentence is a record. In the code it reads as a claim about the
 present and rots; in docs/history/<topic>.md it sits beside the measurement that explains it. An
@@ -23,8 +23,16 @@ DATE = re.compile(r"\b(19|20)\d\d-\d\d(-\d\d)?\b")
 # Pictographs and warning marks; a symbol the code is QUOTING (a star in a title) is not emphasis.
 EMOJI = re.compile("[\U0001f300-\U0001faff\u26a0\u26d4\u2705\u274c]")
 NARRATIVE = re.compile(
-    r"\b(used to|previously|formerly|originally|until recently|turned out|incident|post-?mortem|hotfix)\b",
+    r"\b(used to|previously|formerly|originally|until recently|turned out|incident|post-?mortem|"
+    r"hotfix|regression|the fix for|bug hunt)\b|\b(NEW|FIX):",
     re.IGNORECASE,
+)
+# An audit finding id ("(G5)", "(G4/G8)", a leading "D1:") or a work-batch label. The id points
+# into a report the reader does not have; the reason belongs in the sentence itself.
+FINDING = re.compile(
+    r"\([A-Z]{1,2}\d{1,2}[a-z]?(?:[/,-] ?[A-Z]{1,2}\d{1,2}[a-z]?)*(?:\)| in\b)"
+    r'|(?:^|#|""")\s*[A-Z]{1,2}\d{1,2}[a-z]?(?:[/-][A-Z]{1,2}\d{1,2}[a-z]?)*:'
+    r"|\b(?:batch|wave) \d+\b"
 )
 
 
@@ -79,3 +87,8 @@ def test_no_docstring_or_comment_tells_a_history():
     assert not found, (
         f"what the code USED to do belongs in docs/history, not beside the code: {found}"
     )
+
+
+def test_no_docstring_or_comment_cites_a_finding_id():
+    found = _offenders(FINDING)
+    assert not found, f"state the reason, not the audit finding that prompted it: {found}"
