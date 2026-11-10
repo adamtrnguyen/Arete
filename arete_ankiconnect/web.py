@@ -226,11 +226,6 @@ class WebServer:
         # handle multiple cors origins by checking the 'origin'-header against the allowed origin list from the config
         webCorsOriginList = util.setting("webCorsOriginList")
 
-        # keep support for deprecated 'webCorsOrigin' field, as long it is not removed
-        webCorsOrigin = util.setting("webCorsOrigin")
-        if webCorsOrigin:
-            webCorsOriginList.append(webCorsOrigin)
-
         allowed = False
         corsOrigin = "http://localhost"
         allowAllCors = "*" in webCorsOriginList  # allow CORS for all domains

@@ -61,7 +61,6 @@ DEFAULT_CONFIG = {
     "webBacklog": 128,
     "webBindAddress": os.getenv("ANKICONNECT_BIND_ADDRESS", "127.0.0.1"),
     "webBindPort": 8765,
-    "webCorsOrigin": os.getenv("ANKICONNECT_CORS_ORIGIN", None),
     "webCorsOriginList": ["http://localhost"],
     "ignoreOriginList": [],
     "webTimeout": 10000,
