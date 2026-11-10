@@ -27,6 +27,9 @@ class MarkdownParser:
         self.logger = logger or logging.getLogger(__name__)
         # nid -> the cards in other files that claim it too; set by the pipeline.
         self.contested_nids: dict[str, list[str]] = {}
+        # casefolded Arete id -> every card that declares it, when more than one does; set by
+        # the pipeline. Anki matches tags case-insensitively, so case variants are one id.
+        self.duplicate_ids: dict[str, list[str]] = {}
 
     @staticmethod
     def _extract_raw_nid(card: dict[str, Any]) -> str | None:
@@ -34,6 +37,26 @@ class MarkdownParser:
         anki_block = card.get("anki") if isinstance(card.get("anki"), dict) else {}
         raw = sanitize((anki_block or {}).get("nid", "")).strip()
         return raw or None
+
+    @staticmethod
+    def declared_id(card: Any) -> str | None:
+        """A card's ``id:`` as the vault holds it, or None."""
+        if not isinstance(card, dict):
+            return None
+        return sanitize(card.get("id", "")).strip() or None
+
+    def _cached_nid(self, md_path: Path, idx: int, cache: ContentCache) -> str | None:
+        """The nid the content cache recorded for a card, which the vault may not hold yet."""
+        import json
+
+        cached_entry = cache.get_note(md_path, idx)
+        if not (cached_entry and cached_entry[1]):
+            return None
+        try:
+            return AnkiNote.from_dict(json.loads(cached_entry[1])).nid
+        except Exception as e:
+            self.logger.warning(f"Failed to read cached nid for {md_path}#{idx}: {e}")
+            return None
 
     @classmethod
     def _find_duplicate_nids(cls, cards: list[Any]) -> set[str]:
@@ -109,6 +132,26 @@ class MarkdownParser:
 
         for idx, card in enumerate(cards, start=1):
             try:
+                card_id = self.declared_id(card)
+                if card_id and card_id.casefold() in self.duplicate_ids:
+                    # Several cards declare this id: each would claim the others' note.
+                    # None is sent; every declared or cached nid stays in the inventory,
+                    # so prune keeps the notes.
+                    others = ", ".join(self.duplicate_ids[card_id.casefold()])
+                    self.logger.error(
+                        f"[conflict] {md_path.name} card#{idx}: Arete id {card_id} is declared "
+                        f"by {others}. Not syncing these cards; give each card its own id."
+                    )
+                    deck_this = sanitize(card.get("deck") or deck_frontmatter or "")
+                    inventory.append(
+                        {
+                            "nid": self._cached_nid(md_path, idx, cache),
+                            "deck": deck_this or self.default_deck,
+                        }
+                    )
+                    skipped_indices.append(idx)
+                    continue
+
                 # OPTIMIZATION: Hot Cache Lookup
                 # If file metadata hasn't changed (is_fresh=False), check if we have a fully
                 # rendered note in the 'cards' table. If so, we can skip parsing/rendering.
@@ -271,15 +314,8 @@ class MarkdownParser:
                     self.logger.debug(f"[cache-hit] {md_path} card#{idx}: skipping")
                     # The cached note holds the nid Anki assigned, which the vault may not
                     # hold yet (a crash before write-back). Prune must count it as claimed.
-                    cached_entry = cache.get_note(md_path, idx)
-                    if cached_entry and cached_entry[1]:
-                        try:
-                            cached_nid = AnkiNote.from_dict(json.loads(cached_entry[1])).nid
-                            inventory.append({"nid": cached_nid, "deck": None})
-                        except Exception as e:
-                            self.logger.warning(
-                                f"Failed to read cached nid for {md_path}#{idx}: {e}"
-                            )
+                    if cached_nid := self._cached_nid(md_path, idx, cache):
+                        inventory.append({"nid": cached_nid, "deck": None})
                     continue
 
                 note_obj = AnkiNote(

@@ -270,6 +270,40 @@ async def test_inv2_a_card_whose_text_changed_is_found_by_its_id(world: World):
     assert [n.nid for n in world.backend.notes()] == [nid]
 
 
+COPY_ID = "arete_01J00000000000000000000077"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("touch_original", [False, True], ids=["original-cached", "both-fresh"])
+@on(*ALL)
+async def test_inv2_two_cards_declaring_one_arete_id_are_both_refused(
+    world: World, touch_original: bool
+):
+    """A copied card keeps its original's id: sending either would claim the other's note.
+
+    Both are refused with an error, neither note changes, and a confirmed prune in the same
+    run keeps both notes, because both declared nids stay in the inventory.
+    """
+    copy = world.vault / "copy.md"
+    copy.write_text(
+        CARD.replace(ID, COPY_ID).replace("What does the vault hold?", "A copied question?"),
+        encoding="utf-8",
+    )
+    await world.sync()
+    before = {n.nid: (n.model, n.fields, sorted(n.tags)) for n in world.backend.notes()}
+    assert len(before) == 2
+    edit_vault(copy, lambda t: t.replace(COPY_ID, ID))
+    if touch_original:
+        edit_vault(world.md, lambda t: t)
+
+    stats, updates = await world.sync(prune=True, confirm_prune=True)
+
+    assert updates == [], "neither card reached Anki"
+    assert stats.total_errors == 2
+    after = {n.nid: (n.model, n.fields, sorted(n.tags)) for n in world.backend.notes()}
+    assert after == before
+
+
 # ---------------------------------------------------------------------------
 # Invariant 4: Arete never touches scheduling.
 # ---------------------------------------------------------------------------

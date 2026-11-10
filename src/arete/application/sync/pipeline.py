@@ -120,6 +120,25 @@ async def run_pipeline(
             failed_files.add(p)
             recorder.add_error(p, f"anki.nid {nid} is claimed by cards in several files", f"#{i}")
 
+    # -------- Stage 1.7: one Arete id declared by several cards --------
+    # The id is the card's identity in Anki, so no copy may be sent: each would claim the
+    # note of the others. Ids differing only in case are one tag in Anki.
+    declared: dict[str, list[tuple[Path, int, str]]] = {}
+    for path, meta, _fresh in compatible:
+        for idx, card in enumerate(meta.get("cards") or [], start=1):
+            if card_id := parser.declared_id(card):
+                declared.setdefault(card_id.casefold(), []).append((path, idx, card_id))
+    duplicated = {key: c for key, c in declared.items() if len(c) > 1}
+    parser.duplicate_ids = {
+        key: [f"{p.name} card#{i}" for p, i, _ in c] for key, c in duplicated.items()
+    }
+    for c in duplicated.values():
+        for p, i, card_id in c:
+            failed_files.add(p)
+            recorder.add_error(
+                p, f"Arete id {card_id} is declared by {len(c)} cards; none is synced", f"#{i}"
+            )
+
     # -------- Stage 2: media index, walked on the first image lookup --------
     assert config.vault_root is not None  # Guaranteed by resolve_config
     name_index = FilenameIndex(config.vault_root, logger)

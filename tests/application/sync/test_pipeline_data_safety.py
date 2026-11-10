@@ -153,6 +153,18 @@ def test_prune_keeps_the_note_of_a_card_that_fails_validation(vault):
     assert len(anki.notes) == 2
 
 
+def test_two_cards_in_one_file_with_one_id_are_refused(vault):
+    """An id differing only in case is the same Anki tag, so it is the same id."""
+    root, cache, anki = vault
+    lower = "01jabcdefghjkmnpqrstvwxyz0"
+    (root / "a.md").write_text(
+        note_file(card(f"arete_{lower}"), card(f"arete_{lower.upper()}", front="other"))
+    )
+    (root / "b.md").write_text(note_file(card(ID_B1)))
+    sync(root, anki, cache)
+    assert anki.sent == [("b.md", 1)]
+
+
 def test_prune_refuses_while_a_file_cannot_be_read(vault):
     """A YAML error hides a file's note ids, so nothing can be proven orphaned."""
     root, cache, anki = vault
