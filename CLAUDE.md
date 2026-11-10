@@ -7,12 +7,16 @@ Each invariant gets a test that fails when it breaks; its status changes only wi
 
 | # | Invariant | Holds today |
 |---|---|---|
-| 1 | **Obsidian is ground truth.** After any sync, Anki's fields, tags, deck and note type for a card id equal the vault's. An edit made in Anki is overwritten. | Not yet (Open work) |
-| 2 | **The Arete id is the identity.** A card is found by its id, whichever backend runs. | Not yet: AnkiConnect only (Open work) |
-| 3 | **Both backends behave the same.** Whether Anki is open changes how Arete reaches the collection, never what it does. | Not yet (Open work) |
-| 4 | **Arete never touches scheduling.** Review history, due dates and suspension belong to Anki. | Unverified |
-| 5 | **A sync writes only ids into the vault.** The Arete id, the note id and the card id. | Unverified |
-| 6 | **Nothing is deleted without confirmation.** | Documented (`docs/ARCHITECTURE.md`), unverified |
+| 1 | **Obsidian is ground truth.** After any sync, Anki's fields, tags, deck and note type for a card id equal the vault's. An edit made in Anki is overwritten. | Not yet: a field, tag, deck or note-type edit made in Anki survives a sync on every backend |
+| 2 | **The Arete id is the identity.** A card is found by its id, whichever backend runs. | Not yet: a dangling note id is resolved by the Arete id on AnkiConnect only; a card whose first field changed is found by its id on no backend |
+| 3 | **Both backends behave the same.** Whether Anki is open changes how Arete reaches the collection, never what it does. | Not yet: the differences are named in `tests/e2e/test_sync_equivalence.py` |
+| 4 | **Arete never touches scheduling.** Review history, due dates and suspension belong to Anki. | Holds for a card in its home deck. Not yet for a card in `Arete::Queue`: any update takes it out of the queue |
+| 5 | **A sync writes only ids into the vault.** The Arete id, the note id and the card id. | Note bodies hold. Not yet for frontmatter: a rewritten file loses comments and formatting, and a `\|` block becomes `\|-` |
+| 6 | **Nothing is deleted without confirmation.** | Holds |
+
+The proving tests are `tests/e2e/test_sync_invariants.py` and `tests/e2e/test_sync_equivalence.py`.
+A "not yet" is a strict expected failure there, so fixing it fails the suite until the mark and
+this table are updated together.
 
 ## Overview
 
