@@ -37,3 +37,20 @@ that showed placeholder text) and 256 more only by `<`/`>` inside math now being
 
 `rotate_logs` was defined and tested but never called, so every run added a log forever:
 2,104 files, 295 MB in `~/.config/arete/logs` on 2026-09-25. `setup_logging` calls it.
+
+## Moved from tests and source comments
+
+Filed with the original wording in quotes. Each is guarded by the test named.
+
+- **Prune after a create.** "New cards were inventoried with nid=None, so prune deleted
+  what it had just made." Guard: `tests/application/sync/test_pipeline_data_safety.py`,
+  `test_prune_keeps_notes_created_in_the_same_run`.
+- **Hash cached early.** "The hash was cached before the sync succeeded, so a failed card
+  never reached Anki." Guard: `tests/application/sync/test_pipeline_data_safety.py`,
+  `test_a_failed_sync_is_retried_next_run`.
+- **Text fixer and the `anki:` block.** "A synced card's nid/cid stay under anki:; a text
+  fixer once dedented them." Guard: `tests/application/utils/test_text.py`,
+  `test_apply_fixes_keeps_the_anki_block`.
+- **Parses per new file.** "Read, ids added, nids written back: three texts, three parses
+  (it was five)." A measurement: parses per new file went from 5 to 3. Guard:
+  `tests/application/sync/test_vault_parse_reuse.py`.

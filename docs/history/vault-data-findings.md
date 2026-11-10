@@ -13,3 +13,9 @@ checked, its `.git` last moved 2026-08-29, against 2026-09-10 for the live vault
 
 `arete vault check` does not detect a duplicate Arete id. A run against the real vault,
 978 notes at the time, found three.
+
+## Double-escaped LaTeX
+
+Moved from `skills/arete/references/FORMAT.md`. "Double escaping is what an import
+produces when it writes YAML by string-pasting (one real vault had 19 notes with it, up
+to 8 backslashes deep)."
