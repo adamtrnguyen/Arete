@@ -1,16 +1,27 @@
 import { App, Notice, requestUrl } from 'obsidian';
-import { spawn, exec } from 'child_process';
+import { exec } from 'child_process';
 import { AretePluginSettings } from '@domain/settings';
-import { parseJsonStdout, resolvePythonCommand } from '@infrastructure/arete/PythonProcess';
+import {
+	AreteProcesses,
+	parseJsonStdout,
+	resolvePythonCommand,
+} from '@infrastructure/arete/PythonProcess';
 import { FileChecker } from '@/domain/ports';
 
 export class CheckService implements FileChecker {
 	app: App;
 	settings: AretePluginSettings;
 
+	private processes = new AreteProcesses();
+
 	constructor(app: App, settings: AretePluginSettings) {
 		this.app = app;
 		this.settings = settings;
+	}
+
+	/** Kill the checks and fixes in flight and refuse new ones. For plugin unload. */
+	dispose(): void {
+		this.processes.killAll();
 	}
 
 	async getCheckResult(filePath: string): Promise<any> {
@@ -18,7 +29,7 @@ export class CheckService implements FileChecker {
 		const args = [...resolved.args, 'vault', 'check', filePath, '--json'];
 
 		return new Promise((resolve, reject) => {
-			const child = spawn(resolved.cmd, args, { env: resolved.env, cwd: resolved.cwd });
+			const child = this.processes.spawn(resolved, args);
 			let stdout = '';
 			let stderr = '';
 
@@ -47,7 +58,7 @@ export class CheckService implements FileChecker {
 		const args = [...resolved.args, 'vault', 'fix', filePath];
 
 		return new Promise((resolve) => {
-			const child = spawn(resolved.cmd, args, { env: resolved.env, cwd: resolved.cwd });
+			const child = this.processes.spawn(resolved, args);
 
 			child.on('close', (code) => {
 				if (code === 0) {
@@ -72,7 +83,7 @@ export class CheckService implements FileChecker {
 		const resolved = resolvePythonCommand(this.settings);
 		const cmd = `${rawSettings} -c "import arete; print('Arete module found')"`;
 
-		exec(
+		const child = exec(
 			cmd,
 			{ cwd: resolved.cwd, env: resolved.env },
 			(error: any, stdout: string, stderr: string) => {
@@ -85,6 +96,7 @@ export class CheckService implements FileChecker {
 				}
 			},
 		);
+		if (child) this.processes.track(child);
 	}
 
 	/** Ask AnkiConnect for its version and tell the user whether it answered. */

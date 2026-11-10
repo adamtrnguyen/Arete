@@ -219,6 +219,29 @@ describe('AreteClient: one `arete` process per call, JSON on stdout', () => {
 		});
 	});
 
+	describe('dispose (plugin unload)', () => {
+		it('kills a call in flight, which rejects, and spawns nothing after', async () => {
+			const child = cli();
+			const promise = client.getCardStats([1]);
+			client.dispose();
+			expect(child.kill).toHaveBeenCalledTimes(1);
+			child.emit('close', null, 'SIGTERM');
+			await expect(promise).rejects.toThrow('arete anki stats was stopped (SIGTERM).');
+
+			await expect(client.fetchGraph('/v')).rejects.toThrow('Arete is unloading');
+			expect(spawn).toHaveBeenCalledTimes(1);
+		});
+
+		it('a finished call is not killed', async () => {
+			const child = cli();
+			const promise = client.getCardStats([1]);
+			reply(child, '[]');
+			await promise;
+			client.dispose();
+			expect(child.kill).not.toHaveBeenCalled();
+		});
+	});
+
 	describe('stdout is JSON only', () => {
 		it('output with anything around the JSON is an error that quotes it', async () => {
 			const child = cli();

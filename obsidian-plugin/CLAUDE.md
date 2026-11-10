@@ -57,6 +57,7 @@ view holds its own cut-off. A bar or dot shows the worst state of its card.
 | C3 | Keep every timer in a field and clear it in `onClose`/`onunload`. Debounce per key when several sources share a handler. | A stale timer fires against a dead view. | review |
 | C4 | Disconnect observers through `this.register(...)`. Give `MarkdownRenderer.render` a child `Component` per drawing or preview, and unload it when replaced. Destroy a 3D graph when its drawing is replaced. | Rendered children and WebGL loops outlive their drawing otherwise. | review |
 | C5 | `onload` awaits only `loadSettings()`; server start and stats refresh run in `onLayoutReady`. | Startup does not wait on Python. | review |
+| C6 | Start every `arete` process through a service's `AreteProcesses`; `onunload` calls each service's `dispose()`, which kills what is running and refuses new starts. | No Python process outlives the plugin. | jest (`main_commands` onunload) |
 
 ### Rendering and performance
 

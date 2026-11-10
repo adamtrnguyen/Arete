@@ -1,9 +1,8 @@
 import { App, FileSystemAdapter, Notice, requestUrl } from 'obsidian';
-import { spawn } from 'child_process';
 import { promises as fsp } from 'fs';
 import * as path from 'path';
 import { AretePluginSettings } from '@domain/settings';
-import { resolvePythonCommand } from '@infrastructure/arete/PythonProcess';
+import { AreteProcesses, resolvePythonCommand } from '@infrastructure/arete/PythonProcess';
 import { debugLog } from '@domain/debugLog';
 
 /** A log larger than this is cut to its last LOG_KEEP_BYTES when a run starts. */
@@ -62,10 +61,20 @@ export class SyncService {
 	settings: AretePluginSettings;
 	pluginManifest: any;
 
+	private processes = new AreteProcesses();
+
 	constructor(app: App, settings: AretePluginSettings, manifest: any) {
 		this.app = app;
 		this.settings = settings;
 		this.pluginManifest = manifest;
+	}
+
+	/**
+	 * Kill a sync in flight and refuse new ones. For plugin unload. A sync cut short
+	 * leaves Anki partly updated; the next sync completes it (Obsidian is the source).
+	 */
+	dispose(): void {
+		this.processes.killAll();
 	}
 
 	async runSync(
@@ -242,10 +251,7 @@ export class SyncService {
 		log(`Spawning: ${cmd} ${args.join(' ')}`);
 
 		try {
-			const child = spawn(cmd, args, {
-				cwd: resolved.cwd,
-				env: env,
-			});
+			const child = this.processes.spawn(resolved, args, env);
 
 			let stderrBuffer = '';
 
@@ -267,10 +273,14 @@ export class SyncService {
 				});
 			});
 
-			child.on('close', (code) => {
-				log(`Process exited with code ${code}`);
+			child.on('close', (code, signal) => {
+				log(signal ? `Process stopped (${signal})` : `Process exited with code ${code}`);
 				void syncLog.flush();
 
+				if (signal) {
+					// Stopped by `dispose` on unload: the plugin that would show it is gone.
+					return;
+				}
 				if (code === 0) {
 					new Notice('Sync completed.');
 					updateStatusBar('success');

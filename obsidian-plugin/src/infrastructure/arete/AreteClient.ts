@@ -1,6 +1,9 @@
-import { spawn } from 'child_process';
 import { AretePluginSettings } from '@/domain/settings';
-import { parseJsonStdout, resolvePythonCommand } from '@infrastructure/arete/PythonProcess';
+import {
+	AreteProcesses,
+	parseJsonStdout,
+	resolvePythonCommand,
+} from '@infrastructure/arete/PythonProcess';
 import { GraphExport, GraphSource } from '@/domain/graph/types';
 import { AnkiModelSource, CardStatsSource, CardSuspender } from '@/domain/ports';
 import { debugLog } from '@/domain/debugLog';
@@ -29,10 +32,16 @@ export class AreteClient implements GraphSource, AnkiModelSource, CardStatsSourc
 	private settings: AretePluginSettings;
 	/** The vault's folder on disk; the queue is planned from its notes. */
 	private vaultRoot: string;
+	private processes = new AreteProcesses();
 
 	constructor(settings: AretePluginSettings, vaultRoot = '') {
 		this.settings = settings;
 		this.vaultRoot = vaultRoot;
+	}
+
+	/** Kill the calls in flight (they reject) and refuse new ones. For plugin unload. */
+	dispose(): void {
+		this.processes.killAll();
 	}
 
 	async getCardStats(nids: number[]): Promise<unknown> {
@@ -140,7 +149,7 @@ export class AreteClient implements GraphSource, AnkiModelSource, CardStatsSourc
 			const finalArgs = [...resolved.args, ...args];
 
 			debugLog(`[Arete] Spawning: ${resolved.cmd} ${finalArgs.join(' ')}`);
-			const child = spawn(resolved.cmd, finalArgs, { cwd: resolved.cwd, env: resolved.env });
+			const child = this.processes.spawn(resolved, finalArgs);
 			child.once('error', (error) => {
 				reject(
 					new Error(
@@ -154,7 +163,11 @@ export class AreteClient implements GraphSource, AnkiModelSource, CardStatsSourc
 			child.stdout.on('data', (d) => (stdout += d.toString()));
 			child.stderr.on('data', (d) => (stderr += d.toString()));
 
-			child.on('close', (code) => {
+			child.on('close', (code, signal) => {
+				if (signal) {
+					reject(new Error(`${command} was stopped (${signal}).`));
+					return;
+				}
 				if (code !== 0) {
 					reject(new Error(`${command} failed (exit ${code}): ${stderr.trim()}`));
 					return;

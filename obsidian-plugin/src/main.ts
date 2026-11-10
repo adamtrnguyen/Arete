@@ -571,6 +571,10 @@ export default class AretePlugin extends Plugin {
 		if (this.serverManager) {
 			this.serverManager.stop();
 		}
+		// No `arete` process outlives the plugin; a call in flight rejects.
+		this.areteClient?.dispose();
+		this.checkService?.dispose();
+		this.syncService?.dispose();
 	}
 
 	updateStatusBar(state: 'idle' | 'syncing' | 'error' | 'success', msg?: string) {

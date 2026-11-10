@@ -117,6 +117,22 @@ describe('SyncService', () => {
 		);
 	});
 
+	test('dispose kills a sync in flight; the stopped sync shows no notice', async () => {
+		const mockChild = createMockChildProcess();
+		(spawn as jest.Mock).mockReturnValue(mockChild);
+
+		const syncPromise = service.runSync(false, null, false, updateStatusBar);
+		(Notice as unknown as jest.Mock).mockClear();
+		updateStatusBar.mockClear();
+		service.dispose();
+		mockChild.emit('close', null, 'SIGTERM');
+		await syncPromise;
+
+		expect(mockChild.kill).toHaveBeenCalledTimes(1);
+		expect(Notice).not.toHaveBeenCalled();
+		expect(updateStatusBar).not.toHaveBeenCalled();
+	});
+
 	describe('runSyncServer', () => {
 		beforeEach(() => {
 			service.settings.execution_mode = 'server';

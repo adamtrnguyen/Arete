@@ -202,7 +202,7 @@ describe('plugin command lines against the registered CLI', () => {
 
 	test('every client method that spawns is covered here', async () => {
 		const { clientMethods } = await pluginCommandLines();
-		const helpers = ['constructor', 'runAnki', 'backendArgs', 'runCLI'];
+		const helpers = ['constructor', 'dispose', 'runAnki', 'backendArgs', 'runCLI'];
 		const methods = Object.getOwnPropertyNames(AreteClient.prototype).filter(
 			(m) => !helpers.includes(m),
 		);

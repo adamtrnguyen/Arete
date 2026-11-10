@@ -72,6 +72,21 @@ describe('CheckService', () => {
 
 	// runCheck() moved to main.ts (DDD refactor)
 
+	test('dispose kills a check in flight', async () => {
+		const mockChild = createMockChildProcess();
+		(spawn as jest.Mock).mockReturnValue(mockChild);
+		jest.spyOn(console, 'error').mockImplementation(() => undefined);
+
+		const promise = service.getCheckResult('test.md');
+		service.dispose();
+		mockChild.emit('close', null, 'SIGTERM');
+
+		expect(mockChild.kill).toHaveBeenCalledTimes(1);
+		await expect(promise).rejects.toThrow(
+			'arete vault check printed something other than JSON',
+		);
+	});
+
 	test('runFix spawns vault fix command (success)', async () => {
 		const mockChild = createMockChildProcess();
 		(spawn as jest.Mock).mockReturnValue(mockChild);

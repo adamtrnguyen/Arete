@@ -1,4 +1,5 @@
 import * as path from 'path';
+import { ChildProcess, spawn } from 'child_process';
 import { AretePluginSettings } from '@/domain/settings';
 
 export interface PythonCommand {
@@ -68,5 +69,43 @@ export function parseJsonStdout(stdout: string, command: string): any {
 	} catch {
 		const preview = stdout.trim().substring(0, 200);
 		throw new Error(`${command} printed something other than JSON: "${preview}"`);
+	}
+}
+
+/**
+ * The processes one service started and has not seen exit. `killAll` ends them when the
+ * plugin unloads and refuses new ones after that, so no `arete` outlives the plugin.
+ */
+export class AreteProcesses {
+	private live = new Set<ChildProcess>();
+	private closed = false;
+
+	/** Start `arete <args>` as `command` resolves it (interpreter, cwd, env). */
+	spawn(
+		command: PythonCommand,
+		args: string[],
+		env: Record<string, string | undefined> = command.env,
+	): ChildProcess {
+		if (this.closed) throw new Error('Arete is unloading; the command was not started.');
+		return this.track(spawn(command.cmd, args, { cwd: command.cwd, env }));
+	}
+
+	/** Watch a process started elsewhere until it exits. */
+	track(child: ChildProcess): ChildProcess {
+		this.live.add(child);
+		child.once('close', () => this.live.delete(child));
+		child.once('error', () => this.live.delete(child));
+		return child;
+	}
+
+	/** Processes still running. */
+	get size(): number {
+		return this.live.size;
+	}
+
+	killAll(): void {
+		this.closed = true;
+		for (const child of this.live) child.kill();
+		this.live.clear();
 	}
 }

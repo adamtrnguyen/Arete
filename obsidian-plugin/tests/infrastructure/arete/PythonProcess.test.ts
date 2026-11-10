@@ -1,6 +1,8 @@
 import '../../test-setup';
-import { resolvePythonCommand } from '@infrastructure/arete/PythonProcess';
+import { AreteProcesses, resolvePythonCommand } from '@infrastructure/arete/PythonProcess';
 import * as path from 'path';
+import { spawn } from 'child_process';
+import { createMockChildProcess } from '../../test-setup';
 
 describe('resolvePythonCommand', () => {
 	const baseSettings: any = {
@@ -102,5 +104,44 @@ describe('resolvePythonCommand', () => {
 		expect(result.cmd).toBe('python3');
 		// No empty string args
 		expect(result.args.every((a) => a.trim() !== '')).toBe(true);
+	});
+});
+
+describe('AreteProcesses', () => {
+	const command = { cmd: 'python3', args: ['-m', 'arete'], env: { A: '1' }, cwd: '/project' };
+
+	beforeEach(() => jest.clearAllMocks());
+
+	test('spawns in the command cwd and env, and forgets a process once it exits', () => {
+		const child = createMockChildProcess();
+		(spawn as jest.Mock).mockReturnValueOnce(child);
+		const processes = new AreteProcesses();
+
+		processes.spawn(command, ['-m', 'arete', 'anki', 'decks']);
+		expect(spawn).toHaveBeenCalledWith('python3', ['-m', 'arete', 'anki', 'decks'], {
+			cwd: '/project',
+			env: { A: '1' },
+		});
+		expect(processes.size).toBe(1);
+		child.emit('close', 0, null);
+		expect(processes.size).toBe(0);
+	});
+
+	test('killAll kills what is running and refuses to start more', () => {
+		const running = createMockChildProcess();
+		const exited = createMockChildProcess();
+		(spawn as jest.Mock).mockReturnValueOnce(running).mockReturnValueOnce(exited);
+		const processes = new AreteProcesses();
+		processes.spawn(command, []);
+		processes.spawn(command, []);
+		exited.emit('close', 0, null);
+
+		processes.killAll();
+
+		expect(running.kill).toHaveBeenCalledTimes(1);
+		expect(exited.kill).not.toHaveBeenCalled();
+		expect(processes.size).toBe(0);
+		expect(() => processes.spawn(command, [])).toThrow('Arete is unloading');
+		expect(spawn).toHaveBeenCalledTimes(2);
 	});
 });
