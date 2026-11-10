@@ -78,3 +78,28 @@ def test_a_failed_id_rewrite_sends_none_of_the_files_cards(vault, monkeypatch):
     assert anki.sent[sent_before:] == [], "no card of a file whose ids were not stored is sent"
     assert stats.total_errors >= 1
     assert len(anki.notes) == 1, "prune must keep the note the unwritable file still claims"
+
+
+def test_prune_keeps_a_note_created_just_before_a_crash(vault, monkeypatch):
+    """Prune keeps a note whose nid a crash kept out of the vault.
+
+    The crash falls after the cache write and before the nid write-back. The next run hits
+    the cache and sends nothing, so only the cached nid tells prune the note is claimed.
+    """
+    root, cache, anki = vault
+    (root / "a.md").write_text(note_file(card(ID_A1)))
+
+    def crash(*_args: Any, **_kwargs: Any) -> None:
+        raise RuntimeError("killed before write-back")
+
+    with monkeypatch.context() as m:
+        m.setattr(VaultService, "apply_updates", crash)
+        with pytest.raises(RuntimeError, match="killed before write-back"):
+            run(root, anki, cache)
+    assert len(anki.notes) == 1
+    assert "nid" not in (root / "a.md").read_text(), "the crash left the vault without the nid"
+
+    stats = run(root, anki, cache, prune=True)
+
+    assert stats.prune is not None and stats.prune.notes == []
+    assert len(anki.notes) == 1, "the note the crash created is still the vault card's note"

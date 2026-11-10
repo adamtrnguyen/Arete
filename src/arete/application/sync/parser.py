@@ -280,6 +280,17 @@ class MarkdownParser:
                 cached_hash = cache.get_hash(md_path, idx)
                 if not self.ignore_cache and cached_hash == content_hash:
                     self.logger.debug(f"[cache-hit] {md_path} card#{idx}: skipping")
+                    # The cached note holds the nid Anki assigned, which the vault may not
+                    # hold yet (a crash before write-back). Prune must count it as claimed.
+                    cached_entry = cache.get_note(md_path, idx)
+                    if cached_entry and cached_entry[1]:
+                        try:
+                            cached_nid = AnkiNote.from_dict(json.loads(cached_entry[1])).nid
+                            inventory.append({"nid": cached_nid, "deck": None})
+                        except Exception as e:
+                            self.logger.warning(
+                                f"Failed to read cached nid for {md_path}#{idx}: {e}"
+                            )
                     continue
 
                 note_obj = AnkiNote(
