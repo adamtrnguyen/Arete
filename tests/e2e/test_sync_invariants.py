@@ -424,15 +424,8 @@ async def _crash_before_write_back(world: World) -> int:
     return world.nid()
 
 
-CRASH_WINDOW = (
-    "the second run hashes the card as the first did (no nid either time), hits the content "
-    "cache and sends nothing (observed 0 cards sent); the skipped card puts {'nid': None} in "
-    "the prune inventory, so the note Anki created is an orphan: observed "
-)
-
-
 @pytest.mark.asyncio
-@on(*ALL, xfail=dict.fromkeys(ALL, CRASH_WINDOW + "the note listed in the prune preview"))
+@on(*ALL)
 async def test_inv6_after_a_crash_the_prune_preview_does_not_list_the_vaults_note(world: World):
     nid = await _crash_before_write_back(world)
 
@@ -443,7 +436,7 @@ async def test_inv6_after_a_crash_the_prune_preview_does_not_list_the_vaults_not
 
 
 @pytest.mark.asyncio
-@on(*ALL, xfail=dict.fromkeys(ALL, CRASH_WINDOW + "the note deleted by the confirmed prune"))
+@on(*ALL)
 async def test_inv6_after_a_crash_a_confirmed_prune_keeps_the_vaults_note(world: World):
     nid = await _crash_before_write_back(world)
 
