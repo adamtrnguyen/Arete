@@ -165,21 +165,19 @@ async def test_get_card_stats_fsrs_unavailable_leaves_fsrs_empty(repo):
 
 
 @pytest.mark.asyncio
-async def test_get_card_stats_uses_an_answer_without_stability(repo):
-    """Add-ons before 2.5.1 sent difficulty only; that answer was discarded."""
+async def test_get_card_stats_ignores_an_answer_without_stability(repo):
+    """A getFSRSStats item needs both difficulty and stability to count as FSRS state."""
     repo._invoke = AsyncMock(
         side_effect=[
             [601],
             [{"cardId": 601, "note": 6, "fields": {"Front": {"value": "Q"}}}],
-            [{"cardId": 601, "difficulty": 4.0, "debug": []}],
+            [{"cardId": 601, "difficulty": 4.0, "stability": None}],
         ]
     )
 
     [s] = await repo.get_card_stats([6])
 
-    assert s.fsrs is not None
-    assert s.fsrs.difficulty == 0.4
-    assert s.fsrs.stability == 0
+    assert s.fsrs is None
 
 
 @pytest.mark.asyncio

@@ -58,12 +58,12 @@ class ConnectStatsRepository(StatsRepository):
                     fsrs_results = await self._invoke("getFSRSStats", cards=card_ids)
                     if fsrs_results and isinstance(fsrs_results, list):
                         for item in fsrs_results:
-                            # Use any answer that has a difficulty; an older add-on sends
-                            # no stability, so requiring it would discard every answer.
-                            if item.get("difficulty") is None:
+                            # The add-on sends both, or None for both when the card has
+                            # no FSRS memory state.
+                            if item.get("difficulty") is None or item.get("stability") is None:
                                 continue
                             fsrs_map[item["cardId"]] = FsrsMemoryState(
-                                stability=item.get("stability") or 0,
+                                stability=item["stability"],
                                 difficulty=item["difficulty"] / FSRS_DIFFICULTY_SCALE,
                                 retrievability=None,
                             )
