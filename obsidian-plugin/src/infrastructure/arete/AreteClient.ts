@@ -136,10 +136,11 @@ export class AreteClient implements GraphSource, AnkiModelSource, CardStatsSourc
 						// 1. Try to parse the entire trimmed stdout
 						resolve(JSON.parse(trimmed));
 					} catch (e) {
-						// 2. Fallback: Find the first/last brackets to extract JSON block
-						// This handles cases where warnings or logs are mixed with JSON
+						// 2. Fallback: the block runs from the first opening bracket to the last
+						// bracket that closes it, so warnings or logs around the JSON are skipped.
 						const startIndex = trimmed.search(/[[{]/);
-						const endIndex = trimmed.lastIndexOf(trimmed.match(/[\]}]/)?.[0] || '');
+						const closer = trimmed[startIndex] === '[' ? ']' : '}';
+						const endIndex = startIndex === -1 ? -1 : trimmed.lastIndexOf(closer);
 
 						if (startIndex !== -1 && endIndex !== -1 && endIndex >= startIndex) {
 							const jsonBlock = trimmed.substring(startIndex, endIndex + 1);

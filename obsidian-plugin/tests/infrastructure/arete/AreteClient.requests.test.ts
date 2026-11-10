@@ -191,19 +191,21 @@ describe('AreteClient: requests and arguments for graph, stats, queue and cards'
 			await expect(promise).resolves.toEqual({ ok: true });
 		});
 
-		// BUG (AreteClient.ts runCLI): the end of the JSON block is the last occurrence of the
-		// FIRST closing bracket found, so an object whose first closing bracket is `]` is cut
-		// inside itself and the whole output is returned as { output } instead of parsed.
-		it.failing(
-			'extracts a JSON object that contains an array when warnings surround it',
-			async () => {
-				const child = cli();
-				const promise = client.fetchGraph('/v');
-				child.stdout.emit('data', 'warning: slow\n{"nodes": [1]}\ndone\n');
-				child.emit('close', 0);
-				await expect(promise).resolves.toEqual({ nodes: [1] });
-			},
-		);
+		it('extracts a JSON object that contains an array when warnings surround it', async () => {
+			const child = cli();
+			const promise = client.fetchGraph('/v');
+			child.stdout.emit('data', 'warning: slow\n{"nodes": [1]}\ndone\n');
+			child.emit('close', 0);
+			await expect(promise).resolves.toEqual({ nodes: [1] });
+		});
+
+		it('extracts a JSON array when warnings surround it', async () => {
+			const child = cli();
+			const promise = client.fetchGraph('/v');
+			child.stdout.emit('data', 'warning: slow\n[{"id": 1}, {"id": 2}]\ndone\n');
+			child.emit('close', 0);
+			await expect(promise).resolves.toEqual([{ id: 1 }, { id: 2 }]);
+		});
 
 		it('suspend passes the card ids as JSON and the AnkiConnect URL, and returns ok', async () => {
 			const child = cli();
