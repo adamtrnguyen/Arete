@@ -82,8 +82,8 @@ async def test_the_later_card_with_the_same_front_in_the_same_deck_is_refused(wo
 
 
 @pytest.mark.asyncio
-async def test_the_earlier_card_in_the_vault_is_the_one_created(world):
-    """Vault order decides: swapping the two cards' answers swaps nothing else."""
+async def test_within_a_batch_the_earlier_card_in_the_vault_is_the_one_created(world):
+    """Vault order decides within a batch: the note holds the first card's answer."""
     _, vault, backend = world
     (vault / "twins.md").write_text(_file(first_back="Answer of the first card"), encoding="utf-8")
 

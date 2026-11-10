@@ -130,18 +130,36 @@ async def test_a_card_of_an_earlier_batch_holds_its_first_field_for_the_run():
 
 
 @pytest.mark.asyncio
-async def test_batches_run_at_once_never_both_create_one_first_field():
+async def test_across_batches_run_at_once_exactly_one_is_created_then_kept():
+    """Run 1 may pick either card; from run 2 on the created one is updated, the other refused."""
     store = FakeNoteStore()
+    fields = {1: {"Front": "Same", "Back": "one"}, 2: {"Front": "Same", "Back": "two"}}
+    ids = {1: ID, 2: ID2}
     sync = NoteSync(store)
 
     [a], [b] = await asyncio.gather(
-        sync.sync_notes([card(1, Front="Same", Back="one")]),
-        sync.sync_notes([card(2, arete_id=ID2, Front="Same", Back="two")]),
+        sync.sync_notes([card(1, arete_id=ID, **fields[1])]),
+        sync.sync_notes([card(2, arete_id=ID2, **fields[2])]),
     )
 
     assert sorted([a.ok, b.ok]) == [False, True] and len(store.notes) == 1
-    loser = b if a.ok else a
-    assert "duplicate first field" in (loser.error or "")
+    won, lost = (1, 2) if a.ok else (2, 1)
+    nid = (a if a.ok else b).new_nid
+    assert "duplicate first field" in ((b if a.ok else a).error or "")
+
+    for _ in range(2):  # every later run, the vault now holding the winner's nid
+        fields[won]["Back"] = f"{fields[won]['Back']}+"
+        sync = NoteSync(store)
+        [w], [r] = await asyncio.gather(
+            sync.sync_notes([card(won, arete_id=ids[won], nid=nid, **fields[won])]),
+            sync.sync_notes([card(lost, arete_id=ids[lost], **fields[lost])]),
+        )
+        assert (
+            w.ok
+            and w.new_nid == str(nid)
+            and store.held(int(nid or 0)).fields["Back"] == (fields[won]["Back"])
+        )
+        assert not r.ok and f"note {nid}" in (r.error or "") and len(store.notes) == 1
 
 
 @pytest.mark.asyncio

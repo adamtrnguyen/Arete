@@ -17,10 +17,11 @@ Per batch, inside one store session:
    card's Arete id, or claimed by another card, is never taken.
 4. **Create** the rest, except a card whose first field (compared through
    `first_field_key`) a note of its type already holds in its deck: that card is refused
-   and named, with the note that holds the field. At most one card of the run gets the
-   field: within a batch, and for batches run one after another, the earlier card in the
-   vault; for batches run at once, the batch that reaches this check first. A create
-   whose reply was lost is looked up by its Arete id and never sent again in the same run.
+   and named, with the note that holds the field. Within a batch the earlier card in the
+   vault is created; across batches run at once, exactly one of the two is created and
+   the other refused. From the next run on, the created card resolves by its own id and
+   the other is refused every time. A create whose reply was lost is looked up by its
+   Arete id and never sent again in the same run.
 5. **Compare and write.** Fields, tags, home deck and note type are set to the vault's
    where they differ. Tags compare case-insensitively, and the tags Anki owns
    (`ANKI_OWNED_TAGS`) are never removed. A type change that would drop cards is refused.
