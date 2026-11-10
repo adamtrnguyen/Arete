@@ -6,16 +6,16 @@ labels: 'enhancement'
 assignees: ''
 ---
 
-### 📖 User Story
+### User story
 **As a** [role, e.g., Obsidian User]
 **I want** [feature or capability]
 **So that** [benefit or value]
 
-### ✅ Acceptance Criteria
+### Acceptance criteria
 - [ ] Criterion 1
 - [ ] Criterion 2
 - [ ] Criterion 3
 
-### 🛠 Technical Notes
+### Technical notes
 - Implementation details (optional)
 - Potential impacts
