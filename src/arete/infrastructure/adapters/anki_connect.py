@@ -634,56 +634,6 @@ class AnkiConnectAdapter(AnkiBridge):
         await self._invoke("deleteDecks", decks=names, cardsToo=True)
         return True
 
-    async def get_learning_insights(self, lapse_threshold: int = 3) -> Any:
-        from arete.domain.constants import MAX_PROBLEMATIC_NOTES
-        from arete.domain.stats.models import LearningStats, NoteInsight
-
-        # Find leech cards directly via AnkiConnect
-        leech_cids = await self._invoke("findCards", query=f"prop:lapses>={lapse_threshold}")
-        all_cids = await self._invoke("findCards", query="")
-
-        if not leech_cids:
-            return LearningStats(total_cards=len(all_cids))
-
-        infos = await self._invoke("cardsInfo", cards=leech_cids)
-
-        # Aggregate by note: keep max lapses per note
-        nid_map: dict[int, dict] = {}
-        for info in infos:
-            nid = info.get("note")
-            lapses = info.get("lapses", 0)
-            if nid not in nid_map or lapses > nid_map[nid]["lapses"]:
-                fields = info.get("fields", {})
-                note_name = "Unknown"
-                if "_obsidian_source" in fields:
-                    note_name = fields["_obsidian_source"].get("value", "Unknown")
-                elif fields:
-                    first_key = next(iter(fields))
-                    note_name = fields[first_key].get("value", "Unknown")
-                # Strip HTML
-                import re
-
-                note_name = re.sub("<[^<]+?>", "", note_name).strip()
-
-                nid_map[nid] = {
-                    "note_name": note_name,
-                    "lapses": lapses,
-                    "deck": info.get("deckName", "Unknown"),
-                }
-
-        problematic = sorted(nid_map.values(), key=lambda x: x["lapses"], reverse=True)
-        notes = [
-            NoteInsight(
-                note_name=n["note_name"],
-                issue=f"{n['lapses']} lapses",
-                lapses=n["lapses"],
-                deck=n["deck"],
-            )
-            for n in problematic[:MAX_PROBLEMATIC_NOTES]
-        ]
-
-        return LearningStats(total_cards=len(all_cids), problematic_notes=notes)
-
     async def suspend_cards(self, cids: list[int]) -> bool:
         if not cids:
             return True  # Nothing to do

@@ -28,7 +28,6 @@ src/arete/
 │   │   ├── graph_resolver.py      Graph resolver for building dependency graphs from vault files
 │   │   ├── service.py             Queue orchestration service
 │   ├── stats/                    
-│   │   ├── learning_insights_service.py Learning Insights Service
 │   │   ├── metrics_calculator.py  Metrics calculator for deriving insights from raw FSRS stats
 │   │   ├── service.py             FsrsStatsService
 │   ├── sync/                     
@@ -47,7 +46,6 @@ src/arete/
 │   │   ├── media.py               unique_media_name, build_filename_index, FilenameIndex...
 │   │   ├── text.py                normalize_filename, parse_frontmatter, UniqueKeyLoader...
 │   │   ├── yaml.py
-│   ├── card_reader.py             Application service for reading card data from vault markdown files
 │   ├── config.py                  AppConfig, resolve_config
 │   ├── report_service.py          Service for reading and managing card issue reports
 │   ├── validation.py              Vault file validation: check YAML frontmatter for arete compatibility
@@ -88,9 +86,9 @@ src/arete/
 |---|---|---|---|
 | `interface` | 4 | 975 | application, composition |
 | `composition` | 2 | 183 | application, infrastructure, domain |
-| `application` | 26 | 5841 | domain (ports only) |
-| `infrastructure` | 9 | 2234 | domain |
-| `domain` | 9 | 907 | nothing in arete |
+| `application` | 24 | 5462 | domain (ports only) |
+| `infrastructure` | 9 | 2113 | domain |
+| `domain` | 9 | 869 | nothing in arete |
 
 The import rules in the last column are enforced by `just check-architecture`
 (import-linter), not by convention.

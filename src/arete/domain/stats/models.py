@@ -101,22 +101,3 @@ class CardStatsAggregate:
     press_fatigue: float | None = None  # Hard / (Good + Hard)
     volatility: float | None = None
     lapse_rate: float | None = None
-
-
-@dataclass
-class NoteInsight:
-    """Insight for a specific problematic note (e.g. leech)."""
-
-    note_name: str
-    issue: str
-    lapses: int
-    deck: str
-
-
-@dataclass
-class LearningStats:
-    """Aggregate learning statistics."""
-
-    total_cards: int
-    retention_rate: float | None = None
-    problematic_notes: list[NoteInsight] = field(default_factory=list)

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import re
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -12,15 +11,13 @@ from arete.domain.constants import (
     BROWSE_INITIAL_DELAY,
     BROWSE_POLL_ATTEMPTS,
     BROWSE_POLL_INTERVAL,
-    MAX_PROBLEMATIC_NOTES,
 )
 from arete.domain.interfaces import AnkiBridge
 from arete.infrastructure.anki.note_session import DirectNoteSession
 from arete.infrastructure.anki.repository import AnkiRepository
 
 if TYPE_CHECKING:  # importing these eagerly cycles inside the anki package
-    from anki.decks import DeckId
-    from anki.notes import NoteId
+    pass
 
 
 class AnkiDirectAdapter(AnkiBridge):
@@ -132,74 +129,6 @@ class AnkiDirectAdapter(AnkiBridge):
                         repo.col.decks.remove([did])
                 return True
         return False
-
-    async def get_learning_insights(self, lapse_threshold: int = 3) -> Any:
-        from arete.domain.stats.models import LearningStats, NoteInsight
-
-        total_cards = 0
-        problematic_notes = []
-
-        with AnkiRepository(self.anki_base) as repo:
-            if not repo.col:
-                return LearningStats(total_cards=0)
-
-            # 1. Get all card IDs
-            cids = repo.col.find_cards("")
-            total_cards = len(cids)
-
-            # 2. Iterate cards to find lapses
-            # We can use find_notes to get notes with cards having lapses >= threshold
-            # But lapses are on cards, not notes.
-            # Efficiently find cards with lapses >= threshold
-            troublesome_cids = repo.col.find_cards(f"prop:lapses>={lapse_threshold}")
-
-            # Map NIDs to max lapses, and remember the deck of the worst card
-            nid_to_lapses: dict[NoteId, int] = {}
-            nid_to_did: dict[NoteId, DeckId] = {}
-            for cid in troublesome_cids:
-                card = repo.col.get_card(cid)
-                nid = card.nid
-                if card.lapses >= nid_to_lapses.get(nid, 0):
-                    nid_to_lapses[nid] = card.lapses
-                    nid_to_did[nid] = card.did
-
-            # 3. Process notes
-            for nid, lapses in nid_to_lapses.items():
-                note = repo.col.get_note(nid)
-                model = note.note_type()
-                if not model:
-                    continue
-
-                fields = {f["name"]: note.fields[i] for i, f in enumerate(model["flds"])}
-
-                note_name = "Unknown"
-                if "_obsidian_source" in fields:
-                    note_name = fields["_obsidian_source"]
-                elif fields:
-                    note_name = list(fields.values())[0]
-
-                # Strip HTML
-                note_name = re.sub("<[^<]+?>", "", note_name).strip()
-
-                deck = repo.col.decks.get(nid_to_did[nid])
-                problematic_notes.append(
-                    NoteInsight(
-                        note_name=note_name,
-                        issue=f"{lapses} lapses",
-                        lapses=lapses,
-                        deck=deck["name"]
-                        if deck
-                        else "Unknown",  # the card's deck, not the note type
-                    )
-                )
-
-        # Sort and limit
-        problematic_notes.sort(key=lambda x: x.lapses, reverse=True)
-
-        return LearningStats(
-            total_cards=total_cards,
-            problematic_notes=problematic_notes[:MAX_PROBLEMATIC_NOTES],
-        )
 
     async def suspend_cards(self, cids: list[int]) -> bool:
         """Suspend cards via Direct DB (queue=-1)."""

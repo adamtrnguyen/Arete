@@ -25,9 +25,6 @@ BROWSE_POLL_ATTEMPTS = 40
 BROWSE_POLL_INTERVAL = 0.5  # seconds
 BROWSE_INITIAL_DELAY = 1.0  # seconds
 
-# ---------- Learning Insights ----------
-MAX_PROBLEMATIC_NOTES = 5
-
 # ---------- Queue Builder ----------
 DEFAULT_PREREQ_DEPTH = 2
 DEFAULT_MAX_QUEUE_SIZE = 50

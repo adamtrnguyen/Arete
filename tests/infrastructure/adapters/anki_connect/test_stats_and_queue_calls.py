@@ -4,7 +4,6 @@ import logging
 
 import pytest
 
-from arete.domain.constants import MAX_PROBLEMATIC_NOTES
 from arete.infrastructure.adapters.anki_connect import AnkiConnectAdapter
 
 from .fake_anki import FakeAnki
@@ -48,83 +47,6 @@ def _adapter(fake: FakeAnki) -> AnkiConnectAdapter:
     adapter = AnkiConnectAdapter(url="http://fake-anki:8765")
     adapter._http_request = fake.http  # type: ignore[method-assign]
     return adapter
-
-
-def _info(cid, note, lapses, source=None, deck="Default", first=None):
-    fields = {}
-    if source is not None:
-        fields["_obsidian_source"] = {"value": source}
-    if first is not None:
-        fields["Front"] = {"value": first}
-    return {"cardId": cid, "note": note, "lapses": lapses, "fields": fields, "deckName": deck}
-
-
-# --- learning insights ---
-
-
-@pytest.mark.asyncio
-async def test_insights_without_leeches_report_only_the_card_total():
-    fake = Fake()
-    fake.find_cards = {"": [1, 2, 3], "prop:lapses>=3": []}
-    stats = await _adapter(fake).get_learning_insights()
-    assert stats.total_cards == 3
-    assert stats.problematic_notes == []
-    assert fake.requests["cardsInfo"] == 0
-
-
-@pytest.mark.asyncio
-async def test_insights_pass_the_lapse_threshold_to_the_search():
-    fake = Fake()
-    fake.find_cards = {"": [1], "prop:lapses>=7": []}
-    await _adapter(fake).get_learning_insights(lapse_threshold=7)
-    assert ("findCards", {"query": "prop:lapses>=7"}) in fake.log
-
-
-@pytest.mark.asyncio
-async def test_insights_keep_each_notes_worst_card_and_sort_by_lapses():
-    fake = Fake()
-    fake.find_cards = {"": list(range(10)), "prop:lapses>=3": [1, 2, 3]}
-    fake.cards_info = [
-        _info(1, note=10, lapses=3, source="Vault|a.md|1", deck="Math"),
-        _info(2, note=10, lapses=9, source="Vault|a.md|1", deck="Math"),  # same note, worse card
-        _info(3, note=11, lapses=5, source="<b>Bold</b> Note", deck="Art"),
-    ]
-    stats = await _adapter(fake).get_learning_insights()
-    assert stats.total_cards == 10
-    assert [(n.note_name, n.lapses, n.deck, n.issue) for n in stats.problematic_notes] == [
-        ("Vault|a.md|1", 9, "Math", "9 lapses"),
-        ("Bold Note", 5, "Art", "5 lapses"),
-    ]
-
-
-@pytest.mark.asyncio
-async def test_insights_name_a_note_from_its_first_field_when_it_has_no_source():
-    fake = Fake()
-    fake.find_cards = {"": [1], "prop:lapses>=3": [1]}
-    fake.cards_info = [_info(1, note=10, lapses=4, first="<i>What is a port?</i>")]
-    [note] = (await _adapter(fake).get_learning_insights()).problematic_notes
-    assert note.note_name == "What is a port?"
-
-
-@pytest.mark.asyncio
-async def test_insights_fall_back_to_unknown_for_a_note_with_no_fields():
-    fake = Fake()
-    fake.find_cards = {"": [1], "prop:lapses>=3": [1]}
-    fake.cards_info = [{"cardId": 1, "note": 10, "lapses": 4, "fields": {}}]
-    [note] = (await _adapter(fake).get_learning_insights()).problematic_notes
-    assert (note.note_name, note.deck) == ("Unknown", "Unknown")
-
-
-@pytest.mark.asyncio
-async def test_insights_list_at_most_the_worst_few_notes():
-    fake = Fake()
-    cids = list(range(1, MAX_PROBLEMATIC_NOTES + 4))
-    fake.find_cards = {"": cids, "prop:lapses>=3": cids}
-    fake.cards_info = [_info(c, note=100 + c, lapses=c, source=f"n{c}") for c in cids]
-    notes = (await _adapter(fake).get_learning_insights()).problematic_notes
-    assert len(notes) == MAX_PROBLEMATIC_NOTES
-    assert [n.lapses for n in notes] == sorted((n.lapses for n in notes), reverse=True)
-    assert notes[0].lapses == max(cids)
 
 
 # --- suspend / unsuspend ---

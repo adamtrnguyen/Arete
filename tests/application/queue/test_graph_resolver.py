@@ -15,7 +15,6 @@ from arete.application.queue.graph_resolver import (
     filter_graph_by_deck,
     find_connected_components,
     find_isolated_nodes,
-    get_subgraph_for_files,
     topological_sort,
 )
 from arete.domain.graph import CardNode, DependencyGraph
@@ -527,79 +526,6 @@ class TestFilterGraphByDeck:
         graph = build_graph(tmp_path)
         filtered = filter_graph_by_deck(graph, "Math")
         assert filtered.get_prerequisites("arete_A") == ["arete_B"]
-
-
-# ---------------------------------------------------------------------------
-# get_subgraph_for_files
-# ---------------------------------------------------------------------------
-
-
-class TestGetSubgraphForFiles:
-    def test_basic_subgraph(self, tmp_path: Path):
-        md = (
-            "---\narete: true\ndeck: Test\ncards:\n"
-            "  - id: arete_A\n    Front: A\n    deps:\n      requires: [arete_B]\n"
-            "  - id: arete_B\n    Front: B\n"
-            "---\n"
-        )
-        f = tmp_path / "test.md"
-        f.write_text(md)
-
-        result = get_subgraph_for_files(tmp_path, [str(f)])
-        assert result.batch_cards == 2
-        assert result.external_deps == 0
-        assert len(result.nodes) == 2
-
-    def test_external_deps(self, tmp_path: Path):
-        md1 = (
-            "---\narete: true\ndeck: Test\ncards:\n"
-            "  - id: arete_A\n    Front: A\n    deps:\n      requires: [arete_B]\n"
-            "---\n"
-        )
-        md2 = "---\narete: true\ndeck: Test\ncards:\n  - id: arete_B\n    Front: B\n---\n"
-        f1 = tmp_path / "a.md"
-        f2 = tmp_path / "b.md"
-        f1.write_text(md1)
-        f2.write_text(md2)
-
-        # Only include a.md in batch — arete_B is external
-        result = get_subgraph_for_files(tmp_path, [str(f1)])
-        assert result.batch_cards == 1
-        assert result.external_deps == 1
-        assert result.external_nodes[0].id == "arete_B"
-
-    def test_empty_batch(self, tmp_path: Path):
-        result = get_subgraph_for_files(tmp_path, [str(tmp_path / "nope.md")])
-        assert result.batch_cards == 0
-        assert result.nodes == []
-
-    def test_node_details(self, tmp_path: Path):
-        md = (
-            "---\narete: true\ndeck: Test\ncards:\n"
-            "  - id: arete_A\n    Front: A\n    deps:\n      requires: [arete_B]\n"
-            "  - id: arete_B\n    Front: B\n"
-            "---\n"
-        )
-        f = tmp_path / "test.md"
-        f.write_text(md)
-
-        result = get_subgraph_for_files(tmp_path, [str(f)])
-        node_a = next(n for n in result.nodes if n.id == "arete_A")
-        assert node_a.requires == ["arete_B"]
-        assert node_a.basename == "test"
-
-    def test_cycles_in_batch(self, tmp_path: Path):
-        md = (
-            "---\narete: true\ndeck: Test\ncards:\n"
-            "  - id: arete_A\n    Front: A\n    deps:\n      requires: [arete_B]\n"
-            "  - id: arete_B\n    Front: B\n    deps:\n      requires: [arete_A]\n"
-            "---\n"
-        )
-        f = tmp_path / "test.md"
-        f.write_text(md)
-
-        result = get_subgraph_for_files(tmp_path, [str(f)])
-        assert len(result.cycles_involving_batch) == 1
 
 
 def test_unparseable_file_is_reported_not_dropped(tmp_path: Path):

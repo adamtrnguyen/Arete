@@ -79,42 +79,6 @@ class GraphHealthResult:
     duplicate_ids: list[DuplicateIdEntry] = field(default_factory=list)
 
 
-@dataclass
-class SubgraphNodeEntry:
-    """A card node in the subgraph with its relationships."""
-
-    id: str
-    title: str
-    file: str
-    basename: str
-    line: int
-    requires: list[str]
-    required_by: list[str]
-    related: list[str]
-    unresolved: list[str]
-
-
-@dataclass
-class ExternalNodeEntry:
-    """An external card referenced by the batch but not part of it."""
-
-    id: str
-    title: str
-    file: str
-    basename: str
-
-
-@dataclass
-class SubgraphResult:
-    """Structured result of a subgraph query for a batch of files."""
-
-    batch_cards: int
-    external_deps: int
-    cycles_involving_batch: list[list[str]]
-    nodes: list[SubgraphNodeEntry]
-    external_nodes: list[ExternalNodeEntry]
-
-
 logger = logging.getLogger(__name__)
 
 
@@ -585,86 +549,6 @@ def check_graph_health(
         deck_filter=deck_filter,
         skipped_files=skipped,
         duplicate_ids=duplicates,
-    )
-
-
-def get_subgraph_for_files(
-    vault_root: Path,
-    file_paths: list[str],
-) -> SubgraphResult:
-    """The cards in `file_paths`, their edges outside the batch, and the cycles touching it.
-
-    `file_paths` are absolute.
-    """
-    graph = build_graph(vault_root)
-    paths_set = set(file_paths)
-
-    # Identify cards in the batch
-    batch_ids: set[str] = set()
-    for cid, node in graph.nodes.items():
-        if node.file_path in paths_set:
-            batch_ids.add(cid)
-
-    if not batch_ids:
-        return SubgraphResult(
-            batch_cards=0,
-            external_deps=0,
-            cycles_involving_batch=[],
-            nodes=[],
-            external_nodes=[],
-        )
-
-    # Build node list with full info
-    nodes: list[SubgraphNodeEntry] = []
-    for cid in sorted(batch_ids):
-        node = graph.nodes[cid]
-        nodes.append(
-            SubgraphNodeEntry(
-                id=cid,
-                title=node.title,
-                file=node.file_path,
-                basename=Path(node.file_path).stem,
-                line=node.line_number,
-                requires=graph.get_prerequisites(cid),
-                required_by=graph.get_dependents(cid),
-                related=graph.get_related(cid),
-                unresolved=graph.unresolved_refs.get(cid, []),
-            )
-        )
-
-    # External deps: cards outside the batch that batch cards reference
-    external_ids: set[str] = set()
-    for cid in batch_ids:
-        for prereq in graph.get_prerequisites(cid):
-            if prereq not in batch_ids:
-                external_ids.add(prereq)
-        for dep in graph.get_dependents(cid):
-            if dep not in batch_ids:
-                external_ids.add(dep)
-
-    external_nodes: list[ExternalNodeEntry] = []
-    for cid in sorted(external_ids):
-        if cid in graph.nodes:
-            node = graph.nodes[cid]
-            external_nodes.append(
-                ExternalNodeEntry(
-                    id=cid,
-                    title=node.title,
-                    file=node.file_path,
-                    basename=Path(node.file_path).stem,
-                )
-            )
-
-    # Check for cycles within the batch
-    cycles_raw = detect_cycles(graph)
-    batch_cycles = [c for c in cycles_raw if any(cid in batch_ids for cid in c)]
-
-    return SubgraphResult(
-        batch_cards=len(nodes),
-        external_deps=len(external_nodes),
-        cycles_involving_batch=batch_cycles,
-        nodes=nodes,
-        external_nodes=external_nodes,
     )
 
 

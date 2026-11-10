@@ -203,22 +203,6 @@ class QueuePort(Protocol):
 
 
 @runtime_checkable
-class CardStatsPort(Protocol):
-    """Read-only learning statistics. Used by the learning-insights service.
-
-    Per-card statistics come from the StatsRepository port (domain/stats/ports.py).
-    """
-
-    @abstractmethod
-    async def get_learning_insights(self, lapse_threshold: int = 3) -> Any:
-        """Fetch learning statistics and identify problematic notes.
-
-        Returns a LearningStats-compatible object or data.
-        """
-        pass
-
-
-@runtime_checkable
 class AnkiAdminPort(Protocol):
     """Direct Anki housekeeping the user asks for by name (suspend, browse, styling)."""
 
@@ -248,7 +232,7 @@ class AnkiAdminPort(Protocol):
         pass
 
 
-class AnkiBridge(NoteStorePort, SyncPort, QueuePort, CardStatsPort, AnkiAdminPort):
+class AnkiBridge(NoteStorePort, SyncPort, QueuePort, AnkiAdminPort):
     """Every role at once: the type of an adapter and of the shared test fake.
 
     Use a role port in a use-case signature. Use this one only where something
