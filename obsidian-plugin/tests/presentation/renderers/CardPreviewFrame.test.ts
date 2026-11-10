@@ -1,5 +1,5 @@
 import '../../test-setup';
-import { Component } from 'obsidian';
+import { Component, Platform } from 'obsidian';
 import { renderCardPreviewFrame } from '@/presentation/renderers/CardPreviewFrame';
 
 /** The parts of a DOM the frame code touches, as plain objects. */
@@ -250,30 +250,36 @@ describe('renderCardPreviewFrame', () => {
 			render(dom);
 			dom.frameListeners['load']();
 		});
+		afterEach(() => {
+			Platform.isMacOS = false;
+		});
 
-		it('an internal link opens the note, in a new pane with Cmd or Ctrl', () => {
+		it('an internal link opens the note, in a new pane with the platform modifier', () => {
 			const a = anchor({ classes: ['internal-link'], attrs: { 'data-href': 'Other Note' } });
+			const opened = (newLeaf: boolean) =>
+				expect(app.workspace.openLinkText).toHaveBeenLastCalledWith(
+					'Other Note',
+					'Note.md',
+					newLeaf,
+				);
 
 			const e1 = click(dom, a);
 			expect(e1.preventDefault).toHaveBeenCalled();
-			expect(app.workspace.openLinkText).toHaveBeenLastCalledWith(
-				'Other Note',
-				'Note.md',
-				false,
-			);
+			opened(false);
 
+			// macOS: Cmd opens a pane; Ctrl-click is a right click there.
+			Platform.isMacOS = true;
 			click(dom, a, { metaKey: true });
-			expect(app.workspace.openLinkText).toHaveBeenLastCalledWith(
-				'Other Note',
-				'Note.md',
-				true,
-			);
+			opened(true);
 			click(dom, a, { ctrlKey: true });
-			expect(app.workspace.openLinkText).toHaveBeenLastCalledWith(
-				'Other Note',
-				'Note.md',
-				true,
-			);
+			opened(false);
+
+			// Elsewhere: Ctrl opens a pane; the Windows key does not.
+			Platform.isMacOS = false;
+			click(dom, a, { ctrlKey: true });
+			opened(true);
+			click(dom, a, { metaKey: true });
+			opened(false);
 		});
 
 		it('an internal link falls back to href when data-href is missing', () => {

@@ -1,6 +1,6 @@
 import '../../test-setup';
 import { createMockElement } from '../../test-setup';
-import { App, MarkdownRenderer } from 'obsidian';
+import { App, MarkdownRenderer, Platform } from 'obsidian';
 import { DependencySelectionModal } from '@/presentation/modals/DependencySelectionModal';
 
 function file(path: string) {
@@ -84,5 +84,63 @@ describe('DependencySelectionModal search and preview', () => {
 
 		expect(MarkdownRenderer.render).toHaveBeenCalledTimes(1);
 		expect((MarkdownRenderer.render as jest.Mock).mock.calls[0][3]).toBe('math/Topic 0.md');
+	});
+});
+
+describe('DependencySelectionModal key hint', () => {
+	afterEach(() => {
+		Platform.isMacOS = false;
+	});
+
+	/** A modal with its lists mocked; `onOpen` is not run, so no layout is needed. */
+	function setup() {
+		const app: any = new App();
+		app.vault.getMarkdownFiles = jest.fn(() => [file('Algebra.md')]);
+		app.metadataCache.getFileCache = jest.fn(() => ({
+			frontmatter: { cards: [{ id: 'arete_1', Front: 'q' }] },
+		}));
+		const modal: any = new DependencySelectionModal(app, jest.fn());
+		modal.resultsContainer = createMockElement('div', { children: [] });
+		modal.previewContainer = createMockElement('div');
+		modal.searchInput = { setPlaceholder: jest.fn(), setValue: jest.fn() };
+		return modal;
+	}
+
+	const hint = (modal: any): string => {
+		const calls = (modal.searchInput.setPlaceholder as jest.Mock).mock.calls;
+		return calls[calls.length - 1][0];
+	};
+
+	test.each([
+		[true, 'Cmd'],
+		[false, 'Ctrl'],
+	])('on macOS=%s the file hint names %s', (isMacOS, name) => {
+		Platform.isMacOS = isMacOS;
+		const modal = setup();
+		modal.loadFiles();
+		expect(hint(modal)).toBe(
+			`Search files... (Enter to select, ${name}+Enter to browse cards)`,
+		);
+	});
+
+	test('the browse shortcut is registered on Mod, so Cmd on macOS and Ctrl elsewhere', () => {
+		const modal = setup();
+		const files = jest.spyOn(modal, 'loadFiles').mockImplementation(() => {});
+		modal.searchContainer = createMockElement('div');
+		modal.onOpen();
+		files.mockRestore();
+		modal.resultsContainer = createMockElement('div', { children: [] });
+		const registered = (modal.scope.register as jest.Mock).mock.calls;
+		const modEnter = registered.find(([mods, key]) => mods.join() === 'Mod' && key === 'Enter');
+		expect(modEnter).toBeDefined();
+		expect(registered.some(([mods]) => mods.some((m: string) => /ctrl|meta/i.test(m)))).toBe(
+			false,
+		);
+
+		modal.loadFiles();
+		const event = { preventDefault: jest.fn() };
+		modEnter[2](event);
+		expect(event.preventDefault).toHaveBeenCalled();
+		expect(hint(modal)).toBe('Searching cards in Algebra...');
 	});
 });

@@ -233,6 +233,7 @@ jest.mock('obsidian', () => {
 			this.callbacks.splice(0).forEach((cb) => cb());
 		}
 	}
+	const Platform = { isMacOS: false, isMobile: false };
 	return {
 		Component,
 		App: jest.fn().mockImplementation(() => ({
@@ -316,8 +317,20 @@ jest.mock('obsidian', () => {
 		},
 		Setting: jest.fn().mockImplementation(() => (global as any).mockCreateMockSetting()),
 		Notice: jest.fn(),
+		// Tests flip `Platform.isMacOS`; `Keymap.isModEvent` reads it as the real one does.
+		SearchComponent: class {
+			setPlaceholder = jest.fn().mockReturnThis();
+			setValue = jest.fn().mockReturnThis();
+			onChange = jest.fn().mockReturnThis();
+		},
+		Platform,
+		Keymap: {
+			isModEvent: (evt: { metaKey?: boolean; ctrlKey?: boolean }) =>
+				Platform.isMacOS ? !!evt.metaKey : !!evt.ctrlKey,
+		},
 		Modal: class {
 			app: any;
+			scope = { register: jest.fn() };
 			contentEl = (global as any).mockCreateMockElement('div');
 			modalEl = (global as any).mockCreateMockElement('div');
 			constructor(app: any) {

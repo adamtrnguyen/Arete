@@ -7,6 +7,7 @@ import {
 	Notice,
 	SearchComponent,
 	Component,
+	Platform,
 } from 'obsidian';
 import { CardRenderer } from '@/presentation/renderers/CardRenderer';
 
@@ -117,8 +118,10 @@ export class DependencySelectionModal extends Modal {
 	private loadFiles() {
 		this.mode = 'files';
 		this.currentFile = null;
+		// `Mod` in the scope below is Cmd on macOS and Ctrl elsewhere; name it the same way.
+		const modifier = Platform.isMacOS ? 'Cmd' : 'Ctrl';
 		this.searchInput.setPlaceholder(
-			'Search files... (Enter to select, Ctrl+Enter to browse cards)',
+			`Search files... (Enter to select, ${modifier}+Enter to browse cards)`,
 		);
 
 		const files = this.app.vault.getMarkdownFiles();

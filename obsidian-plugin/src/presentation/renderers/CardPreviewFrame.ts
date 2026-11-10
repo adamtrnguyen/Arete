@@ -1,4 +1,4 @@
-import { App, Component } from 'obsidian';
+import { App, Component, Keymap } from 'obsidian';
 
 /** Give model CSS its own document; no selector rewriting or Obsidian theme CSS. */
 export function renderCardPreviewFrame(
@@ -67,11 +67,7 @@ export function renderCardPreviewFrame(
 			if (anchor.classList.contains('internal-link')) {
 				const link = anchor.getAttribute('data-href') || anchor.getAttribute('href');
 				if (link)
-					void app.workspace.openLinkText(
-						link,
-						sourcePath,
-						event.metaKey || event.ctrlKey,
-					);
+					void app.workspace.openLinkText(link, sourcePath, Keymap.isModEvent(event));
 			} else if (anchor.getAttribute('href')?.startsWith('#')) {
 				doc.getElementById(anchor.hash.slice(1))?.scrollIntoView();
 			} else {
