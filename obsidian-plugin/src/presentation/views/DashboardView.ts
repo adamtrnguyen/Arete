@@ -18,7 +18,6 @@ import {
 	metricStates,
 	uniqueCardStats,
 } from '@/domain/stats';
-import type { MetricState } from '@/domain/stats';
 import { flagClass } from '@/presentation/cardStateClass';
 import { CardStatsModal } from '@/presentation/modals/CardStatsModal';
 import { BrokenReference, LinkCheckerService } from '@application/services/LinkCheckerService';
@@ -232,8 +231,8 @@ export class DashboardView extends ItemView {
 		const header = deckContainer.createDiv({ cls: 'arete-deck-header' });
 		// The indent grows with the depth, so it is the one runtime-computed style.
 		header.style.paddingLeft = `${8 + depth * 16}px`;
-		// Highlight if issues
-		if (node.problematicCount > 0) header.addClass('mod-error');
+		// A row takes its state from its cards: tinted when any card of it is in error.
+		if (node.stateCounts.error > 0) header.addClass('mod-error');
 
 		const icon = header.createSpan({ cls: 'arete-deck-icon' });
 		// If leaf, key is filePath, else deckName. Expanded set keys match this logic.
@@ -251,30 +250,17 @@ export class DashboardView extends ItemView {
 
 		const statsContainer = header.createDiv({ cls: 'arete-deck-stats' });
 
-		// A deck row judges its averages and its lapse total with the same cut-offs as a card.
-		const states = metricStates(
-			{
-				lapses: node.lapses,
-				difficulty: node.difficulty,
-				stability: node.stability,
-				retrievability: node.retrievability,
-			},
-			this.plugin.settings,
-		);
-		const stat = (text: string, column: string, state?: MetricState) => {
-			const span = statsContainer.createSpan({
-				text,
-				cls: `arete-deck-stat mod-${column}`,
-			});
-			const flag = state ? flagClass(state) : null;
-			if (flag) span.addClass(flag);
+		// A row shows totals and averages as plain figures. The cut-offs are per card, so a
+		// sum or a mean is never compared with them; the row's state comes from its cards.
+		const stat = (text: string, column: string) => {
+			return statsContainer.createSpan({ text, cls: `arete-deck-stat mod-${column}` });
 		};
 
 		// 0. Card Count
-		stat(`${node.count} cards`, 'count');
+		const countSpan = stat(`${node.count} cards`, 'count');
 		const { success, warning, error, nodata } = node.stateCounts;
 		setTooltip(
-			statsContainer.lastElementChild as HTMLElement,
+			countSpan,
 			`${success} healthy, ${warning} warning, ${error} error, ${nodata} no data`,
 		);
 
@@ -282,25 +268,19 @@ export class DashboardView extends ItemView {
 		stat(
 			node.difficulty != null ? `${difficultyOutOfTen(node.difficulty).toFixed(1)} D` : '-',
 			'difficulty',
-			states.difficulty,
 		);
 
 		// 1b. Stability (Avg)
-		stat(
-			node.stability != null ? `${node.stability.toFixed(1)}d stab` : '-',
-			'stability',
-			states.stability,
-		);
+		stat(node.stability != null ? `${node.stability.toFixed(1)}d stab` : '-', 'stability');
 
 		// 1c. Retrievability (Avg)
 		stat(
 			node.retrievability != null ? `${(node.retrievability * 100).toFixed(0)}% ret` : '-',
 			'retrievability',
-			states.retrievability,
 		);
 
 		// 2. Lapses
-		stat(`${node.lapses} laps`, 'lapses', states.lapses);
+		stat(`${node.lapses} laps`, 'lapses');
 
 		// 3. Score (Issues)
 		if (node.problematicCount > 0) {

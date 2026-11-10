@@ -258,26 +258,43 @@ describe('DashboardView overview', () => {
 		expect(others).toEqual([]);
 	});
 
-	it('flags each deck figure from the shared cut-offs', () => {
+	it('never judges a deck sum or average against the per-card cut-offs', () => {
 		const { el } = renderNode({
-			difficulty: 0.75,
-			stability: 5,
-			retrievability: 0.8,
-			lapses: 3,
+			count: 10,
+			difficulty: 0.95,
+			stability: 1,
+			retrievability: 0.1,
+			lapses: 10, // ten cards with one lapse each
+			stateCounts: { success: 0, warning: 10, error: 0, nodata: 0 },
 		});
-		const flags = Object.fromEntries(
-			byClass(el, 'arete-deck-stat').map((w) => [
-				w.classes.find((c) => c.startsWith('mod-') && !/warning|error/.test(c)),
-				w.classes.filter((c) => c === 'mod-warning' || c === 'mod-error'),
-			]),
+		const flags = byClass(el, 'arete-deck-stat').flatMap((w) =>
+			w.classes.filter((c) => c === 'mod-warning' || c === 'mod-error'),
 		);
-		expect(flags).toEqual({
-			'mod-count': [],
-			'mod-difficulty': ['mod-warning'],
-			'mod-stability': ['mod-warning'],
-			'mod-retrievability': ['mod-warning'],
-			'mod-lapses': ['mod-error'],
+		expect(flags).toEqual([]);
+		const [header] = byClass(el, 'arete-deck-header');
+		expect(header.el.addClass).not.toHaveBeenCalledWith('mod-error');
+		expect(texts(el)).toEqual(expect.arrayContaining(['10 laps']));
+	});
+
+	it('tints a deck row when one of its cards is in error, and not for a sum', () => {
+		const some = renderNode({
+			count: 10,
+			lapses: 3,
+			stateCounts: { success: 8, warning: 1, error: 1, nodata: 0 },
 		});
+		const [header] = byClass(some.el, 'arete-deck-header');
+		expect(header.el.addClass).toHaveBeenCalledWith('mod-error');
+	});
+
+	it('names each state count in the card count tooltip', () => {
+		const { el, rec } = renderNode({
+			count: 10,
+			stateCounts: { success: 4, warning: 3, error: 1, nodata: 2 },
+		});
+		const count = byClass(el, 'arete-deck-stat').find((w) => w.classes.includes('mod-count'))!;
+		expect(rec.tooltips.find((t: any) => t.el === count.el)?.text).toBe(
+			'4 healthy, 3 warning, 1 error, 2 no data',
+		);
 	});
 
 	it('leaves healthy figures unflagged and shows a dash for missing ones', () => {
@@ -294,10 +311,8 @@ describe('DashboardView overview', () => {
 		expect(texts(missing.el)).toEqual(expect.arrayContaining(['-']));
 	});
 
-	it('tints a deck with issues and badges the count with mod-error', () => {
+	it('badges the issue count with mod-error', () => {
 		const { el } = renderNode({ problematicCount: 2 });
-		const [header] = byClass(el, 'arete-deck-header');
-		expect(header.el.addClass).toHaveBeenCalledWith('mod-error');
 		const badge = walk(el).find((w) => w.text === '2 issues')!;
 		expect(cls(badge)).toBe('arete-badge mod-error');
 		expect(badge.el.style).toEqual({});

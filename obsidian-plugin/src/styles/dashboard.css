@@ -194,14 +194,6 @@
 	width: calc(var(--size-4-1) * 15);
 }
 
-.arete-deck-stat.mod-warning {
-	color: var(--text-warning);
-}
-
-.arete-deck-stat.mod-error {
-	color: var(--text-error);
-}
-
 /* Overview: a file's card list */
 .arete-card-list {
 	background: var(--background-primary-alt);
