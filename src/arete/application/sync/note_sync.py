@@ -469,9 +469,9 @@ class NoteSync:
                 "edited, restore it"
             )
             return
-        self._adopt_legacy(card, nid, held)
+        self._adopt_untagged(card, nid, held)
 
-    def _adopt_legacy(self, card: _Card, nid: int, held: HeldNote) -> None:
+    def _adopt_untagged(self, card: _Card, nid: int, held: HeldNote) -> None:
         """A note with no Arete id is the card's only if its first field matches."""
         info = self._type(card.work.note.model)
         key = _first_key(info, card.work.note.fields) if isinstance(info, NoteTypeInfo) else ""
