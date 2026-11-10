@@ -17,6 +17,7 @@ import type {
 } from '@/domain/stats';
 import { cardState } from '@/domain/stats';
 import { DEFAULT_SETTINGS } from '@/domain/settings';
+import { cardStateClass, flagClass } from '@/presentation/cardStateClass';
 import { CardVisualsService } from '@/application/services/CardVisualsService';
 
 // Re-use interfaces from service
@@ -70,20 +71,13 @@ class SkipToBottomMarker extends GutterMarker {
 	}
 }
 
-const CARD_STATE_CLASS: Record<CardState, string | null> = {
-	muted: null,
-	accent: null,
-	success: 'mod-success',
-	warning: 'mod-warning',
-	error: 'mod-error',
-};
-
 /** A difficulty or lapse figure. `ok` shows green only for difficulty, as before. */
 function statSpan(text: string, state: MetricState, okIsSuccess: boolean): HTMLElement {
 	const span = document.createElement('span');
 	span.className = 'arete-gutter-stat';
 	span.textContent = text;
-	if (state === 'warning' || state === 'error') span.classList.add(`mod-${state}`);
+	const flag = flagClass(state);
+	if (flag) span.classList.add(flag);
 	else if (state === 'ok' && okIsSuccess) span.classList.add('mod-success');
 	return span;
 }
@@ -159,7 +153,7 @@ class CardGutterMarker extends GutterMarker {
 		if (this.isStart) marker.classList.add('is-start');
 		if (this.isEnd) marker.classList.add('is-end');
 		if (this.isSynced) marker.classList.add('is-synced');
-		const stateClass = CARD_STATE_CLASS[this.state];
+		const stateClass = cardStateClass(this.state);
 		if (stateClass) marker.classList.add(stateClass);
 
 		// Text and tooltip come from the service; colour comes from the card state.

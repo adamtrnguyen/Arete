@@ -48,3 +48,178 @@
 .arete-leech-table tr:hover {
 	background: var(--background-primary-alt);
 }
+
+/* Card stats modal. Widths are multiples of --size-4-1 (4px). */
+.arete-stats-layout {
+	display: flex;
+	gap: var(--size-4-4);
+	align-items: stretch;
+}
+
+.arete-stats-panel,
+.arete-curve-panel {
+	background: var(--background-secondary);
+	border-radius: var(--radius-m);
+	padding: var(--size-4-4);
+}
+
+.arete-stats-panel {
+	flex: 1;
+	min-width: calc(var(--size-4-1) * 70);
+}
+
+.arete-curve-panel {
+	min-width: calc(var(--size-4-1) * 75);
+}
+
+.arete-modal-section {
+	margin-bottom: var(--size-4-5);
+}
+
+.arete-modal-grid {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: var(--size-4-3) var(--size-4-6);
+}
+
+.arete-modal-label {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+}
+
+.arete-modal-value {
+	font-size: var(--font-ui-medium);
+	font-weight: var(--font-semibold);
+}
+
+.arete-modal-value.mod-warning {
+	color: var(--text-warning);
+}
+
+.arete-modal-value.mod-error {
+	color: var(--text-error);
+}
+
+.arete-modal-dist {
+	display: flex;
+	gap: var(--size-2-3);
+	margin-bottom: var(--size-4-2);
+}
+
+.arete-modal-dist-box {
+	flex: 1;
+	padding: var(--size-2-3);
+	background: var(--background-primary);
+	border-radius: var(--radius-s);
+	text-align: center;
+}
+
+.arete-modal-dist-label {
+	font-size: var(--font-ui-smaller);
+}
+
+.arete-modal-dist-count {
+	font-weight: var(--font-bold);
+}
+
+.arete-alert {
+	background: color-mix(in oklch, var(--color-yellow) 10%, transparent);
+	padding: var(--size-4-3);
+	border-radius: var(--radius-s);
+	margin-top: var(--size-4-4);
+	border: var(--border-width) solid var(--color-yellow);
+}
+
+.arete-alert-title {
+	display: flex;
+	align-items: center;
+	gap: var(--size-2-3);
+	font-weight: var(--font-bold);
+}
+
+.arete-alert-body {
+	font-size: var(--font-ui-smaller);
+}
+
+.arete-curve-placeholder {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: var(--size-4-2);
+	height: calc(var(--size-4-1) * 37.5);
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+}
+
+.arete-curve-placeholder-title {
+	font-weight: var(--font-bold);
+}
+
+.arete-forgetting-curve {
+	height: 100%;
+	display: flex;
+	flex-direction: column;
+}
+
+.arete-curve-svg {
+	display: block;
+	margin: 0 auto;
+}
+
+.arete-curve-bg {
+	fill: var(--background-secondary);
+}
+
+.arete-curve-target {
+	stroke: var(--color-green);
+	stroke-dasharray: 4 4;
+	stroke-width: 1;
+}
+
+.arete-curve-optimal {
+	stroke: var(--color-blue);
+	stroke-dasharray: 2 2;
+	stroke-width: 1;
+}
+
+.arete-curve-line {
+	fill: none;
+	stroke: var(--color-orange);
+	stroke-width: 2;
+}
+
+.arete-curve-point {
+	stroke: var(--text-on-accent);
+	stroke-width: 2;
+}
+
+.arete-curve-point.mod-success {
+	fill: var(--color-green);
+}
+
+.arete-curve-point.mod-error {
+	fill: var(--color-red);
+}
+
+.arete-curve-label {
+	font-size: calc(var(--font-ui-smaller) * 0.75);
+	fill: var(--text-muted);
+}
+
+.arete-curve-legend {
+	display: flex;
+	justify-content: center;
+	gap: var(--size-4-4);
+	margin-top: var(--size-2-2);
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+}
+
+.arete-curve-legend-optimal {
+	color: var(--color-blue);
+}
+
+.arete-curve-legend-target {
+	color: var(--text-success);
+}
