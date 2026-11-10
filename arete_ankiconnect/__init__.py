@@ -533,14 +533,14 @@ class AnkiConnect:
     @util.api()
     def getNumCardsReviewedToday(self):
         return self.database().scalar(
-            "select count() from revlog where id > ?", (self.scheduler().dayCutoff - 86400) * 1000
+            "select count() from revlog where id > ?", (self.scheduler().day_cutoff - 86400) * 1000
         )
 
     @util.api()
     def getNumCardsReviewedByDay(self):
         return self.database().all(
             'select date(id/1000 - ?, "unixepoch", "localtime") as day, count() from revlog group by day order by day desc',
-            int(time.strftime("%H", time.localtime(self.scheduler().dayCutoff))) * 3600,
+            int(time.strftime("%H", time.localtime(self.scheduler().day_cutoff))) * 3600,
         )
 
     @util.api()
@@ -1176,9 +1176,9 @@ class AnkiConnect:
         scheduler = self.scheduler()
         self.startEditing()
         if suspend:
-            scheduler.suspendCards(cards)
+            scheduler.suspend_cards(cards)
         else:
-            scheduler.unsuspendCards(cards)
+            scheduler.unsuspend_cards(cards)
         self.stopEditing()
 
         return True
@@ -1747,7 +1747,9 @@ class AnkiConnect:
 
     @util.api()
     def reloadCollection(self):
-        self.collection().reset()
+        # Anki resets its queues after every operation, so there is nothing left to reload;
+        # the call still fails when no collection is open.
+        self.collection()
 
     @util.api()
     def getLatestReviewID(self, deck):
