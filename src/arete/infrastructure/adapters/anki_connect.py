@@ -43,7 +43,6 @@ _RESEND_SAFE: dict[str, bool] = {
     "findNotes": True,
     "findCards": True,
     "notesInfo": True,
-    "cardsInfo": True,
     "modelTemplates": True,
     "modelStyling": True,
     "getModelInfo": True,

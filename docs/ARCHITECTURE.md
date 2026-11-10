@@ -49,7 +49,6 @@ src/arete/
 │   ├── config.py                  AppConfig, resolve_config
 │   ├── report_service.py          Service for reading and managing card issue reports
 │   ├── validation.py              Vault file validation: check YAML frontmatter for arete compatibility
-│   ├── vault_paths.py             Keep caller-supplied paths inside the configured vault
 │   ├── wizard.py                  run_init_wizard
 │
 ├── infrastructure/            One technology each: AnkiConnect over HTTP, the Anki library, SQLite.
@@ -86,8 +85,8 @@ src/arete/
 |---|---|---|---|
 | `interface` | 4 | 975 | application, composition |
 | `composition` | 2 | 183 | application, infrastructure, domain |
-| `application` | 24 | 5462 | domain (ports only) |
-| `infrastructure` | 9 | 2113 | domain |
+| `application` | 23 | 5414 | domain (ports only) |
+| `infrastructure` | 9 | 2112 | domain |
 | `domain` | 9 | 869 | nothing in arete |
 
 The import rules in the last column are enforced by `just check-architecture`
