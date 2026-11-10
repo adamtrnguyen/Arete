@@ -163,7 +163,7 @@ The logic holds no state of its own. The state lives in Obsidian (text) and Anki
 *   **Solution**: it uses `curl.exe` (a Windows binary reachable from Linux) as a bridge to Anki on the host. Without `curl.exe` it rewrites the URL with the host address from `/etc/resolv.conf`.
 
 ### 4. Caching
-`infrastructure/persistence/cache.py` keeps a SQLite database of file stats and card hashes. Unchanged files skip parsing and rendering, so a run over an unchanged vault is fast. Every card is still compared with Anki.
+`infrastructure/persistence/cache.py` keeps a SQLite database of file stats, card hashes and cached renders. Unchanged files skip parsing and rendering, so a run over an unchanged vault is fast. Every card is still compared with Anki.
 
 ## Development stack
 
