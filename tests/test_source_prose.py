@@ -17,7 +17,8 @@ import pathlib
 import re
 import tokenize
 
-SRC = pathlib.Path(__file__).resolve().parents[1] / "src"
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+SRC = (ROOT / "src", ROOT / "scripts")
 EXEMPT = "prose: ok"
 DATE = re.compile(r"\b(19|20)\d\d-\d\d(-\d\d)?\b")
 # Pictographs and warning marks; a symbol the code is QUOTING (a star in a title) is not emphasis.
@@ -62,10 +63,10 @@ def _prose_lines(source: str) -> list[tuple[int, str]]:
 
 def _offenders(pattern: re.Pattern[str]) -> list[str]:
     found: list[str] = []
-    for path in sorted(SRC.rglob("*.py")):
+    for path in sorted(p for root in SRC for p in root.rglob("*.py")):
         prose = _prose_lines(path.read_text(encoding="utf-8"))
         found.extend(
-            f"{path.relative_to(SRC.parent)}:{n}"
+            f"{path.relative_to(ROOT)}:{n}"
             for n, text in prose
             if pattern.search(text) and EXEMPT not in text
         )
