@@ -1,6 +1,9 @@
 import '../../test-setup';
 import { App, MarkdownView, Notice, TFile } from 'obsidian';
 import { DashboardView } from '@/presentation/views/DashboardView';
+import { DEFAULT_SETTINGS } from '@/domain/settings';
+import { installNativeObsidian } from '../../mocks/nativeObsidian';
+import type { NativeRecord } from '../../mocks/nativeObsidian';
 
 /** An element that remembers what was created inside it, with the properties views set. */
 interface El {
@@ -27,6 +30,7 @@ function el(tag: string, opts: any = {}): El {
 		empty() {
 			n.children.length = 0;
 		},
+		addClass: jest.fn(),
 		createDiv(o?: any) {
 			const c = el('div', o);
 			n.children.push(c);
@@ -55,8 +59,6 @@ const all = (root: El, pred: (n: El) => boolean): El[] => {
 	walk(root);
 	return out;
 };
-const button = (root: El, text: string) =>
-	all(root, (n) => n.tag === 'button' && n.textContent === text)[0];
 const notices = () => (Notice as unknown as jest.Mock).mock.calls.map((c) => c[0]);
 const flush = () => new Promise((r) => setImmediate(r));
 
@@ -64,12 +66,14 @@ describe('DashboardView actions', () => {
 	let app: any;
 	let plugin: any;
 	let view: any;
+	let rec: NativeRecord;
 
 	beforeEach(() => {
 		jest.clearAllMocks();
+		rec = installNativeObsidian();
 		app = new App();
 		plugin = {
-			settings: { ui_expanded_decks: [], ui_expanded_concepts: [] },
+			settings: { ...DEFAULT_SETTINGS, ui_expanded_decks: [], ui_expanded_concepts: [] },
 			statsService: { getCache: jest.fn(() => ({ concepts: {}, lastFetched: 0 })) },
 			leechService: { getLeeches: jest.fn((): any[] => []), suspendCard: jest.fn() },
 			areteClient: {
@@ -107,7 +111,7 @@ describe('DashboardView actions', () => {
 			expect(all(root, (n) => n.tag === 'table')).toHaveLength(0);
 		});
 
-		it('lists each leech with tags stripped, the right metric, and a red mark over 10 lapses', async () => {
+		it('lists each leech with tags stripped, the right metric, and lapses flagged by the shared cut-offs', async () => {
 			plugin.leechService.getLeeches.mockReturnValue([
 				leech({ ease: 2100, lapses: 11 }),
 				leech({ cardId: 12, ease: 0, difficulty: 0.73, lapses: 10 }),
@@ -121,13 +125,13 @@ describe('DashboardView actions', () => {
 			const cells = rows.map((r) =>
 				r.children.map((c) => c.children[0]?.textContent ?? c.textContent),
 			);
-			expect(cells[0].slice(0, 3)).toEqual(['Front text', '210% Ease', '11']);
-			expect(cells[1].slice(1, 3)).toEqual(['7.3 Diff', '10']);
+			expect(cells[0].slice(0, 3)).toEqual(['Front text', '210% ease', '11']);
+			expect(cells[1].slice(1, 3)).toEqual(['7.3 diff', '10']);
 			expect(cells[2].slice(1, 3)).toEqual(['-', '2']);
-			expect(rows[0].children[2].style.color).toBe('var(--color-red)');
-			expect(rows[1].children[2].style.color).toBeUndefined();
+			const flag = (i: number) => rows[i].children[2].addClass.mock.calls[0]?.[0];
+			expect([flag(0), flag(1), flag(2)]).toEqual(['mod-error', 'mod-error', 'mod-warning']);
 			// the full front stays available on hover
-			expect(rows[0].children[0].children[0].title).toBe('<b>Front</b> text');
+			expect(rec.tooltips.map((t) => t.text)).toContain('<b>Front</b> text');
 		});
 
 		it('Suspend marks the row done when Anki accepts it', async () => {
@@ -135,14 +139,13 @@ describe('DashboardView actions', () => {
 			plugin.leechService.suspendCard.mockResolvedValue(true);
 			const root = el('div');
 			await view.renderLeeches(root);
-			const btn = button(root, 'Suspend');
 
-			await btn.onclick!();
+			await rec.buttons[0].onClick!();
 
 			expect(plugin.leechService.suspendCard).toHaveBeenCalledWith(11);
 			expect(notices()).toEqual(['Card suspended.']);
-			expect(btn.textContent).toBe('Suspended');
-			expect(btn.disabled).toBe(true);
+			expect(rec.buttons[0].text).toBe('Suspended');
+			expect(rec.buttons[0].disabled).toBe(true);
 		});
 
 		it('Suspend restores the button and says so when Anki refuses', async () => {
@@ -150,13 +153,12 @@ describe('DashboardView actions', () => {
 			plugin.leechService.suspendCard.mockResolvedValue(false);
 			const root = el('div');
 			await view.renderLeeches(root);
-			const btn = button(root, 'Suspend');
 
-			await btn.onclick!();
+			await rec.buttons[0].onClick!();
 
 			expect(notices()).toEqual(['Failed to suspend card.']);
-			expect(btn.textContent).toBe('Suspend');
-			expect(btn.disabled).toBeUndefined();
+			expect(rec.buttons[0].text).toBe('Suspend');
+			expect(rec.buttons[0].disabled).toBe(false);
 		});
 
 		it('clicking a front opens its note at the card', async () => {
@@ -190,14 +192,16 @@ describe('DashboardView actions', () => {
 				select: all(root, (n) => n.tag === 'select')[0],
 				depth: inputs[0],
 				max: inputs[1],
-				btn: button(root, 'Build Queue'),
+				get btn() {
+					return rec.buttons[0];
+				},
 			};
 		};
 
-		it('offers All Decks first, then every deck Anki has', async () => {
+		it('offers All decks first, then every deck Anki has', async () => {
 			const root = el('div');
 			const { select } = await build(root);
-			expect(select.children.map((o) => o.opts.text)).toEqual(['All Decks', 'Math', 'Bio']);
+			expect(select.children.map((o) => o.opts.text)).toEqual(['All decks', 'Math', 'Bio']);
 		});
 
 		it('starts with depth 2 and 50 cards', async () => {
@@ -214,7 +218,7 @@ describe('DashboardView actions', () => {
 			ui.depth.value = '3';
 			ui.max.value = '25';
 
-			await ui.btn.onclick!();
+			await ui.btn.onClick!();
 
 			expect(plugin.areteClient.buildStudyQueue).toHaveBeenCalledWith('Math', 3, 25);
 			const results = all(root, (n) => n.opts?.cls === 'arete-queue-results')[0];
@@ -225,9 +229,9 @@ describe('DashboardView actions', () => {
 					(n) => n.textContent,
 				),
 			).toEqual(['Prereq', 'Due A', 'Due B']);
-			expect(all(results, (n) => n.textContent === 'PREREQ')).toHaveLength(1);
+			expect(all(results, (n) => n.textContent === 'Prerequisite')).toHaveLength(1);
 			expect(notices()).toEqual(['Queue built: 3 cards']);
-			expect(ui.btn.textContent).toBe('Build Queue');
+			expect(ui.btn.text).toBe('Build queue');
 			expect(ui.btn.disabled).toBe(false);
 		});
 
@@ -237,7 +241,7 @@ describe('DashboardView actions', () => {
 			ui.depth.value = 'abc';
 			ui.max.value = '';
 
-			await ui.btn.onclick!();
+			await ui.btn.onClick!();
 
 			expect(plugin.areteClient.buildStudyQueue).toHaveBeenCalledWith(null, 2, 50);
 		});
@@ -247,13 +251,13 @@ describe('DashboardView actions', () => {
 			plugin.areteClient.buildStudyQueue.mockReturnValue(new Promise((r) => (finish = r)));
 			const ui = await build(el('div'));
 
-			const pending = ui.btn.onclick!();
-			expect(ui.btn.textContent).toBe('Building...');
+			const pending = ui.btn.onClick!();
+			expect(ui.btn.text).toBe('Building...');
 			expect(ui.btn.disabled).toBe(true);
 
 			finish(result);
 			await pending;
-			expect(ui.btn.textContent).toBe('Build Queue');
+			expect(ui.btn.text).toBe('Build queue');
 		});
 
 		it('Send to Anki passes the queue ids in order and reports the outcome', async () => {
@@ -263,14 +267,15 @@ describe('DashboardView actions', () => {
 				.mockResolvedValueOnce(false);
 			const root = el('div');
 			const ui = await build(root);
-			await ui.btn.onclick!();
-			const send = button(root, 'Send to Anki');
+			await ui.btn.onClick!();
+			const send = rec.buttons[1];
+			expect(send.text).toBe('Send to Anki');
 
-			await send.onclick!();
-			await send.onclick!();
+			await send.onClick!();
+			await send.onClick!();
 
 			expect(plugin.areteClient.createQueueDeck).toHaveBeenCalledWith(['p', 'a', 'b']);
-			expect(notices().slice(-2)).toEqual(['Queue sent to Anki!', 'Failed to create deck.']);
+			expect(notices().slice(-2)).toEqual(['Queue sent to Anki.', 'Failed to create deck.']);
 		});
 
 		it('a failed build says so, logs, and frees the button', async () => {
@@ -278,11 +283,14 @@ describe('DashboardView actions', () => {
 			plugin.areteClient.buildStudyQueue.mockRejectedValue(new Error('server down'));
 			const ui = await build(el('div'));
 
-			await ui.btn.onclick!();
+			await ui.btn.onClick!();
 
 			expect(notices()).toEqual(['Failed to build queue.']);
 			expect(ui.btn.disabled).toBe(false);
-			expect(log).toHaveBeenCalled();
+			expect(log).toHaveBeenCalledWith(
+				'[Arete] Failed to build the queue:',
+				expect.any(Error),
+			);
 			log.mockRestore();
 		});
 
@@ -291,7 +299,7 @@ describe('DashboardView actions', () => {
 			view.openFile = jest.fn();
 			const root = el('div');
 			const ui = await build(root);
-			await ui.btn.onclick!();
+			await ui.btn.onClick!();
 
 			all(root, (n) => n.textContent === 'Due B')[0].onclick!();
 

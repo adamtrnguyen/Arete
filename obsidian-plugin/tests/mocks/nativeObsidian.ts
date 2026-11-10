@@ -1,9 +1,3 @@
-/**
- * Obsidian components the shared `obsidian` mock (tests/test-setup.ts) lacks, installed on
- * that mock by `installNativeObsidian()` and recorded for assertions.
- */
-import { createMockElement } from '../test-setup';
-
 export interface RecordedButton {
 	container: any;
 	buttonEl: any;
@@ -30,118 +24,67 @@ export interface RecordedSetting {
 }
 
 export interface NativeRecord {
-	buttons: RecordedButton[];
-	extraButtons: RecordedExtraButton[];
-	settings: RecordedSetting[];
-	tooltips: { el: any; text: string }[];
-	icons: { el: any; icon: string }[];
-	titles: { modal: any; title: string }[];
+	readonly buttons: RecordedButton[];
+	readonly extraButtons: RecordedExtraButton[];
+	readonly settings: RecordedSetting[];
+	readonly tooltips: { el: any; text: string }[];
+	readonly icons: { el: any; icon: string }[];
 }
 
+const last = (fn: any): any[] | undefined => fn.mock.calls[fn.mock.calls.length - 1];
+
+/**
+ * Resets the shared `obsidian` mock (tests/test-setup.ts) and returns a live view of what
+ * the code under test built through it: buttons, extra buttons, Setting rows, tooltips
+ * and icons.
+ */
 export function installNativeObsidian(): NativeRecord {
-	const obsidian = jest.requireMock('obsidian');
-	const rec: NativeRecord = {
-		buttons: [],
-		extraButtons: [],
-		settings: [],
-		tooltips: [],
-		icons: [],
-		titles: [],
+	const o = jest.requireMock('obsidian');
+	o.ButtonComponent.instances.length = 0;
+	o.ExtraButtonComponent.instances.length = 0;
+	o.setTooltip.mockClear();
+	o.setIcon.mockClear();
+	o.Setting.mockClear();
+
+	return {
+		get buttons() {
+			return o.ButtonComponent.instances.map((b: any) => ({
+				container: b.containerEl,
+				buttonEl: b.buttonEl,
+				text: last(b.setButtonText)?.[0],
+				cta: b.setCta.mock.calls.length > 0,
+				warning: b.setWarning.mock.calls.length > 0,
+				disabled: last(b.setDisabled)?.[0] ?? false,
+				tooltip: last(b.setTooltip)?.[0],
+				onClick: b.clickHandler,
+			}));
+		},
+		get extraButtons() {
+			return o.ExtraButtonComponent.instances.map((b: any) => ({
+				container: b.containerEl,
+				extraSettingsEl: b.extraSettingsEl,
+				icon: b.icon,
+				tooltip: b.tooltip,
+				onClick: b.clickHandler,
+			}));
+		},
+		get settings() {
+			return o.Setting.mock.calls.map((call: any[], i: number) => {
+				const s = o.Setting.mock.results[i].value;
+				return {
+					container: call[0],
+					name: last(s.setName)?.[0],
+					heading: s.setHeading.mock.calls.length > 0,
+				};
+			});
+		},
+		get tooltips() {
+			return o.setTooltip.mock.calls.map(([el, text]: any[]) => ({ el, text }));
+		},
+		get icons() {
+			return o.setIcon.mock.calls.map(([el, icon]: any[]) => ({ el, icon }));
+		},
 	};
-
-	obsidian.ButtonComponent = class {
-		private r: RecordedButton;
-		buttonEl: any;
-		constructor(container: any) {
-			this.buttonEl = createMockElement('button');
-			this.r = {
-				container,
-				buttonEl: this.buttonEl,
-				cta: false,
-				warning: false,
-				disabled: false,
-			};
-			rec.buttons.push(this.r);
-		}
-		setButtonText(text: string) {
-			this.r.text = text;
-			return this;
-		}
-		setCta() {
-			this.r.cta = true;
-			return this;
-		}
-		setWarning() {
-			this.r.warning = true;
-			return this;
-		}
-		setDisabled(disabled: boolean) {
-			this.r.disabled = disabled;
-			return this;
-		}
-		setTooltip(text: string) {
-			this.r.tooltip = text;
-			return this;
-		}
-		onClick(cb: (evt?: unknown) => unknown) {
-			this.r.onClick = cb;
-			return this;
-		}
-	};
-
-	obsidian.ExtraButtonComponent = class {
-		private r: RecordedExtraButton;
-		extraSettingsEl: any;
-		constructor(container: any) {
-			this.extraSettingsEl = createMockElement('div');
-			this.r = { container, extraSettingsEl: this.extraSettingsEl };
-			rec.extraButtons.push(this.r);
-		}
-		setIcon(icon: string) {
-			this.r.icon = icon;
-			return this;
-		}
-		setTooltip(text: string) {
-			this.r.tooltip = text;
-			return this;
-		}
-		setDisabled() {
-			return this;
-		}
-		onClick(cb: () => unknown) {
-			this.r.onClick = cb;
-			return this;
-		}
-	};
-
-	obsidian.Setting.mockImplementation((container: any) => {
-		const r: RecordedSetting = { container, heading: false };
-		rec.settings.push(r);
-		const setting: any = {
-			setName: (name: string) => {
-				r.name = name;
-				return setting;
-			},
-			setHeading: () => {
-				r.heading = true;
-				return setting;
-			},
-		};
-		return setting;
-	});
-
-	obsidian.setTooltip = jest.fn((el: any, text: string) => {
-		rec.tooltips.push({ el, text });
-	});
-	obsidian.setIcon = jest.fn((el: any, icon: string) => {
-		rec.icons.push({ el, icon });
-	});
-	obsidian.Modal.prototype.setTitle = function (this: any, title: string) {
-		rec.titles.push({ modal: this, title });
-		return this;
-	};
-
-	return rec;
 }
 
 export interface Walked {

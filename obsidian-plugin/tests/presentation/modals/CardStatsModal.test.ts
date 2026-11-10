@@ -2,6 +2,9 @@ import '../../test-setup';
 import { createMockElement } from '../../test-setup';
 import { App } from 'obsidian';
 import { CardStatsModal } from '@/presentation/modals/CardStatsModal';
+import { DEFAULT_SETTINGS } from '@/domain/settings';
+import { installNativeObsidian } from '../../mocks/nativeObsidian';
+import type { NativeRecord } from '../../mocks/nativeObsidian';
 
 interface Node {
 	tag: string;
@@ -67,9 +70,9 @@ const walk = (n: Node, fn: (n: Node) => void) => {
 	n.children.forEach((c) => walk(c, fn));
 };
 
-/** label -> {value, color} for every two-line stat cell. */
+/** label -> {value, flag} for every two-line stat cell; flag is the mod-* class on the value. */
 function statCells(root: Node) {
-	const cells: Record<string, { value: string; color?: string }> = {};
+	const cells: Record<string, { value: string; flag?: string }> = {};
 	walk(root, (n) => {
 		if (
 			n.children.length === 2 &&
@@ -77,7 +80,9 @@ function statCells(root: Node) {
 		) {
 			cells[n.children[0].opts.text] = {
 				value: n.children[1].opts.text,
-				color: n.children[1].style.color,
+				flag: n.children[1].addClass.mock.calls
+					.flat()
+					.find((c: string) => c === 'mod-warning' || c === 'mod-error'),
 			};
 		}
 	});
@@ -94,9 +99,11 @@ const texts = (root: Node) => {
 
 describe('CardStatsModal', () => {
 	let svgs: any[];
+	let rec: NativeRecord;
 
 	beforeEach(() => {
 		jest.clearAllMocks();
+		rec = installNativeObsidian();
 		svgs = [];
 		(document as any).createElementNS = jest.fn((_ns: string, tag: string) => {
 			const el = svgNode(tag);
@@ -105,8 +112,8 @@ describe('CardStatsModal', () => {
 		});
 	});
 
-	function open(card: any) {
-		const modal: any = new CardStatsModal(new App(), card);
+	function open(card: any, settings = DEFAULT_SETTINGS) {
+		const modal: any = new CardStatsModal(new App(), card, settings);
 		modal.contentEl = node('div');
 		modal.modalEl = createMockElement('div');
 		modal.close = jest.fn();
@@ -123,34 +130,34 @@ describe('CardStatsModal', () => {
 		pressFatigue: 0.1,
 		scheduleAdherence: 0.973,
 		daysOverdue: 2,
-		lapses: 1,
+		lapses: 0,
 		lapseRate: 0.0833,
 		reps: 12,
 		averageTime: 4200,
 	};
 
-	it('formats every figure of a healthy card, with no warning colours', () => {
+	it('formats every figure of a healthy card, with no warning flags', () => {
 		const modal = open(fullCard);
 		const cells = statCells(modal.contentEl);
 
 		expect(cells['Difficulty (1-10)'].value).toBe('5.5');
 		expect(cells['Stability'].value).toBe('12.3 days');
 		expect(cells['Retrievability'].value).toBe('90.0%');
-		expect(cells['Interval Growth'].value).toBe('2.50x');
-		expect(cells['Press Fatigue (Hard%)'].value).toBe('10%');
-		expect(cells['Schedule Adherence'].value).toBe('97.3%');
-		expect(cells['Days Overdue'].value).toBe('2d');
-		expect(cells['Total Lapses'].value).toBe('1');
-		expect(cells['Lapse Rate'].value).toBe('8.3%');
-		expect(cells['Total Reps'].value).toBe('12');
-		expect(cells['Avg Time'].value).toBe('4.2s');
+		expect(cells['Interval growth'].value).toBe('2.50x');
+		expect(cells['Press fatigue (hard %)'].value).toBe('10%');
+		expect(cells['Schedule adherence'].value).toBe('97.3%');
+		expect(cells['Days overdue'].value).toBe('2d');
+		expect(cells['Total lapses'].value).toBe('0');
+		expect(cells['Lapse rate'].value).toBe('8.3%');
+		expect(cells['Total reps'].value).toBe('12');
+		expect(cells['Average time'].value).toBe('4.2s');
 		for (const [label, cell] of Object.entries(cells)) {
 			if (label.startsWith('Optimal')) continue;
-			expect(cell.color).toBeUndefined();
+			expect(cell.flag).toBeUndefined();
 		}
 	});
 
-	it('colours the figures that cross a warning threshold', () => {
+	it('flags the figures that cross a warning threshold', () => {
 		const modal = open({
 			...fullCard,
 			difficulty: 0.8,
@@ -163,32 +170,32 @@ describe('CardStatsModal', () => {
 		});
 		const cells = statCells(modal.contentEl);
 
-		expect(cells['Difficulty (1-10)'].color).toBe('var(--color-orange)');
-		expect(cells['Stability'].color).toBe('var(--color-orange)');
-		expect(cells['Retrievability'].color).toBe('var(--color-red)');
-		expect(cells['Interval Growth'].color).toBe('var(--color-orange)');
-		expect(cells['Press Fatigue (Hard%)'].color).toBe('var(--color-red)');
-		expect(cells['Days Overdue'].color).toBe('var(--color-red)');
-		expect(cells['Total Lapses'].color).toBe('var(--color-red)');
+		expect(cells['Difficulty (1-10)'].flag).toBe('mod-warning'); // 0.7 <= 0.8 < 0.9
+		expect(cells['Stability'].flag).toBe('mod-warning');
+		expect(cells['Retrievability'].flag).toBe('mod-error');
+		expect(cells['Interval growth'].flag).toBe('mod-warning');
+		expect(cells['Press fatigue (hard %)'].flag).toBe('mod-error');
+		expect(cells['Days overdue'].flag).toBe('mod-error');
+		expect(cells['Total lapses'].flag).toBe('mod-error'); // 6 >= 3
 	});
 
-	it('the thresholds are exclusive: values exactly at the limit are not flagged', () => {
+	it('values just inside every cut-off are not flagged', () => {
 		const modal = open({
 			...fullCard,
-			difficulty: 0.7,
+			difficulty: 0.69,
 			stability: 7,
 			retrievability: 0.85,
 			intervalGrowth: 1.2,
 			pressFatigue: 0.3,
 			daysOverdue: 7,
-			lapses: 5,
+			lapses: 0,
 		});
 		const cells = statCells(modal.contentEl);
-		expect(Object.keys(cells)).toContain('Days Overdue');
+		expect(Object.keys(cells)).toContain('Days overdue');
 		for (const [label, cell] of Object.entries(cells)) {
 			// the curve legend (Optimal / Target) is coloured by design
 			if (label.startsWith('Optimal')) continue;
-			expect(cell.color).toBeUndefined();
+			expect(cell.flag).toBeUndefined();
 		}
 	});
 
@@ -199,14 +206,14 @@ describe('CardStatsModal', () => {
 		expect(cells['Difficulty (1-10)'].value).toBe('-');
 		expect(cells['Stability'].value).toBe('-');
 		expect(cells['Retrievability'].value).toBe('-');
-		expect(cells['Interval Growth'].value).toBe('N/A');
-		expect(cells['Press Fatigue (Hard%)'].value).toBe('N/A');
-		expect(cells['Schedule Adherence'].value).toBe('N/A');
-		expect(cells['Days Overdue'].value).toBe('-');
-		expect(cells['Total Lapses'].value).toBe('0');
-		expect(cells['Lapse Rate'].value).toBe('-');
-		expect(cells['Total Reps'].value).toBe('0');
-		expect(cells['Avg Time'].value).toBe('-');
+		expect(cells['Interval growth'].value).toBe('N/A');
+		expect(cells['Press fatigue (hard %)'].value).toBe('N/A');
+		expect(cells['Schedule adherence'].value).toBe('N/A');
+		expect(cells['Days overdue'].value).toBe('-');
+		expect(cells['Total lapses'].value).toBe('0');
+		expect(cells['Lapse rate'].value).toBe('-');
+		expect(cells['Total reps'].value).toBe('0');
+		expect(cells['Average time'].value).toBe('-');
 	});
 
 	describe('forgetting curve', () => {
@@ -256,13 +263,13 @@ describe('CardStatsModal', () => {
 			expect(texts(modal.contentEl)).toContain('Target: 90%');
 			const dot = svgs[0].children.find((c: any) => c.tag === 'circle');
 			expect(dot.attrs.cx).toBe('45');
-			expect(dot.attrs.fill).toBe('var(--color-green)');
+			expect(dot.attrs.class).toBe('arete-curve-point mod-success');
 		});
 
 		it('colours the current point red when retrievability is under target', () => {
 			open({ ...fullCard, stability: 10, retrievability: 0.5, desiredRetention: 0.9 });
 			const dot = svgs[0].children.find((c: any) => c.tag === 'circle');
-			expect(dot.attrs.fill).toBe('var(--color-red)');
+			expect(dot.attrs.class).toBe('arete-curve-point mod-error');
 			// elapsed = 9 * 10 * (1 / 0.5 - 1) = 90 days, clamped to the right edge (axis is 30 days)
 			expect(Number(dot.attrs.cx)).toBe(295);
 		});
@@ -286,26 +293,77 @@ describe('CardStatsModal', () => {
 		});
 
 		it('omits the distribution when the card has none', () => {
-			expect(texts(open(fullCard).contentEl)).not.toContain('Rating Distribution');
+			open(fullCard);
+			expect(rec.settings.map((x) => x.name)).not.toContain('Rating distribution');
 		});
 
 		it('warns about overlearning only when flagged', () => {
-			expect(texts(open(fullCard).contentEl)).not.toContain(' Overlearning Detected');
+			expect(texts(open(fullCard).contentEl)).not.toContain('Overlearning detected');
 			expect(texts(open({ ...fullCard, isOverlearning: true }).contentEl)).toContain(
-				' Overlearning Detected',
+				'Overlearning detected',
 			);
 		});
 	});
 
 	it('the Close button closes the modal', () => {
 		const modal = open(fullCard);
-		let button: any;
-		walk(modal.contentEl, (n) => {
-			if (n.tag === 'button') button = n;
-		});
-		expect(button.opts.text).toBe('Close');
-		button.onclick();
+		expect(rec.buttons).toHaveLength(1);
+		expect(rec.buttons[0].text).toBe('Close');
+		rec.buttons[0].onClick!();
 		expect(modal.close).toHaveBeenCalled();
+	});
+
+	describe('native look', () => {
+		it('sets its title through setTitle, in sentence case, and builds no heading element', () => {
+			const modal = open(fullCard);
+			expect(modal.setTitle).toHaveBeenCalledWith('Card memory insights');
+			const tags: string[] = [];
+			walk(modal.contentEl, (n) => tags.push(n.tag));
+			expect(tags.filter((t) => /^h[1-6]$/.test(t))).toEqual([]);
+		});
+
+		it('draws section headings as Setting headings in sentence case', () => {
+			open({ ...fullCard, answerDistribution: { 1: 1 } });
+			expect(rec.settings.filter((x) => x.heading).map((x) => x.name)).toEqual([
+				'Memory state',
+				'Forgetting curve',
+				'Learning dynamics',
+				'Review history',
+				'Rating distribution',
+			]);
+		});
+
+		it('sets no inline style on any element and no emoji in text', () => {
+			const modal = open({ ...fullCard, isOverlearning: true, answerDistribution: { 1: 1 } });
+			const styled: Node[] = [];
+			walk(modal.contentEl, (n) => {
+				if (Object.keys(n.style).length) styled.push(n);
+			});
+			expect(styled).toEqual([]);
+			expect(texts(modal.contentEl).join('\n')).not.toMatch(/\p{Extended_Pictographic}/u);
+		});
+
+		it('shows the overlearning flag with a zap icon', () => {
+			open({ ...fullCard, isOverlearning: true });
+			expect(rec.icons.map((i) => i.icon)).toContain('zap');
+		});
+
+		it('colours the curve with classes, not attributes or styles', () => {
+			open({ ...fullCard, stability: 10 });
+			for (const el of svgs[0].children) {
+				expect(el.attrs).not.toHaveProperty('stroke');
+				expect(el.attrs).not.toHaveProperty('fill');
+				expect(el.style).toEqual({});
+			}
+		});
+
+		it('follows the lapse threshold setting', () => {
+			const lapses = (settings = DEFAULT_SETTINGS) =>
+				statCells(open({ ...fullCard, lapses: 3 }, settings).contentEl)['Total lapses']
+					.flag;
+			expect(lapses()).toBe('mod-error');
+			expect(lapses({ ...DEFAULT_SETTINGS, stats_lapse_threshold: 4 })).toBe('mod-warning');
+		});
 	});
 
 	it('closing empties the content', () => {
