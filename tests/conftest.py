@@ -114,16 +114,6 @@ def configured_vault(monkeypatch, tmp_path):
     return vault.resolve()
 
 
-@pytest.fixture(scope="session", autouse=True)
-def _real_config_untouched():
-    """Fail the session if any test changed a file under the real ~/.config/arete."""
-    before = _snapshot(_REAL_ARETE_CONFIG)
-    yield
-    after = _snapshot(_REAL_ARETE_CONFIG)
-    changed = sorted(k for k in before.keys() | after.keys() if before.get(k) != after.get(k))
-    assert not changed, f"tests touched the real {_REAL_ARETE_CONFIG}: {changed[:10]}"
-
-
 def _collection_fingerprint(base: Path) -> dict[str, tuple[int, int]]:
     """Size and mtime of every collection.anki2 under an Anki base folder.
 
@@ -138,23 +128,50 @@ def _collection_fingerprint(base: Path) -> dict[str, tuple[int, int]]:
     }
 
 
-@pytest.fixture(scope="session", autouse=True)
-def _real_collection_untouched():
-    """Fail the session if any test wrote to a real Anki collection.
+# --- Session guards: the real config and the real Anki collection stay untouched ---
+# These run as session hooks, not fixtures. Under pytest-xdist a session fixture runs once per
+# worker, so the check would repeat per worker; the hooks run in the controller process only
+# (workers set PYTEST_XDIST_WORKER), exactly once per run, whatever the worker count.
 
-    Anki must be closed for this to read cleanly. A running Anki checkpoints its
-    write-ahead log on its own schedule, so the mtime moves without any test
-    touching it. That case reports a false positive, and the message says so.
+_guard_before: dict[str, dict[str, tuple[int, int]]] = {}
+_guard_failures: list[str] = []
+
+
+def _is_xdist_worker() -> bool:
+    return "PYTEST_XDIST_WORKER" in os.environ
+
+
+def pytest_sessionstart(session):
+    if _is_xdist_worker():
+        return
+    _guard_before["config"] = _snapshot(_REAL_ARETE_CONFIG)
+    _guard_before["collection"] = _collection_fingerprint(_REAL_ANKI_BASE)
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """Fail the run if any test changed the real ~/.config/arete or a real Anki collection.
+
+    Anki must be closed for the collection check to read cleanly. A running Anki checkpoints
+    its write-ahead log on its own schedule, so the mtime moves without any test touching it.
+    That case reports a false positive, and the message says so.
     """
-    before = _collection_fingerprint(_REAL_ANKI_BASE)
-    yield
-    after = _collection_fingerprint(_REAL_ANKI_BASE)
-    changed = sorted(k for k in before.keys() | after.keys() if before.get(k) != after.get(k))
-    assert not changed, (
-        f"tests touched a real Anki collection under {_REAL_ANKI_BASE}: {changed[:5]}. "
-        "If Anki was open during this run, its own checkpoint may explain it. "
-        "Close Anki and run again before you trust this failure."
+    if _is_xdist_worker() or not _guard_before:
+        return
+    checks = (
+        ("config", _snapshot(_REAL_ARETE_CONFIG), f"tests touched the real {_REAL_ARETE_CONFIG}"),
+        (
+            "collection",
+            _collection_fingerprint(_REAL_ANKI_BASE),
+            f"tests touched a real Anki collection under {_REAL_ANKI_BASE}",
+        ),
     )
+    for key, after, message in checks:
+        before = _guard_before[key]
+        changed = sorted(k for k in before.keys() | after.keys() if before.get(k) != after.get(k))
+        if changed:
+            _guard_failures.append(f"{message}: {changed[:5]}")
+    if _guard_failures and session.exitstatus == pytest.ExitCode.OK:
+        session.exitstatus = pytest.ExitCode.TESTS_FAILED
 
 
 # --- Auto-mark integration tests ---
@@ -264,6 +281,8 @@ def integration_vault(tmp_path):
 
 
 def pytest_terminal_summary(terminalreporter):
+    for failure in _guard_failures:
+        terminalreporter.write_line(f"SESSION GUARD FAILED: {failure}", red=True)
     """Say how many connections to a live AnkiConnect the guard refused this run."""
     if blocked_ankiconnect_attempts:
         terminalreporter.write_line(
