@@ -7,29 +7,27 @@ const fs = jest.requireActual('fs') as typeof import('fs');
 
 const styles = path.resolve(__dirname, '../../src/styles');
 
-type Row = { re: RegExp; max: number; use: string; skip?: string[] };
+type Row = { re: RegExp; max: number; use: string };
 
 const BASELINE: Record<string, Row> = {
-	// variables.css holds token definitions, not uses.
 	pxValue: {
 		re: /\b\d+(\.\d+)?px\b/g,
-		max: 190,
+		max: 17,
 		use: 'var(--size-*) (spacing), var(--border-width) (borders)',
-		skip: ['variables.css'],
 	},
 	rgbVariable: {
 		re: /var\(--[\w-]*rgb[\w-]*\)/g,
-		max: 21,
+		max: 0,
 		use: 'color-mix(in oklch, var(--color-x) N%, transparent)',
 	},
 	cursorPointer: {
 		re: /cursor:\s*pointer/g,
-		max: 9,
+		max: 0,
 		use: 'var(--cursor) for controls, var(--cursor-link) for links',
 	},
-	zIndexLiteral: { re: /z-index:\s*-?\d+/g, max: 3, use: 'var(--layer-*)' },
-	transitionAll: { re: /transition:\s*all\b/g, max: 9, use: 'a list of named properties' },
-	important: { re: /!important/g, max: 46, use: 'raise specificity instead' },
+	zIndexLiteral: { re: /z-index:\s*-?\d+/g, max: 2, use: 'var(--layer-*)' },
+	transitionAll: { re: /transition:\s*all\b/g, max: 0, use: 'a list of named properties' },
+	important: { re: /!important/g, max: 7, use: 'raise specificity instead' },
 };
 
 /** Source of a stylesheet without its comments, so prose in a comment is not counted. */
@@ -44,9 +42,7 @@ describe('src/styles stays within the recorded baseline', () => {
 	const sources = files.map((f) => ({ f, css: fs.readFileSync(path.join(styles, f), 'utf8') }));
 
 	test.each(Object.entries(BASELINE))('%s', (key, row) => {
-		const n = sources
-			.filter(({ f }) => !row.skip?.includes(f))
-			.reduce((sum, { css }) => sum + count(row.re, css), 0);
+		const n = sources.reduce((sum, { css }) => sum + count(row.re, css), 0);
 		if (n > row.max) throw new Error(`${key}: ${n} > baseline ${row.max}. Use ${row.use}.`);
 	});
 
