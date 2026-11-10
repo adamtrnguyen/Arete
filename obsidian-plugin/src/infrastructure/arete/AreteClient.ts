@@ -9,7 +9,7 @@ import { AnkiModelSource, CardStatsSource, CardSuspender } from '@/domain/ports'
 import { debugLog } from '@/domain/debugLog';
 
 /** One card of a study queue, in study order. */
-export interface StudyQueueItem {
+interface StudyQueueItem {
 	position: number;
 	id: string;
 	title: string;

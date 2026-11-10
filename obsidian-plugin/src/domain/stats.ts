@@ -191,13 +191,13 @@ export interface CardStateResult {
 }
 
 /** Warning cut-offs that are not settings. Each warns at the value or beyond it, or below it where noted. */
-export const LAPSES_WARNING_AT = 1;
-export const DIFFICULTY_WARNING_AT = 0.7;
-export const RETRIEVABILITY_WARNING_BELOW = 0.85;
-export const STABILITY_WARNING_BELOW = 7;
-export const INTERVAL_GROWTH_WARNING_BELOW = 1.2;
-export const PRESS_FATIGUE_ERROR_ABOVE = 0.3;
-export const DAYS_OVERDUE_ERROR_ABOVE = 7;
+const LAPSES_WARNING_AT = 1;
+const DIFFICULTY_WARNING_AT = 0.7;
+const RETRIEVABILITY_WARNING_BELOW = 0.85;
+const STABILITY_WARNING_BELOW = 7;
+const INTERVAL_GROWTH_WARNING_BELOW = 1.2;
+const PRESS_FATIGUE_ERROR_ABOVE = 0.3;
+const DAYS_OVERDUE_ERROR_ABOVE = 7;
 
 function present(value: number | null | undefined): value is number {
 	return value != null && !Number.isNaN(value);
