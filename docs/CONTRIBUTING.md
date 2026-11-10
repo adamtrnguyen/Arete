@@ -25,6 +25,7 @@ the fixers are `just fix`.
 | Generated docs | `just check-docs` |
 | Version agreement | `just check-versions` |
 | Plugin lint | `just lint-obsidian` |
+| Plugin import rules | `just lint-deps-obsidian` |
 | Plugin types | `just types-obsidian` |
 | Plugin tests | `just test-obsidian` |
 
