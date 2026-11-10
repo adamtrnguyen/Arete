@@ -43,9 +43,8 @@ def download(url):
     return client.streamContent(resp)
 
 
-def api(*versions):
+def api():
     def decorator(func):
-        func.versions = versions
         func.api = True
         return func
 

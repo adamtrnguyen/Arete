@@ -82,36 +82,13 @@ class AnkiConnect:
     def buildActionTable(self):
         """Map each action name to its method, once, for every request to use.
 
-        An action answers to its method name unless it declares API versions. Returns
-        None if any action declares versions: the name then depends on the request's
-        version, and `findVersionedAction` resolves it per request.
+        An action answers to its method name, whatever version the request names.
         """
         table = {}
         for methodName, methodInst in inspect.getmembers(self, predicate=inspect.ismethod):
             if getattr(methodInst, "api", False):
-                if getattr(methodInst, "versions", []):
-                    return None
-                table.setdefault(methodName, methodInst)
+                table[methodName] = methodInst
         return table
-
-    def findVersionedAction(self, name, version):
-        for methodName, methodInst in inspect.getmembers(self, predicate=inspect.ismethod):
-            apiVersionLast = 0
-            apiNameLast = None
-
-            if getattr(methodInst, "api", False):
-                for apiVersion, apiName in getattr(methodInst, "versions", []):
-                    if apiVersionLast < apiVersion <= version:
-                        apiVersionLast = apiVersion
-                        apiNameLast = apiName
-
-                if apiNameLast is None and apiVersionLast == 0:
-                    apiNameLast = methodName
-
-                if apiNameLast is not None and apiNameLast == name:
-                    return methodInst
-
-        return None
 
     def initLogging(self):
         logPath = util.setting("apiLogPath")
@@ -160,10 +137,7 @@ class AnkiConnect:
             if key != util.setting("apiKey") and name != "requestPermission":
                 raise Exception("valid api key must be provided")
 
-            if self.actions is None:
-                method = self.findVersionedAction(name, version)
-            else:
-                method = self.actions.get(name) if isinstance(name, str) else None
+            method = self.actions.get(name) if isinstance(name, str) else None
 
             if method is None:
                 raise Exception("unsupported action")
