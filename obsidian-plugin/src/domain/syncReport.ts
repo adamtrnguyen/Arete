@@ -75,6 +75,43 @@ export function syncSummary(report: SyncReport): string {
 		: 'Sync completed, Anki was already up to date.';
 }
 
+/** The longest error text a notice quotes; the console gets all of it. */
+const NOTICE_QUOTE_MAX = 200;
+
+/** Known failures, by what the CLI says, and what the user should do about each. */
+const KNOWN_FAILURES: [RegExp, string][] = [
+	[
+		/arete_ankiconnect add-on|lacks the '[^']+' action|unsupported action/i,
+		'The Anki add-on is out of date, update arete_ankiconnect and restart Anki.',
+	],
+	[
+		/connection refused|all connection attempts failed|connecterror/i,
+		'Anki is not reachable, check that Anki is open with the arete_ankiconnect add-on.',
+	],
+	[
+		/no module named '?arete|modulenotfounderror/i,
+		'Arete is not installed for this Python, check the Python executable setting.',
+	],
+];
+
+/** The notice for a failure the plugin knows, from the CLI's message or stderr; else null. */
+export function knownFailure(text: string): string | null {
+	for (const [pattern, notice] of KNOWN_FAILURES) if (pattern.test(text)) return notice;
+	return null;
+}
+
+/** One sentence on why a sync failed. Never a stack trace: the first line, cut short. */
+export function failureSummary(report: SyncReport, stderr: string): string {
+	const known = knownFailure(report.message ?? '') ?? knownFailure(stderr);
+	if (known) return known;
+	if (report.errors > 0) return syncSummary(report);
+	if (report.message) {
+		const first = report.message.split('\n')[0].slice(0, NOTICE_QUOTE_MAX);
+		return `Sync failed: ${first}`;
+	}
+	return 'Sync failed, see the log.';
+}
+
 /** One sentence on what prune did. Any status other than deleted means nothing was deleted. */
 export function pruneSummary(prune: PruneReport): string {
 	switch (prune.status) {

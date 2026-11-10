@@ -11,6 +11,8 @@ import {
 } from '@infrastructure/arete/PythonProcess';
 import { debugLog } from '@domain/debugLog';
 import {
+	failureSummary,
+	knownFailure,
 	parseSyncReport,
 	pendingPrune,
 	PruneReport,
@@ -267,9 +269,14 @@ export class SyncService {
 		if (this.disposed || result.signal) return 'stopped';
 
 		if (result.spawnError) {
-			const msg = result.spawnError.message;
-			new Notice(`Failed to start sync: ${msg}`);
-			updateStatusBar('error', msg);
+			const err = result.spawnError as NodeJS.ErrnoException;
+			console.error('[Arete] Sync could not start', err);
+			new Notice(
+				err.code === 'ENOENT'
+					? 'Python or Arete was not found, check the Python executable setting.'
+					: `Failed to start sync: ${err.message}`,
+			);
+			updateStatusBar('error', err.message);
 			return 'failed';
 		}
 		if (isSyncLockHeld(result.code, result.stderr)) {
@@ -291,8 +298,8 @@ export class SyncService {
 				updateStatusBar('success');
 				return 'success';
 			}
-			const why = report.message ? `Sync stopped: ${report.message}` : syncSummary(report);
-			new Notice(why + prune);
+			console.error('[Arete] Sync failed', report.message ?? '', result.stderr);
+			new Notice(failureSummary(report, result.stderr) + prune);
 			updateStatusBar('error');
 			return 'failed';
 		}
@@ -304,17 +311,12 @@ export class SyncService {
 			return 'success';
 		}
 
+		console.error(`[Arete] Sync failed with exit code ${result.code}`, result.stderr);
 		updateStatusBar('error');
-		const stderr = result.stderr;
-		if (stderr.includes('AnkiConnect call failed') || stderr.includes('Connection refused')) {
-			new Notice('Anki is not reachable, check that Anki is open with AnkiConnect.');
-		} else if (stderr.includes('ModuleNotFoundError')) {
-			new Notice('Python dependencies are missing, check the Python executable path.');
-		} else if (stderr.includes('No module named')) {
-			new Notice('Invalid Python environment or Arete is not installed.');
-		} else {
-			new Notice(`Sync failed with exit code ${result.code}, see the log.`);
-		}
+		new Notice(
+			knownFailure(result.stderr) ??
+				`Sync failed with exit code ${result.code}, see the log.`,
+		);
 		return 'failed';
 	}
 }

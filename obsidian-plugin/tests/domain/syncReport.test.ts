@@ -1,4 +1,6 @@
 import {
+	failureSummary,
+	knownFailure,
 	parseSyncReport,
 	pendingPrune,
 	PruneReport,
@@ -115,5 +117,44 @@ describe('summaries', () => {
 		expect(pruneSummary(prune({ status: 'failed', message: 'Anki refused.' }))).toBe(
 			'Prune failed: Anki refused.',
 		);
+	});
+});
+
+describe('failures', () => {
+	const stoppedWith = (message: string | null, errors = 0): SyncReport => ({
+		ok: false,
+		generated: 0,
+		changed: 0,
+		errors,
+		message,
+		prune: null,
+	});
+
+	test('the known failures map to what the user should do', () => {
+		expect(knownFailure("The Anki add-on lacks the 'setHomeDeck' action")).toMatch(
+			/^The Anki add-on is out of date/,
+		);
+		expect(knownFailure('[Errno 61] Connection refused')).toMatch(/^Anki is not reachable/);
+		expect(knownFailure('httpx.ConnectError: All connection attempts failed')).toMatch(
+			/^Anki is not reachable/,
+		);
+		expect(knownFailure("No module named 'arete'")).toMatch(/^Arete is not installed/);
+		expect(knownFailure('AnkiConnect call failed: note not found')).toBeNull();
+	});
+
+	test('a failed run says why in one line', () => {
+		expect(failureSummary(stoppedWith('Update the arete_ankiconnect add-on'), '')).toMatch(
+			/^The Anki add-on is out of date/,
+		);
+		expect(failureSummary(stoppedWith('2 errors during sync', 2), '')).toBe(
+			'Sync finished with 2 errors, see the log.',
+		);
+		expect(failureSummary(stoppedWith(`boom\n${'x'.repeat(500)}`), '')).toBe(
+			'Sync failed: boom',
+		);
+		expect(failureSummary(stoppedWith('y'.repeat(500)), '')).toHaveLength(
+			'Sync failed: '.length + 200,
+		);
+		expect(failureSummary(stoppedWith(null), '')).toBe('Sync failed, see the log.');
 	});
 });

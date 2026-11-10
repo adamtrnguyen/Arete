@@ -316,50 +316,87 @@ describe('SyncService', () => {
 			expect(updateStatusBar).toHaveBeenCalledWith('error', 'Failed to start');
 		});
 
-		test('exit with error code and specific message (Anki unreachable)', async () => {
+		/** Run a sync whose process prints `stdout`/`stderr` and exits with `code`. */
+		async function failing(stderr: string, code = 1, stdout = '') {
 			const mockChild = createMockChildProcess();
 			(spawn as jest.Mock).mockReturnValue(mockChild);
+			const run = service.runSync(false, null, false, updateStatusBar);
+			if (stdout) mockChild.stdout.emit('data', stdout);
+			mockChild.stderr.emit('data', stderr);
+			mockChild.emit('close', code);
+			return run;
+		}
+		const lastNotice = () => {
+			const calls = (Notice as unknown as jest.Mock).mock.calls;
+			return calls[calls.length - 1][0];
+		};
+		const stopped = (message: string) =>
+			JSON.stringify({
+				ok: false,
+				generated: 0,
+				changed: 0,
+				errors: 0,
+				message,
+				prune: null,
+			});
 
-			const syncPromise = service.runSync(false, null, false, updateStatusBar);
-
-			mockChild.stderr.emit('data', 'AnkiConnect call failed');
-			mockChild.emit('close', 1);
-			await syncPromise;
-
+		test('a refused connection says Anki is not reachable', async () => {
+			expect(await failing('httpx.ConnectError: [Errno 61] Connection refused')).toBe(
+				'failed',
+			);
 			expect(updateStatusBar).toHaveBeenCalledWith('error');
-			expect(Notice).toHaveBeenCalledWith(expect.stringContaining('Anki is not reachable'));
+			expect(lastNotice()).toMatch(/^Anki is not reachable/);
 		});
 
-		test('handling ModuleNotFoundError in CLI', async () => {
-			const mockChild = createMockChildProcess();
-			(spawn as jest.Mock).mockReturnValue(mockChild);
+		test('an outdated add-on says to update it and restart Anki, not that Anki is unreachable', async () => {
+			const msg =
+				"The Anki add-on lacks the 'getHomeDecks' action the sync needs. Update the " +
+				'arete_ankiconnect add-on and restart Anki.';
+			await failing(
+				`ERROR: AnkiConnect call failed: unsupported action\n${msg}`,
+				1,
+				stopped(msg),
+			);
+			expect(lastNotice()).toBe(
+				'The Anki add-on is out of date, update arete_ankiconnect and restart Anki.',
+			);
+			expect(console.error).toHaveBeenCalledWith(
+				'[Arete] Sync failed',
+				msg,
+				expect.stringContaining('unsupported action'),
+			);
 
-			const syncPromise = service.runSync(false, null, false, updateStatusBar);
+			(Notice as unknown as jest.Mock).mockClear();
+			await failing('ERROR: AnkiConnect call failed: unsupported action');
+			expect(lastNotice()).toMatch(/^The Anki add-on is out of date/);
+		});
 
-			mockChild.stderr.emit('data', 'ModuleNotFoundError: No module named arete');
-			mockChild.emit('close', 1);
-			await syncPromise;
-
-			expect(updateStatusBar).toHaveBeenCalledWith('error');
-			expect(Notice).toHaveBeenCalledWith(
-				expect.stringContaining('Python dependencies are missing'),
+		test('Arete missing from the Python environment points to the Python setting', async () => {
+			await failing("ModuleNotFoundError: No module named 'arete'");
+			expect(lastNotice()).toBe(
+				'Arete is not installed for this Python, check the Python executable setting.',
 			);
 		});
 
-		test('handling No module named arete in CLI', async () => {
+		test('a Python that cannot be started points to the Python setting', async () => {
 			const mockChild = createMockChildProcess();
 			(spawn as jest.Mock).mockReturnValue(mockChild);
-
-			const syncPromise = service.runSync(false, null, false, updateStatusBar);
-
-			mockChild.stderr.emit('data', 'No module named arete');
-			mockChild.emit('close', 1);
-			await syncPromise;
-
-			expect(updateStatusBar).toHaveBeenCalledWith('error');
-			expect(Notice).toHaveBeenCalledWith(
-				expect.stringContaining('Invalid Python environment'),
+			const run = service.runSync(false, null, false, updateStatusBar);
+			mockChild.emit(
+				'error',
+				Object.assign(new Error('spawn python3 ENOENT'), { code: 'ENOENT' }),
 			);
+			expect(await run).toBe('failed');
+			expect(lastNotice()).toBe(
+				'Python or Arete was not found, check the Python executable setting.',
+			);
+		});
+
+		test('an unknown early stop shows the first line of its message, never a traceback', async () => {
+			const msg = 'database is locked\nTraceback (most recent call last):\n  File "x.py"';
+			await failing('', 1, stopped(msg));
+			expect(lastNotice()).toBe('Sync failed: database is locked');
+			expect(console.error).toHaveBeenCalledWith('[Arete] Sync failed', msg, '');
 		});
 
 		test('general sync failure with log instruction', async () => {
