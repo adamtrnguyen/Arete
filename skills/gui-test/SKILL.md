@@ -35,7 +35,7 @@ opens can run a fix that rewrites the note: close it without using the fix.
   `<vault>/.obsidian/plugins/arete/` to `/tmp` before deploying.
 - **Allowed but real side effects:** expanding a dashboard row rewrites `data.json` one
   second later; the first save by a new build drops settings keys it does not know;
-  "Sync Stats" and every plugin load start a Python process in `project_root`.
+  "Sync stats (refresh Anki data)" and every plugin load start a Python process in `project_root`.
 - **Restore** what you changed (expansion, sidebar size, tabs you opened) and check
   `git status` again at the end. Only the plugin's `main.js` and `styles.css` should differ.
 - **Do not bring the window forward** or change settings on disk. Flip a setting in memory
@@ -60,10 +60,10 @@ reload resets view-local state (editor mode, 2D/3D toggle).
 
 | View | How | Where it opens |
 |---|---|---|
-| Dashboard | `arete:arete-open-dashboard` | new tab, right sidebar |
+| Dashboard | `arete:arete-open-dashboard` | right sidebar; reuses the existing leaf |
 | Local graph | `arete:arete-open-local-graph` | right sidebar; first open builds the vault graph |
 | Global graph | `arete:arete-open-global-graph` | new main-area tab, becomes active |
-| Card Editor | `arete:open-yaml-editor` | reuses the existing leaf |
+| Card Editor | `arete:open-yaml-editor` | right sidebar; reuses the existing leaf |
 
 - **A view of your own:** eval `app.workspace.getRightLeaf(true).setViewState({type})`, and
   `leaf.detach()` when done, rather than driving the user's leaf.
