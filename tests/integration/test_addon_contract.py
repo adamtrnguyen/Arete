@@ -154,3 +154,15 @@ def test_filtered_deck_orders_cards_by_request_position(anki_url, notes):
     # due = 1000 + position in the request; a repeated card takes its last position
     assert [i["due"] for i in infos] == [1001, 1003, 1004]
     call(anki_url, "deleteDecks", decks=[name], cardsToo=True)
+
+
+def test_every_reply_says_the_connection_closes(anki_url):
+    """The add-on drops each connection after one reply, and must say so.
+
+    Without the header an HTTP client pools the connection and later sends a request
+    into it, which fails with "Server disconnected without sending a response".
+    """
+    ok = requests.post(anki_url, json={"action": "version", "version": 6})
+    empty = requests.post(anki_url, data=b"")
+    assert ok.headers.get("Connection") == "close"
+    assert empty.headers.get("Connection") == "close"

@@ -214,6 +214,9 @@ class WebServer:
                 ["HTTP/1.1 403 Forbidden", None],
                 ["Access-Control-Allow-Origin", corsOrigin],
                 ["Access-Control-Allow-Headers", "*"],
+                # The server closes every connection after one reply (WebClient.advance);
+                # this tells the client, so it never reuses one the server has dropped.
+                ["Connection", "close"],
             ]
             body = b""
 
@@ -263,6 +266,9 @@ class WebServer:
             ["Access-Control-Allow-Origin", corsOrigin],
             ["Access-Control-Allow-Headers", "*"],
             ["Content-Length", str(len(body))],
+            # The server closes every connection after one reply (WebClient.advance);
+            # this tells the client, so it never reuses one the server has dropped.
+            ["Connection", "close"],
         ]
 
     def buildResponse(self, headers, body):
