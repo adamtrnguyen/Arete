@@ -61,7 +61,7 @@ export class ServerManager {
 				console.error('[Arete] Server failed to respond to health check.');
 				new Notice('Could not connect to the Arete server after starting it.');
 			} catch (e) {
-				console.error(e);
+				console.error('[Arete] Failed to start the server:', e);
 				new Notice('Could not start the Arete server.');
 			}
 		})();
@@ -139,11 +139,11 @@ export class ServerManager {
 		});
 
 		this.serverProcess.stdout?.on('data', (data) => {
-			debugLog(`[Arete Server] ${data.toString().trim()}`);
+			debugLog(`[Arete] Server: ${data.toString().trim()}`);
 		});
 
 		this.serverProcess.stderr?.on('data', (data) => {
-			console.error(`[Arete Server Error] ${data.toString().trim()}`);
+			console.error(`[Arete] Server error: ${data.toString().trim()}`);
 		});
 
 		this.serverProcess.on('error', (err) => {

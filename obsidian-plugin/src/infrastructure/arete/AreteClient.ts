@@ -50,7 +50,7 @@ export class AreteClient implements GraphSource, AnkiModelSource, CardStatsSourc
 			const result = response.json;
 			return result;
 		} catch (error) {
-			console.error(`Arete Server Error (${endpoint}):`, error);
+			console.error(`[Arete] Server error (${endpoint}):`, error);
 			throw error;
 		}
 	}
@@ -229,7 +229,7 @@ export class AreteClient implements GraphSource, AnkiModelSource, CardStatsSourc
 			const res = await this.invoke('/anki/decks', {});
 			return res.decks || [];
 		} catch (e) {
-			console.error('[AreteClient] getDeckNames failed:', e);
+			console.error('[Arete] getDeckNames failed:', e);
 			return [];
 		}
 	}
@@ -274,7 +274,7 @@ export class AreteClient implements GraphSource, AnkiModelSource, CardStatsSourc
 			const res = await this.invoke('/queue/create-deck', { card_ids: cardIds });
 			return res.ok || false;
 		} catch (e) {
-			console.error('[AreteClient] createQueueDeck failed:', e);
+			console.error('[Arete] createQueueDeck failed:', e);
 			return false;
 		}
 	}

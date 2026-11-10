@@ -36,7 +36,7 @@ describe('AretePlugin Integrity Check', () => {
 		await plugin.checkVaultIntegrity();
 
 		expect(consoleError).toHaveBeenCalledTimes(1);
-		expect(consoleError).toHaveBeenCalledWith(expect.stringContaining('[FAIL] Bad.md'));
+		expect(consoleError).toHaveBeenCalledWith(expect.stringMatching(/^\[Arete\] Bad\.md: /));
 		expect(Notice).toHaveBeenCalledWith(
 			'1 files have invalid properties, check the developer console.',
 		);

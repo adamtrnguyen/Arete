@@ -30,8 +30,8 @@ export class CheckService implements FileChecker {
 					const res = JSON.parse(stdout);
 					resolve(res);
 				} catch (e) {
-					console.error('Failed to parse check output', stdout);
-					console.error('Stderr:', stderr);
+					console.error('[Arete] Failed to parse check output', stdout);
+					console.error('[Arete] Check stderr:', stderr);
 
 					// Fallback: Try to extract JSON from stdout (in case of log spew)
 					try {
@@ -92,7 +92,7 @@ export class CheckService implements FileChecker {
 			{ cwd: resolved.cwd, env: resolved.env },
 			(error: any, stdout: string, stderr: string) => {
 				if (error) {
-					console.error('Test Config Failed:', error);
+					console.error('[Arete] Test configuration failed:', error);
 					const msg = stderr || stdout || error.message;
 					new Notice(`Command failed: ${msg.substring(0, 200)}`);
 				} else {

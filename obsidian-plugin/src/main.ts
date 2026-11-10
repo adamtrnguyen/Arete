@@ -323,8 +323,6 @@ export default class AretePlugin extends Plugin {
 					const info = view.state.field(editorInfoField);
 					const file = info?.file;
 					if (!file) {
-						// Only log if we really can't find the file and it's unexpected
-						// console.warn('[Arete Gutter] No file in editorInfoField');
 						return null;
 					}
 
@@ -665,17 +663,19 @@ export default class AretePlugin extends Plugin {
 	async checkVaultIntegrity() {
 		new Notice('Running integrity check...');
 		const files = this.app.vault.getMarkdownFiles();
-		console.log('--- Arete Integrity Check ---');
+		// eslint-disable-next-line no-console -- the command's output is a console report
+		console.log('[Arete] Integrity check started.');
 
 		const failing = await this.linkCheckerService.findAllUnparsedFrontmatter(files);
 		for (const file of failing) {
 			console.error(
-				`[FAIL] ${file.path}: Has YAML block, but Obsidian Cache has no frontmatter! (Likely Invalid Properties)`,
+				`[Arete] ${file.path}: has a YAML block, but Obsidian's cache has no frontmatter (likely invalid properties).`,
 			);
 		}
 
+		// eslint-disable-next-line no-console -- the command's output is a console report
 		console.log(
-			`Integrity Check Complete. ${files.length} files checked. ${failing.length} potential issues.`,
+			`[Arete] Integrity check complete: ${files.length} files checked, ${failing.length} potential issues.`,
 		);
 		if (failing.length > 0) {
 			new Notice(

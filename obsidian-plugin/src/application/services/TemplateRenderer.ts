@@ -224,7 +224,7 @@ export class TemplateRenderer {
 				const frontHtml = Mustache.render(frontTmpl, view);
 				view['FrontSide'] = frontHtml;
 			} catch (e) {
-				console.warn('Failed to render FrontSide', e);
+				console.warn('[Arete] Failed to render FrontSide', e);
 			}
 		}
 
@@ -235,7 +235,7 @@ export class TemplateRenderer {
 			debugLog(`[Arete] Rendered HTML (${templateType}):`, html);
 			return { html, css: data.css };
 		} catch (e) {
-			console.error('Mustache render error', e);
+			console.error('[Arete] Mustache render error', e);
 			return null;
 		}
 	}

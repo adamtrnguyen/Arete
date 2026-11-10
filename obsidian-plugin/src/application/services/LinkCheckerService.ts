@@ -239,7 +239,7 @@ export class LinkCheckerService {
 					reason = `Line ${firstErr.line}: ${firstErr.message}`;
 				}
 			} catch (e: any) {
-				console.error('Failed to run detailed check', e);
+				console.error('[Arete] Failed to run detailed check', e);
 				reason = `Check Failed: ${e.message || e}`;
 			}
 

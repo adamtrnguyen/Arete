@@ -204,8 +204,8 @@ describe('ServerManager', () => {
 			mockChild.stdout.emit('data', Buffer.from('Server Logged info'));
 			mockChild.stderr.emit('data', Buffer.from('Server Logged error'));
 
-			expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Server Logged info'));
-			expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('Server Logged error'));
+			expect(logSpy).toHaveBeenCalledWith('[Arete] Server: Server Logged info');
+			expect(errorSpy).toHaveBeenCalledWith('[Arete] Server error: Server Logged error');
 			setDebugLogSwitch(() => false);
 			// Cleanup
 			(requestUrl as jest.Mock).mockResolvedValue({ status: 200 });

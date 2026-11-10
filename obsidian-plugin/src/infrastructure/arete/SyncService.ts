@@ -38,7 +38,7 @@ export class SyncLog {
 		this.buffer = [];
 		this.writing = this.writing
 			.then(() => fsp.appendFile(this.logPath, chunk))
-			.catch((e) => console.error('Failed to write to log file', e));
+			.catch((e) => console.error('[Arete] Failed to write to log file', e));
 		return this.writing;
 	}
 
@@ -146,7 +146,7 @@ export class SyncService {
 				updateStatusBar('error', `HTTP ${response.status}`);
 			}
 		} catch (e: any) {
-			console.error('Server Sync Failed', e);
+			console.error('[Arete] Server sync failed', e);
 			if (e.message && e.message.includes('Connection refused')) {
 				new Notice(
 					'The Arete server is not running, switch to CLI mode or start the server.',
@@ -186,7 +186,7 @@ export class SyncService {
 
 		const syncLog = new SyncLog(logPath);
 		const log = (msg: string) => {
-			debugLog(msg);
+			debugLog(`[Arete] ${msg.trim()}`);
 			syncLog.write(msg);
 		};
 
