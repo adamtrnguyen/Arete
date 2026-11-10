@@ -1,15 +1,11 @@
-import asyncio
 import inspect
 import logging
 import os
 import signal
 import threading
 import time
-from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
 from importlib.metadata import version
-from typing import TYPE_CHECKING
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
@@ -21,10 +17,6 @@ from arete.application.vault_paths import (
     require_configured,
     within_vault,
 )
-from arete.domain.interfaces import AnkiBridge
-
-if TYPE_CHECKING:
-    from arete.application.config import AppConfig
 
 VERSION = version("arete")
 
@@ -33,151 +25,13 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("arete.server")
 
 
-def _falsy(result: object) -> bool:
-    return not result
-
-
-@dataclass(eq=False)
-class _Shared:
-    bridge: AnkiBridge
-    url: str
-    users: int = 0
-    retired: bool = False
-
-
-class AnkiBridgePool:
-    """One AnkiConnect bridge shared by the server's requests.
-
-    Only an AnkiConnect bridge is shared, keyed on its URL, the one setting that decides
-    which Anki it reaches. A direct bridge opens the collection file, so it serves one
-    request and the next request resolves the backend again. A request with backend
-    "direct" never sees the shared bridge.
-
-    The shared bridge is not probed before use. When a call on it raises, or returns
-    what `suspicious` flags (the adapters return "", {}, [] or False when a call fails),
-    the bridge is probed; if Anki no longer answers it is dropped and the request
-    resolves the backend once more, as any request that finds Anki closed does. A
-    dropped or replaced bridge is closed when its last request ends.
-    """
-
-    def __init__(self) -> None:
-        """Start with no shared bridge; the first request that reaches AnkiConnect makes one."""
-        self._lock = asyncio.Lock()
-        self._shared: _Shared | None = None
-
-    async def run[T](
-        self,
-        config: "AppConfig",
-        op: Callable[[AnkiBridge], Awaitable[T]],
-        suspicious: Callable[[T], bool] = _falsy,
-    ) -> T:
-        """Run `op` on a bridge for `config`, resolving once more if a shared one lost Anki."""
-        bridge, shared, reused = await self._acquire(config)
-        try:
-            try:
-                result = await op(bridge)
-            except Exception:
-                if not (reused and await self._lost(shared)):
-                    raise
-            else:
-                if not (reused and suspicious(result) and await self._lost(shared)):
-                    return result
-        finally:
-            await self._release(bridge, shared)
-        bridge, shared, _ = await self._acquire(config)
-        try:
-            return await op(bridge)
-        finally:
-            await self._release(bridge, shared)
-
-    async def close(self) -> None:
-        """Stop sharing; the bridge closes now, or when the last request holding it ends."""
-        async with self._lock:
-            shared, self._shared = self._shared, None
-        if shared is not None:
-            await self._retire(shared)
-
-    async def _acquire(self, config: "AppConfig") -> tuple[AnkiBridge, _Shared | None, bool]:
-        """A bridge for `config`, its shared entry (None: not shared), and whether it is reused."""
-        from arete.composition import factory
-
-        if config.backend == "direct":
-            return await factory.get_anki_bridge(config), None, False
-        async with self._lock:
-            shared = self._shared
-            if shared is not None and shared.url == config.anki_connect_url:
-                shared.users += 1
-                return shared.bridge, shared, True
-            # Resolved under the lock, so concurrent requests build one bridge, not several.
-            bridge = await factory.get_anki_bridge(config)
-            if not isinstance(bridge, factory.AnkiConnectAdapter):
-                return bridge, None, False
-            stale = shared
-            shared = self._shared = _Shared(bridge, config.anki_connect_url, users=1)
-        if stale is not None:
-            await self._retire(stale)
-        return bridge, shared, False
-
-    async def _release(self, bridge: AnkiBridge, shared: _Shared | None) -> None:
-        if shared is None:
-            await bridge.close()
-            return
-        shared.users -= 1
-        if shared.retired and shared.users == 0:
-            await bridge.close()
-
-    async def _lost(self, shared: _Shared | None) -> bool:
-        """Whether the shared bridge's Anki stopped answering; if so, stop sharing it."""
-        from arete.composition import factory
-
-        if shared is None or not isinstance(shared.bridge, factory.AnkiConnectAdapter):
-            return False
-        if await shared.bridge.is_responsive():
-            return False
-        async with self._lock:
-            if self._shared is shared:
-                self._shared = None
-        shared.retired = True
-        return True
-
-    async def _retire(self, shared: _Shared) -> None:
-        shared.retired = True
-        if shared.users == 0:
-            await shared.bridge.close()
-
-
-# The running server's pool. None outside the lifespan: each request then builds a bridge.
-_anki_pool: AnkiBridgePool | None = None
-
-
-async def _with_anki[T](
-    config: "AppConfig",
-    op: Callable[[AnkiBridge], Awaitable[T]],
-    suspicious: Callable[[T], bool] = _falsy,
-) -> T:
-    """Run `op` on an Anki bridge for `config`."""
-    if _anki_pool is not None:
-        return await _anki_pool.run(config, op, suspicious)
-    from arete.composition.factory import get_anki_bridge
-
-    anki = await get_anki_bridge(config)
-    try:
-        return await op(anki)
-    finally:
-        await anki.close()
-
-
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    global _anki_pool
+    # Startup
     logger.info(f"Arete Server v{VERSION} starting up...")
-    _anki_pool = AnkiBridgePool()
-    try:
-        yield
-    finally:
-        logger.info("Arete Server shutting down...")
-        pool, _anki_pool = _anki_pool, None
-        await pool.close()
+    yield
+    # Shutdown
+    logger.info("Arete Server shutting down...")
 
 
 app = FastAPI(
@@ -310,11 +164,16 @@ class CardsRequest(BaseModel):
 async def suspend_cards(req: CardsRequest):
     """Suspend cards by Card IDs."""
     from arete.application.config import resolve_config
+    from arete.composition.factory import get_anki_bridge
 
     overrides = _bridge_overrides(req.backend, req.anki_connect_url, req.anki_base)
     try:
         config = resolve_config(overrides)
-        return {"ok": await _with_anki(config, lambda anki: anki.suspend_cards(req.cids))}
+        anki = await get_anki_bridge(config)
+        try:
+            return {"ok": await anki.suspend_cards(req.cids)}
+        finally:
+            await anki.close()
     except Exception as e:
         logger.error(f"Suspend failed: {e}")
         raise HTTPException(status_code=500, detail=str(e)) from e
@@ -324,11 +183,16 @@ async def suspend_cards(req: CardsRequest):
 async def unsuspend_cards(req: CardsRequest):
     """Unsuspend cards by Card IDs."""
     from arete.application.config import resolve_config
+    from arete.composition.factory import get_anki_bridge
 
     overrides = _bridge_overrides(req.backend, req.anki_connect_url, req.anki_base)
     try:
         config = resolve_config(overrides)
-        return {"ok": await _with_anki(config, lambda anki: anki.unsuspend_cards(req.cids))}
+        anki = await get_anki_bridge(config)
+        try:
+            return {"ok": await anki.unsuspend_cards(req.cids)}
+        finally:
+            await anki.close()
     except Exception as e:
         logger.error(f"Unsuspend failed: {e}")
         raise HTTPException(status_code=500, detail=str(e)) from e
@@ -342,12 +206,17 @@ async def get_model_styling(
     anki_base: str | None = None,
 ):
     from arete.application.config import resolve_config
+    from arete.composition.factory import get_anki_bridge
 
     overrides = _bridge_overrides(backend, anki_connect_url, anki_base)
     try:
         config = resolve_config(overrides)
-        css = await _with_anki(config, lambda anki: anki.get_model_styling(name))
-        return {"css": css}
+        anki = await get_anki_bridge(config)
+        try:
+            css = await anki.get_model_styling(name)
+            return {"css": css}
+        finally:
+            await anki.close()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
 
@@ -360,11 +229,17 @@ async def get_model_templates(
     anki_base: str | None = None,
 ):
     from arete.application.config import resolve_config
+    from arete.composition.factory import get_anki_bridge
 
     overrides = _bridge_overrides(backend, anki_connect_url, anki_base)
     try:
         config = resolve_config(overrides)
-        return await _with_anki(config, lambda anki: anki.get_model_templates(name))
+        anki = await get_anki_bridge(config)
+        try:
+            templates = await anki.get_model_templates(name)
+            return templates
+        finally:
+            await anki.close()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
 
@@ -437,11 +312,16 @@ class BrowseRequest(BaseModel):
 async def browse_anki(req: BrowseRequest):
     """Open the Anki browser with a query."""
     from arete.application.config import resolve_config
+    from arete.composition.factory import get_anki_bridge
 
     overrides = _bridge_overrides(req.backend, req.anki_connect_url, req.anki_base)
     try:
         config = resolve_config(overrides)
-        return {"ok": await _with_anki(config, lambda anki: anki.gui_browse(req.query))}
+        anki = await get_anki_bridge(config)
+        try:
+            return {"ok": await anki.gui_browse(req.query)}
+        finally:
+            await anki.close()
     except Exception as e:
         logger.error(f"Browse failed: {e}")
         raise HTTPException(status_code=500, detail=str(e)) from e
@@ -460,12 +340,17 @@ class DecksRequest(BaseModel):
 async def get_decks(req: DecksRequest):
     """Get all deck names from Anki."""
     from arete.application.config import resolve_config
+    from arete.composition.factory import get_anki_bridge
 
     overrides = _bridge_overrides(req.backend, req.anki_connect_url, req.anki_base)
     try:
         config = resolve_config(overrides)
-        decks = await _with_anki(config, lambda anki: anki.get_deck_names())
-        return {"decks": decks}
+        anki = await get_anki_bridge(config)
+        try:
+            decks = await anki.get_deck_names()
+            return {"decks": decks}
+        finally:
+            await anki.close()
     except Exception as e:
         logger.error(f"Get decks failed: {e}")
         raise HTTPException(status_code=500, detail=str(e)) from e
@@ -489,6 +374,7 @@ async def build_queue(req: QueueBuildRequest):
 
     from arete.application.config import resolve_config
     from arete.application.queue.service import build_study_queue
+    from arete.composition.factory import get_anki_bridge
 
     _, vault = _vault_path(req.vault_root)
     overrides = _bridge_overrides(req.backend, req.anki_connect_url, req.anki_base)
@@ -498,10 +384,11 @@ async def build_queue(req: QueueBuildRequest):
         if not config.vault_root:
             raise HTTPException(status_code=400, detail="Vault root not configured.")
 
-        vault_root = Path(config.vault_root)
-        result = await _with_anki(
-            config,
-            lambda anki: build_study_queue(
+        anki = await get_anki_bridge(config)
+        try:
+            vault_root = Path(config.vault_root)
+
+            result = await build_study_queue(
                 anki,
                 vault_root,
                 deck=req.deck,
@@ -510,24 +397,25 @@ async def build_queue(req: QueueBuildRequest):
                 algo=req.algo,
                 dry_run=True,  # /queue/build only plans; /queue/create-deck creates
                 enrich=True,
-            ),
-        )
+            )
 
-        return {
-            "deck": req.deck or "All Decks",
-            "due_count": result.due_count - result.unmapped_count,
-            "total_with_prereqs": result.total_queued,
-            "queue": [
-                {
-                    "position": item.position,
-                    "id": item.id,
-                    "title": item.title,
-                    "file": item.file,
-                    "is_prereq": item.is_prereq,
-                }
-                for item in result.queue_items
-            ],
-        }
+            return {
+                "deck": req.deck or "All Decks",
+                "due_count": result.due_count - result.unmapped_count,
+                "total_with_prereqs": result.total_queued,
+                "queue": [
+                    {
+                        "position": item.position,
+                        "id": item.id,
+                        "title": item.title,
+                        "file": item.file,
+                        "is_prereq": item.is_prereq,
+                    }
+                    for item in result.queue_items
+                ],
+            }
+        finally:
+            await anki.close()
     except HTTPException:
         # Re-raise HTTPExceptions (like the 400 validation error)
         raise
@@ -549,32 +437,33 @@ class QueueCreateDeckRequest(BaseModel):
 async def create_queue_deck(req: QueueCreateDeckRequest):
     """Create a filtered deck in Anki with queue ordering tags."""
     from arete.application.config import resolve_config
+    from arete.composition.factory import get_anki_bridge
 
     logger.info(f"Create queue deck requested: {len(req.card_ids)} cards")
-
-    async def create(anki: AnkiBridge) -> dict:
-        # 1. Resolve to CIDs
-        cids = await anki.get_card_ids_for_arete_ids(req.card_ids)
-        if not cids:
-            # Maybe the user hasn't synced?
-            return {"ok": False, "message": "No matching Anki cards found. Have you synced?"}
-
-        # 2. Create Deck
-        success = await anki.create_topo_deck(req.deck_name, cids, reschedule=req.reschedule)
-
-        if success:
-            return {
-                "ok": True,
-                "message": f"Created deck '{req.deck_name}' with {len(cids)} cards.",
-            }
-        else:
-            return {"ok": False, "message": "Failed to create deck (check logs)."}
 
     overrides = _bridge_overrides(req.backend, req.anki_connect_url, req.anki_base)
     try:
         config = resolve_config(overrides)
-        # Both adapter calls report an unreachable Anki as a miss, not an exception.
-        return await _with_anki(config, create, suspicious=lambda r: not r["ok"])
+        anki = await get_anki_bridge(config)
+        try:
+            # 1. Resolve to CIDs
+            cids = await anki.get_card_ids_for_arete_ids(req.card_ids)
+            if not cids:
+                # Maybe the user hasn't synced?
+                return {"ok": False, "message": "No matching Anki cards found. Have you synced?"}
+
+            # 2. Create Deck
+            success = await anki.create_topo_deck(req.deck_name, cids, reschedule=req.reschedule)
+
+            if success:
+                return {
+                    "ok": True,
+                    "message": f"Created deck '{req.deck_name}' with {len(cids)} cards.",
+                }
+            else:
+                return {"ok": False, "message": "Failed to create deck (check logs)."}
+        finally:
+            await anki.close()
 
     except HTTPException:
         raise
