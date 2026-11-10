@@ -186,6 +186,94 @@ def test_queue_reports_prerequisites_cut_by_the_size_limit(monkeypatch, tmp_path
     assert "Left out by the queue size limit:" in result.stdout
 
 
+def test_queue_json_dry_run_prints_only_the_plan(monkeypatch, vault):
+    bridge = _use(monkeypatch, FakeBridge(1, ["arete_B"]))
+    result = runner.invoke(app, ["queue", str(vault), "--dry-run", "--json"])
+    assert result.exit_code == 0
+    assert json.loads(result.stdout) == {
+        "deck": "All Decks",
+        "due_count": 1,
+        "total_with_prereqs": 2,
+        "queue": [
+            {
+                "position": 1,
+                "id": "arete_A",
+                "title": "front of arete_A",
+                "file": str(vault / "Algebra.md"),
+                "is_prereq": True,
+            },
+            {
+                "position": 2,
+                "id": "arete_B",
+                "title": "front of arete_B",
+                "file": str(vault / "Algebra.md"),
+                "is_prereq": False,
+            },
+        ],
+    }
+    assert bridge.created == []
+    assert bridge.closed
+
+
+def test_queue_json_counts_only_cards_with_an_arete_id_and_names_the_deck(monkeypatch, vault):
+    _use(monkeypatch, FakeBridge(3, ["arete_B"]))
+    result = runner.invoke(app, ["queue", str(vault), "--dry-run", "--json", "--deck", "Math"])
+    out = json.loads(result.stdout)
+    assert (out["deck"], out["due_count"], out["total_with_prereqs"]) == ("Math", 1, 1)
+
+
+def test_queue_json_with_nothing_due_is_an_empty_queue(monkeypatch, vault):
+    _use(monkeypatch, FakeBridge(0, []))
+    result = runner.invoke(app, ["queue", str(vault), "--dry-run", "--json"])
+    assert result.exit_code == 0
+    assert json.loads(result.stdout) == {
+        "deck": "All Decks",
+        "due_count": 0,
+        "total_with_prereqs": 0,
+        "queue": [],
+    }
+
+
+def test_queue_max_cards_reaches_the_builder(monkeypatch, tmp_path):
+    v = tmp_path / "v"
+    v.mkdir()
+    prereqs = [(f"arete_P{i:02d}", []) for i in range(5)]
+    _note(v / "N.md", "Math", [*prereqs, ("arete_M", [p for p, _ in prereqs])])
+    _use(monkeypatch, FakeBridge(1, ["arete_M"]))
+    result = runner.invoke(app, ["queue", str(v), "--dry-run", "--json", "--max-cards", "3"])
+    assert json.loads(result.stdout)["total_with_prereqs"] == 3
+
+
+def test_queue_json_without_dry_run_builds_the_deck(monkeypatch, vault):
+    bridge = _use(monkeypatch, FakeBridge(1, ["arete_B"]))
+    result = runner.invoke(app, ["queue", str(vault), "--json"])
+    assert result.exit_code == 0
+    assert json.loads(result.stdout)["total_with_prereqs"] == 2
+    assert bridge.created == [("Arete::Queue", [100, 101], True)]
+
+
+def test_queue_json_failed_deck_creation_exits_1_with_the_reason_on_stderr(monkeypatch, vault):
+    _use(monkeypatch, FakeBridge(1, ["arete_B"], deck_ok=False))
+    result = runner.invoke(app, ["queue", str(vault), "--json"])
+    assert result.exit_code == 1
+    assert json.loads(result.stdout)["total_with_prereqs"] == 2
+    assert "Failed to create filtered deck." in result.stderr
+
+
+def test_queue_backend_overrides_reach_the_config(monkeypatch, vault):
+    seen = {}
+
+    async def get_bridge(config):
+        seen["config"] = config
+        return FakeBridge(0, [])
+
+    monkeypatch.setattr("arete.composition.factory.get_anki_bridge", get_bridge)
+    args = ["--backend", "ankiconnect", "--anki-connect-url", "http://fake:1"]
+    runner.invoke(app, ["queue", str(vault), "--dry-run", "--json", *args])
+    assert seen["config"].backend == "ankiconnect"
+    assert seen["config"].anki_connect_url == "http://fake:1"
+
+
 # --- graph check ---
 
 

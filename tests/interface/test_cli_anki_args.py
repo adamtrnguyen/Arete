@@ -17,6 +17,7 @@ BACKEND = ["--backend", "ankiconnect", "--anki-connect-url", "http://fake"]
 def _bridge(mock_cls, **methods):
     inst = mock_cls.return_value
     inst.is_responsive = AsyncMock(return_value=True)
+    inst.close = AsyncMock()
     for name, value in methods.items():
         setattr(inst, name, AsyncMock(return_value=value))
     return inst
@@ -28,7 +29,8 @@ def _bridge(mock_cls, **methods):
 def test_stats_invalid_json_nids_exits_1():
     result = runner.invoke(app, ["anki", "stats", "--nids", "[1, 2", *BACKEND])
     assert result.exit_code == 1
-    assert "Invalid JSON for --nids" in result.stdout
+    assert "Invalid JSON for --nids" in result.stderr
+    assert result.stdout == ""
 
 
 def test_stats_with_no_valid_nids_prints_an_empty_json_list():
@@ -94,8 +96,83 @@ def test_unsuspend_prints_what_the_bridge_returned():
         inst = _bridge(mock_cls, unsuspend_cards=False)
         result = runner.invoke(app, ["anki", "unsuspend", "--cids", "5", *BACKEND])
     assert result.exit_code == 0
-    assert json.loads(result.stdout.strip().splitlines()[-1]) == {"ok": False}
+    assert json.loads(result.stdout) == {"ok": False}
     inst.unsuspend_cards.assert_awaited_once_with([5])
+    inst.close.assert_awaited_once()
+
+
+# --- decks ---
+
+
+def test_decks_prints_only_the_deck_names_as_json_and_closes_the_bridge():
+    with patch("arete.composition.factory.AnkiConnectAdapter") as mock_cls:
+        inst = _bridge(mock_cls, get_deck_names=["Default", "Math::Algebra"])
+        result = runner.invoke(app, ["anki", "decks", *BACKEND])
+    assert result.exit_code == 0
+    assert json.loads(result.stdout) == {"decks": ["Default", "Math::Algebra"]}
+    inst.close.assert_awaited_once()
+
+
+def test_decks_moves_what_a_library_prints_to_stderr():
+    async def noisy():
+        print("all_names is deprecated")
+        return ["Default"]
+
+    with patch("arete.composition.factory.AnkiConnectAdapter") as mock_cls:
+        inst = _bridge(mock_cls)
+        inst.get_deck_names = noisy
+        result = runner.invoke(app, ["anki", "decks", *BACKEND])
+    assert json.loads(result.stdout) == {"decks": ["Default"]}
+    assert "all_names is deprecated" in result.stderr
+
+
+# --- queue-deck ---
+
+
+def test_queue_deck_sends_the_cards_in_the_given_order():
+    with patch("arete.composition.factory.AnkiConnectAdapter") as mock_cls:
+        inst = _bridge(mock_cls, get_card_ids_for_arete_ids=[7, 0, 9], create_topo_deck=True)
+        ids = json.dumps(["arete_B", "arete_X", "arete_A"])
+        result = runner.invoke(app, ["anki", "queue-deck", "--ids", ids, *BACKEND])
+    assert result.exit_code == 0
+    assert json.loads(result.stdout) == {
+        "ok": True,
+        "message": "Created deck 'Arete Study Queue' with 2 cards.",
+    }
+    inst.get_card_ids_for_arete_ids.assert_awaited_once_with(["arete_B", "arete_X", "arete_A"])
+    inst.create_topo_deck.assert_awaited_once_with("Arete Study Queue", [7, 9], reschedule=True)
+    inst.close.assert_awaited_once()
+
+
+def test_queue_deck_takes_a_deck_name_reschedule_and_comma_separated_ids():
+    with patch("arete.composition.factory.AnkiConnectAdapter") as mock_cls:
+        inst = _bridge(mock_cls, get_card_ids_for_arete_ids=[7], create_topo_deck=True)
+        args = ["--ids", "arete_A, arete_B", "--deck-name", "Q", "--no-reschedule"]
+        result = runner.invoke(app, ["anki", "queue-deck", *args, *BACKEND])
+    assert result.exit_code == 0
+    inst.get_card_ids_for_arete_ids.assert_awaited_once_with(["arete_A", "arete_B"])
+    inst.create_topo_deck.assert_awaited_once_with("Q", [7], reschedule=False)
+
+
+def test_queue_deck_with_no_synced_card_makes_no_deck():
+    with patch("arete.composition.factory.AnkiConnectAdapter") as mock_cls:
+        inst = _bridge(mock_cls, get_card_ids_for_arete_ids=[], create_topo_deck=True)
+        result = runner.invoke(app, ["anki", "queue-deck", "--ids", '["arete_A"]', *BACKEND])
+    assert json.loads(result.stdout) == {
+        "ok": False,
+        "message": "No matching Anki cards found. Have you synced?",
+    }
+    inst.create_topo_deck.assert_not_awaited()
+
+
+def test_queue_deck_reports_a_failed_deck():
+    with patch("arete.composition.factory.AnkiConnectAdapter") as mock_cls:
+        _bridge(mock_cls, get_card_ids_for_arete_ids=[7], create_topo_deck=False)
+        result = runner.invoke(app, ["anki", "queue-deck", "--ids", '["arete_A"]', *BACKEND])
+    assert json.loads(result.stdout) == {
+        "ok": False,
+        "message": "Failed to create deck (check logs).",
+    }
 
 
 # --- browse ---
@@ -106,7 +183,8 @@ def test_browse_without_query_or_nid_exits_1_and_never_reaches_anki():
         inst = _bridge(mock_cls, gui_browse=True)
         result = runner.invoke(app, ["anki", "browse", *BACKEND])
     assert result.exit_code == 1
-    assert "Must specify --query or --nid" in result.stdout
+    assert "Must specify --query or --nid" in result.stderr
+    assert result.stdout == ""
     inst.gui_browse.assert_not_awaited()
 
 

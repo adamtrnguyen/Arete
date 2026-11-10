@@ -173,6 +173,7 @@ def test_suspend_cards():
         mock_instance = mock_cls.return_value
         mock_instance.suspend_cards = AsyncMock(return_value=True)
         mock_instance.is_responsive = AsyncMock(return_value=True)
+        mock_instance.close = AsyncMock()
 
         result = runner.invoke(
             app,
@@ -196,6 +197,7 @@ def test_unsuspend_cards():
         mock_instance = mock_cls.return_value
         mock_instance.unsuspend_cards = AsyncMock(return_value=True)
         mock_instance.is_responsive = AsyncMock(return_value=True)
+        mock_instance.close = AsyncMock()
 
         result = runner.invoke(
             app,
@@ -219,6 +221,7 @@ def test_model_styling():
         mock_instance = mock_cls.return_value
         mock_instance.get_model_styling = AsyncMock(return_value="css")
         mock_instance.is_responsive = AsyncMock(return_value=True)
+        mock_instance.close = AsyncMock()
 
         result = runner.invoke(
             app,
@@ -241,6 +244,7 @@ def test_model_templates():
         mock_instance = mock_cls.return_value
         mock_instance.get_model_templates = AsyncMock(return_value={"Front": "Q"})
         mock_instance.is_responsive = AsyncMock(return_value=True)
+        mock_instance.close = AsyncMock()
 
         result = runner.invoke(
             app,
@@ -263,6 +267,7 @@ def test_anki_browse():
         mock_instance = mock_cls.return_value
         mock_instance.gui_browse = AsyncMock(return_value=True)
         mock_instance.is_responsive = AsyncMock(return_value=True)
+        mock_instance.close = AsyncMock()
 
         result = runner.invoke(
             app,

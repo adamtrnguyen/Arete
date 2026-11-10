@@ -6,7 +6,7 @@ from typing import Annotated
 
 import typer
 
-from arete.interface._common import _resolve_with_overrides
+from arete.interface._common import _resolve_with_overrides, stdout_to_stderr
 
 anki_app = typer.Typer(name="anki", help="Anki card management and debugging.")
 
@@ -22,6 +22,13 @@ def _parse_cids(cids: str) -> list[int]:
     return [int(n.strip()) for n in cids.split(",") if n.strip().isdigit()]
 
 
+def _parse_ids(ids: str) -> list[str]:
+    """Parse a JSON list or a comma-separated list of Arete ids."""
+    if ids.startswith("["):
+        return [str(i) for i in json.loads(ids)]
+    return [i.strip() for i in ids.split(",") if i.strip()]
+
+
 def _run_anki_bridge_action(action_fn, *, result_key: str | None = "ok", **config_kwargs) -> None:
     """Run an async AnkiBridge action with standard config/bridge setup.
 
@@ -33,13 +40,14 @@ def _run_anki_bridge_action(action_fn, *, result_key: str | None = "ok", **confi
     async def _run():
         config = _resolve_with_overrides(**config_kwargs)
         anki = await get_anki_bridge(config)
-        result = await action_fn(anki)
-        if result_key is not None:
-            print(json.dumps({result_key: result}))
-        else:
-            print(json.dumps(result))
+        try:
+            return await action_fn(anki)
+        finally:
+            await anki.close()
 
-    asyncio.run(_run())
+    with stdout_to_stderr():
+        result = asyncio.run(_run())
+    print(json.dumps(result if result_key is None else {result_key: result}))
 
 
 # ---------------------------------------------------------------------------
@@ -69,7 +77,7 @@ def anki_stats(
         try:
             nids_list = json.loads(nids)
         except json.JSONDecodeError as e:
-            typer.secho("Invalid JSON for --nids", fg="red")
+            typer.secho("Invalid JSON for --nids", fg="red", err=True)
             raise typer.Exit(1) from e
     else:
         nids_list = [int(n.strip()) for n in nids.split(",") if n.strip().isdigit()]
@@ -98,7 +106,8 @@ def anki_stats(
         service = get_stats_service(config)
         return await service.get_enriched_stats(nids_list)
 
-    stats = asyncio.run(run())
+    with stdout_to_stderr():
+        stats = asyncio.run(run())
     result = [asdict(s) for s in stats]
 
     if json_output:
@@ -195,12 +204,67 @@ def anki_browse(
 ):
     """Open Anki browser."""
     if not query and not nid:
-        typer.secho("Must specify --query or --nid", fg="red")
+        typer.secho("Must specify --query or --nid", fg="red", err=True)
         raise typer.Exit(1)
 
     final_query = query or f"nid:{nid}"
     _run_anki_bridge_action(
         lambda anki: anki.gui_browse(final_query),
+        backend=backend,
+        anki_connect_url=anki_connect_url,
+        anki_base=anki_base,
+    )
+
+
+@anki_app.command("decks")
+def anki_decks(
+    backend: Annotated[str | None, typer.Option(help="Force backend")] = None,
+    anki_connect_url: Annotated[str | None, typer.Option(help="AnkiConnect URL Override")] = None,
+    anki_base: Annotated[str | None, typer.Option(help="Anki Base Directory Override")] = None,
+):
+    """Print every deck name as JSON: {"decks": [...]}."""
+    _run_anki_bridge_action(
+        lambda anki: anki.get_deck_names(),
+        result_key="decks",
+        backend=backend,
+        anki_connect_url=anki_connect_url,
+        anki_base=anki_base,
+    )
+
+
+@anki_app.command("queue-deck")
+def anki_queue_deck(
+    ids: Annotated[
+        str, typer.Option(help="Arete ids in queue order: a JSON list or comma-separated.")
+    ],
+    deck_name: Annotated[
+        str, typer.Option(help="The filtered deck to fill.")
+    ] = "Arete Study Queue",
+    reschedule: Annotated[
+        bool,
+        typer.Option(
+            "--reschedule/--no-reschedule", help="Let reviews in the deck count (Anki's setting)."
+        ),
+    ] = True,
+    backend: Annotated[str | None, typer.Option(help="Force backend")] = None,
+    anki_connect_url: Annotated[str | None, typer.Option(help="AnkiConnect URL Override")] = None,
+    anki_base: Annotated[str | None, typer.Option(help="Anki Base Directory Override")] = None,
+):
+    """Fill a filtered deck with the cards of the given Arete ids, in order.
+
+    Prints {"ok": bool, "message": str}.
+    """
+    from arete.application.queue.service import create_queue_deck
+
+    arete_ids = _parse_ids(ids)
+
+    async def make(anki):
+        made = await create_queue_deck(anki, arete_ids, deck_name=deck_name, reschedule=reschedule)
+        return {"ok": made.ok, "message": made.message}
+
+    _run_anki_bridge_action(
+        make,
+        result_key=None,
         backend=backend,
         anki_connect_url=anki_connect_url,
         anki_base=anki_base,

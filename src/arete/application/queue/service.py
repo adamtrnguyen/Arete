@@ -195,12 +195,38 @@ async def build_study_queue(  # noqa: PLR0913
 
     # -- Step 7: Create filtered deck (unless dry run) --
     if not dry_run and combined:
-        cids = await anki.get_card_ids_for_arete_ids(combined)
-        valid_cids = [c for c in cids if c]
-        if valid_cids:
-            ok = await anki.create_topo_deck(deck_name, valid_cids, reschedule=reschedule)
-            result.deck_created = ok
+        made = await create_queue_deck(anki, combined, deck_name=deck_name, reschedule=reschedule)
+        if made.card_count:
+            result.deck_created = made.ok
             result.deck_name = deck_name
-            result.deck_card_count = len(valid_cids)
+            result.deck_card_count = made.card_count
 
     return result
+
+
+@dataclass
+class QueueDeckResult:
+    """What `create_queue_deck` did: `ok`, a sentence for the user, and the cards it sent."""
+
+    ok: bool
+    message: str
+    card_count: int = 0
+
+
+async def create_queue_deck(
+    anki: QueuePort,
+    arete_ids: list[str],
+    *,
+    deck_name: str,
+    reschedule: bool = True,
+) -> QueueDeckResult:
+    """Fill the filtered deck `deck_name` with the cards of `arete_ids`, in that order.
+
+    An id with no Anki card is skipped; with none left, no deck is made.
+    """
+    cids = [c for c in await anki.get_card_ids_for_arete_ids(arete_ids) if c]
+    if not cids:
+        return QueueDeckResult(False, "No matching Anki cards found. Have you synced?")
+    if not await anki.create_topo_deck(deck_name, cids, reschedule=reschedule):
+        return QueueDeckResult(False, "Failed to create deck (check logs).", len(cids))
+    return QueueDeckResult(True, f"Created deck '{deck_name}' with {len(cids)} cards.", len(cids))

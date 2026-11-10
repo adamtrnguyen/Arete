@@ -11,7 +11,7 @@ import typer
 
 from arete.application.config import resolve_config
 from arete.application.queue.service import QueueAlgo
-from arete.interface._common import _resolve_with_overrides
+from arete.interface._common import _resolve_with_overrides, stdout_to_stderr
 from arete.interface.anki_commands import anki_app
 from arete.interface.serve_commands import serve_app
 from arete.interface.vault_commands import vault_app
@@ -209,6 +209,22 @@ def queue(
             ),
         ),
     ] = "static",
+    max_cards: Annotated[int, typer.Option(help="Most cards in the queue.")] = 50,
+    json_output: Annotated[
+        bool,
+        typer.Option(
+            "--json",
+            help=(
+                "Print the queue as JSON: {deck, due_count, total_with_prereqs, queue}, "
+                "each queue item {position, id, title, file, is_prereq}."
+            ),
+        ),
+    ] = False,
+    backend: Annotated[
+        str | None, typer.Option(help="Anki backend: auto, ankiconnect, direct.")
+    ] = None,
+    anki_connect_url: Annotated[str | None, typer.Option(help="AnkiConnect URL Override")] = None,
+    anki_base: Annotated[str | None, typer.Option(help="Anki Base Directory Override")] = None,
 ):
     """Build a dependency-sorted filtered deck in Anki.
 
@@ -228,65 +244,97 @@ def queue(
     from arete.application.queue.service import build_study_queue
     from arete.composition.factory import get_anki_bridge
 
-    config = _resolve_with_overrides(root_input=path)
+    config = _resolve_with_overrides(
+        root_input=path, backend=backend, anki_connect_url=anki_connect_url, anki_base=anki_base
+    )
     vault_root = config.root_input
     if vault_root is None:
-        typer.secho("No vault root configured. Pass a path or set ARETE_ROOT_INPUT.", fg="red")
+        typer.secho(
+            "No vault root configured. Pass a path or set ARETE_ROOT_INPUT.", fg="red", err=True
+        )
         raise typer.Exit(1)
 
     async def run():
         anki = await get_anki_bridge(config)
         try:
-            result = await build_study_queue(
+            return await build_study_queue(
                 anki,
                 vault_root,
                 deck=deck,
                 depth=depth,
+                max_cards=max_cards,
                 include_new=include_new,
                 cross_deck=cross_deck,
                 algo=algo,
                 dry_run=dry_run,
-                enrich=False,
+                enrich=json_output,
             )
-
-            if result.due_count == 0:
-                typer.secho("No cards found.", fg="yellow")
-                return
-
-            if result.unmapped_count > 0:
-                typer.secho(
-                    f"WARNING: {result.unmapped_count}/{result.due_count}"
-                    " cards have no Arete ID tag."
-                    " Run 'arete sync' to assign IDs and fix this.",
-                    fg="yellow",
-                )
-
-            typer.echo(f"Due cards: {result.due_count} ({result.unmapped_count} without Arete IDs)")
-            typer.echo(f"Algorithm: {algo}")
-            if result.prereq_count:
-                typer.echo(f"Weak prerequisites: {result.prereq_count}")
-            typer.echo(f"Main queue: {result.main_count}")
-            if result.missing_prereqs:
-                typer.secho(f"Missing prereqs: {result.missing_prereqs}", fg="yellow")
-            if result.dropped_prereqs:
-                typer.secho(
-                    f"Left out by the queue size limit: {len(result.dropped_prereqs)} prereqs",
-                    fg="yellow",
-                )
-            if result.cycles:
-                typer.secho(f"Cycles detected: {len(result.cycles)}", fg="yellow")
-
-            if not dry_run and result.deck_created:
-                typer.secho(
-                    f"Created '{result.deck_name}' with {result.deck_card_count} cards.",
-                    fg="green",
-                )
-            elif not dry_run and result.total_queued > 0 and not result.deck_created:
-                typer.secho("Failed to create filtered deck.", fg="red")
         finally:
             await anki.close()
 
-    asyncio.run(run())
+    if json_output:
+        with stdout_to_stderr():
+            result = asyncio.run(run())
+        typer.echo(json.dumps(_queue_json(result, deck)))
+        if not dry_run and result.total_queued > 0 and not result.deck_created:
+            typer.secho("Failed to create filtered deck.", fg="red", err=True)
+            raise typer.Exit(1)
+        return
+
+    result = asyncio.run(run())
+    if result.due_count == 0:
+        typer.secho("No cards found.", fg="yellow")
+        return
+
+    if result.unmapped_count > 0:
+        typer.secho(
+            f"WARNING: {result.unmapped_count}/{result.due_count}"
+            " cards have no Arete ID tag."
+            " Run 'arete sync' to assign IDs and fix this.",
+            fg="yellow",
+        )
+
+    typer.echo(f"Due cards: {result.due_count} ({result.unmapped_count} without Arete IDs)")
+    typer.echo(f"Algorithm: {algo}")
+    if result.prereq_count:
+        typer.echo(f"Weak prerequisites: {result.prereq_count}")
+    typer.echo(f"Main queue: {result.main_count}")
+    if result.missing_prereqs:
+        typer.secho(f"Missing prereqs: {result.missing_prereqs}", fg="yellow")
+    if result.dropped_prereqs:
+        typer.secho(
+            f"Left out by the queue size limit: {len(result.dropped_prereqs)} prereqs",
+            fg="yellow",
+        )
+    if result.cycles:
+        typer.secho(f"Cycles detected: {len(result.cycles)}", fg="yellow")
+
+    if not dry_run and result.deck_created:
+        typer.secho(
+            f"Created '{result.deck_name}' with {result.deck_card_count} cards.",
+            fg="green",
+        )
+    elif not dry_run and result.total_queued > 0 and not result.deck_created:
+        typer.secho("Failed to create filtered deck.", fg="red")
+
+
+def _queue_json(result, deck: str | None) -> dict:
+    """The queue as JSON: what the Obsidian queue builder draws."""
+    return {
+        "deck": deck or "All Decks",
+        "due_count": result.due_count - result.unmapped_count,
+        "total_with_prereqs": result.total_queued,
+        "queue": [
+            {
+                "position": item.position,
+                "id": item.id,
+                "title": item.title,
+                "file": item.file,
+                "is_prereq": item.is_prereq,
+            }
+            for item in result.queue_items
+        ],
+    }
 
 
 @app.command()
@@ -514,4 +562,6 @@ def graph_export(
         typer.secho("No vault root configured. Pass a path or set ARETE_ROOT_INPUT.", fg="red")
         raise typer.Exit(1)
 
-    typer.echo(json.dumps(asdict(export_graph(vault_root))))
+    with stdout_to_stderr():
+        graph = asdict(export_graph(vault_root))
+    typer.echo(json.dumps(graph))

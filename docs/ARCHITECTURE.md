@@ -89,10 +89,10 @@ src/arete/
 
 | Layer | Modules | Lines | May import |
 |---|---|---|---|
-| `interface` | 7 | 1840 | application, composition |
+| `interface` | 7 | 1969 | application, composition |
 | `composition` | 2 | 183 | application, infrastructure, domain |
-| `application` | 26 | 5831 | domain (ports only) |
-| `infrastructure` | 9 | 2232 | domain |
+| `application` | 26 | 5857 | domain (ports only) |
+| `infrastructure` | 9 | 2234 | domain |
 | `domain` | 9 | 907 | nothing in arete |
 
 The import rules in the last column are enforced by `just check-architecture`
