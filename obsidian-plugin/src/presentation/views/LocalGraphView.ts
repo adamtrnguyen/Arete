@@ -511,11 +511,18 @@ export class LocalGraphView extends ItemView {
 		}
 	}
 
-	/** Release the current drawing's rendered markdown; the next drawing starts empty. */
+	/**
+	 * Release the current drawing: its rendered markdown, and the 3D graph, whose render
+	 * loop otherwise keeps drawing to a detached canvas. The next drawing starts empty.
+	 */
 	private releaseDrawing(): void {
 		if (this.drawingComponent) this.tooltipComponent.removeChild(this.drawingComponent);
 		this.drawingComponent = null;
 		this.tooltipCache.clear();
+		if (this.graph3D) {
+			this.graph3D._destructor?.();
+			this.graph3D = null;
+		}
 	}
 
 	/**
@@ -888,6 +895,7 @@ export class LocalGraphView extends ItemView {
 	async onClose() {
 		if (this.refreshTimer) clearTimeout(this.refreshTimer);
 		if (this.simulation) this.simulation.stop();
+		this.releaseDrawing();
 		this.tooltipComponent.unload();
 	}
 
@@ -953,12 +961,6 @@ export class LocalGraphView extends ItemView {
 	render3DGraph(container: HTMLElement, nodes: GraphNode[], links: GraphLink[]) {
 		container.empty();
 		this.releaseDrawing();
-
-		// Destroy previous 3D graph if exists
-		if (this.graph3D) {
-			this.graph3D._destructor?.();
-			this.graph3D = null;
-		}
 
 		const width = container.clientWidth;
 		const height = container.clientHeight;

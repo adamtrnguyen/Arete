@@ -161,6 +161,48 @@ describe('LocalGraphView rendered markdown', () => {
 	});
 });
 
+/** The 3D graph runs its own render loop until it is destroyed. */
+describe('LocalGraphView 3D drawing teardown', () => {
+	let view: any;
+
+	beforeEach(() => {
+		view = new LocalGraphView({} as any, {
+			dependencyResolver: {} as any,
+			getCardContext: jest.fn(),
+			setCardContext: jest.fn(),
+		});
+		view.app = new (jest.requireMock('obsidian').App)();
+		view.container = element('div');
+		view.render3DGraph(element('div'), [], []);
+	});
+
+	it('destroys the 3D graph when a 2D drawing replaces it', () => {
+		const graph = view.graph3D;
+		view.renderD3Graph(element('div'), [], []);
+		expect(graph._destructor).toHaveBeenCalledTimes(1);
+		expect(view.graph3D).toBeNull();
+	});
+
+	it('destroys the 3D graph when a message replaces it', () => {
+		const graph = view.graph3D;
+		view.renderEmpty(element('div'), 'Loading graph…');
+		expect(graph._destructor).toHaveBeenCalledTimes(1);
+	});
+
+	it('destroys the 3D graph when the view closes', async () => {
+		const graph = view.graph3D;
+		await view.onClose();
+		expect(graph._destructor).toHaveBeenCalledTimes(1);
+	});
+
+	it('destroys the previous 3D graph exactly once when 3D redraws', () => {
+		const graph = view.graph3D;
+		view.render3DGraph(element('div'), [], []);
+		expect(graph._destructor).toHaveBeenCalledTimes(1);
+		expect(view.graph3D).not.toBe(graph);
+	});
+});
+
 /**
  * The tooltip is absolutely positioned inside the view's container, which sits anywhere in
  * the window (the right sidebar starts near x = 2000 on a wide screen).
