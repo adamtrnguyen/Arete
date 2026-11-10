@@ -23,7 +23,6 @@ import hashlib
 import inspect
 import json
 import os
-import platform
 import re
 import threading
 import time
@@ -36,7 +35,6 @@ from typing import Any
 # anki.collection first: importing anki.notes or anki.cards before it is a circular import.
 import anki
 import anki._backend
-import anki.buildinfo
 import anki.collection
 import anki.lang
 import anki.notes
@@ -75,12 +73,9 @@ def _addon_class() -> type:
     util = types.SimpleNamespace(
         api=util_ns["api"], MediaType=util_ns["MediaType"], setting=lambda _key: None
     )
-    anki_version = tuple(int(p) for p in anki.buildinfo.version.split("."))
     namespace: dict[str, Any] = {
         "anki": anki,
-        "anki_version": anki_version,
         # Module-level names the class reads, defined as the add-on's module defines them.
-        "SAVE_VIA_UPDATE_NOTE": anki_version >= (23, 10),
         "int_time": getattr(anki.utils, "int_time", None) or anki.utils.intTime,
         "field_checksum": getattr(anki.utils, "field_checksum", None) or anki.utils.fieldChecksum,
         "threading": threading,
@@ -95,7 +90,6 @@ def _addon_class() -> type:
         "inspect": inspect,
         "json": json,
         "os": os,
-        "platform": platform,
         "re": re,
         "time": time,
         "unicodedata": unicodedata,

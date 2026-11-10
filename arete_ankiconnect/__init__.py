@@ -20,13 +20,8 @@ import aqt
 
 anki_version = tuple(int(segment) for segment in aqt.appVersion.split("."))
 
-if anki_version < (2, 1, 45):
-    raise Exception("Minimum Anki version supported: 2.1.45")
-
-# From Anki 23.10 a note saves through col.update_note(note, skip_undo_entry=True), which is
-# what Note.flush() does there, and Collection.autosave() is a no-op. Both legacy calls print a
-# deprecation warning with a stack walk on those versions, and are still needed before them.
-SAVE_VIA_UPDATE_NOTE = anki_version >= (23, 10)
+if anki_version < (23, 10):
+    raise Exception("Minimum Anki version supported: 23.10")
 
 import base64
 import glob
@@ -35,7 +30,6 @@ import inspect
 import json
 import os
 import os.path
-import platform
 import re
 import threading
 import time
@@ -432,8 +426,6 @@ class AnkiConnect:
         return 0
 
     def raiseNotFoundError(self, errorMsg):
-        if anki_version < (2, 1, 55):
-            raise NotFoundError(errorMsg)
         raise NotFoundError(errorMsg, None, None, None)
 
     def getCard(self, card_id: int) -> Card:
@@ -455,10 +447,8 @@ class AnkiConnect:
             "new_count": due_tree.new_count,
             "learn_count": due_tree.learn_count,
             "review_count": due_tree.review_count,
+            "total_in_deck": due_tree.total_in_deck,
         }
-        if anki_version > (2, 1, 46):
-            # total_in_deck is not supported on lower Anki versions
-            deckStats["total_in_deck"] = due_tree.total_in_deck
         return deckStats
 
     def collectDeckTreeChildren(self, parent_node):
@@ -967,8 +957,6 @@ class AnkiConnect:
             raise Exception(
                 "The field values you have provided would make an empty question on all cards."
             )
-        if not SAVE_VIA_UPDATE_NOTE:
-            collection.autosave()
         self.stopEditing()
 
         return ankiNote.id
@@ -1048,11 +1036,7 @@ class AnkiConnect:
         pictureObjectOrList = note.get("picture")
         self.addMedia(ankiNote, pictureObjectOrList, util.MediaType.Picture)
 
-        if SAVE_VIA_UPDATE_NOTE:
-            self.collection().update_note(ankiNote, skip_undo_entry=True)
-        else:
-            ankiNote.flush()
-            self.collection().autosave()
+        self.collection().update_note(ankiNote, skip_undo_entry=True)
         self.stopEditing()
 
     @util.api()
@@ -2109,15 +2093,11 @@ class AnkiConnect:
         """
         Open Import File (Ctrl+Shift+I) dialog with provided file path.
         If no path is given, the user will be prompted to select a file.
-        Only supported from Anki version >=2.1.52
 
         path: string
             import file path, note on Windows you must use forward slashes.
         """
-        if anki_version >= (2, 1, 52):
-            from aqt.import_export.importing import import_file, prompt_for_file_then_import
-        else:
-            raise Exception("guiImportFile is only supported from Anki version >=2.1.52")
+        from aqt.import_export.importing import import_file, prompt_for_file_then_import
 
         if hasattr(Qt, "WindowStaysOnTopHint"):
             # Qt5
@@ -2283,9 +2263,6 @@ class AnkiConnect:
 # or, if installed via `link.sh`, `AnkiConnectDev`
 if __name__ != "__main__":
     try:
-        if platform.system() == "Windows" and anki_version == (2, 1, 50):
-            util.patch_anki_2_1_50_having_null_stdout_on_windows()
-
         Edit.register_with_anki()
 
         ac = AnkiConnect()

@@ -8,8 +8,6 @@ from aqt import gui_hooks
 from aqt.qt import QDialog, QKeySequence, QShortcut, Qt
 from aqt.utils import disable_help_button, restoreGeom, saveGeom, tooltip
 
-from . import anki_version
-
 # Edit dialog. Like Edit Current, but:
 #   * has a Preview button to preview the cards for the note
 #   * has Previous/Back buttons to navigate the history of the dialog
@@ -340,64 +338,42 @@ class Edit(aqt.editcurrent.EditCurrent):
         gui_hooks.editor_did_init.append(self.add_preview_button)
         gui_hooks.editor_did_init_buttons.append(self.add_right_hand_side_buttons)
 
-        # on Anki 2.1.50, browser mode makes the Preview button visible
-        extra_kwargs = (
-            {} if anki_version < (2, 1, 50) else {"editor_mode": aqt.editor.EditorMode.BROWSER}
+        # browser mode makes the Preview button visible
+        self.editor = aqt.editor.Editor(
+            aqt.mw, self.form.fieldsArea, self, editor_mode=aqt.editor.EditorMode.BROWSER
         )
-
-        self.editor = aqt.editor.Editor(aqt.mw, self.form.fieldsArea, self, **extra_kwargs)
 
         gui_hooks.editor_did_init_buttons.remove(self.add_right_hand_side_buttons)
         gui_hooks.editor_did_init.remove(self.add_preview_button)
 
-    # * on Anki < 2.1.50, make the button via js (`setupEditor` of browser.py);
-    #   also, make a copy of _links so that opening Anki's browser does not
-    #   screw them up as they are apparently shared between instances?!
-    #   the last part seems to have been fixed in Anki 2.1.50
-    # * on Anki 2.1.50, the button is created by setting editor mode,
-    #   see above; so we only need to add the link.
+    # the button is created by setting editor mode, see above; so we only need to add the link.
     def add_preview_button(self, editor):
         QShortcut(QKeySequence("Ctrl+Shift+P"), self, self.show_preview)
 
-        if anki_version < (2, 1, 50):
-            editor._links = editor._links.copy()
-            editor.web.eval("""
-                $editorToolbar.then(({notetypeButtons}) =>
-                    notetypeButtons.appendButton(
-                        {component: editorToolbar.PreviewButton, id: 'preview'}
-                    )
-                );
-            """)
-
         editor._links["preview"] = lambda _editor: self.show_preview() and None
 
-    # * on Anki < 2.1.50, button style is okay-ish from get-go,
-    #   except when disabled; adding class `btn` fixes that;
-    # * on Anki 2.1.50, buttons have weird font size and are square';
-    #   the style below makes them in line with left-hand side buttons
+    # without the style below, the buttons have an odd font size and are square;
+    # it puts them in line with the left-hand side buttons
     def add_right_hand_side_buttons(self, buttons, editor):
-        if anki_version < (2, 1, 50):
-            extra_button_class = "btn"
-        else:
-            extra_button_class = "anki-connect-button"
-            editor.web.eval("""
-                (function(){
-                    const style = document.createElement("style");
-                    style.innerHTML = `
-                        .anki-connect-button {
-                            white-space: nowrap;
-                            width: auto;
-                            padding: 0 2px;
-                            font-size: var(--base-font-size);
-                        }
-                        .anki-connect-button:disabled {
-                            pointer-events: none;
-                            opacity: .4;
-                        }
-                    `;
-                    document.head.appendChild(style);
-                })();
-            """)
+        extra_button_class = "anki-connect-button"
+        editor.web.eval("""
+            (function(){
+                const style = document.createElement("style");
+                style.innerHTML = `
+                    .anki-connect-button {
+                        white-space: nowrap;
+                        width: auto;
+                        padding: 0 2px;
+                        font-size: var(--base-font-size);
+                    }
+                    .anki-connect-button:disabled {
+                        pointer-events: none;
+                        opacity: .4;
+                    }
+                `;
+                document.head.appendChild(style);
+            })();
+        """)
 
         def add(cmd, function, label, tip, keys):
             button_html = editor.addButton(
@@ -419,10 +395,7 @@ class Edit(aqt.editcurrent.EditCurrent):
 
     def run_javascript_after_toolbar_ready(self, js):
         js = f"setTimeout(function() {{ {js} }}, 1)"
-        if anki_version < (2, 1, 50):
-            js = f"$editorToolbar.then(({{ toolbar }}) => {js})"
-        else:
-            js = f'require("anki/ui").loaded.then(() => {js})'
+        js = f'require("anki/ui").loaded.then(() => {js})'
         self.editor.web.eval(js)
 
     def enable_disable_next_and_previous_buttons(self):
