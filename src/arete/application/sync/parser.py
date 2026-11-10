@@ -1,3 +1,5 @@
+import hashlib
+import json
 import logging
 from pathlib import Path
 from typing import Any
@@ -26,6 +28,20 @@ class MarkdownParser:
         self.ignore_cache = ignore_cache
         self.default_deck = default_deck
         self.logger = logger or logging.getLogger(__name__)
+        # Everything a render reads besides the card and its file: a cached render made
+        # under other values (another vault root or name, media folder, default deck or
+        # renderer) is stale, though the card is not.
+        self.render_key = hashlib.sha256(
+            json.dumps(
+                [
+                    RENDER_VERSION,
+                    str(vault_root),
+                    vault_root.name,
+                    str(anki_media_dir),
+                    default_deck,
+                ]
+            ).encode()
+        ).hexdigest()[:16]
         # nid -> the cards in other files that claim it too; set by the pipeline.
         self.contested_nids: dict[str, list[str]] = {}
         # casefolded Arete id -> every card that declares it, when more than one does; set by
@@ -56,18 +72,17 @@ class MarkdownParser:
     ) -> AnkiNote | None:
         """The card as the last sync sent it, when that is still the vault's card.
 
-        The cached render counts only if this renderer made it and its nid, cid and Arete
-        id are the ones the vault holds now; a nid other files claim too is never taken
-        from it. Otherwise None, and the card is rendered from its markdown.
+        The cached render counts only if it was made under this parser's `render_key` and
+        its nid, cid and Arete id are the ones the vault holds now; a nid other files claim
+        too is never taken from it. Otherwise None, and the card is rendered from its
+        markdown.
         """
-        import json
-
         entry = cache.get_note(md_path, idx)
         if not (entry and entry[1]):
             return None
         try:
             data = json.loads(entry[1])
-            if data.get("render_version") != RENDER_VERSION:
+            if data.get("render_key") != self.render_key:
                 return None
             cached = AnkiNote.from_dict(data)
         except Exception as e:
@@ -98,8 +113,6 @@ class MarkdownParser:
 
     def _cached_nid(self, md_path: Path, idx: int, cache: ContentCache) -> str | None:
         """The nid the content cache recorded for a card, which the vault may not hold yet."""
-        import json
-
         cached_entry = cache.get_note(md_path, idx)
         if not (cached_entry and cached_entry[1]):
             return None
@@ -363,6 +376,7 @@ class MarkdownParser:
                     source_file=md_path,
                     source_index=idx,
                     arete_id=card_id or None,
+                    render_key=self.render_key,
                     unchanged=unchanged,
                 )
                 notes.append(note_obj)

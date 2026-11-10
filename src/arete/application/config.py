@@ -12,6 +12,45 @@ from pydantic_settings import (
 from arete.application.utils.common import detect_anki_paths
 
 
+class VaultRootUnknown(ValueError):
+    """No vault root is configured and none can be found above the path given."""
+
+    def __init__(self, path: Path):
+        """The message names the path and how to say which vault it belongs to."""
+        super().__init__(
+            f"Cannot tell which vault {path} belongs to: no folder above it holds .obsidian "
+            "and no vault_root is configured. Set vault_root (config.toml or "
+            "ARETE_VAULT_ROOT), or sync the vault folder."
+        )
+        self.path = path
+
+
+def find_vault_root(path: Path) -> Path | None:
+    """The nearest folder at or above `path` that holds `.obsidian`, or None."""
+    start = path if path.is_dir() else path.parent
+    return next((d for d in (start, *start.parents) if (d / ".obsidian").is_dir()), None)
+
+
+def _guess_vault_root(root_input: Path) -> Path | None:
+    """The vault of a path no configured vault root covers.
+
+    The nearest folder holding `.obsidian`; failing that, a folder is its own vault and a
+    file has none. A file's own folder is never guessed: a render under the wrong root
+    names the wrong vault in every link and source field.
+    """
+    found = find_vault_root(root_input)
+    if found is not None:
+        return found.resolve()
+    return root_input.resolve() if root_input.is_dir() else None
+
+
+def require_vault_root(config: "AppConfig") -> Path:
+    """The run's vault root; `VaultRootUnknown` when there is none."""
+    if config.vault_root is None:
+        raise VaultRootUnknown(config.root_input or Path.cwd())
+    return config.vault_root
+
+
 class AppConfig(BaseSettings):
     """Professional configuration model for arete.
 
@@ -146,25 +185,15 @@ def resolve_config(
     # Ensure root_input is absolute for relative_to checks
     config.root_input = config.root_input.resolve()
 
-    if config.vault_root is None:
-        config.vault_root = (
-            config.root_input if config.root_input.is_dir() else config.root_input.parent
-        ).resolve()
-    else:
-        # Ensure vault_root is absolute
+    # A configured vault root that holds the path is the vault. Otherwise the vault is
+    # found from the path (`_guess_vault_root`); a file in no vault gets None, and a
+    # command that needs the root refuses (`require_vault_root`).
+    if config.vault_root is not None:
         config.vault_root = config.vault_root.resolve()
-        # Heuristic: If root_input is NOT inside the configured vault_root,
-        # then the configured vault_root (e.g. from ~/.config) is likely irrelevant for this run.
-        # We should default to the root_input as the vault root.
-        try:
-            config.root_input.relative_to(config.vault_root)
-        except ValueError:
-            # root_input matches vault_root is fine (relative_to returns . or empty?)
-            # relative_to raises ValueError if not relative.
-            # So here we detect mismatch.
-            config.vault_root = (
-                config.root_input if config.root_input.is_dir() else config.root_input.parent
-            ).resolve()
+        if not config.root_input.is_relative_to(config.vault_root):
+            config.vault_root = None
+    if config.vault_root is None:
+        config.vault_root = _guess_vault_root(config.root_input)
 
     if config.anki_media_dir is None or config.anki_base is None:
         detected_base, detected_media = detect_anki_paths()

@@ -241,7 +241,7 @@ async def run_pipeline(
     await note_sync.prefetch(scanned.nid_owners, vault_models(compatible))
 
     # -------- Stage 2: media index, walked on the first image lookup --------
-    assert config.vault_root is not None  # Guaranteed by resolve_config
+    assert config.vault_root is not None  # execute_sync refuses a run without one
     name_index = FilenameIndex(config.vault_root, logger)
 
     # -------- Stage 3: Producers + Consumer --------

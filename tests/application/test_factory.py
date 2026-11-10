@@ -20,6 +20,7 @@ def _make_config(**overrides) -> MagicMock:
     config.anki_connect_url = overrides.get("anki_connect_url", "http://127.0.0.1:8765")
     config.anki_base = overrides.get("anki_base", Path("/fake/anki"))
     config.vault_root = overrides.get("vault_root", Path("/fake/vault"))
+    config.root_input = overrides.get("root_input", Path("/fake/vault/note.md"))
     config.clear_cache = overrides.get("clear_cache", False)
     config.cache_db = overrides.get("cache_db", None)
     config.force = overrides.get("force", False)
@@ -144,9 +145,9 @@ def test_get_vault_service_success(tmp_path):
 
 
 def test_get_vault_service_none_vault_root():
-    """Raises ValueError when vault_root is None."""
+    """Raises VaultRootUnknown, a ValueError, when vault_root is None."""
     config = _make_config(vault_root=None)
-    with pytest.raises(ValueError, match="vault_root is required"):
+    with pytest.raises(ValueError, match="Cannot tell which vault"):
         get_vault_service(config)
 
 

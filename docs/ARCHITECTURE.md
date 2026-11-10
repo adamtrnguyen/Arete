@@ -47,7 +47,7 @@ src/arete/
 │   │   ├── media.py               build_filename_index, FilenameIndex, transform_images_in_text...
 │   │   ├── text.py                normalize_filename, parse_frontmatter, UniqueKeyLoader...
 │   │   ├── yaml.py
-│   ├── config.py                  AppConfig, resolve_config
+│   ├── config.py                  VaultRootUnknown, find_vault_root, require_vault_root...
 │   ├── report_service.py          Service for reading and managing card issue reports
 │   ├── validation.py              Vault file validation: check YAML frontmatter for arete compatibility
 │   ├── wizard.py                  run_init_wizard
@@ -87,10 +87,10 @@ src/arete/
 | Layer | Modules | Lines | May import |
 |---|---|---|---|
 | `interface` | 4 | 979 | application, composition |
-| `composition` | 2 | 222 | application, infrastructure, domain |
-| `application` | 24 | 5922 | domain (ports only) |
+| `composition` | 2 | 224 | application, infrastructure, domain |
+| `application` | 24 | 5965 | domain (ports only) |
 | `infrastructure` | 11 | 2222 | domain |
-| `domain` | 9 | 866 | nothing in arete |
+| `domain` | 9 | 869 | nothing in arete |
 
 The import rules in the last column are enforced by `just check-architecture`
 (import-linter), not by convention.

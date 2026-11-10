@@ -9,7 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from arete.application.config import AppConfig
+from arete.application.config import AppConfig, require_vault_root
 
 if TYPE_CHECKING:
     from arete.application.stats.service import FsrsStatsService
@@ -52,15 +52,14 @@ def get_cache(db_path: Path | None = None) -> ContentCache:
 
 def get_vault_service(config: AppConfig) -> VaultService:
     """Return the VaultService instance configured for the given app config."""
-    if config.vault_root is None:
-        raise ValueError("vault_root is required for VaultService")
+    vault_root = require_vault_root(config)
     # Same cache as the sync pipeline (orchestrator): config.cache_db or ~/.config/arete/cache.db.
     # A second, vault-local DB would let `vault format` and the servers disagree with `sync`.
     cache = get_cache(Path(config.cache_db) if config.cache_db else None)
     if config.clear_cache:
         cache.clear()
     # `force` = ignore the cache; `clear_cache` = wipe it. Same meaning as in orchestrator.
-    return VaultService(config.vault_root, cache, ignore_cache=config.force)
+    return VaultService(vault_root, cache, ignore_cache=config.force)
 
 
 def get_stats_repo(config: AppConfig) -> StatsRepository:

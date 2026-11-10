@@ -6,7 +6,7 @@ import sys
 from contextlib import ExitStack
 from pathlib import Path
 
-from arete.application.config import AppConfig
+from arete.application.config import AppConfig, VaultRootUnknown, require_vault_root
 from arete.application.sync.parser import MarkdownParser
 from arete.application.sync.pipeline import RunStats, run_pipeline
 from arete.application.sync.prune import PruneConfirm
@@ -43,6 +43,7 @@ async def execute_sync(
     read and held to the end, or `SyncLocked` is raised at once. A dry run takes it too:
     its plan, read while another sync writes, would describe neither state.
     """
+    require_vault_root(config)
     cache_file = cache_path(Path(config.cache_db) if config.cache_db else None)
     with ExitStack() as held:
         try:
@@ -79,13 +80,12 @@ async def _execute_locked(
         raise ValueError("config.root_input must be set before sync")
     vault_service = VaultService(config.root_input, cache, ignore_cache=config.force)
 
-    if config.vault_root is None:
-        raise ValueError("config.vault_root must be set before sync")
+    vault_root = require_vault_root(config)
     if config.anki_media_dir is None:
         raise ValueError("config.anki_media_dir must be set before sync")
 
     parser = MarkdownParser(
-        config.vault_root,
+        vault_root,
         config.anki_media_dir,
         ignore_cache=config.force,
         default_deck=config.default_deck,
@@ -128,6 +128,9 @@ async def run_sync_logic(
     except SyncLocked as e:
         print(e, file=sys.stderr)
         raise SystemExit(EXIT_SYNC_LOCKED) from e
+    except VaultRootUnknown as e:
+        logger.error(f"[sync] {e}")
+        raise SyncFailedError(str(e)) from e
     except AddonOutdated as e:
         logger.error(f"[sync] stopped: {e}")
         raise SyncFailedError(str(e)) from e

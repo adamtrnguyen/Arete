@@ -38,6 +38,8 @@ class AnkiNote:
         cid: Existing Card ID from Obsidian frontmatter (if any).
         content_hash: MD5 hash of the fields/tags for cache-aware syncing.
         arete_id: The card's `id:` in the vault; how write-back finds the card again.
+        render_key: What the render read besides the card (`MarkdownParser.render_key`);
+            a cached render under another key is not reused.
 
     """
 
@@ -56,6 +58,7 @@ class AnkiNote:
 
     content_hash: str | None = None
     arete_id: str | None = None
+    render_key: str | None = None
     # The vault card is as it was at the last sync; for reporting only, never stored.
     unchanged: bool = False
 

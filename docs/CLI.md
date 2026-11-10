@@ -120,5 +120,11 @@ backend = "auto"  # 'auto' (default), 'ankiconnect', or 'direct'
 prune = false
 ```
 
+The vault root names the vault in every card's source field and link, and is where images
+are looked up. When `vault_root` (or `ARETE_VAULT_ROOT`) is unset, or does not hold the
+path given, the vault is the nearest folder at or above the path that holds `.obsidian`.
+A folder in no such vault is its own vault. A file in none is refused: set `vault_root`, or
+sync the vault folder.
+
 > [!IMPORTANT]
 > **WSL media sync**: `arete` copies images into the Anki media directory, so the path must be reachable from WSL, for example `/mnt/c/Users/.../collection.media`.

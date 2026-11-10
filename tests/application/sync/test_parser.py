@@ -148,7 +148,9 @@ def test_parse_hot_cache_hit(parser_fixture):
 
     mock_cache.get_note.return_value = (
         "hash",
-        json.dumps({**note_dict, "render_version": RENDER_VERSION}),
+        json.dumps(
+            {**note_dict, "render_version": RENDER_VERSION, "render_key": parser.render_key}
+        ),
     )
     # The vault card names the same note: its rendering is taken from the cache.
     meta = {"cards": [{"model": "Basic", "anki": {"nid": "123", "cid": "456"}}]}
@@ -173,9 +175,10 @@ def test_parse_hot_cache_hit(parser_fixture):
     ("cached_extra", "card_anki"),
     [
         ({}, {"nid": "999", "cid": "456"}),  # the vault names another note
-        ({"render_version": None}, {"nid": "123", "cid": "456"}),  # another renderer
+        ({"render_key": "another-root"}, {"nid": "123", "cid": "456"}),  # other root etc.
+        ({"render_key": None}, {"nid": "123", "cid": "456"}),  # cached with no key
     ],
-    ids=["other-nid", "other-renderer"],
+    ids=["other-nid", "other-render-key", "no-render-key"],
 )
 def test_a_cached_rendering_is_not_used_for_another_card_or_renderer(
     parser_fixture, cached_extra, card_anki
@@ -196,6 +199,7 @@ def test_a_cached_rendering_is_not_used_for_another_card_or_renderer(
         "cid": "456",
         "content_hash": "hash",
         "render_version": RENDER_VERSION,
+        "render_key": parser.render_key,
         **cached_extra,
     }
     import json
