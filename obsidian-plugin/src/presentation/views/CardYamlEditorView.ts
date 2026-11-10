@@ -141,8 +141,6 @@ export class CardYamlEditorView extends ItemView {
 
 		// 1. Source Mode (CodeMirror)
 		this.editorContainer = rightPanel.createDiv({ cls: 'arete-yaml-editor-wrapper' });
-		this.editorContainer.style.flex = '1';
-		this.editorContainer.style.overflow = 'hidden';
 
 		// 2. Field Mode (Inputs)
 		this.fieldEditorContainer = rightPanel.createDiv({ cls: 'arete-field-editor' });

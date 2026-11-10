@@ -1,58 +1,60 @@
 /* Arete Plugin - YAML Editor View Styles */
 
-/* Main Container - Split Layout */
-.arete-yaml-editor-container {
-	display: flex !important;
-	flex-direction: row !important;
-	height: 100% !important;
-	overflow: hidden !important;
+/* Main Container - Split Layout. `.view-content` is part of the selector so this outranks
+ * Obsidian's view rules by specificity. */
+.view-content.arete-yaml-editor-container {
+	display: flex;
+	flex-direction: row;
+	height: 100%;
+	overflow: hidden;
 }
 
 /* ─── Index Sidebar ─── */
 .arete-yaml-index {
-	width: 48px !important;
-	flex-shrink: 0 !important;
-	border-right: 1px solid var(--background-modifier-border);
-	display: flex !important;
-	flex-direction: column !important;
+	width: var(--size-4-12);
+	flex-shrink: 0;
+	border-right: var(--border-width) solid var(--background-modifier-border);
+	display: flex;
+	flex-direction: column;
 	background: var(--background-secondary);
 }
 
 .arete-yaml-index-header {
-	padding: 8px;
+	padding: var(--size-4-2);
 	text-align: center;
-	border-bottom: 1px solid var(--background-modifier-border);
-	font-size: 11px;
+	border-bottom: var(--border-width) solid var(--background-modifier-border);
+	font-size: var(--font-ui-smaller);
 	color: var(--text-muted);
 }
 
 .arete-yaml-index-count {
-	font-weight: 600;
+	font-weight: var(--font-semibold);
 	color: var(--text-normal);
 }
 
 .arete-yaml-index-list {
 	flex: 1;
 	overflow-y: auto;
-	padding: 4px;
+	padding: var(--size-4-1);
 	display: flex;
 	flex-direction: column;
-	gap: 2px;
-	outline: none;
+	gap: var(--size-2-1);
 }
 
 .arete-yaml-index-item {
-	width: 36px;
-	height: 36px;
+	width: var(--size-4-9);
+	height: var(--size-4-9);
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	border-radius: 6px;
-	cursor: pointer;
+	border-radius: var(--radius-m);
+	cursor: var(--cursor);
 	position: relative;
-	transition: all 0.15s ease-out;
+	transition:
+		background-color var(--anim-duration-fast) ease-out,
+		border-color var(--anim-duration-fast) ease-out;
 	background: var(--background-primary);
-	border: 1px solid transparent;
+	border: var(--border-width) solid transparent;
 }
 
 .arete-yaml-index-item:hover {
@@ -64,13 +66,13 @@
 	background: var(--interactive-accent);
 	color: var(--text-on-accent);
 	border-color: var(--interactive-accent);
-	font-weight: 600;
-	box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+	font-weight: var(--font-semibold);
+	box-shadow: var(--shadow-s);
 }
 
 .arete-yaml-index-number {
-	font-size: 13px;
-	font-weight: 500;
+	font-size: var(--font-ui-small);
+	font-weight: var(--font-medium);
 }
 
 /* Status Indicator */
@@ -80,15 +82,15 @@
 
 .arete-yaml-index-warning {
 	position: absolute;
-	top: -2px;
-	right: -2px;
+	top: calc(var(--size-2-1) * -1);
+	right: calc(var(--size-2-1) * -1);
 	color: var(--color-orange);
-	font-size: 10px;
+	font-size: var(--font-ui-smaller);
 }
 
 .arete-yaml-index-warning svg {
-	width: 12px;
-	height: 12px;
+	width: var(--icon-xs);
+	height: var(--icon-xs);
 }
 
 /* Drag States */
@@ -98,28 +100,33 @@
 }
 
 .arete-yaml-index-item.is-drag-over {
-	border-color: var(--interactive-accent) !important;
-	background: rgba(var(--interactive-accent-rgb), 0.1);
+	border-color: var(--interactive-accent);
+	background: color-mix(in oklch, var(--interactive-accent) 10%, transparent);
 }
 
 /* Add Button: an ExtraButtonComponent, so Obsidian styles hover and focus */
 .arete-yaml-index-add {
 	align-self: center;
-	margin: 4px;
+	margin: var(--size-4-1);
 }
 
 /* ─── Editor Panel ─── */
 .arete-yaml-editor-panel {
-	flex: 1 !important;
+	flex: 1;
 	min-width: 0;
-	overflow: hidden !important;
-	display: flex !important;
-	flex-direction: column !important;
+	overflow: hidden;
+	display: flex;
+	flex-direction: column;
+}
+
+.arete-yaml-editor-wrapper {
+	flex: 1;
+	overflow: hidden;
 }
 
 .arete-yaml-editor-panel .cm-editor {
 	height: 100%;
-	font-size: 13px;
+	font-size: var(--code-size);
 }
 
 .arete-yaml-editor-panel .cm-scroller {
@@ -128,7 +135,7 @@
 
 .arete-yaml-editor-panel .cm-gutters {
 	background: var(--background-secondary);
-	border-right: 1px solid var(--background-modifier-border);
+	border-right: var(--border-width) solid var(--background-modifier-border);
 }
 
 .arete-yaml-editor-panel .cm-lineNumbers {
@@ -140,24 +147,26 @@
 }
 
 .arete-yaml-editor-panel .cm-activeLine {
-	background: rgba(var(--interactive-accent-rgb), 0.05);
+	background: color-mix(in oklch, var(--interactive-accent) 5%, transparent);
 }
 
 /* YAML Syntax Highlighting Enhancement */
 .arete-yaml-editor-panel .cm-content {
-	padding: 8px 0;
+	padding: var(--size-4-2) 0;
 	caret-color: transparent;
 }
 
-/* Custom Cursor */
-.arete-yaml-editor-panel .cm-content .cm-cursor {
-	border-left-color: var(--text-normal) !important;
-	border-left-width: 3px !important;
+/* Custom Cursor. The long selector outranks CodeMirror's focused-cursor rule. */
+.arete-yaml-editor-panel .cm-content .cm-cursor,
+.arete-yaml-editor-panel .cm-editor.cm-focused > .cm-scroller > .cm-cursorLayer .cm-cursor {
+	border-left-color: var(--text-normal);
+	border-left-width: var(--size-2-2);
 }
 
-/* Ensure Index Focus is visible */
-.arete-yaml-index-list:focus {
-	box-shadow: inset 0 0 0 2px var(--interactive-accent);
+/* Keep the index focus ring visible for keyboard use */
+.arete-yaml-index-list:focus-visible {
+	outline: var(--size-2-1) solid var(--background-modifier-border-focus);
+	outline-offset: calc(var(--size-2-1) * -1);
 }
 
 /* ─── Editor Toolbar ─── */
@@ -166,15 +175,15 @@
 	flex-wrap: wrap;
 	justify-content: space-between;
 	align-items: center;
-	padding: 6px 10px;
-	border-bottom: 1px solid var(--background-modifier-border);
+	padding: var(--size-2-3) var(--size-4-2);
+	border-bottom: var(--border-width) solid var(--background-modifier-border);
 	background: var(--background-secondary);
 	flex-shrink: 0;
 }
 
 .arete-toolbar-group {
 	display: flex;
-	gap: 6px;
+	gap: var(--size-2-3);
 }
 
 /* Toolbar icon buttons are ExtraButtonComponents; Obsidian styles hover and is-active */
@@ -186,52 +195,51 @@
 .arete-preview-container {
 	flex: 1;
 	overflow-y: auto;
-	padding: 16px;
+	padding: var(--size-4-4);
 	background: var(--background-primary);
 }
 
 .arete-preview-section {
-	margin-bottom: 24px;
+	margin-bottom: var(--size-4-6);
 }
 
 .arete-preview-label {
-	font-size: 11px;
-	font-weight: 600;
+	font-size: var(--font-ui-smaller);
+	font-weight: var(--font-semibold);
 	color: var(--text-muted);
 	text-transform: uppercase;
-	margin-bottom: 8px;
+	margin-bottom: var(--size-4-2);
 	letter-spacing: 0.05em;
 }
 
 .arete-toolbar-stats {
 	display: flex;
-	gap: 8px;
+	gap: var(--size-4-2);
 	align-items: center;
 }
 
 .arete-stat-badge {
-	font-size: 11px;
-	font-weight: 600;
+	font-size: var(--font-ui-smaller);
+	font-weight: var(--font-semibold);
 	color: var(--text-muted);
 	background: var(--background-modifier-border);
-	padding: 2px 6px;
-	border-radius: 4px;
-	cursor: help;
+	padding: var(--size-2-1) var(--size-2-3);
+	border-radius: var(--radius-s);
 }
 
 .arete-stat-badge.mod-warning {
-	color: var(--color-red);
-	background: rgba(var(--color-red-rgb), 0.1);
+	color: var(--text-error);
+	background: color-mix(in oklch, var(--color-red) 10%, transparent);
 }
 
 .arete-stat-badge.mod-orange {
-	color: var(--color-orange);
-	background: rgba(var(--color-orange-rgb), 0.1);
+	color: var(--text-warning);
+	background: color-mix(in oklch, var(--color-orange) 10%, transparent);
 }
 
 .arete-stat-badge.mod-success {
-	color: var(--color-green);
-	background: rgba(var(--color-green-rgb), 0.1);
+	color: var(--text-success);
+	background: color-mix(in oklch, var(--color-green) 10%, transparent);
 }
 
 .arete-stat-badge.mod-muted {
@@ -242,20 +250,20 @@
 .arete-field-editor {
 	flex: 1;
 	overflow-y: auto;
-	padding: 16px;
+	padding: var(--size-4-4);
 	background: var(--background-primary);
 }
 
 .arete-field-group {
-	margin-bottom: 16px;
+	margin-bottom: var(--size-4-4);
 }
 
 .arete-field-label {
 	display: block;
-	font-size: 11px;
-	font-weight: 600;
+	font-size: var(--font-ui-smaller);
+	font-weight: var(--font-semibold);
 	color: var(--text-muted);
-	margin-bottom: 6px;
+	margin-bottom: var(--size-2-3);
 	text-transform: uppercase;
 	letter-spacing: 0.05em;
 }
@@ -263,45 +271,45 @@
 .arete-field-input {
 	width: 100%;
 	background: var(--background-secondary);
-	border: 1px solid var(--background-modifier-border);
-	padding: 8px;
-	border-radius: 4px;
+	border: var(--border-width) solid var(--background-modifier-border);
+	padding: var(--size-4-2);
+	border-radius: var(--radius-s);
 	color: var(--text-normal);
 	font-family: var(--font-text);
-	font-size: 14px;
+	font-size: var(--font-text-size);
 	resize: vertical;
-	min-height: 80px;
+	min-height: 5rem;
 }
 
 .arete-field-input:focus {
-	border-color: var(--interactive-accent);
-	box-shadow: 0 0 0 2px rgba(var(--interactive-accent-rgb), 0.2);
+	border-color: var(--background-modifier-border-focus);
+	box-shadow: 0 0 0 var(--size-2-1) var(--background-modifier-border-focus);
 }
 
 .arete-field-model-badge {
 	display: inline-block;
-	padding: 2px 8px;
+	padding: var(--size-2-1) var(--size-4-2);
 	background: var(--background-modifier-accent);
 	color: var(--text-on-accent);
-	border-radius: 10px;
-	font-size: 10px;
-	font-weight: 600;
-	margin-bottom: 20px;
+	border-radius: var(--radius-l);
+	font-size: var(--font-ui-smaller);
+	font-weight: var(--font-semibold);
+	margin-bottom: var(--size-4-5);
 }
 
 /* ─── Card Preview (Anki-faithful) ─── */
 .arete-preview-toggle {
 	display: flex;
 	flex-wrap: wrap;
-	gap: 8px;
+	gap: var(--size-4-2);
 	align-items: center;
 	justify-content: space-between;
-	margin-bottom: 12px;
+	margin-bottom: var(--size-4-3);
 }
 
 .arete-preview-model {
-	font-size: 11px;
-	font-weight: 600;
+	font-size: var(--font-ui-smaller);
+	font-weight: var(--font-semibold);
 	color: var(--text-muted);
 	text-transform: uppercase;
 	letter-spacing: 0.05em;
@@ -309,20 +317,22 @@
 
 .arete-preview-side-group {
 	display: flex;
-	gap: 4px;
+	gap: var(--size-4-1);
 	background: var(--background-secondary);
-	border: 1px solid var(--background-modifier-border);
-	border-radius: 6px;
-	padding: 2px;
+	border: var(--border-width) solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	padding: var(--size-2-1);
 }
 
 .arete-preview-side-btn {
-	padding: 2px 12px;
-	border-radius: 4px;
-	font-size: 12px;
+	padding: var(--size-2-1) var(--size-4-3);
+	border-radius: var(--radius-s);
+	font-size: var(--font-ui-smaller);
 	color: var(--text-muted);
-	cursor: pointer;
-	transition: all 0.15s ease;
+	cursor: var(--cursor);
+	transition:
+		color var(--anim-duration-fast) ease,
+		background-color var(--anim-duration-fast) ease;
 }
 
 .arete-preview-side-btn:hover {
@@ -332,18 +342,18 @@
 .arete-preview-side-btn.is-active {
 	background: var(--interactive-accent);
 	color: var(--text-on-accent);
-	font-weight: 600;
+	font-weight: var(--font-semibold);
 }
 
 .arete-card-frame {
 	display: block;
 	width: 100%;
-	min-height: 160px;
+	min-height: 10rem;
 	border: 0;
 }
 
 .arete-preview-message {
-	margin-bottom: 12px;
+	margin-bottom: var(--size-4-3);
 	color: var(--text-muted);
 	overflow-wrap: anywhere;
 }

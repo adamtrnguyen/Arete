@@ -1,7 +1,6 @@
 /* Arete Plugin - Entry Point */
 /* Imports all modular CSS files */
 
-@import './variables.css';
 @import './base.css';
 @import './gutter.css';
 @import './yaml-editor.css';

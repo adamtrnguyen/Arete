@@ -1,93 +1,94 @@
 /* Arete Plugin - Organized highlighting of the cards: block in Source mode
  * (presentation/extensions/CardYamlHighlight.ts). Colors override Obsidian's generic
- * frontmatter tokens, which nest inside these marks, hence the descendant rules.
+ * frontmatter tokens, which nest inside these marks, hence the descendant rules. The
+ * `.cm-editor .cm-line` prefix outranks those token rules by specificity.
  */
 
 .arete-yaml-card-even {
-	background-color: rgba(var(--mono-rgb-100), 0.025);
+	background-color: color-mix(in oklch, var(--text-normal) 2.5%, transparent);
 }
 .arete-yaml-card-odd {
-	background-color: rgba(var(--mono-rgb-100), 0.055);
+	background-color: color-mix(in oklch, var(--text-normal) 5.5%, transparent);
 }
 .arete-yaml-card-start {
-	border-top: 1px solid var(--background-modifier-border);
+	border-top: var(--border-width) solid var(--background-modifier-border);
 }
 
-.arete-yk,
-.arete-yk * {
-	font-weight: 600;
+.cm-editor .cm-line .arete-yk,
+.cm-editor .cm-line .arete-yk * {
+	font-weight: var(--font-semibold);
 }
 
 /* question: the prompt the card shows first */
-.arete-yk-q,
-.arete-yk-q * {
-	color: var(--color-blue) !important;
+.cm-editor .cm-line .arete-yk-q,
+.cm-editor .cm-line .arete-yk-q * {
+	color: var(--color-blue);
 }
-.arete-yv-q,
-.arete-yv-q * {
-	color: var(--text-normal) !important;
-	font-weight: 600;
+.cm-editor .cm-line .arete-yv-q,
+.cm-editor .cm-line .arete-yv-q * {
+	color: var(--text-normal);
+	font-weight: var(--font-semibold);
 }
 
 /* answer */
-.arete-yk-a,
-.arete-yk-a * {
-	color: var(--color-green) !important;
+.cm-editor .cm-line .arete-yk-a,
+.cm-editor .cm-line .arete-yk-a * {
+	color: var(--color-green);
 }
-.arete-yv-a,
-.arete-yv-a * {
-	color: var(--text-normal) !important;
+.cm-editor .cm-line .arete-yv-a,
+.cm-editor .cm-line .arete-yv-a * {
+	color: var(--text-normal);
 }
 
 /* prerequisites and related cards */
-.arete-yk-deps,
-.arete-yk-deps *,
-.arete-yv-deps,
-.arete-yv-deps * {
-	color: var(--color-purple) !important;
+.cm-editor .cm-line .arete-yk-deps,
+.cm-editor .cm-line .arete-yk-deps *,
+.cm-editor .cm-line .arete-yv-deps,
+.cm-editor .cm-line .arete-yv-deps * {
+	color: var(--color-purple);
 }
 
 /* machine-written or rarely edited: id, anki nid/cid, model, deck, tags */
-.arete-yk-meta,
-.arete-yk-meta *,
-.arete-yv-meta,
-.arete-yv-meta * {
-	color: var(--text-faint) !important;
-	font-weight: normal;
+.cm-editor .cm-line .arete-yk-meta,
+.cm-editor .cm-line .arete-yk-meta *,
+.cm-editor .cm-line .arete-yv-meta,
+.cm-editor .cm-line .arete-yv-meta * {
+	color: var(--text-faint);
+	font-weight: var(--font-normal);
 }
 
 /* any other field of a custom note type */
-.arete-yk-field,
-.arete-yk-field * {
-	color: var(--color-cyan) !important;
+.cm-editor .cm-line .arete-yk-field,
+.cm-editor .cm-line .arete-yk-field * {
+	color: var(--color-cyan);
 }
 
 .arete-yaml-cloze {
-	border-radius: 3px;
-	padding: 0 1px;
+	border-radius: var(--radius-s);
+	padding: 0 var(--size-2-1);
 }
-.arete-yaml-cloze-1,
-.arete-yaml-cloze-1 * {
-	background-color: rgba(var(--color-orange-rgb), 0.18);
-	color: var(--color-orange) !important;
+.cm-editor .cm-line .arete-yaml-cloze-1,
+.cm-editor .cm-line .arete-yaml-cloze-1 * {
+	background-color: color-mix(in oklch, var(--color-orange) 18%, transparent);
+	color: var(--color-orange);
 }
-.arete-yaml-cloze-2,
-.arete-yaml-cloze-2 * {
-	background-color: rgba(var(--color-pink-rgb), 0.18);
-	color: var(--color-pink) !important;
+.cm-editor .cm-line .arete-yaml-cloze-2,
+.cm-editor .cm-line .arete-yaml-cloze-2 * {
+	background-color: color-mix(in oklch, var(--color-pink) 18%, transparent);
+	color: var(--color-pink);
 }
-.arete-yaml-cloze-3,
-.arete-yaml-cloze-3 * {
-	background-color: rgba(var(--color-cyan-rgb), 0.18);
-	color: var(--color-cyan) !important;
+.cm-editor .cm-line .arete-yaml-cloze-3,
+.cm-editor .cm-line .arete-yaml-cloze-3 * {
+	background-color: color-mix(in oklch, var(--color-cyan) 18%, transparent);
+	color: var(--color-cyan);
 }
-.arete-yaml-cloze-4,
-.arete-yaml-cloze-4 * {
-	background-color: rgba(var(--color-yellow-rgb), 0.18);
-	color: var(--color-yellow) !important;
+.cm-editor .cm-line .arete-yaml-cloze-4,
+.cm-editor .cm-line .arete-yaml-cloze-4 * {
+	background-color: color-mix(in oklch, var(--color-yellow) 18%, transparent);
+	color: var(--color-yellow);
 }
 
-.arete-yaml-math,
-.arete-yaml-math * {
-	color: var(--color-yellow) !important;
+.cm-editor .cm-line .arete-yaml-math,
+.cm-editor .cm-line .arete-yaml-math * {
+	color: var(--color-yellow);
 }

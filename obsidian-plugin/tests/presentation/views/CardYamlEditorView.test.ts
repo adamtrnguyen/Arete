@@ -295,3 +295,35 @@ describe('CardYamlEditorView toolbar', () => {
 		expect(texts).toContain('Lapses: 2');
 	});
 });
+
+describe('CardYamlEditorView styling', () => {
+	it('styles the editor wrapper with a class, not inline style', async () => {
+		const obsidian = jest.requireMock('obsidian');
+		const app = new obsidian.App();
+		const container = createMockElement('div');
+		const view: any = new CardYamlEditorView(
+			{} as any,
+			{
+				settings: { stats_algorithm: 'sm2' },
+				statsService: { getCache: () => ({ concepts: {} }) },
+			} as any,
+		);
+		view.app = app;
+		view.containerEl = { children: [null, container] };
+		view.registerEvent = jest.fn();
+		for (const draw of ['renderIndex', 'renderToolbar', 'createEditor', 'setViewMode']) {
+			view[draw] = jest.fn();
+		}
+
+		await view.onOpen();
+
+		const wrapper = view.editorContainer;
+		expect(wrapper).toBeDefined();
+		expect(container.createDiv).not.toHaveBeenCalledWith(
+			expect.objectContaining({
+				attr: expect.objectContaining({ style: expect.anything() }),
+			}),
+		);
+		expect(wrapper.style).toEqual({});
+	});
+});

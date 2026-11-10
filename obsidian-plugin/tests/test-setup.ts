@@ -113,6 +113,8 @@ export const createMockElement = (tag?: string, opts?: any): any => {
 		addClass: jest.fn().mockReturnThis(),
 		removeClass: jest.fn().mockReturnThis(),
 		toggleClass: jest.fn().mockReturnThis(),
+		hide: jest.fn().mockReturnThis(),
+		show: jest.fn().mockReturnThis(),
 		empty: jest.fn().mockReturnThis(),
 		setText: jest.fn().mockReturnThis(),
 		setButtonText: jest.fn().mockReturnThis(),

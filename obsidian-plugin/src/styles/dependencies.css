@@ -6,57 +6,42 @@
 	flex-direction: column;
 }
 
-.arete-dep-input {
-	width: 100%;
-	background: var(--background-secondary);
-	border: 1px solid var(--background-modifier-border);
-	padding: 6px 10px;
-	border-radius: 4px;
-	color: var(--text-normal);
-	font-size: 13px;
-}
-
-.arete-dep-input:focus {
-	border-color: var(--interactive-accent);
-	box-shadow: 0 0 0 2px rgba(var(--interactive-accent-rgb), 0.2);
-}
-
 .arete-dep-chip {
 	display: inline-flex;
 	align-items: center;
-	gap: 6px;
-	margin: 0 6px 6px 0;
-	padding: 3px 6px 3px 8px;
-	border: 1px solid var(--background-modifier-border);
-	border-radius: 12px;
+	gap: var(--size-2-3);
+	margin: 0 var(--size-2-3) var(--size-2-3) 0;
+	padding: var(--size-2-2) var(--size-2-3) var(--size-2-2) var(--size-4-2);
+	border: var(--border-width) solid var(--background-modifier-border);
+	border-radius: var(--radius-l);
 	background: var(--background-secondary);
 	max-width: 100%;
 }
 
 .arete-dep-chip.is-card {
-	background: rgba(var(--interactive-accent-rgb), 0.1);
-	border-color: rgba(var(--interactive-accent-rgb), 0.3);
+	background: color-mix(in oklch, var(--interactive-accent) 10%, transparent);
+	border-color: color-mix(in oklch, var(--interactive-accent) 30%, transparent);
 }
 
 .arete-dep-icon {
 	display: flex;
 	align-items: center;
 	color: var(--text-muted);
-	margin-right: 4px;
+	margin-right: var(--size-4-1);
 }
 
 .arete-dep-icon svg {
-	width: 12px;
-	height: 12px;
+	width: var(--icon-xs);
+	height: var(--icon-xs);
 }
 
 .arete-dep-text {
-	margin-right: 6px;
+	margin-right: var(--size-2-3);
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	display: inline-block;
-	max-width: 200px;
+	max-width: 12.5rem;
 }
 
 .arete-dep-remove:hover {

@@ -1,44 +1,39 @@
 /* Arete Plugin - Base & Utility Styles */
 
-/* Modal Container */
-.arete-modal {
-	padding: 1rem;
-}
-
 /* File Name Display */
 .arete-filename {
 	display: inline-block;
-	margin-bottom: 1rem;
+	margin-bottom: var(--size-4-4);
 	background-color: var(--background-primary-alt);
-	padding: 0.2rem 0.6rem;
-	border-radius: 4px;
+	padding: var(--size-2-2) var(--size-4-2);
+	border-radius: var(--radius-s);
 	font-family: var(--font-monospace);
-	font-size: 0.9em;
+	font-size: var(--font-ui-small);
 	color: var(--text-muted);
 }
 
 /* Auto-fix button row in the check modal */
 .arete-btn-container {
-	margin-top: 1rem;
+	margin-top: var(--size-4-4);
 	text-align: right;
 }
 
 /* Success State */
 .arete-success {
-	color: var(--color-green);
+	color: var(--text-success);
 	display: flex;
 	align-items: center;
-	gap: 0.5rem;
-	margin-bottom: 1rem;
-	font-size: 1.2em;
+	gap: var(--size-4-2);
+	margin-bottom: var(--size-4-4);
+	font-size: var(--font-ui-medium);
 }
 
 /* Stats List */
 .arete-stats {
 	background-color: var(--background-primary-alt);
-	border: 1px solid var(--background-modifier-border);
-	border-radius: 8px;
-	padding: 1rem;
+	border: var(--border-width) solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	padding: var(--size-4-4);
 	list-style: none;
 	margin: 0;
 }
@@ -46,8 +41,8 @@
 .arete-stats li {
 	display: flex;
 	justify-content: space-between;
-	padding: 0.5rem 0;
-	border-bottom: 1px solid var(--background-modifier-border);
+	padding: var(--size-4-2) 0;
+	border-bottom: var(--border-width) solid var(--background-modifier-border);
 }
 
 .arete-stats li:last-child {
@@ -59,51 +54,51 @@
 }
 
 .arete-stats-val {
-	font-weight: bold;
+	font-weight: var(--font-bold);
 }
 
 /* Error State */
 .arete-error {
-	color: var(--color-red);
+	color: var(--text-error);
 	display: flex;
 	align-items: center;
-	gap: 0.5rem;
-	margin-bottom: 1rem;
-	font-size: 1.2em;
+	gap: var(--size-4-2);
+	margin-bottom: var(--size-4-4);
+	font-size: var(--font-ui-medium);
 }
 
 .arete-error-table {
 	width: 100%;
 	border-collapse: collapse;
-	margin-bottom: 1rem;
-	font-size: 0.9rem;
+	margin-bottom: var(--size-4-4);
+	font-size: var(--font-ui-small);
 	background-color: var(--background-primary-alt);
-	border-radius: 8px;
+	border-radius: var(--radius-m);
 	overflow: hidden;
 }
 
 .arete-error-table th {
 	text-align: left;
-	padding: 0.8rem;
+	padding: var(--size-4-3);
 	background-color: var(--background-secondary-alt);
 	color: var(--text-muted);
-	font-weight: 600;
+	font-weight: var(--font-semibold);
 }
 
 .arete-error-table td {
-	padding: 0.8rem;
-	border-top: 1px solid var(--background-modifier-border);
+	padding: var(--size-4-3);
+	border-top: var(--border-width) solid var(--background-modifier-border);
 	vertical-align: top;
 }
 
 .arete-error-line {
 	font-family: var(--font-monospace);
 	color: var(--text-accent);
-	font-weight: bold;
-	width: 60px;
+	font-weight: var(--font-bold);
+	width: var(--size-4-16);
 }
 
 .arete-err-msg {
 	color: var(--text-error);
-	line-height: 1.4;
+	line-height: var(--line-height-normal);
 }
