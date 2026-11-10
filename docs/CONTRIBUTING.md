@@ -56,7 +56,8 @@ cd obsidian-plugin && npm install
 | Python coverage | `just coverage` |
 | Integration tests | `just test-integration` (one process, one container) |
 | Build the plugin | `npm run build` |
-| Plugin tests | `npm test` |
+| Plugin tests | `npm test` (no coverage) |
+| Plugin coverage | `just coverage-obsidian` (enforces the threshold) |
 | Plugin lint | `npm run lint` |
 
 ## Testing
@@ -73,7 +74,8 @@ Every fix gets a test that fails without it.
 Python tests run in parallel, so a test must not share state with another: no fixed port, no
 fixed path outside `tmp_path`, no environment change outside `monkeypatch`. The two guards that
 check the real `~/.config/arete` and the real Anki collection run once in the controller, not
-per worker. Hypothesis runs without a wall-clock deadline (`tests/conftest.py`).
+per worker. Hypothesis runs without a wall-clock deadline (`tests/conftest.py`). Plugin tests
+are transpile-only (`obsidian-plugin/tsconfig.jest.json`); `just types-obsidian` is the type check.
 
 The plugin mocks Obsidian's API at `obsidian-plugin/tests/obsidian-mock.ts`, wired
 through `moduleNameMapper` in `jest.config.js`.

@@ -12,7 +12,8 @@
     "check:min-app-version": "node scripts/min-app-version.cjs",
     "lint:deps": "depcruise src --config .dependency-cruiser.js",
     "format": "prettier --write .",
-    "test": "jest"
+    "test": "jest",
+    "test:coverage": "jest --coverage"
   },
   "keywords": [],
   "author": "Adam Nguyen",

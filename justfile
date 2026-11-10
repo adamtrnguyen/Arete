@@ -136,6 +136,10 @@ types-obsidian:
 test-obsidian:
     {{NPM}} run test
 
+# Test Obsidian plugin with coverage; enforces the threshold in jest.config.js
+coverage-obsidian:
+    {{NPM}} run test:coverage
+
 # --- Release & Artifacts ---
 
 # Build Python package (sdist + wheel)
