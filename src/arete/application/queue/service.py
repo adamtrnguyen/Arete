@@ -3,7 +3,7 @@
 Encapsulates the shared workflow:
     due cards -> map NIDs -> build queue -> topo sort -> create deck
 
-Both interface layers (CLI, MCP) delegate to this service
+The CLI delegates to this service
 instead of duplicating the orchestration logic.
 """
 
@@ -22,7 +22,7 @@ from arete.application.queue.builder import (
 from arete.application.queue.graph_resolver import build_graph, topological_sort
 from arete.domain.interfaces import QueuePort
 
-# The one queue-algorithm vocabulary. CLI and MCP both expose exactly this.
+# The one queue-algorithm vocabulary. The CLI exposes exactly this.
 QueueAlgo = Literal["static", "dynamic"]
 
 logger = logging.getLogger(__name__)

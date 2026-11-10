@@ -1,7 +1,7 @@
 """Keep caller-supplied paths inside the configured vault.
 
-The MCP surface takes paths from whoever is calling (an agent), so every such path must
-resolve inside the vault. See docs/history/prune-and-path-containment.md.
+A caller that takes paths from another process must resolve each one inside the vault.
+See docs/history/prune-and-path-containment.md.
 
 The configured vault is `vault_root` from `~/.config/arete/config.toml` or the
 `ARETE_VAULT_ROOT` environment variable.

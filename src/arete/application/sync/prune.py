@@ -12,7 +12,7 @@ Three rules keep this from touching anything else:
    It is listed in the report as "empty, not deleted".
 3. Confirmation. Nothing is deleted unless the caller confirmed (`--yes`,
    `confirm_prune=true`) or a person typed "yes" at a terminal prompt. Off a terminal
-   (MCP, an agent) the prompt is never shown: the run returns the preview.
+   (an agent, a script) the prompt is never shown: the run returns the preview.
 
 Background: docs/history/prune-and-path-containment.md.
 """
@@ -257,7 +257,7 @@ async def prune_orphans(
             report.status = "unconfirmed"
             report.message = (
                 "Prune not confirmed, so nothing was deleted. Review the notes and decks "
-                "listed, then confirm with --yes (CLI) or confirm_prune=true (MCP)."
+                "listed, then confirm with --yes."
             )
             logger.warning(f"[prune] {report.message}")
             return report
