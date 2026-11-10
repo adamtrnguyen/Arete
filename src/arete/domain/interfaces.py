@@ -8,10 +8,12 @@ the composite: it is the type of an adapter and of the shared test fake, nothing
 """
 
 from abc import abstractmethod
+from collections.abc import Collection, Sequence
+from contextlib import AbstractAsyncContextManager
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
-from .models import UpdateItem, WorkItem
+from .models import HeldNote, NewNote, NoteChange, NoteTypeInfo, UpdateItem, WorkItem
 
 
 @runtime_checkable
@@ -99,6 +101,70 @@ class SyncPort(Protocol):
     async def delete_decks(self, names: list[str]) -> bool:
         """Permanently delete specified decks (and their notes) from Anki."""
         pass
+
+
+class NoteStoreSession(Protocol):
+    """The primitives the sync decides with, over one open collection.
+
+    Every batch method returns one result per input, an exception in place of a result
+    that failed, so one bad note never fails another. Reads may be repeated freely.
+    Nothing here deletes a note or a card, and nothing reads or writes scheduling.
+    """
+
+    async def note_types(
+        self, names: Collection[str]
+    ) -> dict[str, NoteTypeInfo | None | Exception]:
+        """Per name: the type, None when Anki has no type of that name, or the read error."""
+        ...
+
+    async def add_field(self, model: str, field: str) -> None:
+        """Append an empty field to a note type that lacks it; raise if that fails."""
+        ...
+
+    async def deck_names(self) -> set[str]:
+        """Every deck name Anki holds."""
+        ...
+
+    async def create_decks(self, names: Collection[str]) -> dict[str, Exception | None]:
+        """Create each deck that does not exist; per name, None or the error."""
+        ...
+
+    async def read_notes(self, nids: Sequence[int]) -> dict[int, HeldNote | None | Exception]:
+        """Per nid: the note with its cards and home decks, None if Anki holds no such note."""
+        ...
+
+    async def find_by_arete_ids(
+        self, arete_ids: Sequence[str]
+    ) -> dict[str, list[HeldNote] | Exception]:
+        """Per Arete id, every note carrying it as a tag (case-insensitive), oldest first."""
+        ...
+
+    async def scan_model(self, model: str) -> list[HeldNote]:
+        """Every note of the type, for matching by content; raise if the scan fails."""
+        ...
+
+    async def create_notes(self, notes: Sequence[NewNote]) -> list[int | Exception]:
+        """Add each note; its nid, or the error. `OutcomeUnknown`: it may have been added.
+
+        A note whose first field duplicates another note's is added all the same.
+        """
+        ...
+
+    async def apply_changes(self, changes: Sequence[NoteChange]) -> list[Exception | None]:
+        """Apply each change in the order retype, fields, add tags, remove tags, home deck.
+
+        A step that fails stops that note's later steps and is its result; other notes
+        are unaffected.
+        """
+        ...
+
+
+class NoteStorePort(Protocol):
+    """A collection the sync reads and writes notes in, one session at a time per caller."""
+
+    def session(self) -> AbstractAsyncContextManager[NoteStoreSession]:
+        """Open the collection for a batch of reads and writes; closed on exit."""
+        ...
 
 
 @runtime_checkable

@@ -2,7 +2,6 @@ import asyncio
 import json
 import logging
 import platform
-import re
 import shutil
 from collections import Counter
 from dataclasses import dataclass, field
@@ -16,6 +15,7 @@ from arete.domain.constants import (
     RESPONSIVENESS_TIMEOUT,
     SYNC_CONCURRENCY,
 )
+from arete.domain.identity import first_field_key
 from arete.domain.interfaces import AnkiBridge
 from arete.domain.models import AnkiDeck, OutcomeUnknown, UpdateItem, WorkItem
 from arete.domain.note_types import map_note_type_fields
@@ -625,9 +625,7 @@ class AnkiConnectAdapter(AnkiBridge):
     @staticmethod
     def _normalize_field(value: str) -> str:
         """Normalize a field value for comparison: strip HTML, cloze markers, whitespace."""
-        text = re.sub(r"<[^>]+>", "", value)
-        text = re.sub(r"\{\{c\d+::", "", text).replace("}}", "")
-        return " ".join(text.split()).strip().lower()
+        return first_field_key(value)
 
     async def _find_existing_note(
         self, note: Any, html_fields: dict

@@ -103,3 +103,88 @@ class UpdateItem:
 
 class OutcomeUnknown(Exception):
     """A write that is not safe to send twice lost its reply: it may or may not have landed."""
+
+
+# ---------------------------------------------------------------------------
+# What a note store holds and is asked to write (`interfaces.NoteStoreSession`).
+# Scheduling (due, interval, ease, queue, suspension, flags, review history) is absent on
+# purpose: a sync can neither read nor write it.
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class HeldCard:
+    """One card of a note as Anki holds it.
+
+    `home_deck` is the deck the card belongs to: the deck it returns to while it sits in a
+    filtered deck. None means the store cannot prove it (a failed read, or a deck reported
+    under a stand-in name), which counts as different from any deck.
+    `in_filtered` is True while the card sits in a filtered deck, None when unknown.
+    """
+
+    cid: int
+    ord: int
+    home_deck: str | None
+    in_filtered: bool | None = None
+
+
+@dataclass(frozen=True)
+class HeldNote:
+    """A note as Anki holds it.
+
+    `fields` is in the note type's field order. `cards` is in `ord` order; a note read
+    only to find it (`find_by_arete_ids`, `scan_model`) may carry no cards.
+    """
+
+    nid: int
+    model: str
+    fields: dict[str, str]
+    tags: tuple[str, ...]
+    cards: tuple[HeldCard, ...] = ()
+
+
+@dataclass(frozen=True)
+class NoteTypeInfo:
+    """A note type: its exact name, its fields in order, and how many cards a note gets.
+
+    A cloze type makes one card per cloze number; any other type one card per template.
+    """
+
+    name: str
+    fields: tuple[str, ...]
+    is_cloze: bool
+    n_templates: int
+
+
+@dataclass(frozen=True)
+class NewNote:
+    """A note to create. `fields` holds only fields of the type, under the type's names."""
+
+    model: str
+    deck: str
+    fields: dict[str, str]
+    tags: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class NoteChange:
+    """Everything one note needs to equal the vault, applied in field order.
+
+    `retype` is the target type and, per field of it, the index of the note's current
+    field it takes (-1 for none): the shape of Anki's change-notetype request.
+    `home_deck` is the cards to file under the deck, and the deck. A card in a filtered
+    deck stays there: only the deck it returns to changes.
+    """
+
+    nid: int
+    retype: tuple[str, tuple[int, ...]] | None = None
+    fields: dict[str, str] | None = None
+    add_tags: tuple[str, ...] = ()
+    remove_tags: tuple[str, ...] = ()
+    home_deck: tuple[tuple[int, ...], str] | None = None
+
+    @property
+    def is_empty(self) -> bool:
+        return not (
+            self.retype or self.fields or self.add_tags or self.remove_tags or self.home_deck
+        )

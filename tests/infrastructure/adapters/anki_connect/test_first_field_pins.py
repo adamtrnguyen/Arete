@@ -8,6 +8,7 @@ words, and an image-only field normalizes to the empty key, which never matches.
 
 import pytest
 
+from arete.domain.identity import first_field_key
 from arete.infrastructure.adapters.anki_connect import AnkiConnectAdapter
 
 CASES = [
@@ -37,4 +38,5 @@ CASES = [
 
 @pytest.mark.parametrize(("raw", "key"), CASES, ids=[repr(c[0]) for c in CASES])
 def test_first_field_key(raw: str, key: str):
+    assert first_field_key(raw) == key
     assert AnkiConnectAdapter._normalize_field(raw) == key

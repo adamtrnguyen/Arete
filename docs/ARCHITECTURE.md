@@ -75,6 +75,7 @@ src/arete/
 │   │   ├── ports.py               Ports (interfaces) for stats retrieval
 │   ├── constants.py               Centralized constants for the Arete application
 │   ├── graph.py                   Domain types for dependency graph
+│   ├── identity.py                How a vault card and an Anki note are recognised as the same card
 │   ├── interfaces.py              Ports: what the application layer is allowed to ask of the outside world
 │   ├── models.py                  AnkiDeck, AnkiNote, WorkItem...
 │   ├── note_types.py              Field mapping for changing a note's type in place
@@ -88,8 +89,8 @@ src/arete/
 | `interface` | 7 | 1840 | application, composition |
 | `composition` | 2 | 178 | application, infrastructure, domain |
 | `application` | 25 | 4781 | domain (ports only) |
-| `infrastructure` | 7 | 2467 | domain |
-| `domain` | 8 | 667 | nothing in arete |
+| `infrastructure` | 7 | 2465 | domain |
+| `domain` | 9 | 843 | nothing in arete |
 
 The import rules in the last column are enforced by `just check-architecture`
 (import-linter), not by convention.
