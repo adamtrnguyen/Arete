@@ -52,6 +52,8 @@ class FakeAnki:
                 )
                 continue
             nid = int(note.nid) if note.nid and int(note.nid) in self.notes else None
+            if nid is None and note.arete_id:  # the sync finds a card's note by its Arete id
+                nid = next((n for n, tags in self.tags.items() if note.arete_id in tags), None)
             if nid is None:
                 self._next += 1
                 nid = self._next
@@ -238,15 +240,16 @@ def test_write_back_matches_the_card_by_id_not_position(vault):
     assert "anki" not in by_id["arete_NEW"]
 
 
-def test_an_unchanged_vault_sends_nothing(vault):
-    """The warm stat-cache path re-sends no card."""
+def test_an_unchanged_vault_is_compared_every_sync_and_creates_nothing(vault):
+    """Every card of an unchanged vault reaches the sync, so an Anki edit is overwritten."""
     root, cache, anki = vault
     (root / "a.md").write_text(note_file(card("arete_A1"), card("arete_A2")))
     sync(root, anki, cache)
-    first = len(anki.sent)
-    sync(root, anki, cache)
-    sync(root, anki, cache)
-    assert len(anki.sent) == first
+    notes = dict(anki.notes)
+    sync(root, anki, cache, force=False)
+    sync(root, anki, cache, force=False)
+    assert anki.sent == [("a.md", 1), ("a.md", 2)] * 3
+    assert anki.notes == notes
 
 
 def test_a_card_tag_edit_reaches_anki(vault):

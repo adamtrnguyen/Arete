@@ -50,7 +50,22 @@
         "ok": true
       }
     ],
-    []
+    [
+      {
+        "card": "twins.md#1",
+        "error": null,
+        "new_cid": null,
+        "new_nid": "its note",
+        "ok": true
+      },
+      {
+        "card": "twins.md#2",
+        "error": null,
+        "new_cid": null,
+        "new_nid": "its note",
+        "ok": true
+      }
+    ]
   ],
   "vault_ids": {
     "twins.md#1": {

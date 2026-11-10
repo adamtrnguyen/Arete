@@ -142,15 +142,9 @@ REAL = ("direct", "addon")  # backends with a real collection, so with schedulin
 # Invariant 1: Obsidian is ground truth. An edit made in Anki is overwritten.
 # ---------------------------------------------------------------------------
 
-STAT_CACHE_SKIP = (
-    "the vault file is untouched, so the second sync gets a stat-cache hit and the hot cache "
-    "skips the card before it is compared with Anki (parser.py, is_fresh=False): observed 0 "
-    "cards sent and "
-)
-
 
 @pytest.mark.asyncio
-@on(*ALL, xfail=dict.fromkeys(ALL, STAT_CACHE_SKIP + "Back still 'edited in Anki'"))
+@on(*ALL)
 async def test_inv1_a_field_edited_in_anki_is_overwritten(world: World):
     await world.sync()
     nid = world.nid()
@@ -162,7 +156,7 @@ async def test_inv1_a_field_edited_in_anki_is_overwritten(world: World):
 
 
 @pytest.mark.asyncio
-@on(*ALL, xfail=dict.fromkeys(ALL, STAT_CACHE_SKIP + "the tag 'anki_only' is still on the note"))
+@on(*ALL)
 async def test_inv1_a_tag_added_in_anki_is_removed(world: World):
     await world.sync()
     nid = world.nid()
@@ -174,7 +168,7 @@ async def test_inv1_a_tag_added_in_anki_is_removed(world: World):
 
 
 @pytest.mark.asyncio
-@on(*ALL, xfail=dict.fromkeys(ALL, STAT_CACHE_SKIP + "the card is still in Inv::Elsewhere"))
+@on(*ALL)
 async def test_inv1_a_deck_move_in_anki_is_moved_back(world: World):
     await world.sync()
     nid = world.nid()
@@ -186,7 +180,7 @@ async def test_inv1_a_deck_move_in_anki_is_moved_back(world: World):
 
 
 @pytest.mark.asyncio
-@on(*ALL, xfail=dict.fromkeys(ALL, STAT_CACHE_SKIP + "the note type is still Basic with Extra"))
+@on(*ALL)
 async def test_inv1_a_note_type_change_in_anki_is_changed_back(world: World):
     await world.sync()
     nid = world.nid()
@@ -432,6 +426,34 @@ async def test_inv6_after_a_crash_a_confirmed_prune_keeps_the_vaults_note(world:
     await world.sync(prune=True, confirm_prune=True)
 
     assert nid in [n.nid for n in world.backend.notes()]
+
+
+@pytest.mark.asyncio
+@on(*ALL)
+async def test_after_a_crash_the_next_sync_finds_the_note_by_its_id_and_stores_its_nid(
+    world: World,
+):
+    """The unchanged card is compared, found by its Arete id, and its ids are written back."""
+    nid = await _crash_before_write_back(world)
+
+    await world.sync()
+
+    assert [n.nid for n in world.backend.notes()] == [nid]
+    assert vault_cards(world.vault)["card.md#1"]["nid"] == str(nid)
+
+
+@pytest.mark.asyncio
+@on(*ALL)
+async def test_inv1_a_leech_tag_added_by_anki_stays(world: World):
+    """`leech` is Anki's scheduler mark (ANKI_OWNED_TAGS); every other Anki-only tag goes."""
+    await world.sync()
+    nid = world.nid()
+    world.backend.add_tag(nid, "leech")
+    world.backend.add_tag(nid, "marked")
+
+    await world.sync()
+
+    assert sorted(world.backend.note(nid).tags) == sorted([ID, "inv", "leech"])
 
 
 CLOZE_3 = CARD.replace("model: Basic", "model: Cloze").replace(

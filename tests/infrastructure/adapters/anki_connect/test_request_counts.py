@@ -498,3 +498,29 @@ async def test_a_failed_chunk_maps_nothing_as_a_failed_request_did():
     fake.fail = lambda action, params: "busy" if params.get("notes", [0])[0] == nids[500] else None
 
     assert await _adapter(fake).map_nids_to_arete_ids(nids) == []
+
+
+# ---------------------------------------------------------------------------
+# Every sync compares every card: the cost of a vault where nothing changed
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_seven_thousand_unchanged_cards_cost_at_most_32_requests():
+    """One prefetch reads every note; the 140 batches then read and write nothing."""
+    fake = FakeAnki()
+    fake.decks.add("D")
+    items = [_item(i) for i in range(7000)]
+    for item in items:
+        _held(fake, item)
+    fake.reset_counts()
+    sync = _sync_of(fake)
+
+    await sync.prefetch([int(i.note.nid or 0) for i in items], {"Basic"})
+    results = []
+    for start in range(0, len(items), 50):
+        results += await sync.sync_notes(items[start : start + 50])
+
+    assert all(r.ok and r.changed is False for r in results)
+    assert sum(fake.requests.values()) <= 32
+    assert fake.requests == {"multi": 1, "notesInfo": 14, "getHomeDecks": 14}

@@ -29,6 +29,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Collection, Sequence
+from contextlib import AsyncExitStack
 from dataclasses import dataclass, field
 
 from arete.domain.identity import ANKI_OWNED_TAGS, first_field_key
@@ -72,6 +73,7 @@ class _Card:
     held: HeldNote | None = None  # that note as read, with its cards
     how: str = "update"  # update | adopt | create
     error: str | None = None
+    changed: bool = False  # Anki was written for this card (a dry run: would be)
 
     @property
     def label(self) -> str:
@@ -90,6 +92,54 @@ class _Card:
     def fail(self, error: object) -> None:
         if self.error is None:
             self.error = str(error)
+
+
+class _LazySession:
+    """A store session opened on first use: a batch that needs none opens none."""
+
+    def __init__(self, store: NoteStorePort, stack: AsyncExitStack):
+        """Open `store.session()` on `stack` when a primitive is first called."""
+        self._store = store
+        self._stack = stack
+        self._session: NoteStoreSession | None = None
+        self._opening = asyncio.Lock()
+
+    async def _open(self) -> NoteStoreSession:
+        async with self._opening:
+            if self._session is None:
+                self._session = await self._stack.enter_async_context(self._store.session())
+            return self._session
+
+    async def note_types(
+        self, names: Collection[str]
+    ) -> dict[str, NoteTypeInfo | None | Exception]:
+        return await (await self._open()).note_types(names)
+
+    async def add_field(self, model: str, field: str) -> None:
+        await (await self._open()).add_field(model, field)
+
+    async def deck_names(self) -> set[str]:
+        return await (await self._open()).deck_names()
+
+    async def create_decks(self, names: Collection[str]) -> dict[str, Exception | None]:
+        return await (await self._open()).create_decks(names)
+
+    async def read_notes(self, nids: Sequence[int]) -> dict[int, HeldNote | None | Exception]:
+        return await (await self._open()).read_notes(nids)
+
+    async def find_by_arete_ids(
+        self, arete_ids: Sequence[str]
+    ) -> dict[str, list[HeldNote] | Exception]:
+        return await (await self._open()).find_by_arete_ids(arete_ids)
+
+    async def scan_model(self, model: str) -> list[HeldNote]:
+        return await (await self._open()).scan_model(model)
+
+    async def create_notes(self, notes: Sequence[NewNote]) -> list[int | Exception]:
+        return await (await self._open()).create_notes(notes)
+
+    async def apply_changes(self, changes: Sequence[NoteChange]) -> list[Exception | None]:
+        return await (await self._open()).apply_changes(changes)
 
 
 def _key_of(arete_id: str | None) -> str | None:
@@ -154,19 +204,45 @@ class NoteSync:
         self._index: dict[str, dict[str, list[tuple[int, frozenset[str]]]]] = {}
         self._index_lock = asyncio.Lock()
         self._claimed: dict[int, str] = {}  # nid -> the card that resolved to it this run
+        # nid -> the note as `prefetch` read it (None: not in Anki); each entry used once.
+        self._snapshot: dict[int, HeldNote | None] = {}
 
     # -- entry ---------------------------------------------------------------
 
     async def sync_notes(self, work_items: list[WorkItem]) -> list[UpdateItem]:
+        """Each card's decision and result.
+
+        A session opens only if the batch needs one: a batch the prefetched snapshot
+        answers, with nothing to write, touches nothing.
+        """
         cards = [_Card(w, _key_of(w.note.arete_id)) for w in work_items]
         try:
-            async with self._store.session() as s:
-                await self._run(s, cards)
+            async with AsyncExitStack() as stack:
+                await self._run(_LazySession(self._store, stack), cards)
         except Exception as e:  # the session itself failed: no card got a decision
             self._log.error(f"[sync] the Anki collection could not be used: {e}")
             for card in cards:
                 card.fail(f"Anki collection unavailable: {e}")
         return [self._result(card) for card in cards]
+
+    async def prefetch(self, nids: Collection[int], models: Collection[str]) -> None:
+        """Read, in one session, every note the vault names and the note types it uses.
+
+        Batches then compare against this snapshot instead of reading per batch. A note
+        whose read failed is read again by its own batch. An edit made in Anki after the
+        prefetch can survive this run; the next run overwrites it.
+        """
+        try:
+            async with self._store.session() as s:
+                await self._load_types(s, models)
+                async with self._decks_lock:
+                    if self._decks is None:
+                        self._decks = {d.casefold() for d in await s.deck_names()}
+                held = await s.read_notes(sorted(set(nids)))
+        except Exception as e:
+            self._log.warning(f"[sync] prefetch failed; each batch reads its own notes: {e}")
+            return
+        self._snapshot.update((n, h) for n, h in held.items() if not isinstance(h, Exception))
 
     async def _run(self, s: NoteStoreSession, cards: list[_Card]) -> None:
         await self._load_types(s, {c.work.note.model for c in cards})
@@ -304,10 +380,15 @@ class NoteSync:
             wanted.setdefault(nid, card)
         if not ordered:
             return
-        try:
-            held = await s.read_notes(list(wanted))
-        except Exception as e:
-            held = dict.fromkeys(wanted, e)
+        held: dict[int, HeldNote | None | Exception] = {
+            n: self._snapshot.pop(n) for n in list(wanted) if n in self._snapshot
+        }
+        unread = [n for n in wanted if n not in held]
+        if unread:
+            try:
+                held.update(await s.read_notes(unread))
+            except Exception as e:
+                held.update(dict.fromkeys(unread, e))
         for card, nid in ordered:
             self._check_identity(card, nid, held.get(nid))
 
@@ -438,7 +519,7 @@ class NoteSync:
             return
         if self._dry:
             for card, new in todo:
-                card.how = "create"
+                card.how, card.changed = "create", True
                 self._plan(f"would create {card.label} in deck '{new.deck}' ({new.model})")
             return
         try:
@@ -452,6 +533,7 @@ class NoteSync:
             elif isinstance(result, Exception):
                 card.fail(f"Add failed: {result}")
             elif self._claim(card, int(result), "create"):
+                card.changed = True
                 self._log.debug(f"[create] {card.label} -> nid={result}")
         await self._adopt_lost(s, lost)
 
@@ -528,6 +610,7 @@ class NoteSync:
         planned = await self._changes(s, cards)
         if self._dry:
             for card, change in planned:
+                card.changed = True
                 self._plan(_describe(card, change))
             return
         if planned:
@@ -536,7 +619,9 @@ class NoteSync:
             except Exception as e:
                 errors = [e] * len(planned)
             for (card, _), error in zip(planned, errors, strict=True):
-                if error is not None:
+                if error is None:
+                    card.changed = True
+                else:
                     card.fail(error)
         await self._read_created(s, [c for c in cards if c.how == "create" and c.error is None])
 
@@ -629,7 +714,14 @@ class NoteSync:
         elif work.note.cid and cids and work.note.cid.strip() not in {str(c) for c in cids}:
             new_cid = str(cids[0])
         return UpdateItem(
-            work.source_file, work.source_index, str(card.nid), new_cid, True, None, work.note
+            work.source_file,
+            work.source_index,
+            str(card.nid),
+            new_cid,
+            True,
+            None,
+            work.note,
+            changed=card.changed,
         )
 
     def _planned(self, card: _Card) -> UpdateItem:
@@ -643,7 +735,9 @@ class NoteSync:
         if card.how == "adopt":
             self._plan(f"would adopt nid={card.nid} for {card.label}")
         nid = None if card.nid is None else str(card.nid)
-        return UpdateItem(work.source_file, work.source_index, nid, None, True, None, work.note)
+        return UpdateItem(
+            work.source_file, work.source_index, nid, None, True, None, work.note, card.changed
+        )
 
 
 def _describe(card: _Card, change: NoteChange) -> str:

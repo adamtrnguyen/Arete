@@ -39,7 +39,7 @@ src/arete/
 │   │   ├── id_service.py          Service for managing stable Arete IDs for cards
 │   │   ├── note_sync.py           Bring Anki's notes to what the vault says: the one copy of the sync decision logic
 │   │   ├── parser.py              MarkdownParser
-│   │   ├── pipeline.py            vault_claims, RunStats, run_pipeline
+│   │   ├── pipeline.py            vault_claims, vault_models, RunStats...
 │   │   ├── prune.py               Prune: delete the Anki notes and decks Arete made that the vault no longer claims
 │   │   ├── vault_service.py       VaultService
 │   ├── utils/                    
@@ -90,9 +90,9 @@ src/arete/
 |---|---|---|---|
 | `interface` | 7 | 1840 | application, composition |
 | `composition` | 2 | 185 | application, infrastructure, domain |
-| `application` | 26 | 5504 | domain (ports only) |
+| `application` | 26 | 5641 | domain (ports only) |
 | `infrastructure` | 8 | 2546 | domain |
-| `domain` | 9 | 849 | nothing in arete |
+| `domain` | 9 | 864 | nothing in arete |
 
 The import rules in the last column are enforced by `just check-architecture`
 (import-linter), not by convention.

@@ -143,8 +143,9 @@ def test_a_failed_cache_write_loses_rows_and_the_cards_are_sent_again(root: Path
     sync(root, anki, cache)
     assert len(anki.sent) == 20, "nothing was recorded, so every card is checked again"
 
+    assert all(cache.get_hash(root / f"n{f}.md", c) for f in range(2) for c in range(1, 6))
     sync(root, anki, cache)
-    assert len(anki.sent) == 20, "once recorded, an unchanged vault sends nothing"
+    assert len(anki.sent) == 30, "an unchanged vault is still compared with Anki"
 
 
 def test_set_notes_writes_all_rows_or_none(tmp_path: Path):

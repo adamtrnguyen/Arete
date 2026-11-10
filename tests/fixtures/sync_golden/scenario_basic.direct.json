@@ -96,7 +96,36 @@
         "ok": true
       }
     ],
-    []
+    [
+      {
+        "card": "basic_card.md#1",
+        "error": null,
+        "new_cid": null,
+        "new_nid": "its note",
+        "ok": true
+      },
+      {
+        "card": "healing.md#1",
+        "error": null,
+        "new_cid": null,
+        "new_nid": "its note",
+        "ok": true
+      },
+      {
+        "card": "prune_me.md#1",
+        "error": null,
+        "new_cid": null,
+        "new_nid": "its note",
+        "ok": true
+      },
+      {
+        "card": "stay.md#1",
+        "error": null,
+        "new_cid": null,
+        "new_nid": "its note",
+        "ok": true
+      }
+    ]
   ],
   "vault_ids": {
     "basic_card.md#1": {

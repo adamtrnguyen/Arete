@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from arete.application.sync.parser import MarkdownParser
+from arete.domain.constants import RENDER_VERSION
 
 
 @pytest.fixture
@@ -145,18 +146,66 @@ def test_parse_hot_cache_hit(parser_fixture):
     }
     import json
 
-    mock_cache.get_note.return_value = ("hash", json.dumps(note_dict))
-
-    meta = {"cards": [{"model": "Basic"}]}  # Dummy meta, logic skips parsing
+    mock_cache.get_note.return_value = (
+        "hash",
+        json.dumps({**note_dict, "render_version": RENDER_VERSION}),
+    )
+    # The vault card names the same note: its rendering is taken from the cache.
+    meta = {"cards": [{"model": "Basic", "anki": {"nid": "123", "cid": "456"}}]}
 
     # is_fresh=False
     notes, skipped, inventory = parser.parse_file(Path("test.md"), meta, mock_cache, is_fresh=False)
 
-    # An unchanged, already-synced card is not re-sent; it stays in
-    # the prune inventory so its note is protected.
-    assert notes == []
+    # An unchanged card is yielded from its cached rendering, so it is compared with Anki;
+    # it stays in the prune inventory.
+    [note] = notes
+    assert (note.fields, note.nid, note.cid, note.unchanged) == (
+        {"Front": "F", "Back": "B"},
+        "123",
+        "456",
+        True,
+    )
     assert {"nid": "123", "deck": "Default"} in inventory
     assert len(skipped) == 0
+
+
+@pytest.mark.parametrize(
+    ("cached_extra", "card_anki"),
+    [
+        ({}, {"nid": "999", "cid": "456"}),  # the vault names another note
+        ({"render_version": None}, {"nid": "123", "cid": "456"}),  # another renderer
+    ],
+    ids=["other-nid", "other-renderer"],
+)
+def test_a_cached_rendering_is_not_used_for_another_card_or_renderer(
+    parser_fixture, cached_extra, card_anki
+):
+    parser, vault = parser_fixture
+    cache = MagicMock()
+    cache.get_hash.return_value = None
+    cached = {
+        "model": "Basic",
+        "deck": "Default",
+        "fields": {"Front": "STALE", "Back": "STALE"},
+        "tags": [],
+        "start_line": 1,
+        "end_line": 1,
+        "source_file": str(vault / "test.md"),
+        "source_index": 1,
+        "nid": "123",
+        "cid": "456",
+        "content_hash": "hash",
+        "render_version": RENDER_VERSION,
+        **cached_extra,
+    }
+    import json
+
+    cache.get_note.return_value = ("hash", json.dumps(cached))
+    meta = {"deck": "Default", "cards": [{"Front": "F", "Back": "B", "anki": card_anki}]}
+
+    [note], _, _ = parser.parse_file(vault / "test.md", meta, cache, is_fresh=False)
+
+    assert note.fields["Front"] == "<p>F</p>" and not note.unchanged
 
 
 def test_parse_hot_cache_corruption(parser_fixture):
@@ -202,7 +251,9 @@ def test_parse_deep_cache_hit(parser_fixture):
     mock_cache.get_hash.return_value = hash1
     notes2, _, _ = parser.parse_file(vault / "test.md", meta, mock_cache)
 
-    assert len(notes2) == 0  # Skipped due to cache hit
+    # The same hash labels the card unchanged; it is still yielded and compared.
+    [note] = notes2
+    assert note.unchanged and note.content_hash == hash1
 
 
 def test_parse_no_deck_set(parser_fixture):

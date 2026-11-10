@@ -7,7 +7,7 @@ Each invariant gets a test that fails when it breaks; its status changes only wi
 
 | # | Invariant | Holds today |
 |---|---|---|
-| 1 | **Obsidian is ground truth.** After any sync, Anki's fields, tags, deck and note type for a card id equal the vault's. An edit made in Anki is overwritten. | Not yet: a field, tag, deck or note-type edit made in Anki survives a sync on every backend |
+| 1 | **Obsidian is ground truth.** After any sync, Anki's fields, tags, deck and note type for a card id equal the vault's. An edit made in Anki is overwritten. Anki's own `leech` tag stays. | Holds. An edit made in Anki while a sync runs can survive that sync; the next one overwrites it |
 | 2 | **The Arete id is the identity.** A card is found by its id, whichever backend runs. | Holds |
 | 3 | **Both backends behave the same.** Whether Anki is open changes how Arete reaches the collection, never what it does. | Holds |
 | 4 | **Arete never touches scheduling.** Review history, due dates and suspension belong to Anki. | Holds, a card in `Arete::Queue` included. Over an add-on without `setHomeDeck`, an update still takes a queued card out of the queue |
@@ -179,9 +179,6 @@ lives in `docs/history/`.
 
 - [ ] `arete vault check` does not detect a duplicate Arete id, and the real vault
       has some (`docs/history/vault-data-findings.md`).
-- [ ] An edit made inside Anki (deck, fields, tags) is not reverted by an ordinary sync:
-      a file whose stat is unchanged is skipped before its cards are compared with Anki.
-      Only `--force` or `--clear-cache` restores the vault's version.
 - [ ] The three surfaces duplicate their wiring: `http_server` resolves config and builds
       a bridge inline in each route (`grep -c 'resolve_config(\|get_anki_bridge('
       src/arete/interface/http_server.py`). Five Anki admin verbs are called only from

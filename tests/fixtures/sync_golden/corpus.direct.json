@@ -329,7 +329,106 @@
         "ok": true
       }
     ],
-    []
+    [
+      {
+        "card": "Cramér accents.md#1",
+        "error": null,
+        "new_cid": null,
+        "new_nid": "its note",
+        "ok": true
+      },
+      {
+        "card": "basic.md#1",
+        "error": null,
+        "new_cid": null,
+        "new_nid": "its note",
+        "ok": true
+      },
+      {
+        "card": "basic_with_extra.md#1",
+        "error": null,
+        "new_cid": null,
+        "new_nid": "its note",
+        "ok": true
+      },
+      {
+        "card": "callout_and_code.md#1",
+        "error": null,
+        "new_cid": null,
+        "new_nid": "its note",
+        "ok": true
+      },
+      {
+        "card": "card_level_deck.md#1",
+        "error": null,
+        "new_cid": null,
+        "new_nid": "its note",
+        "ok": true
+      },
+      {
+        "card": "card_level_deck.md#2",
+        "error": null,
+        "new_cid": null,
+        "new_nid": "its note",
+        "ok": true
+      },
+      {
+        "card": "cloze.md#1",
+        "error": null,
+        "new_cid": null,
+        "new_nid": "its note",
+        "ok": true
+      },
+      {
+        "card": "deps.md#1",
+        "error": null,
+        "new_cid": null,
+        "new_nid": "its note",
+        "ok": true
+      },
+      {
+        "card": "deps.md#2",
+        "error": null,
+        "new_cid": null,
+        "new_nid": "its note",
+        "ok": true
+      },
+      {
+        "card": "math.md#1",
+        "error": null,
+        "new_cid": null,
+        "new_nid": "its note",
+        "ok": true
+      },
+      {
+        "card": "media.md#1",
+        "error": null,
+        "new_cid": null,
+        "new_nid": "its note",
+        "ok": true
+      },
+      {
+        "card": "multi_card.md#1",
+        "error": null,
+        "new_cid": null,
+        "new_nid": "its note",
+        "ok": true
+      },
+      {
+        "card": "multi_card.md#2",
+        "error": null,
+        "new_cid": null,
+        "new_nid": "its note",
+        "ok": true
+      },
+      {
+        "card": "multi_card.md#3",
+        "error": null,
+        "new_cid": null,
+        "new_nid": "its note",
+        "ok": true
+      }
+    ]
   ],
   "vault_ids": {
     "Cramér accents.md#1": {

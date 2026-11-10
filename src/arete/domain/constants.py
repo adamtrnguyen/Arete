@@ -6,6 +6,10 @@ imports from a single source of truth.
 
 # ---------- Pipeline ----------
 CONSUMER_BATCH_SIZE = 50
+# The markdown-to-Anki renderer's version, stored with each cached render. A render from
+# another version is not the vault's fields: the card is rendered again. Raise it with
+# any change to what the renderer produces.
+RENDER_VERSION = 1
 
 # ---------- AnkiConnect / HTTP ----------
 REQUEST_TIMEOUT = 30.0

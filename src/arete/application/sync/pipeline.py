@@ -13,6 +13,7 @@ from arete.application.sync.note_sync import NoteSync, VaultClaims
 from arete.application.sync.parser import MarkdownParser
 from arete.application.sync.prune import PruneConfirm, PruneReport, prune_orphans
 from arete.application.sync.vault_service import VaultService
+from arete.application.utils.common import sanitize
 from arete.application.utils.logging import RunRecorder
 from arete.application.utils.media import FilenameIndex
 from arete.application.utils.text import rebuild_markdown_with_frontmatter
@@ -37,6 +38,17 @@ def vault_claims(
             if raw and raw.isdigit():
                 owners.setdefault(int(raw), set()).add(key)
     return VaultClaims({nid: frozenset(o) for nid, o in owners.items()}, frozenset(ids))
+
+
+def vault_models(compatible: list[tuple[Path, dict[str, Any], bool]]) -> set[str]:
+    """The note types the scanned cards name: a card's own, else its file's, else Basic."""
+    models: set[str] = set()
+    for _path, meta, _fresh in compatible:
+        default = sanitize(meta.get("model", "Basic"))
+        for card in meta.get("cards") or []:
+            if isinstance(card, dict):
+                models.add(sanitize(card.get("model", default)))
+    return models
 
 
 @dataclass
@@ -161,11 +173,13 @@ async def run_pipeline(
                 p, f"Arete id {card_id} is declared by {len(c)} cards; none is synced", f"#{i}"
             )
     # A dry run decides through the same NoteSync, reading Anki and writing nothing.
-    note_sync = (
-        NoteSync(note_store, vault_claims(compatible, parser), logger, dry_run=config.dry_run)
-        if note_store is not None
-        else None
-    )
+    note_sync = None
+    if note_store is not None:
+        scanned = vault_claims(compatible, parser)
+        note_sync = NoteSync(note_store, scanned, logger, dry_run=config.dry_run)
+        # Every note the vault names, read once: every card is compared with Anki, and
+        # the batches compare against this read instead of reading their own.
+        await note_sync.prefetch(scanned.nid_owners, vault_models(compatible))
 
     # -------- Stage 2: media index, walked on the first image lookup --------
     assert config.vault_root is not None  # Guaranteed by resolve_config
@@ -189,7 +203,7 @@ async def run_pipeline(
                 md_file, meta, cache, name_index, is_fresh
             )
             recorder.cards_generated += len(notes) + len(skipped_indices)
-            recorder.cards_cached_content += len(inventory) - len(notes)
+            recorder.cards_cached_content += sum(1 for n in notes if n.unchanged)
 
             recorder.add_inventory(inventory)
 
@@ -372,7 +386,7 @@ async def run_pipeline(
             )
 
     total_generated = len(updates)
-    total_imported = sum(1 for u in updates if u.ok)
+    total_imported = sum(1 for u in updates if u.ok and u.changed is not False)
     total_errors = len(recorder.errors)
 
     return RunStats(

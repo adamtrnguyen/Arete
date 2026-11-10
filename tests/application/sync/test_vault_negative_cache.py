@@ -110,7 +110,7 @@ def test_a_gained_card_reaches_anki_on_the_next_sync(root: Path, tmp_path: Path)
 
     (root / "plain0.md").write_text(ARETE.format(n=7))
     sync(root, anki, cache)
-    assert [name for name, _ in anki.sent] == ["card.md", "plain0.md"]
+    assert sorted(name for name, _ in anki.sent[1:]) == ["card.md", "plain0.md"]
 
     sync(root, anki, cache)
-    assert len(anki.sent) == 2
+    assert sorted(name for name, _ in anki.sent[3:]) == ["card.md", "plain0.md"]

@@ -6,6 +6,7 @@ from arete.application.sync.converter import markdown_to_anki_html
 from arete.application.utils.common import sanitize, to_list
 from arete.application.utils.media import transform_images_in_text, transform_wikilinks_to_uri
 from arete.application.utils.text import card_content_hash
+from arete.domain.constants import RENDER_VERSION
 from arete.domain.interfaces import ContentCache
 from arete.domain.models import AnkiNote
 
@@ -44,6 +45,45 @@ class MarkdownParser:
         if not isinstance(card, dict):
             return None
         return sanitize(card.get("id", "")).strip() or None
+
+    def _cached_render(
+        self,
+        md_path: Path,
+        idx: int,
+        card: dict[str, Any],
+        cache: ContentCache,
+        duplicate_nids: set[str],
+    ) -> AnkiNote | None:
+        """The card as the last sync sent it, when that is still the vault's card.
+
+        The cached render counts only if this renderer made it and its nid, cid and Arete
+        id are the ones the vault holds now; a nid other files claim too is never taken
+        from it. Otherwise None, and the card is rendered from its markdown.
+        """
+        import json
+
+        entry = cache.get_note(md_path, idx)
+        if not (entry and entry[1]):
+            return None
+        try:
+            data = json.loads(entry[1])
+            if data.get("render_version") != RENDER_VERSION:
+                return None
+            cached = AnkiNote.from_dict(data)
+        except Exception as e:
+            self.logger.warning(f"Failed to load hot cache for {md_path}#{idx}: {e}")
+            return None
+        nid = self._extract_raw_nid(card)
+        anki_block = card.get("anki") if isinstance(card.get("anki"), dict) else {}
+        cid = sanitize((anki_block or {}).get("cid", "")).strip() or None
+        if nid and nid in duplicate_nids:
+            nid, cid = None, None
+        if (cached.nid, cached.cid, cached.arete_id) != (nid, cid, self.declared_id(card)):
+            return None
+        if nid and nid in self.contested_nids:
+            return None
+        cached.source_file, cached.source_index, cached.unchanged = md_path, idx, True
+        return cached
 
     def _cached_nid(self, md_path: Path, idx: int, cache: ContentCache) -> str | None:
         """The nid the content cache recorded for a card, which the vault may not hold yet."""
@@ -110,8 +150,6 @@ class MarkdownParser:
         name_index: dict[str, list[Path]] | None = None,
         is_fresh: bool = True,
     ) -> tuple[list[AnkiNote], list[int], list[dict[str, str | None]]]:
-        import json
-
         deck_frontmatter = sanitize(meta.get("deck", "")) or None
         default_model = sanitize(meta.get("model", "Basic"))
         base_tags = [t.strip() for t in to_list(meta.get("tags", [])) if t and t.strip()]
@@ -152,26 +190,14 @@ class MarkdownParser:
                     skipped_indices.append(idx)
                     continue
 
-                # OPTIMIZATION: Hot Cache Lookup
-                # If file metadata hasn't changed (is_fresh=False), check if we have a fully
-                # rendered note in the 'cards' table. If so, we can skip parsing/rendering.
+                # An unchanged file's card is rendered from the content cache instead of
+                # its markdown. It is still yielded: every card is compared with Anki.
                 if not is_fresh and not self.ignore_cache:
-                    cached_note_data = cache.get_note(md_path, idx)
-                    if cached_note_data:
-                        try:
-                            # cached_note_data is (hash, note_json)
-                            _, note_json = cached_note_data
-                            if note_json:
-                                cached_note = AnkiNote.from_dict(json.loads(note_json))
-                                # The entry is only written after Anki accepted the note,
-                                # so an unchanged file has nothing to send; prune still
-                                # needs it.
-                                inventory.append({"nid": cached_note.nid, "deck": cached_note.deck})
-                                continue
-                        except Exception as e:
-                            self.logger.warning(
-                                f"Failed to load hot cache for {md_path}#{idx}: {e}"
-                            )
+                    cached = self._cached_render(md_path, idx, card, cache, duplicate_nids)
+                    if cached is not None:
+                        inventory.append({"nid": cached.nid, "deck": cached.deck})
+                        notes.append(cached)
+                        continue
 
                 model = sanitize(card.get("model", default_model))
                 mlow = model.lower()
@@ -309,14 +335,16 @@ class MarkdownParser:
                 # tag edit changes the hash.
                 content_hash = card_content_hash(model, deck_this, card_tags, fields, nid, cid)
 
-                cached_hash = cache.get_hash(md_path, idx)
-                if not self.ignore_cache and cached_hash == content_hash:
-                    self.logger.debug(f"[cache-hit] {md_path} card#{idx}: skipping")
+                # The same hash as the last sync labels the card unchanged; it is compared
+                # with Anki all the same.
+                unchanged = False
+                if not self.ignore_cache and cache.get_hash(md_path, idx) == content_hash:
+                    self.logger.debug(f"[cache-hit] {md_path} card#{idx}: unchanged")
+                    unchanged = True
                     # The cached note holds the nid Anki assigned, which the vault may not
                     # hold yet (a crash before write-back). Prune must count it as claimed.
                     if cached_nid := self._cached_nid(md_path, idx, cache):
                         inventory.append({"nid": cached_nid, "deck": None})
-                    continue
 
                 note_obj = AnkiNote(
                     model=model,
@@ -331,6 +359,7 @@ class MarkdownParser:
                     source_file=md_path,
                     source_index=idx,
                     arete_id=card_id or None,
+                    unchanged=unchanged,
                 )
                 notes.append(note_obj)
                 # The content cache is written by the pipeline AFTER Anki accepts the note.

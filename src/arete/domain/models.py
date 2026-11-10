@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from pathlib import Path
 
+from .constants import RENDER_VERSION
+
 
 @dataclass
 class AnkiDeck:
@@ -54,16 +56,22 @@ class AnkiNote:
 
     content_hash: str | None = None
     arete_id: str | None = None
+    # The vault card is as it was at the last sync; for reporting only, never stored.
+    unchanged: bool = False
 
     def to_dict(self) -> dict:
+        """The note as the content cache stores it, stamped with the renderer's version."""
         from dataclasses import asdict
 
         d = asdict(self)
         d["source_file"] = str(self.source_file)
+        d.pop("unchanged")
+        d["render_version"] = RENDER_VERSION
         return d
 
     @classmethod
     def from_dict(cls, d: dict) -> "AnkiNote":
+        d = {k: v for k, v in d.items() if k not in ("render_version", "unchanged")}
         d["source_file"] = Path(d["source_file"])
         return cls(**d)
 
@@ -89,6 +97,8 @@ class UpdateItem:
         ok: Whether the operation succeeded.
         error: Descriptive error message if ok is False.
         note: The original AnkiNote object (used for cache persistence).
+        changed: Whether the sync wrote to Anki for this card (a dry run: would write).
+            None when the backend does not say.
 
     """
 
@@ -99,6 +109,7 @@ class UpdateItem:
     ok: bool
     error: str | None = None
     note: AnkiNote | None = None
+    changed: bool | None = None
 
 
 class OutcomeUnknown(Exception):

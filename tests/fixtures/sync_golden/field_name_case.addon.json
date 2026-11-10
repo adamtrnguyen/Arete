@@ -28,7 +28,15 @@
         "ok": true
       }
     ],
-    []
+    [
+      {
+        "card": "case.md#1",
+        "error": null,
+        "new_cid": null,
+        "new_nid": "its note",
+        "ok": true
+      }
+    ]
   ],
   "vault_ids": {
     "case.md#1": {

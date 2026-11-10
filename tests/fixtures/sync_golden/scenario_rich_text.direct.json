@@ -73,7 +73,29 @@
         "ok": true
       }
     ],
-    []
+    [
+      {
+        "card": "callout.md#1",
+        "error": null,
+        "new_cid": null,
+        "new_nid": "its note",
+        "ok": true
+      },
+      {
+        "card": "code.md#1",
+        "error": null,
+        "new_cid": null,
+        "new_nid": "its note",
+        "ok": true
+      },
+      {
+        "card": "math.md#1",
+        "error": null,
+        "new_cid": null,
+        "new_nid": "its note",
+        "ok": true
+      }
+    ]
   ],
   "vault_ids": {
     "callout.md#1": {
