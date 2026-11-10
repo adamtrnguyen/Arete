@@ -24,8 +24,7 @@ export class LeechService {
 		for (const concept of concepts) {
 			if (concept.problematicCards && concept.problematicCards.length > 0) {
 				for (const card of concept.problematicCards) {
-					// Optionally filter further? For now, we trust 'problematicCards' logic from StatsService
-					// which already picks high lapses / low ease.
+					// StatsService's problematicCards already picks high lapses / low ease.
 					leeches.push({
 						...card,
 						filePath: concept.filePath,

@@ -336,24 +336,10 @@ export class DependencySelectionModal extends Modal {
 		if (this.mode === 'files') {
 			const file = item.value as TFile;
 
-			// Logic: If modifier key or specific action, drill down?
-			// For now: Always allow drill down? Or make it a choice?
-			// "Yazi" style usually enters directories on Enter.
-			// Let's check: if user wants to link the FILE, they can... how?
-			// Maybe: Enter -> Select File. Ctrl+Enter -> Drill Down to cards?
-			// Or simplified: Just Enter to Drill Down. User must have "Select this File" option?
-
-			// User request: "preview card window if we want to find a specific card"
-			// But dependencies CAN be files OR cards.
-
+			// A file always drills down into its cards, with or without forceDrillDown.
 			if (forceDrillDown) {
 				this.loadCards(file);
 			} else {
-				// Default action for file: Should it be select or drill?
-				// Context of dependency: "requires: [arete_ID]" or "requires: [File]"
-				// Given we want to find cards, Enter -> Drill Down seems safer default for "Yazi like browsing"
-				// But we need a way to select the file itself if that's the intent.
-				// Let's try: Enter = Drill Down. Shift+Enter = Select File.
 				this.loadCards(file);
 			}
 		} else {

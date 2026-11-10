@@ -1,9 +1,9 @@
 /**
  * DependencyResolver serves the graph views from the graph the Python side resolves.
  *
- * It used to parse frontmatter and resolve `deps` references itself: a second
- * implementation that missed the ambiguous-basename and scalar-ref fixes (G5/G6). Now it
- * only loads `GraphSource` output, caches it until `invalidate()`, and walks it.
+ * It parses no frontmatter and resolves no `deps` reference: one resolver, in Python,
+ * keeps both sides agreeing. It loads `GraphSource` output, caches it until
+ * `invalidate()`, and walks it.
  */
 
 import {

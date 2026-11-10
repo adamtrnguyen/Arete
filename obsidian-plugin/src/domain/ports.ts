@@ -1,6 +1,6 @@
 /**
  * Ports: what application services need from the Arete backend. AreteClient
- * (infrastructure) implements them; services never import infrastructure (PL3).
+ * (infrastructure) implements them; services never import infrastructure.
  */
 
 export interface AnkiModelSource {

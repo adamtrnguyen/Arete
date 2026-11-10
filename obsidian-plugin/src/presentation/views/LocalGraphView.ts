@@ -745,13 +745,10 @@ export class LocalGraphView extends ItemView {
 						this.tooltipCache.set(cacheKey, cardDiv);
 						cardDiv.style.width = `${TOOLTIP_WIDTH_PX}px`;
 
-						// Re-construct basic card object for display
-						// In a real scenario we'd want the full card from cache
+						// The preview shows the id and title only, not the full card.
 						const cardMock = {
 							id: d.id,
 							Front: d.title,
-							// We'd need to fetch more data for full preview
-							// For now showing ID and Title is a start
 						};
 
 						await CardRenderer.render(

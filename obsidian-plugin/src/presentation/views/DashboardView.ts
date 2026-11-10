@@ -60,9 +60,7 @@ export class DashboardView extends ItemView {
 	async onOpen() {
 		// Auto-load stats if cache is empty
 		if (Object.keys(this.plugin.statsService.getCache().concepts).length === 0) {
-			// Don't await here directly if we want instant UI, but we want to avoid empty state.
-			// Let's show a loading notice and render, then re-render when done?
-			// Or just await. Ensuring data on open is better UX than empty state.
+			// Awaited, so the first render has data instead of an empty state.
 			new Notice('Syncing Anki stats...');
 			await this.plugin.statsService.refreshStats();
 		}
@@ -123,8 +121,7 @@ export class DashboardView extends ItemView {
 		let totalLeeches = 0;
 		Object.values(stats.concepts).forEach((c) => {
 			totalCards += c.totalCards;
-			// For now, let's say leeches are cards with > 8 lapses OR manually tagged
-			// Actually we can count problematic cards from cache
+			// Leeches are the problematic cards the stats cache counts.
 			totalLeeches += c.problematicCardsCount;
 		});
 
@@ -201,8 +198,7 @@ export class DashboardView extends ItemView {
 	async renderOverview(container: HTMLElement) {
 		container.empty(); // Clear previous render to prevent duplication
 
-		// FIX: Do NOT await refreshStats() here. It causes re-fetching on every UI click (expand/collapse).
-		// Use cached data.
+		// Cached data only: refreshStats() here would re-fetch on every expand/collapse click.
 		const conceptsMap = this.plugin.statsService.getCache().concepts;
 		const concepts = Object.values(conceptsMap);
 
@@ -526,7 +522,7 @@ export class DashboardView extends ItemView {
 							stSpan.textContent = '-';
 						}
 
-						// 3. Interval Growth (was Stability Gain)
+						// 3. Interval Growth
 						const growthSpan = sGroup.createSpan();
 						growthSpan.style.width = '50px';
 						growthSpan.style.textAlign = 'right';

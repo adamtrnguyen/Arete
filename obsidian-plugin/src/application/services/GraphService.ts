@@ -69,10 +69,6 @@ export class GraphService {
 		// We use 'score' from StatsService which is (problematicCards / totalCards)
 		// So score 0.1 means 10% problematic.
 
-		// However, we also want to consider FSRS difficulty if available
-		// But 'score' is already heavily weighted by "Is Problematic".
-		// Let's stick to the 'score' metric for simplicity as it encapsulates lapses, ease, and difficulty.
-
 		const problematicRatio = stats.score;
 
 		if (problematicRatio > 0.2) return 'low';

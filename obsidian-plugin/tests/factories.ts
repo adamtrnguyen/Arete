@@ -1,11 +1,9 @@
 /**
  * One place that knows the shape of a card, a note and a stats row.
  *
- * Three test files used to hand-write a card with a flat `nid:` key. Arete writes
- * `anki: {nid: ...}` nested and reads nothing else, so all three agreed with each
- * other, disagreed with the product, and passed while testing nothing. The same
- * files also carried FSRS difficulty on Anki's 1..10 scale when the backend sends
- * 0..1, which is why every difficulty threshold in the interface was dead.
+ * Arete writes ids nested (`anki: {nid: ...}`) and the backend sends FSRS difficulty on
+ * a 0..1 scale. A hand-written fixture can disagree with both and still pass
+ * (docs/history/test-factories.md).
  *
  * Build fixtures here so a format change is one edit, and so the types are checked.
  */

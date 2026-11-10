@@ -2,7 +2,7 @@ import '../../test-setup';
 import { DependencyResolver } from '@application/services/DependencyResolver';
 import { GraphExport, GraphSource } from '@/domain/graph/types';
 
-// PL1: the resolver draws the graph Python resolved; it no longer parses deps itself.
+// The resolver draws the graph Python resolved; it parses no deps itself.
 const GRAPH: GraphExport = {
 	nodes: [
 		{ id: 'arete_A', title: 'algebra', file: 'Algebra.md', line: 5 },

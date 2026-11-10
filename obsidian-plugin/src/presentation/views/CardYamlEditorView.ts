@@ -874,7 +874,7 @@ export class CardYamlEditorView extends ItemView {
 
 	/**
 	 * Reload after the active file is re-parsed. `vault.on('modify')` fires before the
-	 * metadata cache updates, so an external (agent) edit used to show one edit late.
+	 * metadata cache updates, so reloading on it would show an external edit one edit late.
 	 * Skips only the echo of this view's own write, identified by its mtime.
 	 */
 	onFileParsed(file: TFile) {

@@ -197,7 +197,7 @@ export class AreteClient implements GraphSource, AnkiModelSource, CardStatsSourc
 		return response.json || {};
 	}
 
-	/** The resolved dependency graph; resolution happens in Python only (PL1). */
+	/** The resolved dependency graph; resolution happens in Python only. */
 	async fetchGraph(vaultRoot: string): Promise<GraphExport> {
 		if (this.settings.execution_mode === 'cli') {
 			return this.runCLI(['graph', 'export', vaultRoot]);

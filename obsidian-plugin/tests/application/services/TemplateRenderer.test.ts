@@ -150,7 +150,7 @@ describe('TemplateRenderer', () => {
 	});
 
 	it('renders Cloze the way Anki shows card 1: hidden on the front, revealed on the back', async () => {
-		// Mustache cannot evaluate {{cloze:Text}}; the preview used to give up on every cloze card.
+		// Mustache cannot evaluate {{cloze:Text}}, so the renderer handles cloze itself.
 		renderer.setMode('anki'); // raw fields, so the assertion sees the cloze markup itself
 		mockRepo.modelTemplates.mockResolvedValue({
 			Cloze: {

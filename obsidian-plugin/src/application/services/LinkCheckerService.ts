@@ -191,8 +191,7 @@ export class LinkCheckerService {
 			const dest = this.app.metadataCache.getFirstLinkpathDest(linkPath, file.path);
 
 			if (!dest) {
-				// Frontmatter Context: Report ALL broken embeds, regardless of extension.
-				// User wants "important embeds" in Cards to be flagged.
+				// Frontmatter context: report every broken embed, whatever its extension.
 				if (isEmbed) {
 					brokenList.push({
 						sourceFile: file,

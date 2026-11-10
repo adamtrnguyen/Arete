@@ -74,7 +74,7 @@ export interface GraphExport {
 	skipped_files: string[];
 }
 
-/** Port: where the graph comes from. Reference resolution lives in Python only (PL1). */
+/** Port: where the graph comes from. Reference resolution lives in Python only. */
 export interface GraphSource {
 	fetchGraph(vaultRoot: string): Promise<GraphExport>;
 }
