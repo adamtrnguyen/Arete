@@ -863,7 +863,7 @@ class AnkiConnect:
             return None
         if deleteExisting:
             self.deleteMediaFile(filename)
-        return self.media().writeData(filename, mediaData)
+        return self.media().write_data(os.path.basename(filename), mediaData)
 
     @util.api()
     def retrieveMediaFile(self, filename):
@@ -1039,7 +1039,7 @@ class AnkiConnect:
 
     @util.api()
     def clearUnusedTags(self):
-        self.collection().tags.registerNotes()
+        self.collection().tags.clear_unused_tags()
 
     @util.api()
     def replaceTags(self, notes, tag_to_replace, replace_with_tag):
