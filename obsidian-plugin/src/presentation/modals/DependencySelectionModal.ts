@@ -172,7 +172,7 @@ export class DependencySelectionModal extends Modal {
 		this.items.unshift(
 			selectionItem({
 				type: 'file', // abusing type slightly for navigation
-				label: '.. (Back to Files)',
+				label: '.. (back to files)',
 				description: 'Go up one level',
 				value: null,
 				id: '__back__',

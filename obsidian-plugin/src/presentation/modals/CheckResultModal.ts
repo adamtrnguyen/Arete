@@ -25,7 +25,7 @@ export class CheckResultModal extends Modal {
 		contentEl.addClass('arete-modal-content');
 
 		const header = contentEl.createDiv({ cls: 'modal-header' });
-		header.createEl('h2', { text: 'Arete File Check' });
+		header.createEl('h2', { text: 'Arete file check' });
 		header.createEl('span', { text: path.basename(this.filePath), cls: 'arete-filename' });
 
 		if (this.result.ok) {
@@ -38,19 +38,19 @@ export class CheckResultModal extends Modal {
 			li1.createSpan({ text: this.result.stats.deck || 'None', cls: 'arete-stats-val' });
 
 			const li2 = ul.createEl('li');
-			li2.createSpan({ text: 'Cards Found', cls: 'arete-stats-label' });
+			li2.createSpan({ text: 'Cards found', cls: 'arete-stats-label' });
 			li2.createSpan({
 				text: this.result.stats.cards_found.toString(),
 				cls: 'arete-stats-val',
 			});
 		} else {
-			contentEl.createDiv({ text: '❌ Validation Failed', cls: 'arete-error' });
+			contentEl.createDiv({ text: '❌ Validation failed', cls: 'arete-error' });
 
 			const table = contentEl.createEl('table', { cls: 'arete-error-table' });
 			const head = table.createEl('thead');
 			const row = head.createEl('tr');
 			row.createEl('th', { text: 'Line' });
-			row.createEl('th', { text: 'Error Message' });
+			row.createEl('th', { text: 'Error message' });
 
 			const body = table.createEl('tbody');
 			let fixable = false;
@@ -75,7 +75,7 @@ export class CheckResultModal extends Modal {
 					attr: { style: 'margin-top: 1rem; text-align: right;' },
 				});
 				const btn = btnContainer.createEl('button', {
-					text: '✨ Auto-Fix Issues',
+					text: '✨ Auto-fix issues',
 					cls: 'mod-cta',
 				});
 				btn.addEventListener('click', async () => {

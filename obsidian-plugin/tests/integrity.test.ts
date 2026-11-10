@@ -38,7 +38,7 @@ describe('AretePlugin Integrity Check', () => {
 		expect(consoleError).toHaveBeenCalledTimes(1);
 		expect(consoleError).toHaveBeenCalledWith(expect.stringContaining('[FAIL] Bad.md'));
 		expect(Notice).toHaveBeenCalledWith(
-			'Found 1 files with Invalid Properties (Check Console)',
+			'1 files have invalid properties, check the developer console.',
 		);
 		expect(cachedRead).toHaveBeenCalledTimes(1);
 		expect(app.vault.read).not.toHaveBeenCalled();
@@ -52,8 +52,6 @@ describe('AretePlugin Integrity Check', () => {
 
 		await plugin.checkVaultIntegrity();
 
-		expect(Notice).toHaveBeenCalledWith(
-			'Integrity Check Passed (Obsidian parses all YAML correctly)',
-		);
+		expect(Notice).toHaveBeenCalledWith('Integrity check passed, Obsidian parses all YAML.');
 	});
 });

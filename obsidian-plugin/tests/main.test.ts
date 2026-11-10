@@ -107,8 +107,79 @@ describe('AretePlugin.showCard (obsidian://arete)', () => {
 	test('says so when the note or card does not exist', async () => {
 		await plugin.showCard('Missing.md', '1');
 		await plugin.showCard('FlashAttention.md', '9');
-		expect(Notice).toHaveBeenCalledWith('Arete: no note at Missing.md');
-		expect(Notice).toHaveBeenCalledWith('Arete: FlashAttention has no card 9');
+		expect(Notice).toHaveBeenCalledWith('No note found at Missing.md.');
+		expect(Notice).toHaveBeenCalledWith('FlashAttention has no card 9.');
 		expect(plugin.activateYamlEditorView).not.toHaveBeenCalled();
+	});
+});
+
+/** Words that keep their capitals in a sentence-case UI string. */
+const PROPER_NOUNS = new Set([
+	'Arete',
+	'Anki',
+	'Obsidian',
+	'FSRS',
+	'AnkiConnect',
+	'YAML',
+	'Debug:',
+	'Graph:',
+]);
+
+/** True when every word after the first is lowercase or a proper noun. */
+function isSentenceCase(text: string): boolean {
+	return text
+		.split(/\s+/)
+		.slice(1)
+		.every((word) => {
+			const bare = word.replace(/^[("]+|[)":.,]+$/g, '');
+			return !/^[A-Z][a-z]/.test(bare) || PROPER_NOUNS.has(bare);
+		});
+}
+
+describe('AretePlugin native look', () => {
+	let ribbon: Array<{ icon: string; title: string }>;
+
+	beforeEach(async () => {
+		jest.clearAllMocks();
+		(global as any).registeredCommands = {};
+		const app = new App();
+		const plugin = new AretePlugin(app, { dir: 'test-plugin-dir' } as any);
+		ribbon = [];
+		plugin.addRibbonIcon = jest.fn().mockImplementation((icon: string, title: string) => {
+			ribbon.push({ icon, title });
+			return (global as any).mockCreateMockElement('div');
+		}) as any;
+		await plugin.onload();
+	});
+
+	test('every command name is in sentence case', () => {
+		const names = Object.values((global as any).registeredCommands).map((c: any) => c.name);
+		expect(names.length).toBeGreaterThan(10);
+		for (const name of names) expect(isSentenceCase(name)).toBe(true);
+	});
+
+	test('ribbon labels are in sentence case', () => {
+		expect(ribbon.length).toBe(2);
+		for (const { title } of ribbon) expect(isSentenceCase(title)).toBe(true);
+	});
+
+	test('command ids are unchanged', () => {
+		expect(Object.keys((global as any).registeredCommands).sort()).toEqual(
+			[
+				'arete-check-file',
+				'arete-check-integrity',
+				'arete-graph-clear',
+				'arete-open-dashboard',
+				'arete-open-global-graph',
+				'arete-open-local-graph',
+				'arete-reload-note-types',
+				'arete-sync',
+				'arete-sync-current-file',
+				'arete-sync-force-all',
+				'arete-sync-prune',
+				'arete-sync-stats',
+				'open-yaml-editor',
+			].sort(),
+		);
 	});
 });

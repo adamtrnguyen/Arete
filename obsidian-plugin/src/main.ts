@@ -133,7 +133,7 @@ export default class AretePlugin extends Plugin {
 			this.registerView(GLOBAL_GRAPH_VIEW_TYPE, (leaf) => new GlobalGraphView(leaf, this));
 		} catch (e) {
 			console.error('[Arete] Failed to initialize plugin services:', e);
-			new Notice('Arete Plugin failed to initialize! Check console.');
+			new Notice('Arete failed to initialize, check the developer console for details.');
 		}
 
 		// 1. Status Bar Setup
@@ -150,7 +150,7 @@ export default class AretePlugin extends Plugin {
 			this.runSync();
 		});
 
-		this.addRibbonIcon('layout-dashboard', 'Arete Dashboard', (_evt: MouseEvent) => {
+		this.addRibbonIcon('layout-dashboard', 'Arete dashboard', (_evt: MouseEvent) => {
 			this.activateDashboardView();
 		});
 
@@ -166,7 +166,7 @@ export default class AretePlugin extends Plugin {
 
 		this.addCommand({
 			id: 'arete-check-file',
-			name: 'Check Current File',
+			name: 'Check current file',
 			editorCallback: (_editor: Editor, view: MarkdownView) => {
 				if (view.file) {
 					const vaultAdapter = this.app.vault.adapter as FileSystemAdapter;
@@ -175,7 +175,7 @@ export default class AretePlugin extends Plugin {
 						const fullPath = path.join(basePath, view.file.path);
 						this.runCheck(fullPath);
 					} else {
-						new Notice('Error: Cannot determine vault path.');
+						new Notice('Cannot determine the vault path.');
 					}
 				}
 			},
@@ -183,7 +183,7 @@ export default class AretePlugin extends Plugin {
 
 		this.addCommand({
 			id: 'arete-check-integrity',
-			name: 'Debug: Vault Integrity Check',
+			name: 'Debug: vault integrity check',
 			callback: () => {
 				this.checkVaultIntegrity();
 			},
@@ -191,7 +191,7 @@ export default class AretePlugin extends Plugin {
 
 		this.addCommand({
 			id: 'arete-sync-current-file',
-			name: 'Sync Current File',
+			name: 'Sync current file',
 			callback: () => {
 				const activeFile = this.app.workspace.getActiveFile();
 				if (activeFile) {
@@ -201,7 +201,7 @@ export default class AretePlugin extends Plugin {
 						const maxPath = path.join(basePath, activeFile.path);
 						this.runSync(false, maxPath, true);
 					} else {
-						new Notice('Error: Cannot resolve file path.');
+						new Notice('Cannot resolve the file path.');
 					}
 				} else {
 					new Notice('No active file to sync.');
@@ -211,7 +211,7 @@ export default class AretePlugin extends Plugin {
 
 		this.addCommand({
 			id: 'arete-sync-prune',
-			name: 'Sync (Prune Deleted Cards)',
+			name: 'Sync (prune deleted cards)',
 			callback: () => {
 				this.runSync(true);
 			},
@@ -219,7 +219,7 @@ export default class AretePlugin extends Plugin {
 
 		this.addCommand({
 			id: 'arete-sync-force-all',
-			name: 'Sync (Force Re-upload All)',
+			name: 'Sync (force re-upload all)',
 			callback: () => {
 				this.runSync(false, null, true);
 			},
@@ -227,7 +227,7 @@ export default class AretePlugin extends Plugin {
 
 		this.addCommand({
 			id: 'arete-open-dashboard',
-			name: 'Open Dashboard',
+			name: 'Open dashboard',
 			callback: () => {
 				this.activateDashboardView();
 			},
@@ -235,7 +235,7 @@ export default class AretePlugin extends Plugin {
 
 		this.addCommand({
 			id: 'arete-graph-clear',
-			name: 'Graph: Clear Retention Tags',
+			name: 'Graph: clear retention tags',
 			callback: async () => {
 				await this.graphService.clearAllTags();
 			},
@@ -243,7 +243,7 @@ export default class AretePlugin extends Plugin {
 
 		this.addCommand({
 			id: 'arete-open-local-graph',
-			name: 'Open Local Graph',
+			name: 'Open local graph',
 			callback: () => {
 				this.activateLocalGraphView();
 			},
@@ -251,7 +251,7 @@ export default class AretePlugin extends Plugin {
 
 		this.addCommand({
 			id: 'arete-open-global-graph',
-			name: 'Open Global Graph',
+			name: 'Open global graph',
 			callback: () => {
 				this.activateGlobalGraphView();
 			},
@@ -259,9 +259,9 @@ export default class AretePlugin extends Plugin {
 
 		this.addCommand({
 			id: 'arete-sync-stats',
-			name: 'Sync Stats (Refresh Anki Data)',
+			name: 'Sync stats (refresh Anki data)',
 			callback: async () => {
-				new Notice('Refreshing Arete stats...');
+				new Notice('Refreshing stats...');
 				const results = await this.statsService.refreshStats();
 				await this.onStatsRefreshed(results);
 				new Notice('Stats refreshed.');
@@ -270,10 +270,10 @@ export default class AretePlugin extends Plugin {
 
 		this.addCommand({
 			id: 'arete-reload-note-types',
-			name: 'Reload Note Types (Card Preview)',
+			name: 'Reload note types (card preview)',
 			callback: () => {
 				this.templateRenderer.clearModelCache();
-				new Notice('Arete: note types will be fetched from Anki on the next preview.');
+				new Notice('Note types will be fetched from Anki on the next preview.');
 			},
 		});
 
@@ -289,7 +289,7 @@ export default class AretePlugin extends Plugin {
 		// 5. YAML Editor command (no ribbon icon — context-dependent)
 		this.addCommand({
 			id: 'open-yaml-editor',
-			name: 'Open YAML Editor',
+			name: 'Open YAML editor',
 			callback: () => {
 				this.activateYamlEditorView();
 			},
@@ -473,7 +473,7 @@ export default class AretePlugin extends Plugin {
 		const path = filePath && !filePath.endsWith('.md') ? `${filePath}.md` : filePath;
 		const file = path ? this.app.vault.getFileByPath(path) : null;
 		if (!file) {
-			new Notice(`Arete: no note at ${filePath}`);
+			new Notice(`No note found at ${filePath}.`);
 			return;
 		}
 		await this.app.workspace.getLeaf(false).openFile(file);
@@ -481,7 +481,9 @@ export default class AretePlugin extends Plugin {
 		const cards = this.app.metadataCache.getFileCache(file)?.frontmatter?.cards;
 		const index = resolveCardIndex(Array.isArray(cards) ? cards : [], card);
 		if (index === null) {
-			new Notice(`Arete: ${file.basename} has no card ${card ?? ''}`.trim());
+			new Notice(
+				card ? `${file.basename} has no card ${card}.` : `${file.basename} has no cards.`,
+			);
 			return;
 		}
 		await this.activateYamlEditorView(index);
@@ -646,7 +648,7 @@ export default class AretePlugin extends Plugin {
 			const { CheckResultModal } = await import('@presentation/modals/CheckResultModal');
 			new CheckResultModal(this.app, this, res, filePath).open();
 		} catch (e: any) {
-			new Notice(`Error: ${e.message}`);
+			new Notice(`Check failed: ${e.message}`);
 		}
 	}
 
@@ -656,7 +658,7 @@ export default class AretePlugin extends Plugin {
 
 	/** The "Debug: Vault Integrity Check" command: notes whose YAML Obsidian cannot parse. */
 	async checkVaultIntegrity() {
-		new Notice('Running Integrity Check...');
+		new Notice('Running integrity check...');
 		const files = this.app.vault.getMarkdownFiles();
 		console.log('--- Arete Integrity Check ---');
 
@@ -671,9 +673,11 @@ export default class AretePlugin extends Plugin {
 			`Integrity Check Complete. ${files.length} files checked. ${failing.length} potential issues.`,
 		);
 		if (failing.length > 0) {
-			new Notice(`Found ${failing.length} files with Invalid Properties (Check Console)`);
+			new Notice(
+				`${failing.length} files have invalid properties, check the developer console.`,
+			);
 		} else {
-			new Notice(`Integrity Check Passed (Obsidian parses all YAML correctly)`);
+			new Notice('Integrity check passed, Obsidian parses all YAML.');
 		}
 	}
 

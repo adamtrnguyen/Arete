@@ -62,7 +62,7 @@ describe('ServerManager', () => {
 
 			await startPromise;
 			expect(spawn).toHaveBeenCalled();
-			expect(Notice).toHaveBeenCalledWith(expect.stringContaining('started successfully'));
+			expect(Notice).toHaveBeenCalledWith(expect.stringContaining('Arete server started'));
 		});
 
 		test('force restart stops existing server', async () => {
@@ -91,7 +91,7 @@ describe('ServerManager', () => {
 			});
 
 			await service.start();
-			expect(Notice).toHaveBeenCalledWith('Failed to spawn Arete Server.');
+			expect(Notice).toHaveBeenCalledWith('Could not start the Arete server.');
 		});
 
 		test('times out if health check never passes', async () => {
@@ -106,7 +106,7 @@ describe('ServerManager', () => {
 			}
 
 			await startPromise;
-			expect(Notice).toHaveBeenCalledWith(expect.stringContaining('Failed to connect'));
+			expect(Notice).toHaveBeenCalledWith(expect.stringContaining('Could not connect'));
 		});
 
 		test('returns same startPromise if already starting', () => {

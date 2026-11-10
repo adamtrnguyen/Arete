@@ -79,13 +79,13 @@ export class GraphService {
 	async clearAllTags() {
 		const files = this.app.vault.getMarkdownFiles();
 		let count = 0;
-		new Notice(`Arete: Clearing graph tags from ${files.length} files...`);
+		new Notice(`Clearing graph tags from ${files.length} files...`);
 
 		for (const file of files) {
 			await this.clearGraphTags(file);
 			count++;
 		}
 
-		new Notice(`Arete: Cleared tags from ${count} files.`);
+		new Notice(`Cleared tags from ${count} files.`);
 	}
 }

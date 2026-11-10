@@ -66,9 +66,9 @@ export class CheckService implements FileChecker {
 
 			child.on('close', (code) => {
 				if (code === 0) {
-					new Notice('✨ File auto-fixed!');
+					new Notice('File auto-fixed.');
 				} else {
-					new Notice('❌ Fix failed (check console)');
+					new Notice('Fix failed, check the developer console.');
 				}
 				resolve();
 			});
@@ -80,7 +80,7 @@ export class CheckService implements FileChecker {
 
 		const rawSettings = this.settings.python_path;
 		if (!rawSettings) {
-			new Notice('Error: Python Executable setting is empty.');
+			new Notice('The Python executable setting is empty.');
 			return;
 		}
 
@@ -94,9 +94,9 @@ export class CheckService implements FileChecker {
 				if (error) {
 					console.error('Test Config Failed:', error);
 					const msg = stderr || stdout || error.message;
-					new Notice(`Error: Command failed. ${msg.substring(0, 200)}`);
+					new Notice(`Command failed: ${msg.substring(0, 200)}`);
 				} else {
-					new Notice(`Success: Python found & Arete module available.`);
+					new Notice('Python found and the Arete module is available.');
 				}
 			},
 		);

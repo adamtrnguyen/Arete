@@ -233,7 +233,7 @@ describe('SyncService', () => {
 
 			expect(updateStatusBar).toHaveBeenCalledWith('error');
 			expect(Notice).toHaveBeenCalledWith(
-				expect.stringContaining('Python Dependencies missing'),
+				expect.stringContaining('Python dependencies are missing'),
 			);
 		});
 
@@ -264,7 +264,9 @@ describe('SyncService', () => {
 			await syncPromise;
 
 			expect(updateStatusBar).toHaveBeenCalledWith('error');
-			expect(Notice).toHaveBeenCalledWith(expect.stringContaining('arete sync failed'));
+			expect(Notice).toHaveBeenCalledWith(
+				expect.stringContaining('Sync failed with exit code'),
+			);
 		});
 
 		test('handles stdout data logging', async () => {

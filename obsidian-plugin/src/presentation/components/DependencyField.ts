@@ -47,7 +47,7 @@ export class DependencyField {
 
 		const addBtn = inputWrapper.createEl('button', {
 			cls: 'arete-dep-add-btn',
-			text: '+ Add Dependency',
+			text: '+ Add dependency',
 		});
 
 		addBtn.addEventListener('click', () => {

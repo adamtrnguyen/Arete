@@ -115,7 +115,7 @@ export class CardYamlEditorView extends ItemView {
 	}
 
 	getDisplayText() {
-		return 'Card Editor';
+		return 'Card editor';
 	}
 
 	getIcon() {
@@ -339,7 +339,7 @@ export class CardYamlEditorView extends ItemView {
 	private showCardContextMenu(e: MouseEvent, index: number) {
 		const menu = new Menu();
 		menu.addItem((item) => {
-			item.setTitle('Delete Card')
+			item.setTitle('Delete card')
 				.setIcon('trash')
 				.setWarning(true)
 				.onClick(() => this.deleteCard(index));
@@ -378,14 +378,14 @@ export class CardYamlEditorView extends ItemView {
 							cls: diffCls,
 							text: `D: ${difficultyOutOfTen(stats.difficulty).toFixed(1)}`,
 							attr: {
-								title: `FSRS Difficulty: ${difficultyOutOfTen(stats.difficulty).toFixed(1)}/10`,
+								title: `FSRS difficulty: ${difficultyOutOfTen(stats.difficulty).toFixed(1)}/10`,
 							},
 						});
 					} else {
 						statsContainer.createDiv({
 							cls: 'arete-stat-badge mod-muted',
 							text: `D: ?`,
-							attr: { title: 'FSRS Difficulty not available' },
+							attr: { title: 'FSRS difficulty not available' },
 						});
 					}
 					badgeAdded = true;
@@ -394,7 +394,7 @@ export class CardYamlEditorView extends ItemView {
 					statsContainer.createDiv({
 						cls: 'arete-stat-badge',
 						text: `E: ${ease}%`,
-						attr: { title: `SM-2 Ease: ${ease}%` },
+						attr: { title: `SM-2 ease: ${ease}%` },
 					});
 					badgeAdded = true;
 				}
@@ -435,13 +435,13 @@ export class CardYamlEditorView extends ItemView {
 				if (!badgeAdded) {
 					statsContainer.createDiv({
 						cls: 'arete-stat-badge mod-muted',
-						text: 'No Data',
+						text: 'No data',
 					});
 				}
 			} else {
 				leftGroup.createDiv({
 					cls: 'arete-stat-badge mod-muted',
-					text: 'No Data',
+					text: 'No data',
 				});
 			}
 		} else if (activeFile) {
@@ -456,7 +456,7 @@ export class CardYamlEditorView extends ItemView {
 
 		const yamlBtn = centerGroup.createDiv({
 			cls: 'arete-toolbar-btn',
-			attr: { title: 'Go to YAML in Note' },
+			attr: { title: 'Go to YAML in note' },
 		});
 		setIcon(yamlBtn, 'file-text');
 		yamlBtn.addEventListener('click', () => this.scrollToCard(this.currentCardIndex));
@@ -471,7 +471,7 @@ export class CardYamlEditorView extends ItemView {
 		// Stats Modal Button
 		const statsBtn = centerGroup.createDiv({
 			cls: 'arete-toolbar-btn',
-			attr: { title: nid ? 'View Card Stats' : 'Card not synced (No NID)' },
+			attr: { title: nid ? 'View card stats' : 'Card not synced (no NID)' },
 		});
 		setIcon(statsBtn, 'bar-chart-2');
 		if (!nid) {
@@ -481,7 +481,7 @@ export class CardYamlEditorView extends ItemView {
 
 		statsBtn.addEventListener('click', () => {
 			if (!nid) {
-				new Notice('Card not synced to Anki yet (No NID).');
+				new Notice('Card not synced to Anki yet (no NID).');
 				return;
 			}
 			debugLog('[Arete] Opening stats modal for NID:', nid);
@@ -507,7 +507,7 @@ export class CardYamlEditorView extends ItemView {
 		// Graph View Button
 		const graphBtn = centerGroup.createDiv({
 			cls: 'arete-toolbar-btn',
-			attr: { title: 'Open Local Graph' },
+			attr: { title: 'Open local graph' },
 		});
 		setIcon(graphBtn, 'share-2');
 		graphBtn.addEventListener('click', () => {
@@ -523,21 +523,21 @@ export class CardYamlEditorView extends ItemView {
 
 		const fieldBtn = rightGroup.createDiv({
 			cls: 'arete-toolbar-btn' + (this.viewMode === ViewMode.Fields ? ' is-active' : ''),
-			attr: { title: 'Card Edit Mode' },
+			attr: { title: 'Card edit mode' },
 		});
 		setIcon(fieldBtn, 'edit-3');
 		fieldBtn.addEventListener('click', () => this.setViewMode(ViewMode.Fields));
 
 		const sourceBtn = rightGroup.createDiv({
 			cls: 'arete-toolbar-btn' + (this.viewMode === ViewMode.Source ? ' is-active' : ''),
-			attr: { title: 'Source Mode' },
+			attr: { title: 'Source mode' },
 		});
 		setIcon(sourceBtn, 'code');
 		sourceBtn.addEventListener('click', () => this.setViewMode(ViewMode.Source));
 
 		const previewBtn = rightGroup.createDiv({
 			cls: 'arete-toolbar-btn' + (this.viewMode === ViewMode.Preview ? ' is-active' : ''),
-			attr: { title: 'Preview Mode' },
+			attr: { title: 'Preview mode' },
 		});
 		setIcon(previewBtn, 'eye');
 		previewBtn.addEventListener('click', () => this.setViewMode(ViewMode.Preview));

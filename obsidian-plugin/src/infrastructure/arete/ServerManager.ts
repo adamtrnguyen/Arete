@@ -37,7 +37,7 @@ export class ServerManager {
 			}
 
 			// 2. Start Server
-			new Notice('Starting Arete Server...');
+			new Notice('Starting Arete server...');
 			try {
 				this.spawnServer();
 
@@ -48,7 +48,7 @@ export class ServerManager {
 					await new Promise((r) => setTimeout(r, 1000));
 					if (await this.checkHealth()) {
 						debugLog('[Arete] Server is ready.');
-						new Notice('Arete Server started successfully!');
+						new Notice('Arete server started.');
 						return;
 					}
 					attempts++;
@@ -59,10 +59,10 @@ export class ServerManager {
 					}
 				}
 				console.error('[Arete] Server failed to respond to health check.');
-				new Notice('Failed to connect to Arete Server after spawning.');
+				new Notice('Could not connect to the Arete server after starting it.');
 			} catch (e) {
 				console.error(e);
-				new Notice('Failed to spawn Arete Server.');
+				new Notice('Could not start the Arete server.');
 			}
 		})();
 

@@ -91,7 +91,7 @@ export class SyncService {
 		updateStatusBar: (state: 'idle' | 'syncing' | 'error' | 'success', msg?: string) => void,
 	) {
 		updateStatusBar('syncing');
-		new Notice(targetPath ? 'Syncing file via Server...' : 'Starting sync via Server...');
+		new Notice(targetPath ? 'Syncing file via server...' : 'Starting sync via server...');
 
 		const vaultConfig = this.app.vault.adapter as FileSystemAdapter;
 		const vaultPath = vaultConfig.getBasePath ? vaultConfig.getBasePath() : '';
@@ -135,22 +135,24 @@ export class SyncService {
 					);
 				}
 				if (stats.success) {
-					new Notice(`Sync Complete! (+${stats.total_imported} notes)`);
+					new Notice(`Sync complete, ${stats.total_imported} notes imported.`);
 					updateStatusBar('success');
 				} else {
 					new Notice(`Sync finished with ${stats.total_errors} errors.`);
 					updateStatusBar('error', 'Sync Errors');
 				}
 			} else {
-				new Notice(`Server Error: ${response.status}`);
+				new Notice(`Server error: HTTP ${response.status}.`);
 				updateStatusBar('error', `HTTP ${response.status}`);
 			}
 		} catch (e: any) {
 			console.error('Server Sync Failed', e);
 			if (e.message && e.message.includes('Connection refused')) {
-				new Notice('Arete Server is not running! Switch to CLI mode or start server.');
+				new Notice(
+					'The Arete server is not running, switch to CLI mode or start the server.',
+				);
 			} else {
-				new Notice(`Sync Failed: ${e.message}`);
+				new Notice(`Sync failed: ${e.message}`);
 			}
 			updateStatusBar('error', 'Connection Failed');
 		}
@@ -166,12 +168,12 @@ export class SyncService {
 		updateStatusBar: (state: 'idle' | 'syncing' | 'error' | 'success', msg?: string) => void,
 	) {
 		updateStatusBar('syncing');
-		const action = targetPath ? 'Sycing file...' : 'Starting arete sync...';
+		const action = targetPath ? 'Syncing file...' : 'Starting sync...';
 		new Notice(action);
 
 		const vaultConfig = this.app.vault.adapter as FileSystemAdapter;
 		if (!vaultConfig.getBasePath) {
-			new Notice('Error: Cannot determine vault path.');
+			new Notice('Cannot determine the vault path.');
 			updateStatusBar('error', 'No Vault Path');
 			return;
 		}
@@ -270,7 +272,7 @@ export class SyncService {
 				void syncLog.flush();
 
 				if (code === 0) {
-					new Notice('arete sync completed successfully!');
+					new Notice('Sync completed.');
 					updateStatusBar('success');
 				} else {
 					updateStatusBar('error');
@@ -279,15 +281,17 @@ export class SyncService {
 						stderrBuffer.includes('AnkiConnect call failed') ||
 						stderrBuffer.includes('Connection refused')
 					) {
-						new Notice('Error: Anki is not reachable. Is Anki open with AnkiConnect?');
+						new Notice(
+							'Anki is not reachable, check that Anki is open with AnkiConnect.',
+						);
 					} else if (stderrBuffer.includes('ModuleNotFoundError')) {
 						new Notice(
-							'Error: Python Dependencies missing. Check Python Executable path.',
+							'Python dependencies are missing, check the Python executable path.',
 						);
 					} else if (stderrBuffer.includes('No module named')) {
-						new Notice('Error: Invalid Python environment or arete not installed.');
+						new Notice('Invalid Python environment or Arete is not installed.');
 					} else {
-						new Notice(`arete sync failed! (Code ${code}). See log.`);
+						new Notice(`Sync failed with exit code ${code}, see the log.`);
 					}
 				}
 			});
@@ -295,13 +299,13 @@ export class SyncService {
 			child.on('error', (err) => {
 				log(`Process Error: ${err.message}`);
 				void syncLog.flush();
-				new Notice(`Failed to start: ${err.message}`);
+				new Notice(`Failed to start sync: ${err.message}`);
 				updateStatusBar('error', err.message);
 			});
 		} catch (e: any) {
 			log(`Exception during spawn: ${e.message}`);
 			void syncLog.flush();
-			new Notice(`Exception: ${e.message}`);
+			new Notice(`Sync failed: ${e.message}`);
 			updateStatusBar('error', e.message);
 		}
 	}

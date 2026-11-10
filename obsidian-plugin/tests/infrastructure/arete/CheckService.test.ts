@@ -83,7 +83,7 @@ describe('CheckService', () => {
 			expect.arrayContaining(['vault', 'fix', 'test.md']),
 			expect.any(Object),
 		);
-		expect(Notice).toHaveBeenCalledWith('✨ File auto-fixed!');
+		expect(Notice).toHaveBeenCalledWith('File auto-fixed.');
 	});
 
 	test('runFix spawns vault fix command (failure)', async () => {
@@ -94,7 +94,7 @@ describe('CheckService', () => {
 		mockChild.emit('close', 1);
 		await promise;
 
-		expect(Notice).toHaveBeenCalledWith('❌ Fix failed (check console)');
+		expect(Notice).toHaveBeenCalledWith('Fix failed, check the developer console.');
 	});
 
 	test('testConfig calls exec (success)', async () => {
@@ -103,7 +103,7 @@ describe('CheckService', () => {
 		});
 
 		await service.testConfig();
-		expect(Notice).toHaveBeenCalledWith(expect.stringContaining('Success'));
+		expect(Notice).toHaveBeenCalledWith(expect.stringContaining('Python found'));
 	});
 
 	test('testConfig calls exec (failure)', async () => {
@@ -113,7 +113,7 @@ describe('CheckService', () => {
 
 		await service.testConfig();
 		expect(Notice).toHaveBeenCalledWith(
-			expect.stringContaining('Error: Command failed. Stderr noise'),
+			expect.stringContaining('Command failed: Stderr noise'),
 		);
 	});
 
@@ -121,7 +121,7 @@ describe('CheckService', () => {
 		service.settings.python_path = '';
 		await service.testConfig();
 		expect(Notice).toHaveBeenCalledWith(
-			expect.stringContaining('Error: Python Executable setting is empty'),
+			expect.stringContaining('The Python executable setting is empty'),
 		);
 	});
 });
