@@ -6,9 +6,10 @@
           "S::Case"
         ],
         "fields": {
-          "Back": "",
+          "Back": "<p>lower-case back</p>",
           "Back Extra": "<p>extra</p>",
-          "Front": ""
+          "Front": "<p>lower-case front</p>",
+          "_obsidian_source": "vault|case.md|6|<id of case.md#1>"
         },
         "model": "Basic with Extra",
         "tags": [
@@ -22,7 +23,7 @@
       {
         "card": "case.md#1",
         "error": null,
-        "new_cid": null,
+        "new_cid": "card ord 0 of its note",
         "new_nid": "its note",
         "ok": true
       }
@@ -31,7 +32,7 @@
   ],
   "vault_ids": {
     "case.md#1": {
-      "cid": null,
+      "cid": "card ord 0 of its note",
       "nid": "its note"
     }
   }

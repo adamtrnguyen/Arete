@@ -9,6 +9,7 @@ from tqdm import tqdm
 
 from arete.application.config import AppConfig
 from arete.application.sync.id_service import ensure_card_ids
+from arete.application.sync.note_sync import NoteSync, VaultClaims
 from arete.application.sync.parser import MarkdownParser
 from arete.application.sync.prune import PruneConfirm, PruneReport, prune_orphans
 from arete.application.sync.vault_service import VaultService
@@ -16,8 +17,26 @@ from arete.application.utils.logging import RunRecorder
 from arete.application.utils.media import FilenameIndex
 from arete.application.utils.text import rebuild_markdown_with_frontmatter
 from arete.domain.constants import CONSUMER_BATCH_SIZE
-from arete.domain.interfaces import ContentCache, SyncPort
+from arete.domain.interfaces import ContentCache, NoteStorePort, SyncPort
 from arete.domain.models import UpdateItem, WorkItem
+
+
+def vault_claims(
+    compatible: list[tuple[Path, dict[str, Any], bool]], parser: MarkdownParser
+) -> VaultClaims:
+    """Every nid and Arete id the scanned files declare, casefolded, for `NoteSync`."""
+    owners: dict[int, set[str | None]] = {}
+    ids: set[str] = set()
+    for _path, meta, _fresh in compatible:
+        for card in meta.get("cards") or []:
+            card_id = parser.declared_id(card)
+            key = card_id.casefold() if card_id else None
+            if key:
+                ids.add(key)
+            raw = parser._extract_raw_nid(card) if isinstance(card, dict) else None
+            if raw and raw.isdigit():
+                owners.setdefault(int(raw), set()).add(key)
+    return VaultClaims({nid: frozenset(o) for nid, o in owners.items()}, frozenset(ids))
 
 
 @dataclass
@@ -39,11 +58,14 @@ async def run_pipeline(
     *,
     confirm_prune: bool = False,
     prompt: PruneConfirm | None = None,
+    note_store: NoteStorePort | None = None,
 ) -> RunStats:
     """Sync the vault to Anki, then prune if asked.
 
     `confirm_prune` is the caller's explicit consent to delete. Without it prune asks
     `prompt` at a terminal, and anywhere else returns a preview and deletes nothing.
+    With a `note_store`, cards are synced by `NoteSync` over it; without one, by the
+    bridge's own `sync_notes`.
     """
     recorder = RunRecorder()
 
@@ -138,6 +160,11 @@ async def run_pipeline(
             recorder.add_error(
                 p, f"Arete id {card_id} is declared by {len(c)} cards; none is synced", f"#{i}"
             )
+    sync_notes = (
+        NoteSync(note_store, vault_claims(compatible, parser), logger).sync_notes
+        if note_store is not None
+        else anki_bridge.sync_notes
+    )
 
     # -------- Stage 2: media index, walked on the first image lookup --------
     assert config.vault_root is not None  # Guaranteed by resolve_config
@@ -219,7 +246,7 @@ async def run_pipeline(
                         )
                 else:
                     async with sync_semaphore:
-                        batch_updates = await anki_bridge.sync_notes(batch)
+                        batch_updates = await sync_notes(batch)
 
                 async with updates_lock:
                     synced_rows: list[tuple[Path, int, str, str]] = []

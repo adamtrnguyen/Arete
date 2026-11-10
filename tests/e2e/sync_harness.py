@@ -31,6 +31,7 @@ from anki.collection import Collection
 from anki.scheduler.v3 import CardAnswer
 
 from arete.application.config import AppConfig
+from arete.application.sync.note_sync import NoteSync
 from arete.application.sync.pipeline import RunStats
 from arete.application.utils.text import parse_frontmatter
 from arete.composition.orchestrator import execute_sync
@@ -61,7 +62,7 @@ SCHEDULING_COLUMNS = (
 )
 
 # Stock Anki's note types, as a fresh collection has them, plus the "Basic with Extra" that
-# `make_anki_base` adds. No `_obsidian_source`: the AnkiConnect adapter adds it.
+# `make_anki_base` adds. No `_obsidian_source`: the sync adds it.
 STOCK_MODELS = {
     "Basic": ["Front", "Back"],
     "Cloze": ["Text", "Back Extra"],
@@ -451,7 +452,17 @@ async def run_sync(
         bridge.sync_notes = _recording  # type: ignore[method-assign]
         return bridge
 
-    with patch("arete.composition.orchestrator.get_anki_bridge", _bridge):
+    shared = NoteSync.sync_notes
+
+    async def _recording_shared(self: NoteSync, items):
+        results = await shared(self, items)
+        returned.extend(results)
+        return results
+
+    with (
+        patch("arete.composition.orchestrator.get_anki_bridge", _bridge),
+        patch.object(NoteSync, "sync_notes", _recording_shared),
+    ):
         stats = await execute_sync(config, **kwargs)
     return stats, returned
 

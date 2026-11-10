@@ -212,31 +212,9 @@ class Difference:
         return re.search(self.paths, path) is not None
 
 
-SOURCE_FIELD = Difference(
-    "AnkiConnect adds `_obsidian_source` to the note type and fills it; direct drops it",
-    "1a #11",
-    r"/fields/_obsidian_source$",
-)
-CID_WRITE_BACK = Difference(
-    "AnkiConnect returns the first card id on create and heal and the vault stores it; "
-    "direct returns no cid",
-    "1a #18",
-    r"(/new_cid|^vault_ids/[^/]+/cid)$",
-)
-DANGLING_DUPLICATE = Difference(
-    "a nid Anki never issued: direct creates a second note, AnkiConnect heals by the id tag",
-    "1a #2",
-    r"^notes/[^/]+/1/",
-)
-SPLIT_LEFT_SPLIT = Difference(
-    "a cloze note whose cards sit in two decks: AnkiConnect moves every card home, direct "
-    "compares only the first card's deck and leaves the note split",
-    "1a #15",
-    r"^notes/split\.md#1/0/decks$",
-)
 FIELD_CASE = Difference(
-    "a card field named in another case (`front`): the add-on fills `Front`, direct and the "
-    "fake leave it empty and still report ok",
+    "a card field named in another case (`front`): the add-on and NoteSync fill `Front`, "
+    "the AnkiConnect adapter over the fake leaves it empty and still reports ok",
     "1a #10b",
     r"^notes/case\.md#1/0/fields/(Front|Back)$",
 )
@@ -254,24 +232,14 @@ CONTENT_ADOPTS_OTHER_CARD = Difference(
     r"^(notes/twins\.md#[12]/|runs/[01]/twins\.md#1/|runs/1/twins\.md#2/|vault_ids/twins\.md#1/)",
 )
 
-# What the AnkiConnect adapter does differently from the direct one, on any AnkiConnect side.
-_AC_VS_DIRECT = {
-    "dangling_nid": [SOURCE_FIELD, CID_WRITE_BACK, DANGLING_DUPLICATE],
-    "split_note": [SOURCE_FIELD, CID_WRITE_BACK, SPLIT_LEFT_SPLIT],
-}
 EXPECTED: dict[tuple[str, str], dict[str, list[Difference]]] = {
     ("direct", "fake"): {
-        case: _AC_VS_DIRECT.get(case, [SOURCE_FIELD, CID_WRITE_BACK]) for case in CASES
+        **{case: [] for case in CASES},
+        "field_name_case": [FIELD_CASE],
     },
     ("direct", "addon"): {
-        **{case: _AC_VS_DIRECT.get(case, [SOURCE_FIELD, CID_WRITE_BACK]) for case in CASES},
-        "field_name_case": [SOURCE_FIELD, CID_WRITE_BACK, FIELD_CASE],
-        "same_front_twice": [
-            SOURCE_FIELD,
-            CID_WRITE_BACK,
-            DUPLICATE_REFUSED,
-            CONTENT_ADOPTS_OTHER_CARD,
-        ],
+        **{case: [] for case in CASES},
+        "same_front_twice": [DUPLICATE_REFUSED, CONTENT_ADOPTS_OTHER_CARD],
     },
     # Where the fake is not the add-on: it has no duplicate check and matches field names
     # case-sensitively. Not a backend difference; it says what the fake cannot show.
@@ -303,10 +271,9 @@ async def test_backends_differ_only_in_the_named_ways(
 
 @pytest.mark.xfail(
     strict=True,
-    reason="Invariant 3 does not hold: every case differs in `_obsidian_source` (census 1a "
-    "#11) and the cid write-back (#18), and the scenarios in the dangling nid (#2), the split "
-    "cloze note (#15) and, on the add-on, field-name case (#10b), the duplicate first field "
-    "(#8) and the adoption by content (#7). See EXPECTED.",
+    reason="Invariant 3 does not hold: the AnkiConnect adapter still decides in its own "
+    "sync_notes, so field-name case (census 1a #10b, over the fake), the duplicate first "
+    "field (#8) and the adoption by content (#7, on the add-on) differ. See EXPECTED.",
 )
 @pytest.mark.asyncio
 @pytest.mark.parametrize("ac", ["fake", "addon"])

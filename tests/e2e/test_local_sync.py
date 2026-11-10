@@ -114,12 +114,6 @@ async def test_every_note_reaches_its_own_deck(vault: Path, anki_base: Path, mak
         col.close()
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="Known gap: reconcile-by-arete-tag is implemented in the AnkiConnect adapter "
-    "only. The direct backend creates a second copy when a note id goes stale. "
-    "Delete this marker when the direct backend reconciles too.",
-)
 @pytest.mark.asyncio
 async def test_a_stale_note_id_reconciles_instead_of_duplicating(
     single_card_vault: Path, anki_base: Path, make_config

@@ -201,9 +201,6 @@ async def test_inv1_a_note_type_change_in_anki_is_changed_back(world: World):
 @on(
     *REAL,
     xfail={
-        "direct": "the edited card is sent and repository.update_note compares the card's "
-        "current deck (Arete::Queue) with the vault's, so col.set_deck runs and takes it out "
-        "of the filtered deck: observed deck Inv::Home, no longer queued",
         "addon": "the edited card is sent; getDecks reports Arete::Queue, so changeDeck runs "
         "and the add-on's remFromDyn takes it out: observed deck Inv::Home, no longer queued",
     },
@@ -229,13 +226,7 @@ async def test_inv1_an_edited_card_in_the_queue_stays_queued_with_its_home_deck(
 
 
 @pytest.mark.asyncio
-@on(
-    *ALL,
-    xfail={
-        "direct": "the direct backend has no reconcile: a nid Anki does not hold is created "
-        "again, observed 2 notes carrying the same Arete id"
-    },
-)
+@on(*ALL)
 async def test_inv2_a_dangling_nid_is_resolved_by_the_arete_id(world: World):
     await world.sync()
     nid = world.nid()
@@ -251,7 +242,6 @@ async def test_inv2_a_dangling_nid_is_resolved_by_the_arete_id(world: World):
 @on(
     *ALL,
     xfail={
-        "direct": "the direct backend has no reconcile: observed 2 notes",
         "fake": "AnkiConnect accepts a tag match only if the first field still matches "
         "(_match_by_tag), then falls back to content, which no longer matches: observed 2 "
         "notes carrying the same Arete id",
@@ -381,8 +371,6 @@ LEAVES_QUEUE = (
     "unchanged"
 )
 QUEUED_DECK_CHANGE = {
-    "direct": "col.set_deck on a queued card takes it out of the filtered deck instead of "
-    "setting odid; " + LEAVES_QUEUE.format(deck="Inv::Moved"),
     "addon": "changeDeck calls sched.remFromDyn before it sets did; "
     + LEAVES_QUEUE.format(deck="Inv::Moved"),
 }
@@ -411,8 +399,6 @@ async def test_inv4_a_deck_change_of_a_queued_card_keeps_scheduling_and_the_queu
 @on(
     *REAL,
     xfail={
-        "direct": "update_note compares the card's current deck (the filtered deck) with the "
-        "vault's, so set_deck runs on a field edit too; " + LEAVES_QUEUE.format(deck="Inv::Home"),
         "addon": "getDecks reports the filtered deck, so changeDeck (remFromDyn) runs on a "
         "field edit too; " + LEAVES_QUEUE.format(deck="Inv::Home"),
     },

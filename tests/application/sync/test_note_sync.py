@@ -414,7 +414,9 @@ async def test_content_never_adopts_a_note_carrying_another_cards_id():
 async def test_content_never_adopts_a_note_another_vault_card_declares():
     store = FakeNoteStore()
     other = store.add("Basic", "S::Deck", {"Front": "<p>Q</p>", "Back": "theirs"}, [])
-    claims = VaultClaims(nid_owner={other: ID2.casefold()}, arete_ids=frozenset({ID2.casefold()}))
+    claims = VaultClaims(
+        nid_owners={other: frozenset({ID2.casefold()})}, arete_ids=frozenset({ID2.casefold()})
+    )
 
     [r] = await run(store, card(), claims=claims)
 
@@ -427,7 +429,8 @@ async def test_a_nid_at_another_vault_cards_note_is_a_copy_and_resolves_by_id():
     theirs = store.add("Basic", "S::Deck", {"Front": "theirs", "Back": "x"}, [ID2])
     ours = store.add("Basic", "S::Deck", {"Front": "<p>Q</p>", "Back": "x"}, [ID])
     claims = VaultClaims(
-        nid_owner={theirs: ID2.casefold()}, arete_ids=frozenset({ID.casefold(), ID2.casefold()})
+        nid_owners={theirs: frozenset({ID2.casefold()})},
+        arete_ids=frozenset({ID.casefold(), ID2.casefold()}),
     )
 
     [r] = await run(store, card(nid=theirs), claims=claims)

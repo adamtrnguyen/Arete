@@ -7,7 +7,8 @@
         ],
         "fields": {
           "Back": "<p>First answer</p>",
-          "Front": "<p>Same question</p>"
+          "Front": "<p>Same question</p>",
+          "_obsidian_source": "vault|twins.md|6|<id of twins.md#1>"
         },
         "model": "Basic",
         "tags": [
@@ -22,7 +23,8 @@
         ],
         "fields": {
           "Back": "<p>Second answer</p>",
-          "Front": "<p>Same question</p>"
+          "Front": "<p>Same question</p>",
+          "_obsidian_source": "vault|twins.md|9|<id of twins.md#2>"
         },
         "model": "Basic",
         "tags": [
@@ -36,14 +38,14 @@
       {
         "card": "twins.md#1",
         "error": null,
-        "new_cid": null,
+        "new_cid": "card ord 0 of its note",
         "new_nid": "its note",
         "ok": true
       },
       {
         "card": "twins.md#2",
         "error": null,
-        "new_cid": null,
+        "new_cid": "card ord 0 of its note",
         "new_nid": "its note",
         "ok": true
       }
@@ -52,11 +54,11 @@
   ],
   "vault_ids": {
     "twins.md#1": {
-      "cid": null,
+      "cid": "card ord 0 of its note",
       "nid": "its note"
     },
     "twins.md#2": {
-      "cid": null,
+      "cid": "card ord 0 of its note",
       "nid": "its note"
     }
   }

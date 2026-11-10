@@ -52,14 +52,14 @@ SOURCE_FIELD = "_obsidian_source"
 class VaultClaims:
     """What the scanned vault declares, for telling a copied id from a foreign one.
 
-    `nid_owner` maps each declared nid to the casefolded Arete id of the card declaring
-    it (None for a card without one). `arete_ids` holds every declared Arete id,
-    casefolded. `complete` is True when the whole vault was scanned.
+    `nid_owners` maps each declared nid to the casefolded Arete ids of the cards
+    declaring it (None for a card without one). `arete_ids` holds every declared Arete
+    id, casefolded. A run over part of the vault declares less: an id it does not see
+    counts as declared by no card, so the card is refused rather than guessed at.
     """
 
-    nid_owner: dict[int, str | None] = field(default_factory=dict)
+    nid_owners: dict[int, frozenset[str | None]] = field(default_factory=dict)
     arete_ids: frozenset[str] = frozenset()
-    complete: bool = False
 
 
 @dataclass
@@ -246,10 +246,12 @@ class NoteSync:
 
     def _declared_by_another(self, card: _Card, nid: int) -> bool:
         """True when a vault card other than this one declares the nid."""
-        if nid not in self._claims.nid_owner:
+        owners = self._claims.nid_owners.get(nid)
+        if not owners:
             return False
-        own_nid = card.work.note.nid
-        return not (own_nid and own_nid.strip() == str(nid))
+        if card.own is not None:
+            return bool(owners - {card.own})
+        return (card.work.note.nid or "").strip() != str(nid)
 
     def _free(self, card: _Card, nid: int) -> bool:
         holder = self._claimed.get(nid)

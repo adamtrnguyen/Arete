@@ -4,11 +4,12 @@
       {
         "decks": [
           "S::Home",
-          "S::Elsewhere"
+          "S::Home"
         ],
         "fields": {
           "Back Extra": "<p>edited</p>",
-          "Text": "<p>{{c1::one}} and {{c2::two}}</p>"
+          "Text": "<p>{{c1::one}} and {{c2::two}}</p>",
+          "_obsidian_source": "vault|split.md|7|<id of split.md#1>"
         },
         "model": "Cloze",
         "tags": [
@@ -22,7 +23,7 @@
       {
         "card": "split.md#1",
         "error": null,
-        "new_cid": null,
+        "new_cid": "card ord 0 of its note",
         "new_nid": "its note",
         "ok": true
       }
@@ -39,7 +40,7 @@
   ],
   "vault_ids": {
     "split.md#1": {
-      "cid": null,
+      "cid": "card ord 0 of its note",
       "nid": "its note"
     }
   }
