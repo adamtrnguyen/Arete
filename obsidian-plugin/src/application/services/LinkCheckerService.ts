@@ -1,4 +1,4 @@
-import { App, TFile } from 'obsidian';
+import { App, FileSystemAdapter, TFile } from 'obsidian';
 import { FileChecker } from '@/domain/ports';
 
 export interface BrokenReference {
@@ -226,9 +226,7 @@ export class LinkCheckerService {
 				let fullPath = file.path;
 				const adapter = this.app.vault.adapter;
 				if ('getBasePath' in adapter) {
-					// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-					// @ts-ignore
-					const basePath = adapter.getBasePath();
+					const basePath = (adapter as FileSystemAdapter).getBasePath();
 					fullPath = `${basePath}/${file.path}`;
 				}
 

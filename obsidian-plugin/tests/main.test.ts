@@ -1,5 +1,5 @@
 import './test-setup';
-import { App, Notice } from 'obsidian';
+import { App, Modal, Notice } from 'obsidian';
 import AretePlugin from '@/main';
 import { SyncService } from '@infrastructure/arete/SyncService';
 import { CheckService } from '@infrastructure/arete/CheckService';
@@ -46,6 +46,19 @@ describe('AretePlugin Composition', () => {
 			false,
 			expect.any(Function),
 		);
+	});
+
+	test('runCheck opens the check result modal through a static import', async () => {
+		(plugin.checkService.getCheckResult as jest.Mock).mockResolvedValue({
+			ok: true,
+			stats: { deck: 'D', cards_found: 1 },
+		});
+		const open = jest.spyOn(Modal.prototype, 'open');
+
+		await plugin.runCheck('/mock/vault/path/test.md');
+
+		expect(open).toHaveBeenCalledTimes(1);
+		open.mockRestore();
 	});
 
 	test('commands delegate to CheckService', async () => {

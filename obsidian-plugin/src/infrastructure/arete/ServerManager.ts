@@ -4,6 +4,11 @@ import { AretePluginSettings } from '@domain/settings';
 import { resolvePythonCommand } from '@infrastructure/arete/PythonProcess';
 import { debugLog } from '@domain/debugLog';
 
+/** Pause between stopping a running server and starting it again. */
+const RESTART_PAUSE_MS = 1000;
+/** Pause between health checks while a new server starts. */
+const HEALTH_POLL_MS = 1000;
+
 export class ServerManager {
 	app: App;
 	settings: AretePluginSettings;
@@ -33,7 +38,7 @@ export class ServerManager {
 				}
 				debugLog('[Arete] Force restarting server...');
 				await this.stop();
-				await new Promise((r) => setTimeout(r, 1000));
+				await new Promise((r) => setTimeout(r, RESTART_PAUSE_MS));
 			}
 
 			// 2. Start Server
@@ -45,7 +50,7 @@ export class ServerManager {
 				let attempts = 0;
 				const maxAttempts = 15;
 				while (attempts < maxAttempts) {
-					await new Promise((r) => setTimeout(r, 1000));
+					await new Promise((r) => setTimeout(r, HEALTH_POLL_MS));
 					if (await this.checkHealth()) {
 						debugLog('[Arete] Server is ready.');
 						new Notice('Arete server started.');

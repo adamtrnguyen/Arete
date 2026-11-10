@@ -131,6 +131,24 @@ describe('AretePlugin Lifecycle and Commands', () => {
 		for (const label of labels()) expect(label).not.toMatch(emoji);
 	});
 
+	test('the revert-to-idle timer is cancelled by a newer state and by unload', () => {
+		jest.useFakeTimers();
+		try {
+			plugin.statusBarItem = plugin.addStatusBarItem() as any;
+			plugin.updateStatusBar('success');
+			expect(jest.getTimerCount()).toBe(1);
+
+			plugin.updateStatusBar('syncing');
+			expect(jest.getTimerCount()).toBe(0);
+
+			plugin.updateStatusBar('success');
+			plugin.onunload();
+			expect(jest.getTimerCount()).toBe(0);
+		} finally {
+			jest.useRealTimers();
+		}
+	});
+
 	test('onunload empties status bar', () => {
 		plugin.statusBarItem = plugin.addStatusBarItem() as any;
 		plugin.onunload();

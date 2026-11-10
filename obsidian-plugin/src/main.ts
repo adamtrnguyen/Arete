@@ -20,6 +20,7 @@ import { resolveCardIndex } from '@domain/cardRef';
 import { CardYamlEditorView, YAML_EDITOR_VIEW_TYPE } from '@presentation/views/CardYamlEditorView';
 import { DashboardView, DASHBOARD_VIEW_TYPE } from '@presentation/views/DashboardView';
 import { AreteSettingTab } from '@presentation/settings/SettingTab';
+import { CheckResultModal } from '@presentation/modals/CheckResultModal';
 import { SyncService } from '@infrastructure/arete/SyncService';
 import { CheckService } from '@infrastructure/arete/CheckService';
 import { TemplateRenderer } from '@application/services/TemplateRenderer';
@@ -52,6 +53,10 @@ function mayAffectGraph(cache: CachedMetadata | null | undefined): boolean {
 }
 
 const UI_STATE_SAVE_DELAY_MS = 1000;
+/** How long the status bar shows "Synced" before it returns to the idle label. */
+const STATUS_BAR_RESET_MS = 3000;
+/** How long `showCard` waits for a freshly written note to be parsed. */
+const PARSE_WAIT_MS = 2000;
 
 export default class AretePlugin extends Plugin {
 	settings: AretePluginSettings;
@@ -77,6 +82,9 @@ export default class AretePlugin extends Plugin {
 	// Debounced save of the dashboard's `ui_expanded_*` settings, and what was last written.
 	private uiStateSaveTimer: ReturnType<typeof setTimeout> | null = null;
 	private savedUiState = '';
+
+	// Returns the status bar to idle after a successful sync.
+	private statusBarResetTimer: ReturnType<typeof setTimeout> | null = null;
 
 	async onload() {
 		setDebugLogSwitch(() => this.settings?.debug_mode === true);
@@ -301,7 +309,7 @@ export default class AretePlugin extends Plugin {
 			createCardGutter(
 				(cardIndex) => {
 					this.highlightCardLines(cardIndex);
-					// improved: only sync if open, don't force focus
+					// Move the Card Editor to this card only if it is open; do not force focus.
 					this.syncYamlEditorToCard(cardIndex);
 
 					// Sync with Graph View
@@ -489,7 +497,7 @@ export default class AretePlugin extends Plugin {
 	}
 
 	/** A note written a moment ago may not be parsed yet; wait for it, briefly. */
-	private waitForParse(file: TFile, timeoutMs = 2000): Promise<void> {
+	private waitForParse(file: TFile, timeoutMs = PARSE_WAIT_MS): Promise<void> {
 		if (this.app.metadataCache.getFileCache(file)?.frontmatter) return Promise.resolve();
 		return new Promise((resolve) => {
 			const done = () => {
@@ -553,6 +561,7 @@ export default class AretePlugin extends Plugin {
 	}
 
 	onunload() {
+		if (this.statusBarResetTimer) clearTimeout(this.statusBarResetTimer);
 		for (const timer of this.syncOnSaveTimers.values()) clearTimeout(timer);
 		this.syncOnSaveTimers.clear();
 		if (this.uiStateSaveTimer) void this.flushUiState();
@@ -567,6 +576,10 @@ export default class AretePlugin extends Plugin {
 	updateStatusBar(state: 'idle' | 'syncing' | 'error' | 'success', msg?: string) {
 		if (!this.statusBarItem) return;
 		this.statusBarItem.empty();
+		if (this.statusBarResetTimer) {
+			clearTimeout(this.statusBarResetTimer);
+			this.statusBarResetTimer = null;
+		}
 
 		if (state === 'idle') {
 			// Show last sync time
@@ -585,7 +598,10 @@ export default class AretePlugin extends Plugin {
 			this.setStatusBar('refresh-cw', 'Syncing...');
 		} else if (state === 'success') {
 			this.setStatusBar('check', 'Synced');
-			setTimeout(() => this.updateStatusBar('idle'), 3000);
+			this.statusBarResetTimer = setTimeout(() => {
+				this.statusBarResetTimer = null;
+				this.updateStatusBar('idle');
+			}, STATUS_BAR_RESET_MS);
 		} else if (state === 'error') {
 			this.setStatusBar('circle-x', 'Error');
 			setTooltip(this.statusBarItem, msg || 'Check logs');
@@ -647,8 +663,6 @@ export default class AretePlugin extends Plugin {
 		new Notice('Checking file...');
 		try {
 			const res = await this.checkService.getCheckResult(filePath);
-			// Import dynamically to avoid circular issues in tests
-			const { CheckResultModal } = await import('@presentation/modals/CheckResultModal');
 			new CheckResultModal(this.app, this, res, filePath).open();
 		} catch (e: any) {
 			new Notice(`Check failed: ${e.message}`);

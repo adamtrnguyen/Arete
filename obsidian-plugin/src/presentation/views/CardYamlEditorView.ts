@@ -38,6 +38,9 @@ export interface YamlEditorHost {
 
 export const YAML_EDITOR_VIEW_TYPE = 'arete-yaml-editor';
 
+/** Quiet period after an edit before the card is written back to the note. */
+const SYNC_DEBOUNCE_MS = 300;
+
 interface CardData {
 	[key: string]: any;
 }
@@ -839,7 +842,7 @@ export class CardYamlEditorView extends ItemView {
 
 	private debouncedSyncToMain() {
 		if (this.syncDebounceTimer) clearTimeout(this.syncDebounceTimer);
-		this.syncDebounceTimer = setTimeout(() => this.syncToMain(), 300);
+		this.syncDebounceTimer = setTimeout(() => this.syncToMain(), SYNC_DEBOUNCE_MS);
 	}
 
 	private async syncToMain() {
