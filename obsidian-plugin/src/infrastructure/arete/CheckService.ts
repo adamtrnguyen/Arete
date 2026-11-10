@@ -5,6 +5,7 @@ import {
 	AreteProcesses,
 	parseJsonStdout,
 	resolvePythonCommand,
+	vaultBasePath,
 } from '@infrastructure/arete/PythonProcess';
 import { FileChecker } from '@/domain/ports';
 
@@ -12,11 +13,12 @@ export class CheckService implements FileChecker {
 	app: App;
 	settings: AretePluginSettings;
 
-	private processes = new AreteProcesses();
+	private processes: AreteProcesses;
 
 	constructor(app: App, settings: AretePluginSettings) {
 		this.app = app;
 		this.settings = settings;
+		this.processes = new AreteProcesses(vaultBasePath(app));
 	}
 
 	/** Kill the checks and fixes in flight and refuse new ones. For plugin unload. */

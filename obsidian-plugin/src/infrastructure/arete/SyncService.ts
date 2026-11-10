@@ -2,7 +2,11 @@ import { App, FileSystemAdapter, Notice } from 'obsidian';
 import { promises as fsp } from 'fs';
 import * as path from 'path';
 import { AretePluginSettings } from '@domain/settings';
-import { AreteProcesses, resolvePythonCommand } from '@infrastructure/arete/PythonProcess';
+import {
+	AreteProcesses,
+	resolvePythonCommand,
+	vaultBasePath,
+} from '@infrastructure/arete/PythonProcess';
 import { debugLog } from '@domain/debugLog';
 
 /** A log larger than this is cut to its last LOG_KEEP_BYTES when a run starts. */
@@ -61,12 +65,13 @@ export class SyncService {
 	settings: AretePluginSettings;
 	pluginManifest: any;
 
-	private processes = new AreteProcesses();
+	private processes: AreteProcesses;
 
 	constructor(app: App, settings: AretePluginSettings, manifest: any) {
 		this.app = app;
 		this.settings = settings;
 		this.pluginManifest = manifest;
+		this.processes = new AreteProcesses(vaultBasePath(app));
 	}
 
 	/**

@@ -1,5 +1,6 @@
 import * as path from 'path';
 import { ChildProcess, spawn } from 'child_process';
+import { App, FileSystemAdapter } from 'obsidian';
 import { AretePluginSettings } from '@/domain/settings';
 
 export interface PythonCommand {
@@ -72,13 +73,25 @@ export function parseJsonStdout(stdout: string, command: string): any {
 	}
 }
 
+/** The vault's absolute folder on disk, or '' when the vault is not on a file system. */
+export function vaultBasePath(app: App): string {
+	const adapter = app.vault.adapter as Partial<FileSystemAdapter>;
+	return adapter.getBasePath ? adapter.getBasePath() : '';
+}
+
 /**
  * The processes one service started and has not seen exit. `killAll` ends them when the
  * plugin unloads and refuses new ones after that, so no `arete` outlives the plugin.
+ *
+ * Every process gets `ARETE_VAULT_ROOT` set to the vault, so a command run on one file
+ * names the vault, not the file's folder, as its root (in `_obsidian_source`, in
+ * `obsidian://` links and for media lookup).
  */
 export class AreteProcesses {
 	private live = new Set<ChildProcess>();
 	private closed = false;
+
+	constructor(private readonly vaultRoot: string) {}
 
 	/** Start `arete <args>` as `command` resolves it (interpreter, cwd, env). */
 	spawn(
@@ -87,7 +100,8 @@ export class AreteProcesses {
 		env: Record<string, string | undefined> = command.env,
 	): ChildProcess {
 		if (this.closed) throw new Error('Arete is unloading; the command was not started.');
-		return this.track(spawn(command.cmd, args, { cwd: command.cwd, env }));
+		const withVault = this.vaultRoot ? { ...env, ARETE_VAULT_ROOT: this.vaultRoot } : env;
+		return this.track(spawn(command.cmd, args, { cwd: command.cwd, env: withVault }));
 	}
 
 	/** Watch a process started elsewhere until it exits. */

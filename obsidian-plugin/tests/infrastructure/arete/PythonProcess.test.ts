@@ -115,23 +115,42 @@ describe('AreteProcesses', () => {
 	test('spawns in the command cwd and env, and forgets a process once it exits', () => {
 		const child = createMockChildProcess();
 		(spawn as jest.Mock).mockReturnValueOnce(child);
-		const processes = new AreteProcesses();
+		const processes = new AreteProcesses('/vault');
 
 		processes.spawn(command, ['-m', 'arete', 'anki', 'decks']);
 		expect(spawn).toHaveBeenCalledWith('python3', ['-m', 'arete', 'anki', 'decks'], {
 			cwd: '/project',
-			env: { A: '1' },
+			env: { A: '1', ARETE_VAULT_ROOT: '/vault' },
 		});
 		expect(processes.size).toBe(1);
 		child.emit('close', 0, null);
 		expect(processes.size).toBe(0);
 	});
 
+	test('the vault replaces an inherited ARETE_VAULT_ROOT and keeps the rest of the env', () => {
+		(spawn as jest.Mock).mockReturnValue(createMockChildProcess());
+		const processes = new AreteProcesses('/vault');
+
+		processes.spawn(command, [], { A: '1', ARETE_VAULT_ROOT: '/elsewhere' });
+
+		expect((spawn as jest.Mock).mock.calls[0][2].env).toEqual({
+			A: '1',
+			ARETE_VAULT_ROOT: '/vault',
+		});
+		expect(command.env).toEqual({ A: '1' });
+	});
+
+	test('without a vault folder the env is passed as it is', () => {
+		(spawn as jest.Mock).mockReturnValue(createMockChildProcess());
+		new AreteProcesses('').spawn(command, []);
+		expect((spawn as jest.Mock).mock.calls[0][2].env).toEqual({ A: '1' });
+	});
+
 	test('killAll kills what is running and refuses to start more', () => {
 		const running = createMockChildProcess();
 		const exited = createMockChildProcess();
 		(spawn as jest.Mock).mockReturnValueOnce(running).mockReturnValueOnce(exited);
-		const processes = new AreteProcesses();
+		const processes = new AreteProcesses('/vault');
 		processes.spawn(command, []);
 		processes.spawn(command, []);
 		exited.emit('close', 0, null);

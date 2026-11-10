@@ -134,7 +134,11 @@ function check(cli: Cli, argv: string[]): string[] {
 }
 
 /** Every command line the plugin spawns, with every optional setting turned on. */
-async function pluginCommandLines(): Promise<{ lines: string[][]; clientMethods: string[] }> {
+async function pluginCommandLines(): Promise<{
+	lines: string[][];
+	vaultRoots: (string | undefined)[];
+	clientMethods: string[];
+}> {
 	const settings = {
 		...DEFAULT_SETTINGS,
 		python_path: 'python3',
@@ -182,8 +186,10 @@ async function pluginCommandLines(): Promise<{ lines: string[][]; clientMethods:
 	await Promise.allSettled(pending);
 
 	const prefix = resolvePythonCommand(settings).args.length;
-	const lines = (spawn as jest.Mock).mock.calls.map((c) => (c[1] as string[]).slice(prefix));
-	return { lines, clientMethods: Object.keys(calls) };
+	const spawned = (spawn as jest.Mock).mock.calls;
+	const lines = spawned.map((c) => (c[1] as string[]).slice(prefix));
+	const vaultRoots = spawned.map((c) => c[2]?.env?.ARETE_VAULT_ROOT);
+	return { lines, vaultRoots, clientMethods: Object.keys(calls) };
 }
 
 describe('plugin command lines against the registered CLI', () => {
@@ -217,6 +223,13 @@ describe('plugin command lines against the registered CLI', () => {
 			check(cli, argv).map((e) => `${argv.join(' ')}: ${e}`),
 		);
 		expect(errors).toEqual([]);
+	});
+
+	test('every command runs with the vault as ARETE_VAULT_ROOT', async () => {
+		jest.spyOn(console, 'error').mockImplementation(() => undefined);
+		const { vaultRoots } = await pluginCommandLines();
+		expect(vaultRoots).toHaveLength(13);
+		expect(vaultRoots).toEqual(vaultRoots.map(() => '/vault'));
 	});
 
 	test('a renamed command, a renamed option and a stray argument are caught', () => {

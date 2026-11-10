@@ -32,11 +32,12 @@ export class AreteClient implements GraphSource, AnkiModelSource, CardStatsSourc
 	private settings: AretePluginSettings;
 	/** The vault's folder on disk; the queue is planned from its notes. */
 	private vaultRoot: string;
-	private processes = new AreteProcesses();
+	private processes: AreteProcesses;
 
 	constructor(settings: AretePluginSettings, vaultRoot = '') {
 		this.settings = settings;
 		this.vaultRoot = vaultRoot;
+		this.processes = new AreteProcesses(vaultRoot);
 	}
 
 	/** Kill the calls in flight (they reject) and refuse new ones. For plugin unload. */
