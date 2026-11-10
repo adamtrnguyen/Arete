@@ -1,0 +1,123 @@
+{
+	"src/application/services/TemplateRenderer.ts": {
+		"arete/no-literal-inline-style": {
+			"count": 1
+		}
+	},
+	"src/infrastructure/arete/CheckService.ts": {
+		"arete/no-emoji": {
+			"count": 2
+		}
+	},
+	"src/infrastructure/arete/ServerManager.ts": {
+		"arete/no-literal-delay": {
+			"count": 2
+		}
+	},
+	"src/main.ts": {
+		"arete/no-emoji": {
+			"count": 5
+		},
+		"arete/no-literal-delay": {
+			"count": 1
+		},
+		"arete/no-title-tooltip": {
+			"count": 3
+		},
+		"no-console": {
+			"count": 2
+		}
+	},
+	"src/presentation/components/DependencyField.ts": {
+		"arete/no-hand-built-button": {
+			"count": 1
+		}
+	},
+	"src/presentation/extensions/CardGutterExtension.ts": {
+		"arete/no-literal-inline-style": {
+			"count": 7
+		},
+		"arete/no-title-tooltip": {
+			"count": 2
+		}
+	},
+	"src/presentation/modals/CardStatsModal.ts": {
+		"arete/no-hand-built-button": {
+			"count": 1
+		},
+		"arete/no-heading-element": {
+			"count": 4
+		},
+		"arete/no-literal-inline-style": {
+			"count": 81
+		}
+	},
+	"src/presentation/modals/CheckResultModal.ts": {
+		"arete/no-emoji": {
+			"count": 3
+		},
+		"arete/no-hand-built-button": {
+			"count": 1
+		},
+		"arete/no-heading-element": {
+			"count": 1
+		}
+	},
+	"src/presentation/renderers/CardPreviewFrame.ts": {
+		"arete/no-title-tooltip": {
+			"count": 1
+		}
+	},
+	"src/presentation/settings/SettingTab.ts": {
+		"arete/no-emoji": {
+			"count": 3
+		},
+		"arete/no-heading-element": {
+			"count": 10
+		},
+		"arete/no-keystroke-save": {
+			"count": 6
+		}
+	},
+	"src/presentation/views/CardYamlEditorView.ts": {
+		"arete/no-literal-delay": {
+			"count": 1
+		},
+		"arete/no-literal-inline-style": {
+			"count": 5
+		},
+		"arete/no-title-tooltip": {
+			"count": 14
+		}
+	},
+	"src/presentation/views/DashboardView.ts": {
+		"arete/no-hand-built-button": {
+			"count": 5
+		},
+		"arete/no-literal-inline-style": {
+			"count": 216
+		},
+		"arete/no-title-tooltip": {
+			"count": 8
+		}
+	},
+	"src/presentation/views/GlobalGraphView.ts": {
+		"arete/no-hand-built-button": {
+			"count": 2
+		},
+		"arete/no-literal-inline-style": {
+			"count": 4
+		},
+		"arete/no-title-tooltip": {
+			"count": 6
+		}
+	},
+	"src/presentation/views/LocalGraphView.ts": {
+		"arete/no-literal-inline-style": {
+			"count": 54
+		},
+		"arete/no-title-tooltip": {
+			"count": 5
+		}
+	}
+}
