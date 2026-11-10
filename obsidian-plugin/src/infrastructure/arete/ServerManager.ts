@@ -131,8 +131,9 @@ export class ServerManager {
 		debugLog(`[Arete] Spawning server: ${resolved.cmd} ${args.join(' ')}`);
 
 		// The server accepts only paths inside its configured vault (vault_paths.py on
-		// the backend). Name this vault, so it works without a config file too. An env
-		// var, not a flag, so an older backend still starts.
+		// the backend). Name this vault, so it works without a config file too. It goes
+		// in the environment: `serve daemon` has no vault option, and the backend's
+		// config reads ARETE_VAULT_ROOT (AppConfig, env prefix ARETE_).
 		const env = vaultConfig.getBasePath
 			? { ...resolved.env, ARETE_VAULT_ROOT: vaultPath }
 			: resolved.env;
