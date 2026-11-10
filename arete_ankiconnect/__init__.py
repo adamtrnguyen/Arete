@@ -659,14 +659,37 @@ class AnkiConnect:
             col.sched.rebuild_filtered_deck(did)
 
             # 4. Enforce topological order via due values
+            if not hasattr(col, "update_cards"):
+                for i, cid in enumerate(cids):
+                    try:
+                        card = col.get_card(cid)
+                        if card.did == did:
+                            card.due = i + 1000
+                            col.update_card(card)
+                    except Exception:
+                        pass  # Card may not have been pulled (suspended, etc.)
+                return did
+
+            # One update for all cards. A cid listed twice keeps its last position, as
+            # it does when each position is saved in turn.
+            pulled = {}
             for i, cid in enumerate(cids):
                 try:
                     card = col.get_card(cid)
-                    if card.did == did:
-                        card.due = i + 1000
-                        col.update_card(card)
                 except Exception:
-                    pass  # Card may not have been pulled (suspended, etc.)
+                    continue  # Card may not exist
+                if card.did == did:  # Card may not have been pulled (suspended, etc.)
+                    card.due = i + 1000
+                    pulled[card.id] = card
+            try:
+                col.update_cards(list(pulled.values()))
+            except Exception:
+                # Save one at a time so one bad card cannot block the rest.
+                for card in pulled.values():
+                    try:
+                        col.update_card(card)
+                    except Exception:
+                        pass
 
             return did
         finally:
@@ -1073,8 +1096,23 @@ class AnkiConnect:
 
     @util.api()
     def suspend(self, cards, suspend=True):
+        # The queue of every integer card id in one query; any other id, or one the query
+        # does not find, goes through suspended() and raises what it raises.
+        cardIds = {card for card in cards if type(card) is int}
+        queues = {}
+        if cardIds:
+            queues = dict(
+                self.database().all(
+                    "select id, queue from cards where id in " + anki.utils.ids2str(cardIds)
+                )
+            )
+
         for card in cards:
-            if self.suspended(card) == suspend:
+            if type(card) is int and card in queues:
+                isSuspended = queues[card] == -1
+            else:
+                isSuspended = self.suspended(card)
+            if isSuspended == suspend:
                 cards.remove(card)
 
         if len(cards) == 0:
@@ -1513,6 +1551,14 @@ class AnkiConnect:
 
     @util.api()
     def cardsInfo(self, cards):
+        # Deck name per deck id, looked up once per request instead of once per card.
+        deckNames = {}
+
+        def deckName(did):
+            if did not in deckNames:
+                deckNames[did] = self.deckNameFromId(did)
+            return deckNames[did]
+
         result = []
         for cid in cards:
             try:
@@ -1534,7 +1580,7 @@ class AnkiConnect:
                         "answer": util.cardAnswer(card),
                         "modelName": model["name"],
                         "ord": card.ord,
-                        "deckName": self.deckNameFromId(card.did),
+                        "deckName": deckName(card.did),
                         "css": model["css"],
                         "factor": card.factor,
                         # This factor is 10 times the ease percentage,
@@ -1627,9 +1673,23 @@ class AnkiConnect:
         COLUMNS = ["id", "usn", "ease", "ivl", "lastIvl", "factor", "time", "type"]
         QUERY = "select {} from revlog where cid = ?".format(", ".join(COLUMNS))
 
+        # One query for every integer card id. revlog.id is its rowid, so the per-card
+        # query above returns a card's rows in id order; the batch keeps that order.
+        cardIds = {card for card in cards if type(card) is int}
+        rows = {card: [] for card in cardIds}
+        if cardIds:
+            batch = "select cid, {} from revlog where cid in {} order by cid, id".format(
+                ", ".join(COLUMNS), anki.utils.ids2str(cardIds)
+            )
+            for row in self.database().all(batch):
+                rows[row[0]].append(row[1:])
+
         result = {}
         for card in cards:
-            query_result = self.database().all(QUERY, card)
+            if type(card) is int:
+                query_result = rows[card]
+            else:
+                query_result = self.database().all(QUERY, card)
             result[card] = [dict(zip(COLUMNS, row, strict=False)) for row in query_result]
 
         return result
@@ -1659,6 +1719,7 @@ class AnkiConnect:
 
     @util.api()
     def notesInfo(self, notes):
+        cardIds = self.cardIdsOfNotes(notes)
         result = []
         for nid in notes:
             try:
@@ -1677,7 +1738,9 @@ class AnkiConnect:
                         "tags": note.tags,
                         "fields": fields,
                         "modelName": model["name"],
-                        "cards": self.collection().db.list(
+                        "cards": list(cardIds[note.id])
+                        if note.id in cardIds
+                        else self.collection().db.list(
                             "select id from cards where nid = ? order by ord", note.id
                         ),
                     }
@@ -1690,6 +1753,22 @@ class AnkiConnect:
                 result.append({})
 
         return result
+
+    def cardIdsOfNotes(self, notes):
+        """{note id: its card ids by ord} for the integer ids in `notes`, in one query.
+
+        Same rows as `select id from cards where nid = ? order by ord` per note. A
+        non-integer id gets no entry; the caller queries it on its own.
+        """
+        noteIds = {nid for nid in notes if type(nid) is int}
+        cardIds = {nid: [] for nid in noteIds}
+        if noteIds:
+            for nid, cid in self.collection().db.all(
+                "select nid, id from cards where nid in %s order by nid, ord"
+                % anki.utils.ids2str(noteIds)
+            ):
+                cardIds[nid].append(cid)
+        return cardIds
 
     @util.api()
     def deleteNotes(self, notes):

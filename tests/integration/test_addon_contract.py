@@ -8,6 +8,7 @@ import pytest
 import requests
 
 DECK = "AddonContract"
+MISSING = 1234567890123
 
 
 def call(url, action, version=6, **params):
@@ -85,3 +86,71 @@ def test_multi_dispatches_each_sub_action(anki_url):
         ],
         "error": None,
     }
+
+
+def test_notes_info_batch_equals_one_note_at_a_time(anki_url, notes):
+    nids = [nid for nid, _ in notes]
+    asked = [nids[2], MISSING, nids[0], nids[2], nids[1]]
+    batch = call(anki_url, "notesInfo", notes=asked)["result"]
+    singles = [call(anki_url, "notesInfo", notes=[nid])["result"][0] for nid in asked]
+    assert batch == singles
+    assert batch[1] == {}
+    assert [n["cards"] for n in batch if n] == [[notes[i][1]] for i in (2, 0, 2, 1)]
+
+
+def test_cards_info_batch_equals_one_card_at_a_time(anki_url, notes):
+    cids = [cid for _, cid in notes]
+    asked = [cids[1], MISSING, cids[0], cids[1]]
+    batch = call(anki_url, "cardsInfo", cards=asked)["result"]
+    singles = [call(anki_url, "cardsInfo", cards=[cid])["result"][0] for cid in asked]
+    assert batch == singles
+    assert batch[1] == {}
+    assert batch[0]["deckName"] == DECK
+
+
+def test_reviews_of_cards_keep_request_order_and_per_card_rows(anki_url, notes):
+    cids = [cid for _, cid in notes]
+    answers = [{"cardId": cids[0], "ease": 3}, {"cardId": cids[2], "ease": 3}]
+    call(anki_url, "answerCards", answers=answers)
+    call(anki_url, "answerCards", answers=[{"cardId": cids[0], "ease": 2}])
+    asked = [cids[2], MISSING, cids[0], cids[1], cids[2]]
+    batch = call(anki_url, "getReviewsOfCards", cards=asked)["result"]
+    assert list(batch) == [str(cids[2]), str(MISSING), str(cids[0]), str(cids[1])]
+    for cid in (cids[0], cids[1], cids[2]):
+        single = call(anki_url, "getReviewsOfCards", cards=[cid])["result"]
+        assert batch[str(cid)] == single[str(cid)]
+    assert [r["ease"] for r in batch[str(cids[0])]] == [3, 2]
+    assert batch[str(MISSING)] == []
+    assert batch[str(cids[1])] == []
+
+
+def test_suspend_reply_and_effect(anki_url, notes):
+    """Pins the present reply of suspend and unsuspend, quirk included.
+
+    suspend removes already-suspended cards from the list it is iterating, which skips
+    the next element: two suspended cards in a row still reply True.
+    """
+    a, b, c = (cid for _, cid in notes)
+    assert call(anki_url, "suspend", cards=[a, b]) == {"result": True, "error": None}
+    assert call(anki_url, "suspend", cards=[a, b]) == {"result": True, "error": None}
+    assert call(anki_url, "suspend", cards=[a]) == {"result": False, "error": None}
+    assert call(anki_url, "areSuspended", cards=[a, b, c])["result"] == [True, True, False]
+    assert call(anki_url, "unsuspend", cards=[a, c]) == {"result": None, "error": None}
+    assert call(anki_url, "areSuspended", cards=[a, b, c])["result"] == [False, True, False]
+    assert call(anki_url, "suspend", cards=[MISSING]) == {
+        "result": None,
+        "error": f"Card was not found: {MISSING}",
+    }
+    call(anki_url, "unsuspend", cards=[b])
+
+
+def test_filtered_deck_orders_cards_by_request_position(anki_url, notes):
+    a, b, c = (cid for _, cid in notes)
+    name = f"{DECK}::Queue"
+    did = call(anki_url, "createFilteredDeck", name=name, cids=[c, a, MISSING, b, c])["result"]
+    assert isinstance(did, int)
+    infos = call(anki_url, "cardsInfo", cards=[a, b, c])["result"]
+    assert [i["deckName"] for i in infos] == [name] * 3
+    # due = 1000 + position in the request; a repeated card takes its last position
+    assert [i["due"] for i in infos] == [1001, 1003, 1004]
+    call(anki_url, "deleteDecks", decks=[name], cardsToo=True)
