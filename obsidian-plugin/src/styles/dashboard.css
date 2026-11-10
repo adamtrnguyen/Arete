@@ -1,26 +1,70 @@
-/* Arete Plugin - Dashboard View Styles */
+/* Arete Plugin - Dashboard View Styles. Widths are multiples of --size-4-1 (4px). */
 
 .arete-dashboard-container {
 	background: var(--background-primary);
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	overflow: hidden;
+}
+
+.arete-dashboard-content {
+	flex: 1;
+	overflow-y: auto;
+	padding: var(--size-4-4);
 }
 
 .arete-dashboard-header {
 	background: var(--background-secondary);
-	border-bottom: 1px solid var(--background-modifier-border);
+	border-bottom: var(--border-width) solid var(--background-modifier-border);
+	padding: var(--size-4-4);
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+}
+
+.arete-dashboard-title {
+	margin: 0 auto 0 0;
+}
+
+.arete-header-stats {
+	display: flex;
+	gap: var(--size-4-4);
+	font-size: var(--font-ui-small);
+	color: var(--text-muted);
 }
 
 .arete-header-stats span {
-	font-weight: 500;
+	font-weight: var(--font-medium);
+}
+
+.arete-header-stats .mod-error {
+	color: var(--text-error);
 }
 
 /* Tab Bar */
 .arete-tab-bar {
 	display: flex;
+	gap: var(--size-2-1);
+	padding: 0 var(--size-4-4);
+	background: var(--background-secondary);
+	border-bottom: var(--border-width) solid var(--background-modifier-border);
 	overflow-x: auto;
 }
 
 .arete-tab-btn {
-	transition: all 0.2s ease;
+	display: flex;
+	align-items: center;
+	gap: var(--size-2-3);
+	padding: var(--size-4-2) var(--size-4-4);
+	border-bottom: var(--size-2-1) solid transparent;
+	font-size: var(--font-ui-small);
+	font-weight: var(--font-medium);
+	color: var(--text-muted);
+	cursor: var(--cursor);
+	transition:
+		color 0.2s ease,
+		background-color 0.2s ease;
 }
 
 .arete-tab-btn:hover {
@@ -29,7 +73,29 @@
 }
 
 .arete-tab-btn.is-active {
-	background: rgba(var(--interactive-accent-rgb), 0.1);
+	color: var(--text-normal);
+	border-bottom-color: var(--interactive-accent);
+	background: color-mix(in oklch, var(--interactive-accent) 10%, transparent);
+}
+
+/* Empty and success states */
+.arete-empty-state,
+.arete-success-state {
+	text-align: center;
+}
+
+.arete-empty-state {
+	padding: var(--size-4-12);
+	color: var(--text-muted);
+}
+
+.arete-success-state {
+	padding: var(--size-4-8);
+	color: var(--text-success);
+}
+
+.arete-empty-message {
+	margin-top: var(--size-4-4);
 }
 
 /* Leech Table */

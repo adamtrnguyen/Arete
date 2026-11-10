@@ -1,4 +1,13 @@
-import { App, ItemView, WorkspaceLeaf, setIcon, Notice, MarkdownView, TFile } from 'obsidian';
+import {
+	App,
+	ExtraButtonComponent,
+	ItemView,
+	WorkspaceLeaf,
+	setIcon,
+	Notice,
+	MarkdownView,
+	TFile,
+} from 'obsidian';
 import { ConceptStats, StatsNode, difficultyOutOfTen, uniqueCardStats } from '@/domain/stats';
 import { CardStatsModal } from '@/presentation/modals/CardStatsModal';
 import { BrokenReference, LinkCheckerService } from '@application/services/LinkCheckerService';
@@ -50,7 +59,7 @@ export class DashboardView extends ItemView {
 	}
 
 	getDisplayText() {
-		return 'Arete Dashboard';
+		return 'Arete dashboard';
 	}
 
 	getIcon() {
@@ -72,19 +81,10 @@ export class DashboardView extends ItemView {
 		container.empty();
 		container.addClass('arete-dashboard-container');
 
-		// Use flex column for full height
-		container.style.display = 'flex';
-		container.style.flexDirection = 'column';
-		container.style.height = '100%';
-		container.style.overflow = 'hidden';
-
 		this.renderHeader(container as HTMLElement);
 		this.renderTabs(container as HTMLElement);
 
 		const contentEl = container.createDiv({ cls: 'arete-dashboard-content' });
-		contentEl.style.flex = '1';
-		contentEl.style.overflowY = 'auto';
-		contentEl.style.padding = '1rem';
 
 		switch (this.activeTab) {
 			case 'overview':
@@ -104,15 +104,8 @@ export class DashboardView extends ItemView {
 
 	renderHeader(container: HTMLElement) {
 		const header = container.createDiv({ cls: 'arete-dashboard-header' });
-		header.style.padding = '1rem';
-		header.style.borderBottom = '1px solid var(--background-modifier-border)';
-		header.style.display = 'flex';
-		header.style.justifyContent = 'space-between';
-		header.style.alignItems = 'center';
-		header.style.background = 'var(--background-secondary)';
 
-		const titleMsg = header.createEl('h3', { text: 'Arete Dashboard' });
-		titleMsg.style.margin = '0 auto 0 0'; // Left align
+		header.createEl('h3', { text: 'Arete dashboard', cls: 'arete-dashboard-title' });
 
 		// Global Stats (Quick Summary)
 		const stats = this.plugin.statsService.getCache();
@@ -126,61 +119,42 @@ export class DashboardView extends ItemView {
 		});
 
 		const statsGroup = header.createDiv({ cls: 'arete-header-stats' });
-		statsGroup.style.display = 'flex';
-		statsGroup.style.gap = '1rem';
-		statsGroup.style.fontSize = '0.9em';
-		statsGroup.style.color = 'var(--text-muted)';
 
-		statsGroup.createSpan({ text: `${totalCards} Cards` });
+		statsGroup.createSpan({ text: `${totalCards} cards` });
 
-		const leechSpan = statsGroup.createSpan({ text: `${totalLeeches} Issues` });
-		if (totalLeeches > 0) leechSpan.style.color = 'var(--color-red)';
+		const leechSpan = statsGroup.createSpan({ text: `${totalLeeches} issues` });
+		if (totalLeeches > 0) leechSpan.addClass('mod-error');
 
 		// Refresh Button
-		const refreshBtn = header.createEl('button', { cls: 'arete-icon-btn' });
-		setIcon(refreshBtn, 'refresh-cw');
-		refreshBtn.title = 'Sync & Refresh Stats';
-		refreshBtn.onclick = async () => {
-			refreshBtn.addClass('arete-spin');
-			await this.plugin.statsService.refreshStats();
-			await this.plugin.saveStats();
-			this.render();
-			refreshBtn.removeClass('arete-spin');
-		};
+		const refreshBtn = new ExtraButtonComponent(header)
+			.setIcon('refresh-cw')
+			.setTooltip('Sync and refresh stats');
+		refreshBtn.onClick(async () => {
+			refreshBtn.setDisabled(true);
+			try {
+				await this.plugin.statsService.refreshStats();
+				await this.plugin.saveStats();
+				this.render();
+			} finally {
+				refreshBtn.setDisabled(false);
+			}
+		});
 	}
 
 	renderTabs(container: HTMLElement) {
 		const tabBar = container.createDiv({ cls: 'arete-tab-bar' });
-		tabBar.style.display = 'flex';
-		tabBar.style.gap = '2px';
-		tabBar.style.padding = '0 1rem';
-		tabBar.style.background = 'var(--background-secondary)';
-		tabBar.style.borderBottom = '1px solid var(--background-modifier-border)';
 
 		const tabs: { id: DashboardTab; label: string; icon: string }[] = [
 			{ id: 'overview', label: 'Overview', icon: 'bar-chart-2' },
 			{ id: 'leeches', label: 'Leeches', icon: 'flame' },
 			{ id: 'integrity', label: 'Integrity', icon: 'link' },
-			{ id: 'queue-builder', label: 'Queue Builder', icon: 'list-ordered' },
+			{ id: 'queue-builder', label: 'Queue builder', icon: 'list-ordered' },
 		];
 
 		tabs.forEach((tab) => {
 			const btn = tabBar.createDiv({ cls: 'arete-tab-btn' });
-			btn.style.padding = '8px 16px';
-			btn.style.cursor = 'pointer';
-			btn.style.borderBottom = '2px solid transparent';
-			btn.style.display = 'flex';
-			btn.style.gap = '6px';
-			btn.style.alignItems = 'center';
-			btn.style.fontSize = '0.9em';
-			btn.style.fontWeight = '500';
-			btn.style.color = 'var(--text-muted)';
 
-			if (this.activeTab === tab.id) {
-				btn.style.borderBottomColor = 'var(--interactive-accent)';
-				btn.style.color = 'var(--text-normal)';
-				btn.addClass('is-active');
-			}
+			if (this.activeTab === tab.id) btn.addClass('is-active');
 
 			const iconSpan = btn.createSpan();
 			setIcon(iconSpan, tab.icon);
@@ -193,7 +167,6 @@ export class DashboardView extends ItemView {
 		});
 	}
 
-	// --- 1. OVERVIEW TAB ---
 	// --- 1. OVERVIEW TAB ---
 	async renderOverview(container: HTMLElement) {
 		container.empty(); // Clear previous render to prevent duplication
@@ -904,20 +877,14 @@ export class DashboardView extends ItemView {
 	// --- Helpers ---
 	renderEmptyState(container: HTMLElement, message: string) {
 		const empty = container.createDiv({ cls: 'arete-empty-state' });
-		empty.style.textAlign = 'center';
-		empty.style.padding = '3rem';
-		empty.style.color = 'var(--text-muted)';
 		setIcon(empty.createDiv(), 'search');
-		empty.createDiv({ text: message }).style.marginTop = '1rem';
+		empty.createDiv({ text: message, cls: 'arete-empty-message' });
 	}
 
 	renderSuccess(container: HTMLElement, message: string) {
-		const box = container.createDiv();
-		box.style.padding = '2rem';
-		box.style.textAlign = 'center';
-		box.style.color = 'var(--color-green)';
+		const box = container.createDiv({ cls: 'arete-success-state' });
 		setIcon(box.createDiv(), 'check-circle');
-		box.createDiv({ text: message }).style.marginTop = '1rem';
+		box.createDiv({ text: message, cls: 'arete-empty-message' });
 	}
 
 	async openFile(filePath: string) {
