@@ -360,6 +360,7 @@ class QueueBuildRequest(BaseModel):
     deck: str | None = None
     depth: int = 2
     max_cards: int = 50
+    cross_deck: bool = False
     algo: QueueAlgo = "static"  # same vocabulary as the CLI --algo
     vault_root: str | None = None
     backend: str | None = None
@@ -394,6 +395,7 @@ async def build_queue(req: QueueBuildRequest):
                 deck=req.deck,
                 depth=req.depth,
                 max_cards=req.max_cards,
+                cross_deck=req.cross_deck,
                 algo=req.algo,
                 dry_run=True,  # /queue/build only plans; /queue/create-deck creates
                 enrich=True,

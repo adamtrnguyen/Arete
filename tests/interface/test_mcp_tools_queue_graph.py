@@ -76,7 +76,7 @@ async def test_build_study_queue_with_nothing_due_says_so(algebra):
     bridge = FakeBridge(0, [])
     with patch("arete.interface.mcp_server.get_anki_bridge", AsyncMock(return_value=bridge)):
         result = await create_server().call_tool("build_study_queue", {})
-    assert _text(result) == "No cards due in deck CS::DSA"
+    assert _text(result) == "No cards due"
     assert bridge.created == []
 
 
@@ -98,17 +98,25 @@ async def test_build_study_queue_without_a_deck_orders_prerequisites_first(algeb
     assert bridge.created == [("Arete::Queue", [100, 101], True)]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="build_study_queue always has a deck (default CS::DSA) and has no cross_deck "
-    "argument, so depth is ignored and prerequisites are never queued",
-)
 @pytest.mark.asyncio
 async def test_build_study_queue_includes_prerequisites_for_a_named_deck(algebra):
     bridge = FakeBridge(1, ["arete_B"])
     with patch("arete.interface.mcp_server.get_anki_bridge", AsyncMock(return_value=bridge)):
-        result = await create_server().call_tool("build_study_queue", {"deck": "Math", "depth": 2})
+        result = await create_server().call_tool(
+            "build_study_queue", {"deck": "Math", "depth": 2, "cross_deck": True}
+        )
     assert _data(result)["queue_order"] == ["arete_A", "arete_B"]
+
+
+@pytest.mark.asyncio
+async def test_build_study_queue_with_no_arguments_asks_for_every_deck(algebra):
+    bridge = FakeBridge(1, ["arete_B"])
+    with patch("arete.interface.mcp_server.get_anki_bridge", AsyncMock(return_value=bridge)):
+        result = await create_server().call_tool("build_study_queue", {})
+    data = _data(result)
+    assert data["queue_order"] == ["arete_A", "arete_B"]
+    assert data["deck"] == "All Decks"
+    assert bridge.due_args == [(None, False)]
 
 
 @pytest.mark.asyncio

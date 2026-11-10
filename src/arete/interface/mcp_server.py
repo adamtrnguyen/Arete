@@ -316,9 +316,10 @@ def create_server() -> MCPServer:  # noqa: C901
     @mcp.tool()
     @_reported
     async def build_study_queue(
-        deck: str = "CS::DSA",
+        deck: str | None = None,
         depth: int = 2,
         include_new: bool = False,
+        cross_deck: bool = False,
         algo: QueueAlgo = "static",
     ) -> str:
         """Build a dependency-ordered study queue in Anki.
@@ -327,9 +328,11 @@ def create_server() -> MCPServer:  # noqa: C901
         graph, topologically sorts them, and creates a filtered deck in Anki.
 
         Args:
-            deck: Deck to build queue from (default: "CS::DSA")
+            deck: Deck to build the queue from. Omit it for every deck; a named deck is an
+                isolated set unless cross_deck is true, like the CLI --deck.
             depth: How many prerequisite levels to include (default: 2)
             include_new: Whether to include new (unreviewed) cards
+            cross_deck: Pull prerequisites in from other decks when a deck is named
             algo: "static" (default) or "dynamic" -- same vocabulary as the CLI --algo
 
         """
@@ -347,18 +350,19 @@ def create_server() -> MCPServer:  # noqa: C901
             deck=deck,
             depth=depth,
             include_new=include_new,
+            cross_deck=cross_deck,
             algo=algo,
             enrich=False,
         )
 
         if result.due_count == 0:
-            return f"No cards due in deck {deck}"
+            return f"No cards due in deck {deck}" if deck else "No cards due"
 
         all_ordered = [item.id for item in result.queue_items]
 
         return json.dumps(
             {
-                "deck": deck,
+                "deck": deck or "All Decks",
                 "due_cards": result.main_count,
                 "prereq_cards": result.prereq_count,
                 "total_queued": result.total_queued,
