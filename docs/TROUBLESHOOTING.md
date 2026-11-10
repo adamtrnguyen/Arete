@@ -1,6 +1,6 @@
 # Troubleshooting Guide
 
-This guide covers common issues encountered while using Arete and how to resolve them.
+Common problems and how to fix them.
 
 ## 1. Connection Issues (AnkiConnect)
 
@@ -26,11 +26,8 @@ WSL users often face networking hurdles because WSL 2 uses a virtualized network
 ## 4. Sync Gaps & Missing Cards
 
 -   **"File skipped"**: If a file isn't syncing, check that its frontmatter has `arete: true` and a non-empty `cards:` list. `arete vault check <file>` says what is missing.
--   **Cache Mismatch**: If you suspect the cache is out of sync, you can force a re-scan by deleting the cache file:
-    ```bash
-    rm ~/.config/arete/cache.db
-    ```
-    *(Path may vary based on OS; use `arete config show` to find your config directory).*
+-   **Card refused as a duplicate**: the same Arete id on two cards, or the same first field in one deck and note type, is refused and named in the output. `arete graph check` lists shared ids.
+-   **Stale cache**: `arete sync --clear-cache` empties the content cache and parses every file again.
 
 ## 5. Locating Logs
 
