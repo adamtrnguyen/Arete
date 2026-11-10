@@ -115,3 +115,15 @@ export function difficultyOutOfTen(difficulty: number): number {
 export function dueEpochSeconds(due: number | null | undefined): number | null {
 	return due != null && due >= 1_000_000_000 ? due : null;
 }
+
+/**
+ * Each card of a concept once. `cardStats` holds a card under its card id and, as a
+ * fallback for the gutter, under its note id too, so its values repeat cards.
+ */
+export function uniqueCardStats(cardStats: Record<number, AnkiCardStats>): AnkiCardStats[] {
+	const byCard = new Map<number, AnkiCardStats>();
+	for (const stat of Object.values(cardStats)) {
+		if (!byCard.has(stat.cardId)) byCard.set(stat.cardId, stat);
+	}
+	return [...byCard.values()];
+}

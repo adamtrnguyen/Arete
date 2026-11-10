@@ -1,5 +1,5 @@
 import { App, ItemView, WorkspaceLeaf, setIcon, Notice, MarkdownView, TFile } from 'obsidian';
-import { ConceptStats, StatsNode, difficultyOutOfTen } from '@/domain/stats';
+import { ConceptStats, StatsNode, difficultyOutOfTen, uniqueCardStats } from '@/domain/stats';
 import { CardStatsModal } from '@/presentation/modals/CardStatsModal';
 import { BrokenReference, LinkCheckerService } from '@application/services/LinkCheckerService';
 import { AretePluginSettings } from '@/domain/settings';
@@ -403,8 +403,7 @@ export class DashboardView extends ItemView {
 		cardList.style.borderRadius = '4px';
 		cardList.style.marginBottom = '8px';
 
-		// Get all cards for this concept
-		const cards = Object.values(concept.cardStats);
+		const cards = uniqueCardStats(concept.cardStats);
 
 		if (cards.length === 0) {
 			cardList.createDiv({ text: 'No card stats synced.' }).style.padding = '8px 32px';
