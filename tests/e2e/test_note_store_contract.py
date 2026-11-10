@@ -17,7 +17,7 @@ import pytest
 
 from arete.domain.interfaces import NoteStorePort, NoteStoreSession
 from arete.domain.models import HeldNote, NewNote, NoteChange, OutcomeUnknown
-from tests.fakes.note_store import FakeNoteStore
+from tests.fakes.note_store import ContractViolation, FakeNoteStore
 
 ID = "arete_01J00000000000000000000101"
 OTHER = "arete_01J00000000000000000000102"
@@ -309,7 +309,7 @@ async def test_the_fake_refuses_any_write_when_read_only():
     fake.read_only = True
     async with fake.session() as s:
         assert await s.deck_names() == {"Default"}
-        with pytest.raises(AssertionError, match="read-only"):
+        with pytest.raises(ContractViolation, match="read-only"):
             await s.create_decks(["X"])
 
 
@@ -318,7 +318,7 @@ async def test_the_fake_refuses_a_retype_that_would_drop_cards():
     fake = FakeNoteStore()
     nid = fake.add("Cloze", "C", {"Text": "{{c1::a}} {{c2::b}}"})
     async with fake.session() as s:
-        with pytest.raises(AssertionError, match="delete cards"):
+        with pytest.raises(ContractViolation, match="delete cards"):
             await s.apply_changes([NoteChange(nid, retype=("Basic", (0, 1)))])
 
 

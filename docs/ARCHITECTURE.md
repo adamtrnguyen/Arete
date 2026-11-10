@@ -37,6 +37,7 @@ src/arete/
 │   ├── sync/                     
 │   │   ├── converter.py           Markdown to Anki HTML conversion logic
 │   │   ├── id_service.py          Service for managing stable Arete IDs for cards
+│   │   ├── note_sync.py           Bring Anki's notes to what the vault says: the one copy of the sync decision logic
 │   │   ├── parser.py              MarkdownParser
 │   │   ├── pipeline.py            RunStats, run_pipeline
 │   │   ├── prune.py               Prune: delete the Anki notes and decks Arete made that the vault no longer claims
@@ -88,7 +89,7 @@ src/arete/
 |---|---|---|---|
 | `interface` | 7 | 1840 | application, composition |
 | `composition` | 2 | 178 | application, infrastructure, domain |
-| `application` | 25 | 4781 | domain (ports only) |
+| `application` | 26 | 5389 | domain (ports only) |
 | `infrastructure` | 7 | 2465 | domain |
 | `domain` | 9 | 843 | nothing in arete |
 

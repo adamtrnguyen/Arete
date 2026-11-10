@@ -36,6 +36,11 @@ from arete.domain.models import (
 
 WRITES = ("add_field", "create_decks", "create_notes", "apply_changes")
 
+
+class ContractViolation(BaseException):
+    """The caller broke the port's contract. Not an `Exception`, so no handler hides it."""
+
+
 STOCK_TYPES = {
     "Basic": NoteTypeInfo("Basic", ("Front", "Back"), False, 1),
     "Basic (and reversed card)": NoteTypeInfo(
@@ -143,7 +148,7 @@ class FakeNoteStore:
         if not self._open:
             raise RuntimeError(f"{op} called outside a session")
         if self.read_only and op in WRITES:
-            raise AssertionError(f"{op} in a read-only run")
+            raise ContractViolation(f"{op} in a read-only run")
         self.calls[op] += 1
         self.log.append((op, arg))
 
@@ -232,7 +237,7 @@ class FakeNoteStore:
                 continue
             extra = set(new.fields) - set(info.fields)
             if extra:
-                raise AssertionError(f"fields the type {new.model} lacks: {sorted(extra)}")
+                raise ContractViolation(f"fields the type {new.model} lacks: {sorted(extra)}")
             nid = self.add(new.model, new.deck, new.fields, new.tags)
             out.append(OutcomeUnknown("reply lost") if self.lose(new) else nid)
         return out
@@ -267,7 +272,7 @@ class FakeNoteStore:
         target = self.types[model]
         keeps = len(note.cards) if target.is_cloze else target.n_templates
         if len(note.cards) > keeps:
-            raise AssertionError(f"retype to {model} would delete cards")
+            raise ContractViolation(f"retype to {model} would delete cards")
         old = list(note.fields.values())
         note.fields = {
             name: old[i] if i >= 0 else "" for name, i in zip(target.fields, mapping, strict=True)
@@ -293,7 +298,7 @@ class FakeNoteStore:
 
     def _file(self, cids: Collection[int], deck: str) -> None:
         if deck not in self.decks:
-            raise AssertionError(f"home deck {deck} does not exist")
+            raise ContractViolation(f"home deck {deck} does not exist")
         for cid in cids:
             card = self.cards[cid]
             if card.odid is not None:
