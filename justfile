@@ -116,6 +116,10 @@ dead:
 lint-obsidian:
     {{NPM}} run lint
 
+# Plugin import rules (dependency-cruiser)
+lint-deps-obsidian:
+    {{NPM}} run lint:deps
+
 # Type-check Obsidian plugin
 types-obsidian:
     cd {{PLUGIN}} && npx tsc --noEmit
@@ -169,7 +173,7 @@ verify: qa
 qa:
     #!/usr/bin/env bash
     set -uo pipefail
-    names=(lint fmt-check types layers dead test check-docs check-versions lint-obsidian types-obsidian test-obsidian)
+    names=(lint fmt-check types layers dead test check-docs check-versions lint-obsidian lint-deps-obsidian types-obsidian test-obsidian)
     logs=$(mktemp -d "${TMPDIR:-/tmp}/qa.XXXXXX")
     trap 'rm -rf "$logs"' EXIT
     echo "== qa: ${#names[@]} checks, concurrent (${names[*]}); output replayed in that order =="

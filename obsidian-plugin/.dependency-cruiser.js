@@ -25,11 +25,35 @@ module.exports = {
 			from: { path: '^src/application' },
 			to: { path: '^src/presentation' },
 		},
+		// L1: domain imports only domain (no obsidian, npm package or Node builtin)
+		{
+			name: 'domain-imports-only-domain',
+			comment: 'L1: domain is pure: no obsidian, no npm package, no Node builtin, no outer layer.',
+			severity: 'error',
+			from: { path: '^src/domain' },
+			to: { pathNot: '^src/domain' },
+		},
+		// L2: services depend on ports
+		{
+			name: 'application-no-infrastructure',
+			comment: 'L2 / PL3: services depend on ports in src/domain/ports.ts.',
+			severity: 'error',
+			from: { path: '^src/application' },
+			to: { path: '^src/infrastructure' },
+		},
+		// L3: main.ts is imported by nobody
+		{
+			name: 'nothing-imports-main',
+			comment: 'L3 / PL2: hosts are declared as types; main.ts is imported by nobody.',
+			severity: 'error',
+			from: { pathNot: '^src/main\\.ts$' },
+			to: { path: '^src/main\\.ts$' },
+		},
 		// Circular dependencies (ignore main.ts which must import views for registration)
 		{
 			name: 'no-circular',
 			comment: 'Circular dependencies are not allowed',
-			severity: 'warn',
+			severity: 'error',
 			from: { pathNot: '^src/main\\.ts$' },
 			to: { circular: true },
 		},
