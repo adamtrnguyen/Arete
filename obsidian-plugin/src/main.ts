@@ -158,7 +158,6 @@ export default class AretePlugin extends Plugin {
 		this.addCommand({
 			id: 'arete-sync',
 			name: 'Sync',
-			hotkeys: [{ modifiers: ['Mod', 'Shift'], key: 'A' }],
 			callback: () => {
 				this.runSync();
 			},

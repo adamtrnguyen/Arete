@@ -163,6 +163,12 @@ describe('AretePlugin native look', () => {
 		for (const { title } of ribbon) expect(isSentenceCase(title)).toBe(true);
 	});
 
+	test('no command ships a default hotkey', () => {
+		for (const command of Object.values((global as any).registeredCommands)) {
+			expect(command).not.toHaveProperty('hotkeys');
+		}
+	});
+
 	test('command ids are unchanged', () => {
 		expect(Object.keys((global as any).registeredCommands).sort()).toEqual(
 			[
