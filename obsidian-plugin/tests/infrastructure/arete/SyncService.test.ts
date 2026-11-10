@@ -277,7 +277,11 @@ describe('SyncService', () => {
 			(spawn as jest.Mock).mockReturnValue(mockChild);
 			const run = service.runSync(false, null, false, updateStatusBar);
 
-			mockChild.stderr.emit('data', 'Another sync is running (pid 123); try again later.\n');
+			mockChild.stderr.emit(
+				'data',
+				'Another Arete sync is running, so this sync did nothing. Run it again after. ' +
+					'(lock: /Users/u/.config/arete/cache.db.lock)\n',
+			);
 			mockChild.emit('close', SYNC_LOCK_EXIT_CODE);
 
 			expect(await run).toBe('busy');
@@ -287,9 +291,11 @@ describe('SyncService', () => {
 		});
 
 		test('isSyncLockHeld needs both the exit code and the message', () => {
-			expect(isSyncLockHeld(75, 'ERROR: another sync is running')).toBe(true);
+			expect(
+				isSyncLockHeld(75, 'Another Arete sync is running, so this sync did nothing.'),
+			).toBe(true);
 			expect(isSyncLockHeld(75, 'something else')).toBe(false);
-			expect(isSyncLockHeld(1, 'another sync is running')).toBe(false);
+			expect(isSyncLockHeld(1, 'Another Arete sync is running')).toBe(false);
 		});
 	});
 

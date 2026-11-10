@@ -75,7 +75,7 @@ export class SyncLog {
 /** The exit code `arete sync` uses when another sync holds the sync lock. */
 export const SYNC_LOCK_EXIT_CODE = 75;
 /** The text of the line `arete sync` prints on stderr when another sync holds the lock. */
-export const SYNC_LOCK_PATTERN = /another sync is running/i;
+export const SYNC_LOCK_PATTERN = /another arete sync is running/i;
 
 /** Whether a sync stopped because another sync, in any process, was running. */
 export function isSyncLockHeld(code: number | null, stderr: string): boolean {
