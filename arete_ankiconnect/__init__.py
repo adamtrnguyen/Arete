@@ -203,7 +203,7 @@ class AnkiConnect:
         return model
 
     def getField(self, model, fieldName):
-        fieldMap = self.collection().models.fieldMap(model)
+        fieldMap = self.collection().models.field_map(model)
         if fieldName not in fieldMap:
             raise Exception("field was not found in {}: {}".format(model["name"], fieldName))
         return fieldMap[fieldName][1]
@@ -1236,7 +1236,9 @@ class AnkiConnect:
 
     @util.api()
     def modelNames(self):
-        return self.collection().models.allNames()
+        # What models.allNames() returns, without its two deprecation warnings.
+        names = self.collection().models.all_names_and_ids()
+        return [name.name for name in names]
 
     @util.api()
     def createModel(self, modelName, inOrderFields, cardTemplates, css=None, isCloze=False):
@@ -1245,7 +1247,7 @@ class AnkiConnect:
             raise Exception("Must provide at least one field for inOrderFields")
         if len(cardTemplates) == 0:
             raise Exception("Must provide at least one card for cardTemplates")
-        if modelName in self.collection().models.allNames():
+        if modelName in self.modelNames():
             raise Exception("Model name already exists")
 
         collection = self.collection()
@@ -1258,7 +1260,7 @@ class AnkiConnect:
 
         # Create fields and add them to Note
         for field in inOrderFields:
-            fm = mm.newField(field)
+            fm = mm.new_field(field)
             mm.addField(m, fm)
 
         # Add shared css to model if exists. Use default otherwise
@@ -1272,7 +1274,7 @@ class AnkiConnect:
             if "Name" in card:
                 cardName = card["Name"]
 
-            t = mm.newTemplate(cardName)
+            t = mm.new_template(cardName)
             cardCount += 1
             t["qfmt"] = card["Front"]
             t["afmt"] = card["Back"]
@@ -1285,7 +1287,7 @@ class AnkiConnect:
     def modelNamesAndIds(self):
         models = {}
         for model in self.modelNames():
-            models[model] = int(self.collection().models.byName(model)["id"])
+            models[model] = int(self.collection().models.by_name(model)["id"])
 
         return models
 
@@ -1307,7 +1309,7 @@ class AnkiConnect:
 
     @util.api()
     def modelFieldDescriptions(self, modelName):
-        model = self.collection().models.byName(modelName)
+        model = self.collection().models.by_name(modelName)
         if model is None:
             raise Exception(f"model was not found: {modelName}")
         else:
@@ -1328,7 +1330,7 @@ class AnkiConnect:
 
     @util.api()
     def modelFieldsOnTemplates(self, modelName):
-        model = self.collection().models.byName(modelName)
+        model = self.collection().models.by_name(modelName)
         if model is None:
             raise Exception(f"model was not found: {modelName}")
 
@@ -1379,7 +1381,7 @@ class AnkiConnect:
     @util.api()
     def updateModelTemplates(self, model):
         models = self.collection().models
-        ankiModel = models.byName(model["name"])
+        ankiModel = models.by_name(model["name"])
         if ankiModel is None:
             raise Exception("model was not found: {}".format(model["name"]))
 
@@ -1400,7 +1402,7 @@ class AnkiConnect:
     @util.api()
     def updateModelStyling(self, model):
         models = self.collection().models
-        ankiModel = models.byName(model["name"])
+        ankiModel = models.by_name(model["name"])
         if ankiModel is None:
             raise Exception("model was not found: {}".format(model["name"]))
 
@@ -1413,15 +1415,15 @@ class AnkiConnect:
         self, modelName, findText, replaceText, front=True, back=True, css=True
     ):
         if not modelName:
-            ankiModel = self.collection().models.allNames()
+            ankiModel = self.modelNames()
         else:
-            model = self.collection().models.byName(modelName)
+            model = self.collection().models.by_name(modelName)
             if model is None:
                 raise Exception(f"model was not found: {modelName}")
             ankiModel = [modelName]
         updatedModels = 0
         for model in ankiModel:
-            model = self.collection().models.byName(model)
+            model = self.collection().models.by_name(model)
             checkForText = False
             if css and findText in model["css"]:
                 checkForText = True
@@ -1504,7 +1506,7 @@ class AnkiConnect:
         model = self.getModel(modelName)
         field = self.getField(model, fieldName)
 
-        mm.repositionField(model, field, index)
+        mm.reposition_field(model, field, index)
 
         self.save_model(mm, model)
 
@@ -1523,7 +1525,7 @@ class AnkiConnect:
         if index is not None:
             fieldMap = mm.field_map(model)
             newField = fieldMap[fieldName][1]
-            mm.repositionField(model, newField, index)
+            mm.reposition_field(model, newField, index)
 
         self.save_model(mm, model)
 
@@ -1533,7 +1535,7 @@ class AnkiConnect:
         model = self.getModel(modelName)
         field = self.getField(model, fieldName)
 
-        mm.removeField(model, field)
+        mm.remove_field(model, field)
 
         self.save_model(mm, model)
 
@@ -1829,8 +1831,8 @@ class AnkiConnect:
     @util.api()
     def removeEmptyNotes(self):
         for model in self.collection().models.all():
-            if self.collection().models.useCount(model) == 0:
-                self.collection().models.rem(model)
+            if self.collection().models.use_count(model) == 0:
+                self.collection().models.remove(model["id"])
         self.scheduleRefresh()
 
     @util.api()
@@ -1873,11 +1875,11 @@ class AnkiConnect:
             collection.decks.select(deck["id"])
             savedMid = deck.pop("mid", None)
 
-            model = collection.models.byName(note["modelName"])
+            model = collection.models.by_name(note["modelName"])
             if model is None:
                 raise Exception("model was not found: {}".format(note["modelName"]))
 
-            collection.models.setCurrent(model)
+            collection.models.set_current(model)
             collection.models.update(model)
 
             ankiNote = anki.notes.Note(collection, model)
