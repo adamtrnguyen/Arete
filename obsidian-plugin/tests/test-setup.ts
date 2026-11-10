@@ -112,6 +112,7 @@ export const createMockElement = (tag?: string, opts?: any): any => {
 		scrollHeight: 100,
 		addClass: jest.fn().mockReturnThis(),
 		removeClass: jest.fn().mockReturnThis(),
+		toggleClass: jest.fn().mockReturnThis(),
 		empty: jest.fn().mockReturnThis(),
 		setText: jest.fn().mockReturnThis(),
 		setButtonText: jest.fn().mockReturnThis(),
@@ -320,6 +321,7 @@ jest.mock('obsidian', () => {
 			constructor(app: any) {
 				this.app = app;
 			}
+			setTitle = jest.fn().mockReturnThis();
 			open() {
 				/* no-op */
 			}
@@ -327,6 +329,48 @@ jest.mock('obsidian', () => {
 				/* no-op */
 			}
 		},
+		ButtonComponent: class {
+			static instances: any[] = [];
+			buttonEl = (global as any).mockCreateMockElement('button');
+			clickHandler?: () => unknown;
+			constructor(public containerEl: any) {
+				(this.constructor as any).instances.push(this);
+			}
+			setButtonText = jest.fn().mockReturnThis();
+			setIcon = jest.fn().mockReturnThis();
+			setCta = jest.fn().mockReturnThis();
+			setWarning = jest.fn().mockReturnThis();
+			setDisabled = jest.fn().mockReturnThis();
+			setTooltip = jest.fn().mockReturnThis();
+			onClick = jest.fn().mockImplementation((cb: () => unknown) => {
+				this.clickHandler = cb;
+				return this;
+			});
+		},
+		ExtraButtonComponent: class {
+			static instances: any[] = [];
+			extraSettingsEl = (global as any).mockCreateMockElement('div');
+			clickHandler?: () => unknown;
+			icon?: string;
+			tooltip?: string;
+			constructor(public containerEl: any) {
+				(this.constructor as any).instances.push(this);
+			}
+			setIcon = jest.fn().mockImplementation((icon: string) => {
+				this.icon = icon;
+				return this;
+			});
+			setTooltip = jest.fn().mockImplementation((tooltip: string) => {
+				this.tooltip = tooltip;
+				return this;
+			});
+			setDisabled = jest.fn().mockReturnThis();
+			onClick = jest.fn().mockImplementation((cb: () => unknown) => {
+				this.clickHandler = cb;
+				return this;
+			});
+		},
+		setTooltip: jest.fn(),
 		FileSystemAdapter: class {},
 		setIcon: jest.fn(),
 		MarkdownView: class {},

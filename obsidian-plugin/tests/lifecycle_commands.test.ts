@@ -1,5 +1,5 @@
 import './test-setup';
-import { App, setIcon } from 'obsidian';
+import { App, setIcon, setTooltip } from 'obsidian';
 import AretePlugin from '@/main';
 
 describe('AretePlugin Lifecycle and Commands', () => {
@@ -118,7 +118,8 @@ describe('AretePlugin Lifecycle and Commands', () => {
 		plugin.updateStatusBar('error', 'Auth Failed');
 		expect(icons()).toContain('circle-x');
 		expect(labels()).toContain('Error');
-		expect(plugin.statusBarItem.title).toBe('Auth Failed');
+		expect(setTooltip).toHaveBeenCalledWith(plugin.statusBarItem, 'Auth Failed');
+		expect(plugin.statusBarItem.title).toBeUndefined();
 
 		jest.useFakeTimers();
 		plugin.updateStatusBar('success');

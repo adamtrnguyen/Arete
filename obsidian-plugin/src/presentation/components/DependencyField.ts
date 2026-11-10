@@ -1,4 +1,4 @@
-import { App, setIcon } from 'obsidian';
+import { App, ButtonComponent, ExtraButtonComponent, setIcon } from 'obsidian';
 import { DependencySelectionModal } from '@/presentation/modals/DependencySelectionModal';
 
 export interface Dependency {
@@ -45,20 +45,19 @@ export class DependencyField {
 		// Input wrapper
 		const inputWrapper = this.container.createDiv({ cls: 'arete-dep-input-wrapper' });
 
-		const addBtn = inputWrapper.createEl('button', {
-			cls: 'arete-dep-add-btn',
-			text: '+ Add dependency',
-		});
-
-		addBtn.addEventListener('click', () => {
-			new DependencySelectionModal(this.app, (result) => {
-				if (result) {
-					// Detect type based on prefix
-					const type = result.startsWith('arete_') ? 'card' : 'file';
-					this.addDependency(type, result);
-				}
-			}).open();
-		});
+		const addBtn = new ButtonComponent(inputWrapper)
+			.setIcon('plus')
+			.setButtonText('Add dependency')
+			.onClick(() => {
+				new DependencySelectionModal(this.app, (result) => {
+					if (result) {
+						// Detect type based on prefix
+						const type = result.startsWith('arete_') ? 'card' : 'file';
+						this.addDependency(type, result);
+					}
+				}).open();
+			});
+		addBtn.buttonEl.addClass('arete-dep-add-btn');
 	}
 
 	private renderList() {
@@ -75,12 +74,14 @@ export class DependencyField {
 			chip.createSpan({ text: dep.label || dep.value, cls: 'arete-dep-text' });
 
 			// Remove
-			const removeBtn = chip.createDiv({ cls: 'arete-dep-remove' });
-			setIcon(removeBtn, 'x');
-			removeBtn.addEventListener('click', () => {
-				this.dependencies.splice(index, 1);
-				this.update();
-			});
+			new ExtraButtonComponent(chip)
+				.setIcon('x')
+				.setTooltip('Remove dependency')
+				.onClick(() => {
+					this.dependencies.splice(index, 1);
+					this.update();
+				})
+				.extraSettingsEl.addClass('arete-dep-remove');
 		});
 	}
 

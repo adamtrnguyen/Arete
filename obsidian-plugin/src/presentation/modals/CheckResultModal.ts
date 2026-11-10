@@ -1,4 +1,4 @@
-import { App, Modal, setIcon } from 'obsidian';
+import { App, ButtonComponent, Modal, setIcon } from 'obsidian';
 import * as path from 'path';
 
 /** What this modal needs from the plugin (main.ts satisfies it; no import of main). */
@@ -24,9 +24,8 @@ export class CheckResultModal extends Modal {
 		modalEl.addClass('arete-check-modal');
 		contentEl.addClass('arete-modal-content');
 
-		const header = contentEl.createDiv({ cls: 'modal-header' });
-		header.createEl('h2', { text: 'Arete file check' });
-		header.createEl('span', { text: path.basename(this.filePath), cls: 'arete-filename' });
+		this.setTitle('Arete file check');
+		contentEl.createDiv({ text: path.basename(this.filePath), cls: 'arete-filename' });
 
 		if (this.result.ok) {
 			const status = contentEl.createDiv({ cls: 'arete-success' });
@@ -74,22 +73,18 @@ export class CheckResultModal extends Modal {
 			});
 
 			if (fixable) {
-				const btnContainer = contentEl.createDiv({
-					cls: 'arete-btn-container',
-					attr: { style: 'margin-top: 1rem; text-align: right;' },
-				});
-				const btn = btnContainer.createEl('button', {
-					text: 'Auto-fix issues',
-					cls: 'mod-cta',
-				});
-				btn.addEventListener('click', async () => {
-					btn.disabled = true;
-					btn.setText('Fixing...');
-					await this.plugin.runFix(this.filePath);
-					this.close();
-					// Re-run check
-					this.plugin.runCheck(this.filePath);
-				});
+				const btnContainer = contentEl.createDiv({ cls: 'arete-btn-container' });
+				const btn = new ButtonComponent(btnContainer)
+					.setButtonText('Auto-fix issues')
+					.setCta()
+					.onClick(async () => {
+						btn.setDisabled(true);
+						btn.setButtonText('Fixing...');
+						await this.plugin.runFix(this.filePath);
+						this.close();
+						// Re-run check
+						this.plugin.runCheck(this.filePath);
+					});
 			}
 
 			contentEl.createDiv({

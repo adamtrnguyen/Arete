@@ -1,10 +1,12 @@
 import {
 	Component,
+	ExtraButtonComponent,
 	ItemView,
 	WorkspaceLeaf,
 	MarkdownView,
 	Menu,
 	setIcon,
+	setTooltip,
 	Notice,
 	parseYaml,
 	TFile,
@@ -270,10 +272,7 @@ export class CardYamlEditorView extends ItemView {
 
 			const frontText = card['Front'] || card['Text'] || '';
 			if (frontText) {
-				item.setAttribute(
-					'title',
-					frontText.substring(0, 50) + (frontText.length > 50 ? '...' : ''),
-				);
+				setTooltip(item, frontText.substring(0, 50) + (frontText.length > 50 ? '...' : ''));
 			}
 
 			item.addEventListener('click', () => {
@@ -287,9 +286,11 @@ export class CardYamlEditorView extends ItemView {
 			item.addEventListener('dragend', () => this.handleDragEnd());
 		});
 
-		const addBtn = this.indexContainer.createDiv({ cls: 'arete-yaml-index-add' });
-		setIcon(addBtn, 'plus');
-		addBtn.addEventListener('click', () => this.addCard());
+		new ExtraButtonComponent(this.indexContainer)
+			.setIcon('plus')
+			.setTooltip('Add card')
+			.onClick(() => this.addCard())
+			.extraSettingsEl.addClass('arete-yaml-index-add');
 	}
 
 	private handleKeyNavigation(e: KeyboardEvent) {
@@ -317,14 +318,14 @@ export class CardYamlEditorView extends ItemView {
 			e.dataTransfer.dropEffect = 'move';
 		}
 		const el = (e.target as HTMLElement).closest('.arete-yaml-index-item');
-		if (el) el.addClass('drag-over');
+		if (el) el.addClass('is-drag-over');
 	}
 
 	private handleDragEnd() {
 		const items = this.indexContainer?.querySelectorAll('.arete-yaml-index-item');
 		items?.forEach((item) => {
 			item.removeClass('is-dragging');
-			item.removeClass('drag-over');
+			item.removeClass('is-drag-over');
 		});
 	}
 
@@ -374,28 +375,29 @@ export class CardYamlEditorView extends ItemView {
 						else if (stats.difficulty > 0.5) diffCls += ' mod-orange';
 						else diffCls += ' mod-success';
 
-						statsContainer.createDiv({
-							cls: diffCls,
-							text: `D: ${difficultyOutOfTen(stats.difficulty).toFixed(1)}`,
-							attr: {
-								title: `FSRS difficulty: ${difficultyOutOfTen(stats.difficulty).toFixed(1)}/10`,
-							},
-						});
+						this.addBadge(
+							statsContainer,
+							diffCls,
+							`D: ${difficultyOutOfTen(stats.difficulty).toFixed(1)}`,
+							`FSRS difficulty: ${difficultyOutOfTen(stats.difficulty).toFixed(1)}/10`,
+						);
 					} else {
-						statsContainer.createDiv({
-							cls: 'arete-stat-badge mod-muted',
-							text: `D: ?`,
-							attr: { title: 'FSRS difficulty not available' },
-						});
+						this.addBadge(
+							statsContainer,
+							'arete-stat-badge mod-muted',
+							'D: ?',
+							'FSRS difficulty not available',
+						);
 					}
 					badgeAdded = true;
 				} else if (algo === 'sm2' || stats.ease !== undefined) {
 					const ease = Math.round(stats.ease / 10);
-					statsContainer.createDiv({
-						cls: 'arete-stat-badge',
-						text: `E: ${ease}%`,
-						attr: { title: `SM-2 ease: ${ease}%` },
-					});
+					this.addBadge(
+						statsContainer,
+						'arete-stat-badge',
+						`E: ${ease}%`,
+						`SM-2 ease: ${ease}%`,
+					);
 					badgeAdded = true;
 				}
 
@@ -404,11 +406,12 @@ export class CardYamlEditorView extends ItemView {
 					if (stats.lapses > 5) lapseCls += ' mod-warning';
 					else lapseCls += ' mod-orange';
 
-					statsContainer.createDiv({
-						cls: lapseCls,
-						text: `${stats.lapses}L`,
-						attr: { title: `Lapses: ${stats.lapses}` },
-					});
+					this.addBadge(
+						statsContainer,
+						lapseCls,
+						`${stats.lapses}L`,
+						`Lapses: ${stats.lapses}`,
+					);
 					badgeAdded = true;
 				}
 
@@ -424,11 +427,12 @@ export class CardYamlEditorView extends ItemView {
 					else if (diffDays === 0) dueText = 'Today';
 					else dueText = `${diffDays}d`;
 
-					statsContainer.createDiv({
-						cls: 'arete-stat-badge mod-muted',
-						text: dueText,
-						attr: { title: `Due: ${dueDate.toLocaleDateString()}` },
-					});
+					this.addBadge(
+						statsContainer,
+						'arete-stat-badge mod-muted',
+						dueText,
+						`Due: ${dueDate.toLocaleDateString()}`,
+					);
 					badgeAdded = true;
 				}
 
@@ -445,72 +449,53 @@ export class CardYamlEditorView extends ItemView {
 				});
 			}
 		} else if (activeFile) {
-			leftGroup.createDiv({
-				cls: 'arete-stat-badge mod-muted',
-				text: 'Unsynced',
-				attr: { title: 'Card not yet synced to Anki' },
-			});
+			this.addBadge(
+				leftGroup,
+				'arete-stat-badge mod-muted',
+				'Unsynced',
+				'Card not yet synced to Anki',
+			);
 		}
 
 		const centerGroup = this.toolbarContainer.createDiv({ cls: 'arete-toolbar-group' });
 
-		const yamlBtn = centerGroup.createDiv({
-			cls: 'arete-toolbar-btn',
-			attr: { title: 'Go to YAML in note' },
-		});
-		setIcon(yamlBtn, 'file-text');
-		yamlBtn.addEventListener('click', () => this.scrollToCard(this.currentCardIndex));
-
-		const ankiBtn = centerGroup.createDiv({
-			cls: 'arete-toolbar-btn',
-			attr: { title: 'Open in Anki' },
-		});
-		setIcon(ankiBtn, 'external-link');
-		ankiBtn.addEventListener('click', () => this.openInAnki(this.currentCardIndex));
-
-		// Stats Modal Button
-		const statsBtn = centerGroup.createDiv({
-			cls: 'arete-toolbar-btn',
-			attr: { title: nid ? 'View card stats' : 'Card not synced (no NID)' },
-		});
-		setIcon(statsBtn, 'bar-chart-2');
-		if (!nid) {
-			statsBtn.style.opacity = '0.4';
-			statsBtn.style.cursor = 'not-allowed';
-		}
-
-		statsBtn.addEventListener('click', () => {
-			if (!nid) {
-				new Notice('Card not synced to Anki yet (no NID).');
-				return;
-			}
-			debugLog('[Arete] Opening stats modal for NID:', nid);
-			const activeFile = this.app.workspace.getActiveFile();
-			if (activeFile && nid) {
-				const cache = this.plugin.statsService.getCache();
-				const conceptStats = cache.concepts[activeFile.path];
-				if (!conceptStats) {
-					new Notice('No stats synced for this file yet.');
+		this.addToolbarButton(centerGroup, 'file-text', 'Go to YAML in note', () =>
+			this.scrollToCard(this.currentCardIndex),
+		);
+		this.addToolbarButton(centerGroup, 'external-link', 'Open in Anki', () =>
+			this.openInAnki(this.currentCardIndex),
+		);
+		this.addToolbarButton(
+			centerGroup,
+			'bar-chart-2',
+			nid ? 'View card stats' : 'Card not synced (no NID)',
+			() => {
+				if (!nid) {
+					new Notice('Card not synced to Anki yet (no NID).');
 					return;
 				}
+				debugLog('[Arete] Opening stats modal for NID:', nid);
+				const activeFile = this.app.workspace.getActiveFile();
+				if (activeFile && nid) {
+					const cache = this.plugin.statsService.getCache();
+					const conceptStats = cache.concepts[activeFile.path];
+					if (!conceptStats) {
+						new Notice('No stats synced for this file yet.');
+						return;
+					}
 
-				const cardStats = conceptStats.cardStats?.[nid];
+					const cardStats = conceptStats.cardStats?.[nid];
 
-				if (cardStats) {
-					new CardStatsModal(this.app, cardStats).open();
-				} else {
-					new Notice('No stats data available for this specific card.');
+					if (cardStats) {
+						new CardStatsModal(this.app, cardStats).open();
+					} else {
+						new Notice('No stats data available for this specific card.');
+					}
 				}
-			}
-		});
-
-		// Graph View Button
-		const graphBtn = centerGroup.createDiv({
-			cls: 'arete-toolbar-btn',
-			attr: { title: 'Open local graph' },
-		});
-		setIcon(graphBtn, 'share-2');
-		graphBtn.addEventListener('click', () => {
+			},
+			{ disabled: !nid },
+		);
+		this.addToolbarButton(centerGroup, 'share-2', 'Open local graph', () => {
 			const current = this.cards[this.currentCardIndex];
 			if (current && current.id) {
 				this.plugin.activateLocalGraphView(current.id);
@@ -521,26 +506,39 @@ export class CardYamlEditorView extends ItemView {
 
 		const rightGroup = this.toolbarContainer.createDiv({ cls: 'arete-toolbar-group' });
 
-		const fieldBtn = rightGroup.createDiv({
-			cls: 'arete-toolbar-btn' + (this.viewMode === ViewMode.Fields ? ' is-active' : ''),
-			attr: { title: 'Card edit mode' },
-		});
-		setIcon(fieldBtn, 'edit-3');
-		fieldBtn.addEventListener('click', () => this.setViewMode(ViewMode.Fields));
+		const modes: Array<[ViewMode, string, string]> = [
+			[ViewMode.Fields, 'edit-3', 'Card edit mode'],
+			[ViewMode.Source, 'code', 'Source mode'],
+			[ViewMode.Preview, 'eye', 'Preview mode'],
+		];
+		for (const [mode, icon, tooltip] of modes) {
+			this.addToolbarButton(rightGroup, icon, tooltip, () => this.setViewMode(mode), {
+				active: this.viewMode === mode,
+			});
+		}
+	}
 
-		const sourceBtn = rightGroup.createDiv({
-			cls: 'arete-toolbar-btn' + (this.viewMode === ViewMode.Source ? ' is-active' : ''),
-			attr: { title: 'Source mode' },
-		});
-		setIcon(sourceBtn, 'code');
-		sourceBtn.addEventListener('click', () => this.setViewMode(ViewMode.Source));
+	/** An icon button in the card toolbar: Obsidian's extra-button, with a native tooltip. */
+	private addToolbarButton(
+		group: HTMLElement,
+		icon: string,
+		tooltip: string,
+		onClick: () => void,
+		state: { active?: boolean; disabled?: boolean } = {},
+	) {
+		const button = new ExtraButtonComponent(group)
+			.setIcon(icon)
+			.setTooltip(tooltip)
+			.onClick(onClick);
+		button.extraSettingsEl.addClass('arete-toolbar-btn');
+		button.extraSettingsEl.toggleClass('is-active', !!state.active);
+		button.extraSettingsEl.toggleClass('is-disabled', !!state.disabled);
+	}
 
-		const previewBtn = rightGroup.createDiv({
-			cls: 'arete-toolbar-btn' + (this.viewMode === ViewMode.Preview ? ' is-active' : ''),
-			attr: { title: 'Preview mode' },
-		});
-		setIcon(previewBtn, 'eye');
-		previewBtn.addEventListener('click', () => this.setViewMode(ViewMode.Preview));
+	/** A small stat badge; its explanation is a native tooltip. */
+	private addBadge(parent: HTMLElement, cls: string, text: string, tooltip?: string) {
+		const badge = parent.createDiv({ cls, text });
+		if (tooltip) setTooltip(badge, tooltip);
 	}
 
 	private setViewMode(mode: ViewMode) {

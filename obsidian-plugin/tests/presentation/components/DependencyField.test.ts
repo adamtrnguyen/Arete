@@ -1,5 +1,6 @@
 import '../../test-setup';
 import { App, setIcon } from 'obsidian';
+import { createMockElement } from '../../test-setup';
 import { DependencyField } from '@/presentation/components/DependencyField';
 import { DependencySelectionModal } from '@/presentation/modals/DependencySelectionModal';
 
@@ -62,6 +63,14 @@ const find = (root: Rec, cls: string): Rec[] => {
 	return out;
 };
 
+const components = () => {
+	const o = jest.requireMock('obsidian');
+	return {
+		add: o.ButtonComponent.instances as any[],
+		remove: o.ExtraButtonComponent.instances as any[],
+	};
+};
+
 describe('DependencyField', () => {
 	let app: App;
 	let container: Rec;
@@ -69,6 +78,8 @@ describe('DependencyField', () => {
 
 	beforeEach(() => {
 		jest.clearAllMocks();
+		components().add.length = 0;
+		components().remove.length = 0;
 		app = new App();
 		container = rec('div');
 		onChange = jest.fn();
@@ -84,14 +95,15 @@ describe('DependencyField', () => {
 		expect(chips()[0].classes.has('is-card')).toBe(true);
 		expect(chips()[1].classes.has('is-card')).toBe(false);
 		const icons = (setIcon as jest.Mock).mock.calls.map((c) => c[1]);
-		expect(icons.slice(0, 4)).toEqual(['id-card', 'x', 'file-text', 'x']);
+		expect(icons.slice(0, 2)).toEqual(['id-card', 'file-text']);
+		expect(components().remove.map((r) => r.icon)).toEqual(['x', 'x']);
 		expect(onChange).not.toHaveBeenCalled();
 	});
 
 	it('removing a chip reports the remaining dependencies and redraws the list', () => {
 		new DependencyField(container as any, app, ['a', 'arete_2', 'c'], onChange);
 
-		find(chips()[1] as Rec, 'arete-dep-remove')[0].listeners['click']();
+		components().remove[1].clickHandler();
 
 		expect(onChange).toHaveBeenCalledTimes(1);
 		expect(onChange).toHaveBeenCalledWith(['a', 'c']);
@@ -100,10 +112,10 @@ describe('DependencyField', () => {
 
 	it('the add button opens the picker; a chosen card id is added and reported', () => {
 		new DependencyField(container as any, app, ['a'], onChange);
-		const add = find(container, 'arete-dep-add-btn')[0];
-		expect(add.opts.text).toBe('+ Add Dependency');
+		const add = components().add[0];
+		expect(add.setButtonText).toHaveBeenCalledWith('Add dependency');
 
-		add.listeners['click']();
+		add.clickHandler();
 
 		const ctor = DependencySelectionModal as unknown as jest.Mock;
 		expect(ctor).toHaveBeenCalledTimes(1);
@@ -118,7 +130,7 @@ describe('DependencyField', () => {
 
 	it('a cancelled picker adds nothing', () => {
 		new DependencyField(container as any, app, ['a'], onChange);
-		find(container, 'arete-dep-add-btn')[0].listeners['click']();
+		components().add[0].clickHandler();
 		const pick = (DependencySelectionModal as unknown as jest.Mock).mock.calls[0][1];
 
 		pick(null);
@@ -129,12 +141,49 @@ describe('DependencyField', () => {
 
 	it('picking a dependency that is already listed changes nothing', () => {
 		new DependencyField(container as any, app, ['arete_1'], onChange);
-		find(container, 'arete-dep-add-btn')[0].listeners['click']();
+		components().add[0].clickHandler();
 		const pick = (DependencySelectionModal as unknown as jest.Mock).mock.calls[0][1];
 
 		pick('arete_1');
 
 		expect(onChange).not.toHaveBeenCalled();
 		expect(chipTexts()).toEqual(['arete_1']);
+	});
+});
+
+describe('DependencyField native components', () => {
+	const obsidian = jest.requireMock('obsidian');
+
+	beforeEach(() => {
+		obsidian.ButtonComponent.instances.length = 0;
+		obsidian.ExtraButtonComponent.instances.length = 0;
+	});
+
+	test('the add control is a ButtonComponent, not a hand-built <button>', () => {
+		const container = createMockElement('div');
+		new DependencyField(container, new App(), [], jest.fn());
+
+		const [add] = obsidian.ButtonComponent.instances;
+		expect(add).toBeDefined();
+		expect(add.setButtonText).toHaveBeenCalledWith('Add dependency');
+		expect(add.buttonEl.addClass).toHaveBeenCalledWith('arete-dep-add-btn');
+		for (const call of (container.createEl as jest.Mock).mock.calls) {
+			expect(call[0]).not.toBe('button');
+		}
+	});
+
+	test('each chip has an extra-button remove control with a tooltip that drops the dependency', () => {
+		const onChange = jest.fn();
+		new DependencyField(createMockElement('div'), new App(), ['A', 'B'], onChange);
+
+		const removes = obsidian.ExtraButtonComponent.instances;
+		expect(removes.map((r: any) => r.icon)).toEqual(['x', 'x']);
+		expect(removes.map((r: any) => r.tooltip)).toEqual([
+			'Remove dependency',
+			'Remove dependency',
+		]);
+
+		removes[0].clickHandler();
+		expect(onChange).toHaveBeenCalledWith(['B']);
 	});
 });

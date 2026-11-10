@@ -6,6 +6,7 @@ import {
 	FileSystemAdapter,
 	TFile,
 	setIcon,
+	setTooltip,
 	CachedMetadata,
 	editorInfoField,
 } from 'obsidian';
@@ -574,10 +575,10 @@ export default class AretePlugin extends Plugin {
 			const lastSync = this.settings.last_sync_time;
 			if (lastSync) {
 				this.setStatusBar('layers', this.formatTimeAgo(lastSync));
-				this.statusBarItem.title = 'Click to sync to Anki';
+				setTooltip(this.statusBarItem, 'Click to sync to Anki');
 			} else {
 				this.setStatusBar('layers', 'Arete');
-				this.statusBarItem.title = 'Never synced. Click to sync.';
+				setTooltip(this.statusBarItem, 'Never synced. Click to sync.');
 			}
 			return;
 		}
@@ -589,7 +590,7 @@ export default class AretePlugin extends Plugin {
 			setTimeout(() => this.updateStatusBar('idle'), 3000);
 		} else if (state === 'error') {
 			this.setStatusBar('circle-x', 'Error');
-			this.statusBarItem.title = msg || 'Check logs';
+			setTooltip(this.statusBarItem, msg || 'Check logs');
 		}
 	}
 

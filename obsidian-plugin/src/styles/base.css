@@ -5,23 +5,22 @@
 	padding: 1rem;
 }
 
-.arete-modal h2 {
-	border-bottom: 2px solid var(--background-modifier-border);
-	padding-bottom: 0.5rem;
-	margin-bottom: 1rem;
-	display: flex;
-	justify-content: space-between;
-	align-items: center;
-}
-
 /* File Name Display */
 .arete-filename {
+	display: inline-block;
+	margin-bottom: 1rem;
 	background-color: var(--background-primary-alt);
 	padding: 0.2rem 0.6rem;
 	border-radius: 4px;
 	font-family: var(--font-monospace);
 	font-size: 0.9em;
 	color: var(--text-muted);
+}
+
+/* Auto-fix button row in the check modal */
+.arete-btn-container {
+	margin-top: 1rem;
+	text-align: right;
 }
 
 /* Success State */

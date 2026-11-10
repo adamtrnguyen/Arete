@@ -221,3 +221,77 @@ describe('CardYamlEditorView leaf changes and field sizing', () => {
 		]);
 	});
 });
+
+describe('CardYamlEditorView toolbar', () => {
+	const obsidian = jest.requireMock('obsidian');
+	let view: any;
+
+	beforeEach(() => {
+		jest.clearAllMocks();
+		obsidian.ExtraButtonComponent.instances.length = 0;
+		const app = new obsidian.App();
+		(app.workspace.getActiveFile as jest.Mock).mockReturnValue({ path: 'N.md' });
+		view = new CardYamlEditorView(
+			{} as any,
+			{
+				settings: { stats_algorithm: 'sm2' },
+				statsService: { getCache: () => ({ concepts: {} }) },
+			} as any,
+		);
+		view.app = app;
+		view.toolbarContainer = createMockElement('div');
+		view.cards = [{ Front: 'F', Back: 'B' }];
+	});
+
+	const buttons = () => obsidian.ExtraButtonComponent.instances as any[];
+
+	it('draws every icon button as an ExtraButtonComponent with a setTooltip tooltip', () => {
+		view.renderToolbar();
+
+		expect(buttons().map((b) => [b.icon, b.tooltip])).toEqual([
+			['file-text', 'Go to YAML in note'],
+			['external-link', 'Open in Anki'],
+			['bar-chart-2', 'Card not synced (no NID)'],
+			['share-2', 'Open local graph'],
+			['edit-3', 'Card edit mode'],
+			['code', 'Source mode'],
+			['eye', 'Preview mode'],
+		]);
+	});
+
+	it('marks the current mode with is-active and a card without an NID is-disabled', () => {
+		view.renderToolbar();
+
+		const state = (b: any) =>
+			b.extraSettingsEl.toggleClass.mock.calls.map((c: any[]) => `${c[0]}:${c[1]}`);
+		const byIcon = (icon: string) => buttons().find((b) => b.icon === icon);
+		expect(state(byIcon('edit-3'))).toContain('is-active:true');
+		expect(state(byIcon('code'))).toContain('is-active:false');
+		expect(state(byIcon('bar-chart-2'))).toContain('is-disabled:true');
+		expect(state(byIcon('share-2'))).toContain('is-disabled:false');
+	});
+
+	it('sets no inline style on the stats button', () => {
+		view.renderToolbar();
+		for (const b of buttons()) expect(b.extraSettingsEl.style).toEqual({});
+	});
+
+	it('shows badge explanations as tooltips, not title attributes', () => {
+		const { setTooltip } = obsidian;
+		view.cards = [{ Front: 'F', anki: { nid: 7 }, id: 'arete_1' }];
+		view.plugin.statsService = {
+			getCache: () => ({
+				concepts: {
+					'N.md': {
+						cardStats: { 7: { ease: 2500, lapses: 2, due: 0 } },
+					},
+				},
+			}),
+		};
+		view.renderToolbar();
+
+		const texts = (setTooltip as jest.Mock).mock.calls.map((c) => c[1]);
+		expect(texts).toContain('SM-2 ease: 250%');
+		expect(texts).toContain('Lapses: 2');
+	});
+});

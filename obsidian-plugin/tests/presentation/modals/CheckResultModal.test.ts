@@ -2,7 +2,6 @@ import '../../test-setup';
 import { App, setIcon } from 'obsidian';
 import O2APlugin from '@/main';
 import { CheckResultModal } from '@presentation/modals/CheckResultModal';
-import { createMockElement } from '../../test-setup';
 
 describe('CheckResultModal Deep Coverage', () => {
 	let plugin: O2APlugin;
@@ -18,34 +17,38 @@ describe('CheckResultModal Deep Coverage', () => {
 		} as any;
 	});
 
-	test('Auto-Fix button interaction', async () => {
+	test('Auto-fix is a call-to-action ButtonComponent that fixes then re-checks', async () => {
+		const { ButtonComponent } = jest.requireMock('obsidian');
+		ButtonComponent.instances.length = 0;
 		const result = {
 			ok: false,
 			errors: [{ line: 1, message: 'Tab Character Error' }],
 		};
 		modal = new CheckResultModal(app, plugin, result, '/path/to/file.md');
 
-		let capturedBtn: any;
-		modal.contentEl.createDiv = jest.fn().mockImplementation((opts) => {
-			const div = createMockElement('div', opts);
-			div.createEl = jest.fn().mockImplementation((tag, o) => {
-				const el = createMockElement(tag, o);
-				if (tag === 'button') capturedBtn = el;
-				return el;
-			});
-			return div;
-		});
-
 		modal.onOpen();
 
-		expect(capturedBtn).toBeDefined();
-		const clickHandler = capturedBtn._listeners?.['click'];
-		if (clickHandler) await clickHandler({ target: capturedBtn } as any);
+		expect(modal.contentEl.createEl).not.toHaveBeenCalledWith('button', expect.anything());
+		expect(ButtonComponent.instances).toHaveLength(1);
+		const [btn] = ButtonComponent.instances;
+		expect(btn.setButtonText).toHaveBeenCalledWith('Auto-fix issues');
+		expect(btn.setCta).toHaveBeenCalled();
 
-		expect(capturedBtn.disabled).toBe(true);
-		expect(capturedBtn.setText).toHaveBeenCalledWith('Fixing...');
+		await btn.clickHandler();
+
+		expect(btn.setDisabled).toHaveBeenCalledWith(true);
+		expect(btn.setButtonText).toHaveBeenCalledWith('Fixing...');
 		expect(plugin.runFix).toHaveBeenCalledWith('/path/to/file.md');
 		expect(plugin.runCheck).toHaveBeenCalledWith('/path/to/file.md');
+	});
+
+	test('the title comes from Modal.setTitle, with no hand-built heading', () => {
+		modal = new CheckResultModal(app, plugin, { ok: true, stats: { cards_found: 1 } }, 'a.md');
+		modal.onOpen();
+		expect(modal.setTitle).toHaveBeenCalledWith('Arete file check');
+		for (const call of (modal.contentEl.createEl as jest.Mock).mock.calls) {
+			expect(call[0]).not.toMatch(/^h[1-6]$/);
+		}
 	});
 
 	test('onOpen with ok: true constructs stats UI', () => {

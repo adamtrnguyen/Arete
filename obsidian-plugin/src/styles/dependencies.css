@@ -59,40 +59,11 @@
 	max-width: 200px;
 }
 
-.arete-dep-remove {
-	display: flex;
-	align-items: center;
-	cursor: pointer;
-	color: var(--text-muted);
-	padding: 2px;
-	border-radius: 50%;
-}
-
 .arete-dep-remove:hover {
-	color: var(--color-red);
-	background: rgba(var(--color-red-rgb), 0.1);
-}
-
-.arete-dep-remove svg {
-	width: 12px;
-	height: 12px;
+	color: var(--text-error);
 }
 
 /* Add Button in Editor */
 .arete-dep-add-btn {
-	width: 100%;
-	text-align: left;
-	background: var(--background-secondary);
-	border: 1px dashed var(--background-modifier-border);
-	color: var(--text-muted);
-	padding: 6px 12px;
-	border-radius: 4px;
-	cursor: pointer;
-	transition: all 0.2s ease;
-}
-
-.arete-dep-add-btn:hover {
-	border-color: var(--interactive-accent);
-	color: var(--interactive-accent);
-	background: rgba(var(--interactive-accent-rgb), 0.05);
+	align-self: flex-start;
 }

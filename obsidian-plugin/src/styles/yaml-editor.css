@@ -97,35 +97,15 @@
 	transform: scale(0.95);
 }
 
-.arete-yaml-index-item.drag-over {
+.arete-yaml-index-item.is-drag-over {
 	border-color: var(--interactive-accent) !important;
 	background: rgba(var(--interactive-accent-rgb), 0.1);
 }
 
-/* Add Button */
+/* Add Button: an ExtraButtonComponent, so Obsidian styles hover and focus */
 .arete-yaml-index-add {
-	width: 36px;
-	height: 36px;
+	align-self: center;
 	margin: 4px;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	border-radius: 6px;
-	cursor: pointer;
-	border: 1px dashed var(--text-muted);
-	color: var(--text-muted);
-	transition: all 0.15s ease-out;
-}
-
-.arete-yaml-index-add:hover {
-	border-color: var(--interactive-accent);
-	color: var(--interactive-accent);
-	background: rgba(var(--interactive-accent-rgb), 0.1);
-}
-
-.arete-yaml-index-add svg {
-	width: 16px;
-	height: 16px;
 }
 
 /* ─── Editor Panel ─── */
@@ -197,33 +177,9 @@
 	gap: 6px;
 }
 
-.arete-toolbar-btn {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	width: 28px;
-	height: 28px;
-	border-radius: 4px;
-	color: var(--text-muted);
-	cursor: pointer;
-	background: transparent;
-	border: 1px solid transparent;
-	transition: all 0.15s ease;
-}
-
-.arete-toolbar-btn:hover {
-	color: var(--text-normal);
-	background: var(--background-modifier-hover);
-}
-
-.arete-toolbar-btn.is-active {
-	background: var(--interactive-accent);
-	color: var(--text-on-accent);
-}
-
-.arete-toolbar-btn svg {
-	width: 16px;
-	height: 16px;
+/* Toolbar icon buttons are ExtraButtonComponents; Obsidian styles hover and is-active */
+.arete-toolbar-btn.is-disabled {
+	opacity: 0.4;
 }
 
 /* ─── Preview Container ─── */
