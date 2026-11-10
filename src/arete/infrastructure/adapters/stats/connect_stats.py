@@ -129,8 +129,6 @@ class ConnectStatsRepository(StatsRepository):
                                 rating=rev.get("ease", 0),
                                 interval=revlog_interval_days(rev.get("ivl", 0)),
                                 last_interval=revlog_interval_days(rev.get("lastIvl", 0)),
-                                time_taken=rev.get("time", 0),
-                                review_type=rev.get("type", 0),
                             )
                         )
         except Exception as e:

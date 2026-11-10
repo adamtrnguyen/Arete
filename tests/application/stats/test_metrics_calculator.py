@@ -21,8 +21,6 @@ def review(rating=3, interval=10.0, last_interval=5.0, stability=None, retrievab
         rating=rating,
         interval=interval,
         last_interval=last_interval,
-        time_taken=1000,
-        review_type=1,
         stability=stability,
         retrievability=retrievability,
     )

@@ -87,8 +87,8 @@ src/arete/
 | `interface` | 4 | 979 | application, composition |
 | `composition` | 2 | 183 | application, infrastructure, domain |
 | `application` | 24 | 5855 | domain (ports only) |
-| `infrastructure` | 9 | 2098 | domain |
-| `domain` | 9 | 870 | nothing in arete |
+| `infrastructure` | 9 | 2091 | domain |
+| `domain` | 9 | 866 | nothing in arete |
 
 The import rules in the last column are enforced by `just check-architecture`
 (import-linter), not by convention.

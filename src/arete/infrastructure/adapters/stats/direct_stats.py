@@ -115,8 +115,7 @@ class DirectStatsRepository(StatsRepository):
                 columns = [c[1] for c in repo.col.db.execute("PRAGMA table_info(revlog)")]
             has_data = "data" in columns
 
-            # Select essential columns + lastIvl + time
-            col_subset = "id, cid, ease, ivl, lastIvl, time, type"
+            col_subset = "id, cid, ease, ivl, lastIvl"
             if has_data:
                 col_subset += ", data"
 
@@ -130,10 +129,8 @@ class DirectStatsRepository(StatsRepository):
                     return []
                 for row in repo.col.db.execute(query, *cids):
                     # Indices:
-                    # 0: id, 1: cid, 2: ease, 3: ivl, 4: lastIvl, 5: time, 6: type
-                    # 7: data (if exists) via 'col_subset' length logic?
-
-                    data_idx = 7
+                    # 0: id, 1: cid, 2: ease, 3: ivl, 4: lastIvl, 5: data (if the column exists)
+                    data_idx = 5
                     s_at_review = None
                     d_at_review = None
                     r_at_review = None
@@ -154,8 +151,6 @@ class DirectStatsRepository(StatsRepository):
                             rating=row[2],
                             interval=revlog_interval_days(row[3]),
                             last_interval=revlog_interval_days(row[4]),
-                            time_taken=row[5],
-                            review_type=row[6],
                             stability=s_at_review,
                             difficulty=d_at_review,
                             retrievability=r_at_review,

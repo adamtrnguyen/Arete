@@ -334,7 +334,6 @@ async def test_get_review_history_success(repo):
     assert result[0].rating == 2  # Earlier review
     assert result[1].rating == 3  # Later review
     assert result[0].card_id == 101
-    assert result[0].time_taken == 8000
 
 
 @pytest.mark.asyncio

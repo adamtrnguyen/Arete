@@ -11,8 +11,6 @@ def review(interval: float, last_interval: float) -> ReviewEntry:
         rating=3,
         interval=interval,
         last_interval=last_interval,
-        time_taken=5000,
-        review_type=1,
     )
 
 

@@ -293,9 +293,9 @@ async def test_get_review_history_basic(mock_repo):
             (5, "time", "", 0, None, 0),
             (6, "type", "", 0, None, 0),
         ],  # PRAGMA table_info
-        [  # SELECT query results (id, cid, ease, ivl, lastIvl, time, type)
-            (1700000000000, 101, 3, 7, 1, 5000, 1),
-            (1690000000000, 101, 2, 1, 0, 8000, 0),
+        [  # SELECT query results (id, cid, ease, ivl, lastIvl)
+            (1700000000000, 101, 3, 7, 1),
+            (1690000000000, 101, 2, 1, 0),
         ],
     ]
 
@@ -306,7 +306,6 @@ async def test_get_review_history_basic(mock_repo):
     assert result[0].card_id == 101
     assert result[0].rating == 3
     assert result[0].interval == 7
-    assert result[0].time_taken == 5000
     assert result[0].review_time == 1700000000  # ms to seconds
 
 
@@ -329,7 +328,7 @@ async def test_get_review_history_with_fsrs_data(mock_repo):
             (7, "data", "", 0, None, 0),
         ],  # has 'data' column
         [  # SELECT results with data column
-            (1700000000000, 101, 3, 7, 1, 5000, 1, fsrs_data),
+            (1700000000000, 101, 3, 7, 1, fsrs_data),
         ],
     ]
 

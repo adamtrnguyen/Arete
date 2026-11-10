@@ -43,8 +43,6 @@ class ReviewEntry:
         rating: Button pressed (1=Again, 2=Hard, 3=Good, 4=Easy).
         interval: Interval assigned after this review (days).
         last_interval: Previous interval (days).
-        time_taken: Time taken to answer in milliseconds.
-        review_type: 0=learn, 1=review, 2=relearn, 3=early review.
         stability: FSRS stability after this review.
         difficulty: FSRS difficulty after this review.
         retrievability: FSRS retrievability before this review.
@@ -56,8 +54,6 @@ class ReviewEntry:
     rating: int  # 1..4
     interval: float  # new interval, days (see revlog_interval_days)
     last_interval: float  # previous interval, days
-    time_taken: int  # ms duration
-    review_type: int
     stability: float | None = None
     difficulty: float | None = None
     retrievability: float | None = None
