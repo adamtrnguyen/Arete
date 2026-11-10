@@ -31,3 +31,29 @@ describe('cloze rendering (one Anki card)', () => {
 		);
 	});
 });
+
+describe('cloze deletion inside math', () => {
+	const text = 'Laws: $P \\land T_0 \\equiv {{c1::P}}$, $P \\lor T_0 \\equiv {{c2::T_0}}$.';
+
+	it('hides it on the front as TeX text, with no HTML inside the math', () => {
+		expect(renderCloze(text, 1, 'Front')).toBe(
+			'Laws: $P \\land T_0 \\equiv [...]$, $P \\lor T_0 \\equiv T_0$.',
+		);
+	});
+
+	it('reveals it on the back as TeX text', () => {
+		expect(renderCloze(text, 2, 'Back')).toBe(
+			'Laws: $P \\land T_0 \\equiv P$, $P \\lor T_0 \\equiv T_0$.',
+		);
+	});
+
+	it('does the same inside display math', () => {
+		expect(renderCloze('$$a = {{c1::b::rhs}}$$', 1, 'Front')).toBe('$$a = [rhs]$$');
+	});
+
+	it('still wraps a deletion that sits between two math spans', () => {
+		expect(renderCloze('$a$ {{c1::and}} $b$', 1, 'Front')).toBe(
+			'$a$ <span class="cloze">[...]</span> $b$',
+		);
+	});
+});
