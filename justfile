@@ -11,6 +11,10 @@ TESTS      := "tests"
 PLUGIN     := "obsidian-plugin"
 RELEASE    := "release_artifacts"
 
+# pytest-xdist workers for the container-free suites. 6 is the fastest inside `just qa`
+# (12 checks share the machine); override with ARETE_TEST_WORKERS.
+WORKERS    := env("ARETE_TEST_WORKERS", "6")
+
 # Every suite that needs no container. `test` and `coverage` both read this, so the
 # two cannot drift apart.
 UNIT       := TESTS/"application " + TESTS/"interface " + TESTS/"infrastructure " + TESTS/"domain " + TESTS/"e2e " + TESTS/"test_docs_architecture.py " + TESTS/"test_factories.py " + TESTS/"test_source_prose.py"
@@ -41,7 +45,7 @@ default:
 
 # Run backend tests
 test *args:
-    {{PYTEST}} {{UNIT}} {{args}}
+    {{PYTEST}} {{UNIT}} -n {{WORKERS}} {{args}}
 
 # Run backend integration tests (auto-starts Docker, random port)
 test-integration *args:
@@ -49,7 +53,7 @@ test-integration *args:
 
 # Run tests with coverage
 coverage:
-    {{PYTEST}} --cov=src/arete --cov-report=xml --cov-report=term-missing {{UNIT}}
+    {{PYTEST}} --cov=src/arete --cov-report=xml --cov-report=term-missing {{UNIT}} -n {{WORKERS}}
 
 # Integration tests with coverage
 test-integration-coverage *args:

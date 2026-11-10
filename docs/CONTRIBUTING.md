@@ -52,8 +52,9 @@ cd obsidian-plugin && npm install
 | Lint Python | `just lint` |
 | Autofix (ruff, prettier) | `just fix` |
 | Type check | `just types` |
-| Python unit tests | `just test` |
-| Integration tests | `just test-integration` |
+| Python unit tests | `just test` (6 pytest-xdist workers; `ARETE_TEST_WORKERS=0 just test` for one process) |
+| Python coverage | `just coverage` |
+| Integration tests | `just test-integration` (one process, one container) |
 | Build the plugin | `npm run build` |
 | Plugin tests | `npm test` |
 | Plugin lint | `npm run lint` |
@@ -68,6 +69,11 @@ Every fix gets a test that fails without it.
 | Python e2e | `tests/e2e/` | A whole sync against a collection in `tmp_path`. No container. |
 | Python integration | `tests/integration/` | The bridge over AnkiConnect, against a container. |
 | Plugin | `obsidian-plugin/tests/` | UI logic, settings parsing, command invocation. |
+
+Python tests run in parallel, so a test must not share state with another: no fixed port, no
+fixed path outside `tmp_path`, no environment change outside `monkeypatch`. The two guards that
+check the real `~/.config/arete` and the real Anki collection run once in the controller, not
+per worker. Hypothesis runs without a wall-clock deadline (`tests/conftest.py`).
 
 The plugin mocks Obsidian's API at `obsidian-plugin/tests/obsidian-mock.ts`, wired
 through `moduleNameMapper` in `jest.config.js`.
