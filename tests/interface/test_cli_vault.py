@@ -53,17 +53,22 @@ def test_fix_second_run_is_a_no_op(tmp_path):
     assert note.read_text(encoding="utf-8") == TABBED_FIXED
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="vault fix on unparseable YAML it cannot change raises ScannerError from "
-    "validate_frontmatter instead of printing the 'cannot be auto-fixed' note",
-)
 def test_fix_unfixable_yaml_reports_instead_of_crashing(tmp_path):
     note = tmp_path / "bad.md"
     note.write_text("---\nkey: : value\n---\n", encoding="utf-8")
     result = runner.invoke(app, ["vault", "fix", str(note)])
     assert result.exit_code == 0
     assert "cannot be auto-fixed" in result.stdout
+
+
+def test_fix_unfixable_yaml_prints_both_lines_and_leaves_the_file_alone(tmp_path):
+    note = tmp_path / "bad.md"
+    text = "---\nkey: : value\n---\n"
+    note.write_text(text, encoding="utf-8")
+    result = runner.invoke(app, ["vault", "fix", str(note)])
+    assert "No fixable issues found." in result.stdout
+    assert "still has validation errors that cannot be auto-fixed" in result.stdout
+    assert note.read_text(encoding="utf-8") == text
 
 
 @pytest.mark.xfail(

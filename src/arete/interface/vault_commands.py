@@ -59,6 +59,8 @@ def fix(
     path: Annotated[Path, typer.Argument(help="Path to the markdown file to fix.")],
 ):
     """Attempt to automatically fix common format errors in a file."""
+    import yaml
+
     from arete.application.utils.text import apply_fixes, validate_frontmatter
 
     if not path.exists():
@@ -70,7 +72,10 @@ def fix(
 
     if fixed_content == content:
         typer.secho("✅ No fixable issues found.", fg="green")
-        valid_meta = bool(validate_frontmatter(content))
+        try:
+            valid_meta = bool(validate_frontmatter(content))
+        except yaml.YAMLError:
+            valid_meta = False
         if not valid_meta:
             typer.secho(
                 "  (Note: File still has validation errors that cannot be auto-fixed)", fg="yellow"
