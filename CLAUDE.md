@@ -35,7 +35,7 @@ The live vault is `~/Obsidian Vault`, which is also `arete_ankiconnect`'s `vault
 interface → composition → application → infrastructure → domain
 ```
 
-- `src/arete/domain/` — Models, role ports (`NoteStorePort`, `SyncPort`, `QueuePort`, `CardStatsPort`, `AnkiAdminPort`; `AnkiBridge` combines them), constants
+- `src/arete/domain/` — Models, ports (`NoteStorePort`, `NoteStoreSession`, `SyncPort`, `QueuePort`, `AnkiAdminPort`, `ContentCache`, `StatsRepository`; `AnkiBridge` combines `NoteStorePort`, `SyncPort`, `QueuePort` and `AnkiAdminPort`), constants. Every port method is abstract and every implementation inherits its port (`tests/test_ports_abstract.py`)
 - `src/arete/infrastructure/` — Adapters (AnkiConnect HTTP, AnkiDirect file-based, stats)
 - `src/arete/application/` — Use cases (sync, queue builder, graph resolver, config, stats)
 - `src/arete/interface/` — CLI (Typer), the only interface
