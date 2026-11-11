@@ -182,8 +182,7 @@ the reload (they keep running the old code).
 - [ ] PyPI trusted publishing is unconfigured. `release.yml:64` runs the publish step
       under `continue-on-error: true`, so it cannot block a release. Configure a
       trusted publisher, or drop the step.
-- [ ] Delete the dangling `v2.2.1` tag on origin: `git push origin :v2.2.1`.
-- [ ] Bump the GitHub Actions versions (Dependabot PR #48).
+- [ ] Bump the GitHub Actions versions.
 
 ## Key Conventions
 
