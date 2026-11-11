@@ -57,6 +57,10 @@ could lose or duplicate notes; update the add-on and restart Anki with this rele
 - **The plugin's prune command never deleted** and reported success. It now shows what
   would be deleted and asks.
 - **Clicking a card in the queue builder did nothing.**
+- **The CLI and the plugin could render a card differently.** The markdown library is
+  pinned to one version, and a render cached under another is made again.
+- **Cards in a note with an accented file name were rewritten on every sync.** Fields
+  are compared in NFC, the form Anki stores.
 - **Windows:** `vault format` and `vault fix` turned every note's line endings into CRLF;
   `vault check` and `vault fix` crashed printing to a console; a sync left its log and
   cache open, so they could not be cleaned up; the plugin could not start `python3`.
