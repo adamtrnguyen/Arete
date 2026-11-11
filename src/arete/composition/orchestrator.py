@@ -133,12 +133,12 @@ async def run_sync_logic(
 
     A sync refused by the lock prints its one-line message on stderr and exits with
     `EXIT_SYNC_LOCKED`, so a caller can tell it from a failed sync (exit 1). SIGTERM stops
-    the sync at its next await (`_sigterm_cancels`): cleanup runs, the lock is released,
+    the sync at its next await (`sigterm_cancels`): cleanup runs, the lock is released,
     and it exits with `EXIT_SYNC_TERMINATED`.
     """
     logger = logging.getLogger("arete.main")
     try:
-        with _sigterm_cancels():
+        with sigterm_cancels():
             stats = await execute_sync(config, confirm_prune=confirm_prune, prompt=prompt)
     except asyncio.CancelledError as e:
         print(SYNC_TERMINATED_MESSAGE, file=sys.stderr)
@@ -164,7 +164,7 @@ async def run_sync_logic(
 
 
 @contextlib.contextmanager
-def _sigterm_cancels() -> Iterator[None]:
+def sigterm_cancels() -> Iterator[None]:
     """While the block runs, SIGTERM cancels the running task instead of killing the process.
 
     The cancellation lands at the task's next await. No vault write awaits, so a file is

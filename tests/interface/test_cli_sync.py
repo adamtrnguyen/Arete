@@ -240,3 +240,29 @@ def test_the_prompt_accepts_only_yes():
     for answer, expected in [("yes", True), (" YES ", True), ("y", False), ("", False)]:
         with patch("builtins.input", return_value=answer):
             assert _confirm_prune_at_prompt(None) is expected
+
+
+def test_json_a_locked_sync_exits_75_with_the_line():
+    from arete.composition.orchestrator import SyncLocked
+
+    result = _json_sync(AsyncMock(side_effect=SyncLocked(Path("/c/cache.db.lock"))))
+
+    assert result.exit_code == 75
+    report = json.loads(result.stdout)
+    assert report["ok"] is False
+    assert report["message"].startswith("Another Arete sync is running")
+    assert "Another Arete sync is running" in result.stderr
+
+
+def test_json_a_terminated_sync_exits_143_with_the_line():
+    import asyncio
+
+    from arete.composition.orchestrator import SYNC_TERMINATED_MESSAGE
+
+    result = _json_sync(AsyncMock(side_effect=asyncio.CancelledError()))
+
+    assert result.exit_code == 143
+    report = json.loads(result.stdout)
+    assert report["ok"] is False
+    assert report["message"] == SYNC_TERMINATED_MESSAGE
+    assert SYNC_TERMINATED_MESSAGE in result.stderr

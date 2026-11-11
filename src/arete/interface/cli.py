@@ -162,18 +162,38 @@ def _sync_with_json(config, *, confirm_prune: bool) -> None:
 
     Everything the run prints goes to stderr, so stdout holds the JSON alone. A run that
     stops early (an outdated add-on, an exception) still prints the object, with its
-    reason in `message`; the traceback goes to the log on stderr.
+    reason in `message`; the traceback goes to the log on stderr. So does a sync refused
+    by the lock (exit 75) or stopped by SIGTERM (exit 143), with the line it wrote to
+    stderr as `message`.
     """
     import asyncio
 
-    from arete.composition.orchestrator import execute_sync
+    from arete.composition.orchestrator import (
+        EXIT_SYNC_LOCKED,
+        EXIT_SYNC_TERMINATED,
+        SYNC_TERMINATED_MESSAGE,
+        SyncLocked,
+        execute_sync,
+        sigterm_cancels,
+    )
     from arete.domain.models import AddonOutdated
+
+    async def run():
+        with sigterm_cancels():
+            return await execute_sync(config, confirm_prune=confirm_prune, prompt=None)
 
     stats = None
     message: str | None = None
+    exit_code = 1
     with stdout_to_stderr():
         try:
-            stats = asyncio.run(execute_sync(config, confirm_prune=confirm_prune, prompt=None))
+            stats = asyncio.run(run())
+        except asyncio.CancelledError:
+            print(SYNC_TERMINATED_MESSAGE, file=sys.stderr)
+            message, exit_code = SYNC_TERMINATED_MESSAGE, EXIT_SYNC_TERMINATED
+        except SyncLocked as e:
+            print(e, file=sys.stderr)
+            message, exit_code = str(e), EXIT_SYNC_LOCKED
         except AddonOutdated as e:
             logger.error(f"[sync] stopped: {e}")
             message = str(e)
@@ -184,7 +204,7 @@ def _sync_with_json(config, *, confirm_prune: bool) -> None:
         message = f"{stats.total_errors} errors during sync"
     typer.echo(json.dumps(_sync_json(stats, message)))
     if message is not None:
-        raise typer.Exit(1)
+        raise typer.Exit(exit_code)
 
 
 def _sync_json(stats, message: str | None) -> dict:

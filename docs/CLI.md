@@ -74,7 +74,9 @@ uv sync
 - `--workers`: Override parallel sync worker count.
 - `--json`: Print one JSON object on stdout and nothing else; logs go to stderr. It never
   asks: without `--yes` a prune returns its preview and deletes nothing. Exit codes are
-  those of the plain command.
+  those of the plain command. A sync refused by the lock (exit 75) or stopped by SIGTERM
+  (exit 143) still prints the object, with `ok` false and the line it wrote to stderr as
+  `message`.
 
 | Key | Type | Meaning |
 | :--- | :--- | :--- |
