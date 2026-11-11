@@ -129,3 +129,40 @@ def test_format_twice_formats_nothing_the_second_time(vault):
     runner.invoke(app, ["vault", "format", str(vault)])
     again = runner.invoke(app, ["vault", "format", str(vault)])
     assert "Formatted 0 files." in again.stdout
+
+
+# --- line endings: a rewrite keeps the file's own, on every OS ---
+
+
+@pytest.mark.parametrize("eol", ["\n", "\r\n"], ids=["lf", "crlf"])
+def test_format_keeps_the_files_line_endings(tmp_path, eol):
+    v = tmp_path / "vault"
+    v.mkdir()
+    note = v / "quoted.md"
+    note.write_bytes(QUOTED.replace("\n", eol).encode("utf-8"))
+
+    assert runner.invoke(app, ["vault", "format", str(v)]).exit_code == 0
+
+    assert note.read_bytes() == QUOTED_FORMATTED.replace("\n", eol).encode("utf-8")
+
+
+@pytest.mark.parametrize("eol", ["\n", "\r\n"], ids=["lf", "crlf"])
+def test_fix_keeps_the_files_line_endings(tmp_path, eol):
+    note = tmp_path / "n.md"
+    note.write_bytes(TABBED.replace("\n", eol).encode("utf-8"))
+
+    assert runner.invoke(app, ["vault", "fix", str(note)]).exit_code == 0
+
+    assert note.read_bytes() == TABBED_FIXED.replace("\n", eol).encode("utf-8")
+
+
+def test_a_crlf_file_differing_only_in_line_endings_is_not_formatted(tmp_path):
+    v = tmp_path / "vault"
+    v.mkdir()
+    note = v / "clean.md"
+    note.write_bytes(CLEAN.replace("\n", "\r\n").encode("utf-8"))
+
+    result = runner.invoke(app, ["vault", "format", str(v)])
+
+    assert "Formatted 0 files." in result.stdout
+    assert note.read_bytes() == CLEAN.replace("\n", "\r\n").encode("utf-8")

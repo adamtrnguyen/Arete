@@ -74,9 +74,19 @@ def replace_file(path: Path, data: bytes) -> None:
             os.close(dir_fd)
 
 
-def replace_text(path: Path, text: str) -> None:
-    """`replace_file` for text, with newlines written as `Path.write_text` writes them."""
-    replace_file(path, text.replace("\n", os.linesep).encode("utf-8"))
+def read_text_and_newline(path: Path) -> tuple[str, str]:
+    """A note's UTF-8 text with LF line endings, and the line ending it is stored with.
+
+    A note with any CRLF counts as CRLF. Pass both to `replace_text` to write the note
+    back with its own line endings, on every OS.
+    """
+    raw = path.read_bytes().decode("utf-8")
+    return raw.replace("\r\n", "\n"), "\r\n" if "\r\n" in raw else "\n"
+
+
+def replace_text(path: Path, text: str, newline: str = "\n") -> None:
+    """`replace_file` for LF text, stored as UTF-8 with `newline` as its line ending."""
+    replace_file(path, text.replace("\n", newline).encode("utf-8"))
 
 
 def iter_markdown_files(root: Path) -> Iterable[Path]:

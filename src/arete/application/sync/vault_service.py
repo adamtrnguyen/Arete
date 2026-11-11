@@ -14,7 +14,7 @@ from arete.application.sync.id_writeback import (
     write_exact,
 )
 from arete.application.utils.common import sanitize
-from arete.application.utils.fs import iter_markdown_files, replace_text
+from arete.application.utils.fs import iter_markdown_files, read_text_and_newline, replace_text
 from arete.application.utils.text import parse_frontmatter, rebuild_markdown_with_frontmatter
 from arete.domain.interfaces import ContentCache
 from arete.domain.models import UpdateItem
@@ -50,7 +50,11 @@ class VaultService:
 
         The caller owns the meta it gets and may change it: a reused parse is a deep copy.
         Every stage still reads the file itself, so an edit made during the sync is seen.
+        The text is parsed with LF line endings, so the scan (`read_text`, which turns CRLF
+        into LF) and the id write-back (`read_exact`, which keeps it) share one parse of a
+        CRLF note; the meta is the same either way, and the body comes back with LF.
         """
+        text = text.replace("\r\n", "\n")
         hit = self._parsed.get(md_path)
         if hit is not None and hit[0] == text:
             return copy.deepcopy(hit[1]), hit[2]
@@ -197,12 +201,13 @@ class VaultService:
     def format_vault(self, dry_run: bool = False) -> int:
         """Scan and re-serialize all compatible files to normalize YAML.
 
+        A file keeps its line endings (LF or CRLF), whatever the OS.
         Return the number of files updated.
         """
         count = 0
         for md_path, meta, _is_fresh in self.scan_for_compatible_files():
             try:
-                text = md_path.read_text(encoding="utf-8")
+                text, newline = read_text_and_newline(md_path)
                 _meta, body = self.parse(md_path, text)
 
                 # Rebuild using our dumper (which now uses |-)
@@ -212,7 +217,7 @@ class VaultService:
                     if dry_run:
                         self.logger.info(f"[dry-run] Would format {md_path.name}")
                     else:
-                        replace_text(md_path, new_text)
+                        replace_text(md_path, new_text, newline)
                         self.logger.debug(f"[format] {md_path.name}: normalized YAML")
                     count += 1
             except Exception as e:

@@ -78,7 +78,7 @@ def test_a_same_size_edit_with_a_new_mtime_is_read(root: Path, tmp_path: Path):
     gained = "---\narete: true\ndeck: D\ncards:\n- Front: q\n  Back: a\n---\n"
     padded = gained + "x" * (before.st_size - len(gained))
     assert len(padded) == before.st_size
-    note.write_text(padded)
+    note.write_bytes(padded.encode("utf-8"))  # write_text would turn \n into \r\n on Windows
     os.utime(note, (before.st_atime, before.st_mtime + 2))
     assert note.stat().st_size == before.st_size
 

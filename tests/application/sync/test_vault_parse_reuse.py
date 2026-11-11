@@ -36,28 +36,36 @@ def root(tmp_path: Path) -> Path:
     return r
 
 
-def test_a_new_file_is_parsed_once_per_text_it_has(root: Path, tmp_path: Path, parses):
-    """Read, ids added, nids written back: three texts, three parses."""
+def _write(md: Path, text: str, eol: str) -> None:
+    """Store `text` with `eol` line endings, byte for byte on every OS."""
+    md.write_bytes(text.replace("\n", eol).encode("utf-8"))
+
+
+@pytest.mark.parametrize("eol", ["\n", "\r\n"], ids=["lf", "crlf"])
+def test_a_new_file_is_parsed_once_per_text_it_has(root: Path, tmp_path: Path, parses, eol):
+    """Read, ids added, nids written back: three texts, three parses, whatever the line ends."""
     md = root / "n.md"
-    md.write_text(NO_IDS)
+    _write(md, NO_IDS, eol)
     cache = ContentCache(tmp_path / "c.db")
     sync(root, CheckingAnki(cache), cache)
 
-    final = md.read_text()
+    final = md.read_text(encoding="utf-8")
     assert "nid:" in final and "id: arete_" in final
+    assert (b"\r\n" in md.read_bytes()) == (eol == "\r\n"), "the line endings are kept"
     assert len(parses) == 3
     assert len(set(parses)) == 3, "no text was parsed twice"
     assert parses[0] == NO_IDS and parses[-1] == final
 
 
-def test_an_edited_file_with_known_ids_is_parsed_once(root: Path, tmp_path: Path, parses):
+@pytest.mark.parametrize("eol", ["\n", "\r\n"], ids=["lf", "crlf"])
+def test_an_edited_file_with_known_ids_is_parsed_once(root: Path, tmp_path: Path, parses, eol):
     md = root / "n.md"
-    md.write_text(NO_IDS)
+    _write(md, NO_IDS, eol)
     cache = ContentCache(tmp_path / "c.db")
     anki = CheckingAnki(cache)
     sync(root, anki, cache)
 
-    md.write_text(md.read_text().replace("a2", "a2 edited"))
+    _write(md, md.read_text(encoding="utf-8").replace("a2", "a2 edited"), eol)
     parses.clear()
     sync(root, anki, cache)
     assert len(anki.sent) == 4, "both cards went again: their hash now covers the nid"
