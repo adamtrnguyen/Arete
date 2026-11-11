@@ -6,8 +6,8 @@ always its last word (`:<tab>:` is stored as `::`, and the next edit makes that
 so the pins:
 
 - a note added with `anki_tags(x)` holds exactly that, and still does after an edit;
-- a note added with the raw strings `x` holds `anki_tags(x)` once it has been edited a
-  few times, and before that differs only where Anki's own passes are not final;
+- a note that holds anything else (the raw strings `x`, in whatever state Anki's own passes
+  left them) holds `anki_tags(x)` once a sync writes them, and still does after an edit;
 - `anki_tags` is a fixed point of itself.
 
 Each check uses a new collection in a temporary directory: Anki also bends a new tag
@@ -65,9 +65,12 @@ def folded(tags: list[str]) -> list[str]:
     return sorted(t.casefold() for t in tags)
 
 
-# Anki can take more than one save to finish with a raw tag: `:<em space>:<tab>:` is
-# `:::blank` after one edit and `blank:::blank` after the second.
-_EDITS_TO_SETTLE = 3
+def retagged(col: Collection, nid: int, tags: list[str]) -> list[str]:
+    """The tags after the note is saved holding `tags`, as a sync writes them."""
+    note = col.get_note(nid)  # type: ignore[arg-type]
+    note.tags = list(tags)
+    col.update_note(note)
+    return tags_of(col, nid)
 
 
 def check(tags: list[str]) -> None:
@@ -77,11 +80,12 @@ def check(tags: list[str]) -> None:
         sent = added(col, expected)
         assert folded(tags_of(col, sent)) == folded(expected), "kept as sent"
         assert folded(edited(col, sent)) == folded(expected), "and after an edit"
+        # What Anki makes of raw strings by itself depends on how many saves it has had and on
+        # the tags the collection already holds (`:<tab>::` beside a registered `:` ends as
+        # `blank::blank::blank`, not `blank:::blank`). The sync does not rely on it: it writes
+        # `anki_tags` over whatever the note holds, and that is what must stick.
         raw = added(col, tags)
-        held = tags_of(col, raw)
-        for _ in range(_EDITS_TO_SETTLE):
-            held = edited(col, raw)
-        assert folded(held) == folded(expected), "raw strings settle there"
+        assert folded(retagged(col, raw, expected)) == folded(expected), "a sync's tags stick"
         assert folded(edited(col, raw)) == folded(expected), "and stay there"
 
 
