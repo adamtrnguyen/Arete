@@ -3,9 +3,34 @@ import errno
 import hashlib
 import os
 import stat
+import sys
 import tempfile
+import time
 from collections.abc import Iterable
 from pathlib import Path
+
+# Windows refuses to replace a file another program holds open (an editor, a virus scanner,
+# a sync client), where POSIX replaces it regardless. Such a hold is usually brief, so the
+# replace is tried again after each pause here, then refused with a message naming the note.
+OPEN_FILE_PAUSES = (0.05, 0.1, 0.2, 0.4, 0.8) if sys.platform == "win32" else ()
+
+
+def _replace(tmp: str, target: Path) -> None:
+    for pause in (*OPEN_FILE_PAUSES, None):
+        try:
+            os.replace(tmp, target)
+            return
+        except PermissionError as e:
+            if not OPEN_FILE_PAUSES:
+                raise
+            if pause is None:
+                raise PermissionError(
+                    e.errno,
+                    f"another program has {target.name} open, so it cannot be replaced; "
+                    "close it or wait, then sync again",
+                    target.as_posix(),
+                ) from e
+            time.sleep(pause)
 
 
 def replace_file(path: Path, data: bytes) -> None:
@@ -15,8 +40,10 @@ def replace_file(path: Path, data: bytes) -> None:
     the note's folder, flushed and fsynced, which then replaces the note in one step
     (`os.replace`). The note's permission bits are kept; a symlinked note is written at
     its target. A note that may not be written (read-only) is refused, as opening it for
-    writing would be: replacing it would succeed in a writable folder. On any failure the
-    temp file is removed and the note is as it was.
+    writing would be: replacing it would succeed in a writable folder. A note another
+    program holds open on Windows is tried again briefly (`OPEN_FILE_PAUSES`), then refused
+    with a PermissionError naming it. On any failure the temp file is removed and the note
+    is as it was.
     """
     target = Path(os.path.realpath(path))
     try:
@@ -34,7 +61,7 @@ def replace_file(path: Path, data: bytes) -> None:
             f.flush()
             os.fsync(f.fileno())
         os.chmod(tmp, mode)
-        os.replace(tmp, target)
+        _replace(tmp, target)
     except BaseException:
         with contextlib.suppress(FileNotFoundError):
             os.unlink(tmp)

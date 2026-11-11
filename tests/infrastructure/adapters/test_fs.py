@@ -1,12 +1,13 @@
 import os
-import signal
 import stat
 import subprocess
 import sys
+import threading
 from unittest.mock import patch
 
 import pytest
 
+from arete.application.utils import fs
 from arete.application.utils.fs import file_md5, iter_markdown_files, replace_file
 
 
@@ -162,6 +163,84 @@ def test_a_write_that_fails_midway_leaves_the_note_as_it_was(tmp_path, monkeypat
     assert _leftovers(tmp_path) == [], "the temp file is removed"
 
 
+def _refusing_replace(monkeypatch, refusals: int) -> list[int]:
+    """os.replace fails `refusals` times with a sharing violation, then works; returns calls."""
+    real, calls = os.replace, []
+
+    def replace(src, dst):
+        calls.append(1)
+        if len(calls) <= refusals:
+            raise PermissionError(13, "The process cannot access the file", str(dst))
+        real(src, dst)
+
+    monkeypatch.setattr(fs, "OPEN_FILE_PAUSES", (0, 0, 0))
+    monkeypatch.setattr(fs.os, "replace", replace)
+    return calls
+
+
+def test_a_note_held_open_briefly_is_replaced_once_it_is_free(tmp_path, monkeypatch):
+    note = tmp_path / "Bayes.md"
+    note.write_bytes(NOTE)
+    calls = _refusing_replace(monkeypatch, refusals=2)
+
+    replace_file(note, b"new")
+
+    assert (note.read_bytes(), len(calls)) == (b"new", 3)
+    assert _leftovers(tmp_path) == []
+
+
+def test_a_note_held_open_throughout_is_refused_by_name_and_left_alone(tmp_path, monkeypatch):
+    note = tmp_path / "Bayes.md"
+    note.write_bytes(NOTE)
+    calls = _refusing_replace(monkeypatch, refusals=99)
+
+    with pytest.raises(PermissionError, match="another program has Bayes.md open"):
+        replace_file(note, b"new")
+
+    assert len(calls) == 4, "the first try and one per pause"
+    assert note.read_bytes() == NOTE
+    assert _leftovers(tmp_path) == [], "the temp file is removed"
+
+
+def test_without_pauses_a_refused_replace_fails_at_once(tmp_path, monkeypatch):
+    """POSIX replaces an open file, so a PermissionError there means something else."""
+    note = tmp_path / "Bayes.md"
+    note.write_bytes(NOTE)
+    calls = _refusing_replace(monkeypatch, refusals=99)
+    monkeypatch.setattr(fs, "OPEN_FILE_PAUSES", ())
+
+    with pytest.raises(PermissionError, match="cannot access"):
+        replace_file(note, b"new")
+
+    assert len(calls) == 1 and note.read_bytes() == NOTE
+    assert _leftovers(tmp_path) == []
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="only Windows refuses to replace an open file")
+def test_on_windows_a_note_open_in_another_handle_is_waited_for(tmp_path):
+    note = tmp_path / "Bayes.md"
+    note.write_bytes(NOTE)
+    held = open(note, "rb")  # closed by the timer, while replace_file waits
+    threading.Timer(0.2, held.close).start()
+
+    replace_file(note, b"new")
+
+    assert held.closed and note.read_bytes() == b"new"
+    assert _leftovers(tmp_path) == []
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="only Windows refuses to replace an open file")
+def test_on_windows_a_note_held_open_throughout_is_refused(tmp_path):
+    note = tmp_path / "Bayes.md"
+    note.write_bytes(NOTE)
+    with open(note, "rb"), pytest.raises(PermissionError, match="another program has"):
+        replace_file(note, b"new")
+
+    assert note.read_bytes() == NOTE
+    assert _leftovers(tmp_path) == []
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows keeps no POSIX permission bits")
 def test_the_notes_permissions_are_kept(tmp_path):
     note = tmp_path / "Bayes.md"
     note.write_bytes(NOTE)
@@ -213,8 +292,8 @@ fs.replace_file(Path(sys.argv[1]), b"x" * 100000)
 """
 
 
-@pytest.mark.skipif(os.name != "posix", reason="SIGKILL")
 def test_a_kill_in_the_middle_of_the_write_leaves_the_note_whole(tmp_path):
+    """`kill()` is SIGKILL on POSIX and TerminateProcess on Windows: no cleanup runs."""
     note = tmp_path / "Bayes.md"
     note.write_bytes(NOTE)
     child = subprocess.Popen(
@@ -223,7 +302,7 @@ def test_a_kill_in_the_middle_of_the_write_leaves_the_note_whole(tmp_path):
     try:
         assert child.stdout is not None and child.stdout.readline().strip() == "writing"
     finally:
-        child.send_signal(signal.SIGKILL)
+        child.kill()
         child.wait(timeout=10)
 
     assert note.read_bytes() == NOTE

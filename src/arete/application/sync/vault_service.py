@@ -264,8 +264,8 @@ class VaultService:
         """Write new nids/cids into the cards' frontmatter; the files written.
 
         Only the id lines change (`id_writeback`). A card whose ids cannot be written that
-        way is listed in `write_refused` as (file, card index, reason), and its file is left
-        as it was.
+        way, or whose file cannot be read or replaced, is listed in `write_refused` as
+        (file, card index, reason), and its file is left as it was.
         """
         written: set[Path] = set()
         self.write_refused = []
@@ -305,5 +305,8 @@ class VaultService:
                         written.add(md_path)
                         self.logger.debug(f"[write] {md_path}: persisted nid/cid into frontmatter")
             except Exception as e:
-                self.logger.error(f"[error] write-updates {md_path}: {e}")
+                self.logger.error(f"[error] write-updates {md_path.as_posix()}: {e}")
+                self.write_refused += [
+                    (md_path, u.source_index, f"the write failed: {e}") for u in ups
+                ]
         return written

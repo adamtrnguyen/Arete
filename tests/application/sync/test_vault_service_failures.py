@@ -69,6 +69,28 @@ def test_a_position_past_the_end_writes_nothing(vault, cache):
     assert path.read_text(encoding="utf-8") == before
 
 
+def test_a_file_that_cannot_be_replaced_fails_its_cards_and_is_left_alone(
+    vault, cache, monkeypatch
+):
+    """Windows refuses to replace a note another program holds open (`replace_file`)."""
+    path = write_note(vault, cards=[card(arete_id="arete_A"), card(arete_id="arete_B")])
+    before = path.read_bytes()
+
+    def held_open(_path, _data):
+        raise PermissionError(13, "another program has it open", str(_path))
+
+    monkeypatch.setattr("arete.application.sync.id_writeback.replace_file", held_open)
+    service = VaultService(vault, cache)
+    written = service.apply_updates(
+        [_update(path, index=1, arete_id="arete_A"), _update(path, index=2, arete_id="arete_B")]
+    )
+
+    assert written == set()
+    assert path.read_bytes() == before
+    assert [(p, i) for p, i, _ in service.write_refused] == [(path, 1), (path, 2)]
+    assert "another program has it open" in service.write_refused[0][2]
+
+
 def test_dry_run_write_back_leaves_the_file_alone(vault, cache, caplog):
     path = write_note(vault, cards=[card(arete_id="arete_A")])
     before = path.read_text(encoding="utf-8")
