@@ -441,15 +441,27 @@ export const createMockChildProcess = () => {
 
 /**
  * Run a file's tests as on Linux, whatever the host: how Arete is started (the python3
- * default, path separators) depends on process.platform. Windows has its own tests.
+ * default, path separators, the PATH key) depends on process.platform and the environment.
+ * process.env becomes a plain copy with PATH spelled as Linux spells it (Windows has
+ * `Path`). Windows has its own tests.
  */
 export function onLinux(): void {
 	let saved: PropertyDescriptor | undefined;
+	let savedEnv: NodeJS.ProcessEnv;
 	beforeEach(() => {
 		saved = Object.getOwnPropertyDescriptor(process, 'platform');
 		Object.defineProperty(process, 'platform', { value: 'linux' });
+		savedEnv = process.env;
+		const env: NodeJS.ProcessEnv = { ...savedEnv };
+		const key = Object.keys(env).find((k) => k.toUpperCase() === 'PATH');
+		if (key && key !== 'PATH') {
+			env.PATH = env[key];
+			delete env[key];
+		}
+		process.env = env;
 	});
 	afterEach(() => {
 		if (saved) Object.defineProperty(process, 'platform', saved);
+		process.env = savedEnv;
 	});
 }
