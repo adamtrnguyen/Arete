@@ -48,8 +48,8 @@ test-integration *args:
     {{PYTEST}} {{TESTS}}/integration {{args}}
 
 # Run tests with coverage
-coverage:
-    {{PYTEST}} --cov=src/arete --cov-report=xml --cov-report=term-missing {{UNIT}} -n {{WORKERS}}
+coverage *args:
+    {{PYTEST}} --cov=src/arete --cov-report=xml --cov-report=term-missing {{UNIT}} -n {{WORKERS}} {{args}}
 
 # Integration tests with coverage
 test-integration-coverage *args:

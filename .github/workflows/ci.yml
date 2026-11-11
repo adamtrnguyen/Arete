@@ -31,7 +31,8 @@ jobs:
       run: uv sync --dev
 
     - name: Run tests with coverage
-      run: uv run just coverage
+      # -rs lists every skipped test with its reason, per OS.
+      run: uv run just coverage -rs
 
     - name: Upload coverage to Codecov
       if: matrix.os == 'ubuntu-latest'
@@ -66,8 +67,13 @@ jobs:
       run: uv run just layers
 
   plugin:
-    name: Obsidian Plugin (Build & Test)
-    runs-on: ubuntu-latest
+    name: Obsidian Plugin (Build & Test on ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Windows too: the plugin starts Arete with Windows paths, separators and executables there.
+        os: [ubuntu-latest, windows-latest]
     steps:
     - uses: actions/checkout@v4
 
