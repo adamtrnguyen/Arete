@@ -14,12 +14,23 @@ def test_detect_paths_macos():
             )
 
 
-def test_detect_paths_windows():
+def test_detect_paths_windows(monkeypatch):
+    monkeypatch.delenv("APPDATA", raising=False)
     with patch("platform.system", return_value="Windows"):
         with patch("pathlib.Path.home", return_value=Path("C:/Users/test")):
             base, media = detect_anki_paths()
             assert base == Path("C:/Users/test/AppData/Roaming/Anki2")
             assert media == Path("C:/Users/test/AppData/Roaming/Anki2/User 1/collection.media")
+
+
+def test_detect_paths_windows_follows_appdata(monkeypatch):
+    """A redirected profile moves %APPDATA%, and Anki's folder with it."""
+    monkeypatch.setenv("APPDATA", "D:/Profiles/test/Roaming")
+    with patch("platform.system", return_value="Windows"):
+        with patch("pathlib.Path.home", return_value=Path("C:/Users/test")):
+            base, media = detect_anki_paths()
+    assert base == Path("D:/Profiles/test/Roaming/Anki2")
+    assert media == Path("D:/Profiles/test/Roaming/Anki2/User 1/collection.media")
 
 
 def test_detect_paths_linux_standard():

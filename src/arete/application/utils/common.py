@@ -1,3 +1,4 @@
+import os
 import platform
 from pathlib import Path
 from typing import Any
@@ -24,7 +25,9 @@ def detect_anki_paths() -> tuple[Path | None, Path]:
         return (base, base / "User 1/collection.media")
 
     if system == "Windows":
-        base = Path.home() / "AppData/Roaming/Anki2"
+        # Anki keeps its folder in %APPDATA%, which a roaming or redirected profile moves.
+        appdata = os.environ.get("APPDATA")
+        base = (Path(appdata) if appdata else Path.home() / "AppData/Roaming") / "Anki2"
         # Try to find a profile
         if base.exists():
             profiles = [

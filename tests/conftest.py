@@ -39,7 +39,7 @@ _REAL_ANKI_BASE = Path.home() / "Library/Application Support/Anki2"  # macOS
 if not _REAL_ANKI_BASE.exists():  # pragma: no cover - platform dependent
     for _candidate in (
         Path.home() / ".local/share/Anki2",  # Linux
-        Path.home() / "AppData/Roaming/Anki2",  # Windows
+        Path(os.environ.get("APPDATA") or Path.home() / "AppData/Roaming") / "Anki2",  # Windows
     ):
         if _candidate.exists():
             _REAL_ANKI_BASE = _candidate
@@ -137,10 +137,12 @@ def _no_live_ankiconnect(request, monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _isolated_home(monkeypatch, tmp_path):
-    """Every test gets a throwaway HOME, so default cache/log/config paths land in tmp_path."""
+    """Every test gets a throwaway HOME and APPDATA: default cache, log, config and Anki paths."""
     home = tmp_path / "_isolated_home"
     home.mkdir(exist_ok=True)
     monkeypatch.setenv("HOME", str(home))
+    # Windows: detect_anki_paths reads %APPDATA%, not the home folder.
+    monkeypatch.setenv("APPDATA", str(home / "AppData" / "Roaming"))
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
     return home
 

@@ -467,6 +467,20 @@ def test_wsl_detection_non_wsl():
             m_open.assert_not_called()
 
 
+@pytest.mark.parametrize("release", ["10", "11", "2025Server"])
+def test_native_windows_is_not_taken_for_wsl(release):
+    """Windows ships curl.exe; only a WSL kernel release may switch to the curl bridge."""
+    with (
+        patch("platform.uname") as mock_platform,
+        patch("shutil.which", return_value=r"C:\Windows\System32\curl.exe"),
+        patch("builtins.open", mock_open(read_data="nameserver 172.17.0.1\n")) as m_open,
+    ):
+        mock_platform.return_value.release = release
+        adapter = AnkiConnectAdapter(url="http://localhost:8765")
+    assert (adapter.use_windows_curl, adapter.url) == (False, "http://localhost:8765")
+    m_open.assert_not_called()
+
+
 def test_wsl_detection_failed_read():
     """Verify safeguard if /etc/resolv.conf is unreadable or malformed."""
     mock_uname = "Linux 5.10.16.3-microsoft-standard-WSL2"
