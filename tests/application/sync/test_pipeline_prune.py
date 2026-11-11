@@ -18,6 +18,7 @@ from arete.application.config import AppConfig
 from arete.application.sync.id_service import generate_arete_id
 from arete.application.sync.prune import prune_orphans
 from arete.application.utils.logging import RunRecorder
+from arete.domain.interfaces import SyncPort
 from arete.domain.models import AnkiDeck
 from arete.domain.ownership import is_arete_id
 from arete.infrastructure.adapters.anki_connect import AnkiConnectAdapter
@@ -30,7 +31,7 @@ def aid(n: int) -> str:
     return f"arete_{n:026d}"
 
 
-class FakeAnki:
+class FakeAnki(SyncPort):
     """An in-memory Anki for prune."""
 
     def __init__(self, notes: dict[int, tuple[str, list[str]]], extra_decks=()):

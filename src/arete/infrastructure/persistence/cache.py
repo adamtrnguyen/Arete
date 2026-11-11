@@ -6,6 +6,8 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
+from arete.domain.interfaces import ContentCache as ContentCachePort
+
 # Bump when the table layout changes; the cache is rebuilt from the vault on mismatch.
 SCHEMA_VERSION = 2
 
@@ -15,7 +17,7 @@ def cache_path(configured: Path | None = None) -> Path:
     return configured if configured is not None else Path.home() / ".config/arete/cache.db"
 
 
-class ContentCache:
+class ContentCache(ContentCachePort):
     def __init__(self, db_path: Path | None = None):
         """Open the cache database at `db_path`, or at the default `cache_path()`."""
         if db_path is None:

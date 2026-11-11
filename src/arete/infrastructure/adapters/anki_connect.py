@@ -17,7 +17,7 @@ from arete.domain.constants import (
     RESPONSIVENESS_TIMEOUT,
     SYNC_CONCURRENCY,
 )
-from arete.domain.interfaces import AnkiBridge
+from arete.domain.interfaces import AnkiBridge, NoteStoreSession
 from arete.domain.models import (
     AddonOutdated,
     HeldCard,
@@ -98,7 +98,7 @@ def _outdated(action: str, error: object) -> AddonOutdated | None:
     return None
 
 
-class ConnectNoteSession:
+class ConnectNoteSession(NoteStoreSession):
     """`NoteStoreSession` over AnkiConnect, batched: a few requests per call, any size.
 
     Reads go 500 ids per request; writes go in `multi` requests of at most

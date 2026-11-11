@@ -8,9 +8,10 @@ import pytest
 
 from arete.application.queue import graph_resolver
 from arete.application.queue.service import build_study_queue
+from arete.domain.interfaces import QueuePort
 
 
-class _FakeAnki:
+class _FakeAnki(QueuePort):
     """A QueuePort that never touches Anki."""
 
     def __init__(self, arete_ids: list[str]):

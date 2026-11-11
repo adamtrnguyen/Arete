@@ -13,6 +13,7 @@ from collections.abc import Collection as Names
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any, cast
 
+from arete.domain.interfaces import NoteStoreSession
 from arete.domain.models import HeldCard, HeldNote, NewNote, NoteChange, NoteTypeInfo
 from arete.infrastructure.anki.search import search_term
 
@@ -28,7 +29,7 @@ def _qs(n: int) -> str:
     return ",".join("?" * n)
 
 
-class DirectNoteSession:
+class DirectNoteSession(NoteStoreSession):
     """`NoteStoreSession` over a collection the caller holds open."""
 
     def __init__(self, col: Collection, logger: logging.Logger | None = None):

@@ -27,6 +27,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from arete.domain.identity import anki_tags
+from arete.domain.interfaces import NoteStorePort, NoteStoreSession
 from arete.domain.models import (
     HeldCard,
     HeldNote,
@@ -69,7 +70,7 @@ class FakeCard:
     odid: str | None = None  # the deck it returns to, while `did` is a filtered deck
 
 
-class FakeNoteStore:
+class FakeNoteStore(NoteStorePort, NoteStoreSession):
     def __init__(self, types: dict[str, NoteTypeInfo] | None = None):
         """An empty collection with the stock note types and the Default deck."""
         self.types: dict[str, NoteTypeInfo] = dict(types or STOCK_TYPES)

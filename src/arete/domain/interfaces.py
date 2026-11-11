@@ -244,7 +244,7 @@ class AnkiAdminPort(Protocol):
         pass
 
 
-class AnkiBridge(NoteStorePort, SyncPort, QueuePort, AnkiAdminPort):
+class AnkiBridge(SyncBackend, QueuePort, AnkiAdminPort):
     """Every role at once: the type of an adapter and of the shared test fake.
 
     Use a role port in a use-case signature. Use this one only where something

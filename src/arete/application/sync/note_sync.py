@@ -104,7 +104,7 @@ class _Card:
             self.error = str(error)
 
 
-class _LazySession:
+class _LazySession(NoteStoreSession):
     """A store session opened on first use: a batch that needs none opens none."""
 
     def __init__(self, store: NoteStorePort, stack: AsyncExitStack):
