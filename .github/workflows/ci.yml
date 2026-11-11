@@ -31,8 +31,8 @@ jobs:
       run: uv sync --dev
 
     - name: Run tests with coverage
-      # -rs lists every skipped test with its reason, per OS.
-      run: uv run just coverage -rs
+      # -rfEs: the failures and errors, and every skipped test with its reason, per OS.
+      run: uv run just coverage -rfEs
 
     - name: Upload coverage to Codecov
       if: matrix.os == 'ubuntu-latest'
