@@ -194,8 +194,7 @@ def _sync_with_json(config, *, confirm_prune: bool) -> None:
         except SyncLocked as e:
             print(e, file=sys.stderr)
             message, exit_code = str(e), EXIT_SYNC_LOCKED
-        except AddonOutdated as e:
-            logger.error(f"[sync] stopped: {e}")
+        except AddonOutdated as e:  # logged by the run, into its log file
             message = str(e)
         except Exception as e:
             logger.exception("[sync] stopped by an error")

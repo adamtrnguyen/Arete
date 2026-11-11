@@ -7,6 +7,8 @@ Composition root: the only package allowed to import infrastructure adapters.
 from __future__ import annotations
 
 import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -50,6 +52,16 @@ async def get_anki_bridge(config: AppConfig) -> AnkiBridge:
 def get_cache(db_path: Path | None = None) -> ContentCache:
     """Return a ContentCache implementation."""
     return _CacheImpl(db_path=db_path)
+
+
+@contextmanager
+def opened_cache(db_path: Path | None = None) -> Iterator[ContentCache]:
+    """A ContentCache for the block; its database is closed when the block ends."""
+    cache = _CacheImpl(db_path=db_path)
+    try:
+        yield cache
+    finally:
+        cache.close()
 
 
 def get_vault_service(config: AppConfig) -> VaultService:

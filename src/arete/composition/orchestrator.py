@@ -15,8 +15,9 @@ from arete.application.sync.parser import MarkdownParser
 from arete.application.sync.pipeline import RunStats, run_pipeline
 from arete.application.sync.prune import PruneConfirm
 from arete.application.sync.vault_service import VaultService
-from arete.application.utils.logging import setup_logging
-from arete.composition.factory import get_anki_bridge, get_cache
+from arete.application.utils.logging import close_run_log, setup_logging
+from arete.composition.factory import get_anki_bridge, opened_cache
+from arete.domain.interfaces import ContentCache
 from arete.domain.models import AddonOutdated
 from arete.infrastructure.persistence.cache import cache_path
 from arete.infrastructure.persistence.sync_lock import LockHeld, exclusive_lock, lock_path_for
@@ -68,7 +69,32 @@ async def execute_sync(
 async def _execute_locked(
     config: AppConfig, cache_file: Path, confirm_prune: bool, prompt: PruneConfirm | None
 ) -> RunStats:
-    logger, main_log_path, run_id = setup_logging(config.log_dir, config.verbose)
+    """The run, with its log file and cache database open for exactly its length."""
+    logger, _main_log_path, run_id = setup_logging(config.log_dir, config.verbose)
+    try:
+        with opened_cache(cache_file) as cache:
+            stats = await _run(config, cache, logger, run_id, confirm_prune, prompt)
+        pruned = f" prune: {stats.prune.summary()}" if stats.prune else ""
+        logging.getLogger("arete.main").info(
+            f"=== summary === generated={stats.total_generated} "
+            f"updated/added={stats.total_imported} errors={stats.total_errors}{pruned}"
+        )
+        return stats
+    except AddonOutdated as e:
+        logging.getLogger("arete.main").error(f"[sync] stopped: {e}")
+        raise
+    finally:
+        close_run_log(logger)
+
+
+async def _run(
+    config: AppConfig,
+    cache: ContentCache,
+    logger: logging.Logger,
+    run_id: str,
+    confirm_prune: bool,
+    prompt: PruneConfirm | None,
+) -> RunStats:
     logger.info(f"=== obsidian → anki (run_id={run_id}) ===")
     logger.info(f"System: {platform.system()} {platform.release()} ({platform.machine()})")
     logger.info(f"Python: {sys.version.split()[0]}")
@@ -81,8 +107,6 @@ async def _execute_locked(
         f"[main] Config: root_input={config.root_input}, backend={config.backend}, "
         f"verbose={config.verbose}"
     )
-
-    cache = get_cache(db_path=cache_file)
 
     if config.clear_cache:
         logger.info("Clearing content cache as requested...")
@@ -149,15 +173,8 @@ async def run_sync_logic(
     except VaultRootUnknown as e:
         logger.error(f"[sync] {e}")
         raise SyncFailedError(str(e)) from e
-    except AddonOutdated as e:
-        logger.error(f"[sync] stopped: {e}")
+    except AddonOutdated as e:  # logged by the run, into its log file
         raise SyncFailedError(str(e)) from e
-
-    pruned = f" prune: {stats.prune.summary()}" if stats.prune else ""
-    logger.info(
-        f"=== summary === generated={stats.total_generated} "
-        f"updated/added={stats.total_imported} errors={stats.total_errors}{pruned}"
-    )
 
     if stats.total_errors and not config.keep_going:
         raise SyncFailedError(f"{stats.total_errors} errors during sync")

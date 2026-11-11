@@ -5,6 +5,7 @@ import pytest
 
 from arete.application.utils.logging import (
     RunRecorder,
+    close_run_log,
     rotate_logs,
     setup_logging,
 )
@@ -66,3 +67,22 @@ def test_setup_logging_rotates_old_run_logs(tmp_path):
         handler.close()
     # the 50 newest old logs survive, plus the one this run just opened
     assert len(list(tmp_path.glob("run_*.log"))) == 51
+
+
+def test_close_run_log_detaches_and_closes_the_log_file(tmp_path):
+    logger, log_path, _ = setup_logging(tmp_path, verbose=1)
+    [file_handler] = [h for h in logger.handlers if isinstance(h, logging.FileHandler)]
+
+    close_run_log(logger)
+
+    assert logger.handlers == []
+    assert file_handler.stream is None, "the file is closed, so Windows can delete it"
+    log_path.unlink()
+
+
+def test_a_second_run_closes_the_first_runs_log_file(tmp_path):
+    first, _, _ = setup_logging(tmp_path / "a", verbose=1)
+    [old] = [h for h in first.handlers if isinstance(h, logging.FileHandler)]
+    setup_logging(tmp_path / "b", verbose=1)
+    assert old.stream is None
+    close_run_log(first)

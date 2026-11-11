@@ -2,6 +2,9 @@ import json
 import sqlite3
 from pathlib import Path
 
+import pytest
+
+from arete.composition.factory import opened_cache
 from arete.infrastructure.persistence.cache import ContentCache
 
 # ... (existing tests) ...
@@ -117,3 +120,20 @@ def test_persistence(tmp_path):
     # Reopen
     cache2 = ContentCache(db_path=db_path)
     assert cache2.get_hash(Path("f1"), 1) == "h1"
+
+
+def test_close_releases_the_database(tmp_path):
+
+    cache = ContentCache(db_path=tmp_path / "c.db")
+    cache.close()
+    with pytest.raises(sqlite3.ProgrammingError):
+        cache.get_hash(Path("a.md"), 1)
+    (tmp_path / "c.db").unlink()
+
+
+def test_opened_cache_closes_when_the_block_ends(tmp_path):
+
+    with opened_cache(tmp_path / "c.db") as cache:
+        assert cache.get_hash(Path("a.md"), 1) is None
+    with pytest.raises(sqlite3.ProgrammingError):
+        cache.get_hash(Path("a.md"), 1)

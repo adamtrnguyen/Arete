@@ -63,7 +63,7 @@ def setup_logging(log_dir: Path, verbose: int) -> tuple[logging.Logger, Path, st
     # Main logger: Capture EVERYTHING at root, handlers will filter.
     logger = logging.getLogger("arete")
     logger.setLevel(logging.DEBUG)
-    logger.handlers.clear()
+    close_run_log(logger)
 
     # Console handler (Filtered by verbosity)
     sh = logging.StreamHandler(sys.stdout)
@@ -79,6 +79,17 @@ def setup_logging(log_dir: Path, verbose: int) -> tuple[logging.Logger, Path, st
     logger.addHandler(fh)
 
     return logger, main_log_path, run_id
+
+
+def close_run_log(logger: logging.Logger) -> None:
+    """Detach and close every handler `setup_logging` gave `logger`.
+
+    A run's log file stays open until this is called: Windows cannot delete, rotate or
+    replace an open file, so the run that opened it closes it.
+    """
+    for handler in list(logger.handlers):
+        logger.removeHandler(handler)
+        handler.close()
 
 
 def rotate_logs(log_dir: Path, keep: int = 50):

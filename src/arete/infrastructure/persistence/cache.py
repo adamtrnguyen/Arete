@@ -159,3 +159,8 @@ class ContentCache(ContentCachePort):
             self._conn.execute("DELETE FROM cards")
             self._conn.execute("DELETE FROM files")
             self._conn.commit()
+
+    def close(self) -> None:
+        """Close the database. Windows cannot delete or replace a file held open."""
+        with self._lock:
+            self._conn.close()
