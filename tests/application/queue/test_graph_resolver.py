@@ -772,7 +772,8 @@ class TestBuildGraphSkipsNotesWithoutCards:
         (tmp_path / "sq.md").write_text("---\n'arete': true\n" + card.format("S"))
         (tmp_path / "sp.md").write_text("---\narete : true\n" + card.format("W"))
         (tmp_path / "esc.md").write_text('---\n"\\x61rete": true\n' + card.format("E"))
-        (tmp_path / "bom.md").write_text("\ufeff---\r\narete: true\n" + card.format("B"))
+        bom = "\ufeff---\r\narete: true\n" + card.format("B")
+        (tmp_path / "bom.md").write_bytes(bom.encode("utf-8"))  # exact bytes on every OS
 
         graph = build_graph(tmp_path)
 

@@ -11,7 +11,7 @@ import typer
 
 from arete.application.config import resolve_config
 from arete.application.queue.service import QueueAlgo
-from arete.interface._common import _resolve_with_overrides, stdout_to_stderr
+from arete.interface._common import _resolve_with_overrides, stdout_to_stderr, utf8_console
 from arete.interface.anki_commands import anki_app
 from arete.interface.vault_commands import vault_app
 
@@ -26,9 +26,10 @@ app = typer.Typer(
 )
 
 # ---------------------------------------------------------------------------
-# Logging
+# Console and logging
 # ---------------------------------------------------------------------------
 
+utf8_console()
 logging.basicConfig(
     level=logging.INFO,
     format="%(levelname)s:%(name)s:%(message)s",

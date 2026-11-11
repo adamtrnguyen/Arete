@@ -93,7 +93,7 @@ class AnkiConnect:
     def initLogging(self):
         logPath = util.setting("apiLogPath")
         if logPath is not None:
-            self.log = open(logPath, "w")
+            self.log = open(logPath, "w", encoding="utf-8")
 
     def startWebServer(self):
         try:
@@ -2215,7 +2215,9 @@ if __name__ != "__main__":
     except Exception as e:
         import traceback
 
-        with open(os.path.join(os.path.dirname(__file__), "startup_error.log"), "w") as f:
+        with open(
+            os.path.join(os.path.dirname(__file__), "startup_error.log"), "w", encoding="utf-8"
+        ) as f:
             f.write(f"Add-on failed to start: {e}\n")
             f.write(traceback.format_exc())
         # Re-raise so Anki still knows something is wrong, but now we have a log.

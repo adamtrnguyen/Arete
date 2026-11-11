@@ -390,7 +390,7 @@ class AnkiConnectAdapter(AnkiBridge):
             # Strategy B: /etc/resolv.conf (Fallback)
             if "localhost" in url or "127.0.0.1" in url:
                 try:
-                    with open("/etc/resolv.conf") as f:
+                    with open("/etc/resolv.conf", encoding="utf-8") as f:
                         for line in f:
                             if line.startswith("nameserver"):
                                 host_ip = line.split()[1].strip()
