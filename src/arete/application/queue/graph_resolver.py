@@ -11,9 +11,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from arete.application.utils.common import sanitize
 from arete.application.utils.fs import iter_markdown_files
 from arete.application.utils.text import normalize_filename, parse_frontmatter
 from arete.domain.graph import CardNode, DependencyGraph
+from arete.domain.ownership import id_key
 
 if TYPE_CHECKING:
     import networkx as nx
@@ -100,6 +102,9 @@ def build_graph(vault_root: Path) -> DependencyGraph:
     by_relpath: dict[str, str] = {}  # NFC vault-relative path without .md -> file path
     card_file: dict[str, str] = {}  # card id -> file path
     pending_deps: list[tuple[str, list[str], list[str]]] = []  # (card_id, requires, related)
+    # `id_key` -> the id as first written: ids differing only in case are one id, as in
+    # the sync, so the second is a duplicate.
+    first_by_key: dict[str, str] = {}
 
     for md_path in iter_markdown_files(vault_root):
         try:
@@ -131,7 +136,7 @@ def build_graph(vault_root: Path) -> DependencyGraph:
                 if not isinstance(card, dict):
                     continue
 
-                card_id = card.get("id")
+                card_id = sanitize(card.get("id", "")).strip()  # as the sync reads it
                 if not card_id:
                     continue  # Skip cards without Arete ID
 
@@ -146,10 +151,11 @@ def build_graph(vault_root: Path) -> DependencyGraph:
                     file_path=str(md_path),
                     line_number=line_number,
                 )
-                if card_id in graph.nodes:
+                first_id = first_by_key.setdefault(id_key(card_id), card_id)
+                if first_id != card_id or card_id in graph.nodes:
                     # Keep the first card and record the duplicate; never overwrite.
-                    first = graph.nodes[card_id].file_path
-                    files = graph.duplicate_ids.setdefault(card_id, [first])
+                    first = graph.nodes[first_id].file_path
+                    files = graph.duplicate_ids.setdefault(first_id, [first])
                     files.append(str(md_path))
                     logger.warning(f"Duplicate Arete id {card_id} in {files}")
                     continue

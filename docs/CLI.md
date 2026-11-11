@@ -54,7 +54,7 @@ uv sync
 | :--- | :--- |
 | `arete config show` | View current resolved configuration. |
 | `arete config open` | Open the config file in your editor. |
-| `arete graph check` | Check dependency graph health: cycles, isolated cards, unresolved references, duplicate Arete ids, unparsed files. |
+| `arete graph check` | Check dependency graph health: cycles, isolated cards, unresolved references, duplicate Arete ids (case-insensitive, as the sync compares them), unparsed files. |
 | `arete graph export` | Print the resolved dependency graph as JSON. |
 
 ## Advanced Sync Options

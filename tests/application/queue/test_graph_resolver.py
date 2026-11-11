@@ -721,6 +721,19 @@ class TestSilentGraphProblemsAreReported:
             "b.md",
         ]
 
+    def test_ids_differing_only_in_case_are_one_id_as_the_sync_holds(self, tmp_path):
+        """Anki matches tags ignoring case, so the sync refuses both cards; so does the check."""
+        self._note(tmp_path, "a.md", [("arete_01J00000000000000000000DUP", "")])
+        self._note(tmp_path, "b.md", [("ARETE_01j00000000000000000000dup", "")])
+        health = check_graph_health(tmp_path)
+        assert not health.ok
+        [dup] = health.duplicate_ids  # named as the first file scanned writes it
+        assert dup.card_id.casefold() == "arete_01j00000000000000000000dup"
+        assert sorted(pathlib.Path(f).name for f in health.duplicate_ids[0].files) == [
+            "a.md",
+            "b.md",
+        ]
+
 
 def test_export_graph_is_what_the_plugin_draws(tmp_path: Path):
     """The plugin draws this export; it resolves no reference itself."""

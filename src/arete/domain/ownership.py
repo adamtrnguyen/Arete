@@ -22,13 +22,17 @@ def is_arete_id(tag: str) -> bool:
     return bool(_ARETE_ID.fullmatch(tag))
 
 
-def group_duplicate_ids[T](entries: Iterable[tuple[T, str]]) -> dict[str, list[tuple[T, str]]]:
-    """Group `(where, arete_id)` pairs by id, keeping the ids declared more than once.
+def id_key(arete_id: str) -> str:
+    """What makes two Arete ids one: Anki matches tags ignoring case, so the casefolded id."""
+    return arete_id.casefold()
 
-    Anki matches tags case-insensitively, so ids differing only in case are one id; the
-    key is the casefolded id and each entry keeps the id as written.
+
+def group_duplicate_ids[T](entries: Iterable[tuple[T, str]]) -> dict[str, list[tuple[T, str]]]:
+    """Group `(where, arete_id)` pairs by `id_key`, keeping the ids declared more than once.
+
+    Each entry keeps the id as written.
     """
     grouped: dict[str, list[tuple[T, str]]] = {}
     for where, arete_id in entries:
-        grouped.setdefault(arete_id.casefold(), []).append((where, arete_id))
+        grouped.setdefault(id_key(arete_id), []).append((where, arete_id))
     return {key: group for key, group in grouped.items() if len(group) > 1}

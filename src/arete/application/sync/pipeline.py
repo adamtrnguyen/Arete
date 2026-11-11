@@ -18,6 +18,7 @@ from arete.application.utils.media import FilenameIndex
 from arete.domain.constants import CONSUMER_BATCH_SIZE
 from arete.domain.interfaces import ContentCache, SyncBackend
 from arete.domain.models import UpdateItem, WorkItem
+from arete.domain.ownership import group_duplicate_ids
 
 
 def vault_claims(
@@ -218,17 +219,17 @@ async def run_pipeline(
     # -------- Stage 1.7: one Arete id declared by several cards --------
     # The id is the card's identity in Anki, so no copy may be sent: each would claim the
     # note of the others. Ids differing only in case are one tag in Anki.
-    declared: dict[str, list[tuple[Path, int, str]]] = {}
-    for path, meta, _fresh in compatible:
-        for idx, card in enumerate(meta.get("cards") or [], start=1):
-            if card_id := parser.declared_id(card):
-                declared.setdefault(card_id.casefold(), []).append((path, idx, card_id))
-    duplicated = {key: c for key, c in declared.items() if len(c) > 1}
+    duplicated = group_duplicate_ids(
+        ((path, idx), card_id)
+        for path, meta, _fresh in compatible
+        for idx, card in enumerate(meta.get("cards") or [], start=1)
+        if (card_id := parser.declared_id(card))
+    )
     parser.duplicate_ids = {
-        key: [f"{p.name} card#{i}" for p, i, _ in c] for key, c in duplicated.items()
+        key: [f"{p.name} card#{i}" for (p, i), _ in c] for key, c in duplicated.items()
     }
     for c in duplicated.values():
-        for p, i, card_id in c:
+        for (p, i), card_id in c:
             failed_files.add(p)
             recorder.add_error(
                 p, f"Arete id {card_id} is declared by {len(c)} cards; none is synced", f"#{i}"
