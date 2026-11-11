@@ -1,4 +1,5 @@
 import * as path from 'path';
+import { existsSync } from 'fs';
 import { ChildProcess, spawn } from 'child_process';
 import { App, FileSystemAdapter } from 'obsidian';
 import { AretePluginSettings } from '@/domain/settings';
@@ -11,19 +12,48 @@ export interface PythonCommand {
 }
 
 /**
+ * The command a "Python executable" setting names, split into words. A double-quoted
+ * part is one word, so `"C:\Program Files\Python312\python.exe" -m arete` works; so does
+ * an unquoted path to an existing file, spaces and all (`C:\Users\Jo Doe\...\arete.exe`).
+ */
+export function splitCommand(setting: string): string[] {
+	const trimmed = setting.trim();
+	if (!trimmed.includes('"') && trimmed.includes(' ') && existsSync(trimmed)) return [trimmed];
+	const words: string[] = [];
+	for (const m of trimmed.matchAll(/"([^"]*)"|(\S+)/g)) words.push(m[1] ?? m[2]);
+	return words;
+}
+
+/** The key the environment stores PATH under: Windows spells it `Path`, case-insensitively. */
+function pathKey(env: Record<string, string | undefined>): string {
+	return Object.keys(env).find((k) => k.toUpperCase() === 'PATH') ?? 'PATH';
+}
+
+/** Append directories to a PATH-like value with the platform's separator. */
+function appendPaths(current: string | undefined, extra: string[], delimiter: string): string {
+	return [...(current ? [current] : []), ...extra].join(delimiter);
+}
+
+/**
  * Resolves the Python executable, arguments, environment, and working directory
  * from plugin settings. Shared across AreteClient, CheckService and SyncService, so one
  * place decides how Arete is started.
+ *
+ * Paths and separators follow `process.platform` (Windows: `\` and `;`). On Windows a
+ * bare `python3` becomes `python`: python.org installs no `python3`, and the
+ * `python3` on PATH is the Microsoft Store alias, which runs nothing.
  */
 export function resolvePythonCommand(
 	settings: AretePluginSettings,
 	fallbackCwd?: string,
 ): PythonCommand {
+	const win = process.platform === 'win32';
+	const p = win ? path.win32 : path.posix;
 	const pythonSetting = settings.python_path || 'python3';
 	const projectRoot = settings.project_root || '';
 
-	const parts = pythonSetting.split(' ').filter((p) => p.trim() !== '');
-	const cmd = parts[0];
+	const parts = splitCommand(pythonSetting);
+	const cmd = win && parts[0] === 'python3' ? 'python' : parts[0];
 	const args = parts.slice(1);
 	const env: Record<string, string | undefined> = Object.assign({}, process.env);
 
@@ -32,8 +62,9 @@ export function resolvePythonCommand(
 	// installed console script ("arete"), args is empty, and looking at args alone
 	// produced "arete -m arete". That is the setting a user needs in order to stop
 	// depending on a checked-out repository, so it has to work.
-	const invokesArete = cmd.toLowerCase().includes('arete');
-	const hasArete = args.some((a) => a.toLowerCase().includes('arete'));
+	// The file name only: a checkout at `.../Arete/.venv/bin/python` still needs -m arete.
+	const invokesArete = p.basename(cmd).toLowerCase().startsWith('arete');
+	const hasArete = args.some((a) => a.toLowerCase() === 'arete');
 	const hasModule = args.includes('-m');
 	if (!invokesArete && !hasArete && !hasModule) {
 		args.push('-m', 'arete');
@@ -42,22 +73,26 @@ export function resolvePythonCommand(
 	// Auto-detect 'src' folder in project root for PYTHONPATH
 	const cwd = projectRoot || fallbackCwd || '.';
 	if (cwd && cwd !== '.') {
-		const srcPath = path.join(cwd, 'src');
-		const currentPath = env['PYTHONPATH'] || '';
-		env['PYTHONPATH'] = currentPath ? `${currentPath}:${srcPath}` : srcPath;
+		env['PYTHONPATH'] = appendPaths(env['PYTHONPATH'], [p.join(cwd, 'src')], p.delimiter);
 	}
 
-	// Fix PATH on macOS for GUI apps (Obsidian often lacks .local/bin)
+	// GUI apps start with a short PATH: add where `uv tool install` and Homebrew put
+	// commands. On Windows uv puts them in %USERPROFILE%\.local\bin.
+	const extraPaths: string[] = [];
 	if (process.platform === 'darwin' && process.env.HOME) {
 		const home = process.env.HOME;
-		const extraPaths = [
-			path.join(home, '.local', 'bin'),
-			path.join(home, '.cargo', 'bin'),
+		extraPaths.push(
+			p.join(home, '.local', 'bin'),
+			p.join(home, '.cargo', 'bin'),
 			'/opt/homebrew/bin',
 			'/usr/local/bin',
-		];
-		const currentPath = env['PATH'] || '';
-		env['PATH'] = `${currentPath}:${extraPaths.join(':')}`;
+		);
+	} else if (win && process.env.USERPROFILE) {
+		extraPaths.push(p.join(process.env.USERPROFILE, '.local', 'bin'));
+	}
+	if (extraPaths.length) {
+		const key = pathKey(env);
+		env[key] = appendPaths(env[key], extraPaths, p.delimiter);
 	}
 
 	return { cmd, args, env, cwd };
@@ -100,8 +135,20 @@ export class AreteProcesses {
 		env: Record<string, string | undefined> = command.env,
 	): ChildProcess {
 		if (this.closed) throw new Error('Arete is unloading; the command was not started.');
+		if (process.platform === 'win32' && /\.(cmd|bat)$/i.test(command.cmd)) {
+			// Node starts a .cmd or .bat only through a shell, which would re-parse the
+			// arguments (note paths, JSON); it refuses them without one.
+			throw new Error(
+				`${command.cmd} is a batch file. Set the Python executable to an .exe (python.exe, arete.exe).`,
+			);
+		}
 		const withVault = this.vaultRoot ? { ...env, ARETE_VAULT_ROOT: this.vaultRoot } : env;
-		return this.track(spawn(command.cmd, args, { cwd: command.cwd, env: withVault }));
+		const child = spawn(command.cmd, args, { cwd: command.cwd, env: withVault });
+		// Decode as text across chunk boundaries: a UTF-8 character split between two
+		// chunks would otherwise become two replacement characters. The CLI prints UTF-8.
+		child.stdout?.setEncoding('utf8');
+		child.stderr?.setEncoding('utf8');
+		return this.track(child);
 	}
 
 	/** Watch a process started elsewhere until it exits. */

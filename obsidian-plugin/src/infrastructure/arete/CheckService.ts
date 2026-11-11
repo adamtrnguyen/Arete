@@ -1,5 +1,5 @@
 import { App, Notice, requestUrl } from 'obsidian';
-import { exec } from 'child_process';
+import type { ChildProcess } from 'child_process';
 import { AretePluginSettings } from '@domain/settings';
 import {
 	AreteProcesses,
@@ -73,32 +73,50 @@ export class CheckService implements FileChecker {
 		});
 	}
 
-	async testConfig() {
+	/**
+	 * Start Arete as the settings say (`<python> -m arete --help`, or the `arete` command)
+	 * and say whether it ran. No shell: the setting is split as every command is.
+	 */
+	async testConfig(): Promise<void> {
 		new Notice('Testing configuration...');
 
-		const rawSettings = this.settings.python_path;
-		if (!rawSettings) {
+		if (!this.settings.python_path) {
 			new Notice('The Python executable setting is empty.');
 			return;
 		}
 
 		const resolved = resolvePythonCommand(this.settings);
-		const cmd = `${rawSettings} -c "import arete; print('Arete module found')"`;
-
-		const child = exec(
-			cmd,
-			{ cwd: resolved.cwd, env: resolved.env },
-			(error: any, stdout: string, stderr: string) => {
-				if (error) {
-					console.error('[Arete] Test configuration failed:', error);
-					const msg = stderr || stdout || error.message;
-					new Notice(`Command failed: ${msg.substring(0, 200)}`);
+		const label = [resolved.cmd, ...resolved.args].join(' ');
+		await new Promise<void>((resolve) => {
+			let child: ChildProcess;
+			try {
+				child = this.processes.spawn(resolved, [...resolved.args, '--help']);
+			} catch (e: any) {
+				new Notice(`Command failed: ${e.message}`);
+				resolve();
+				return;
+			}
+			let stderr = '';
+			child.stderr?.on('data', (d) => (stderr += d.toString()));
+			child.once('error', (err: NodeJS.ErrnoException) => {
+				console.error('[Arete] Test configuration failed:', err);
+				new Notice(
+					err.code === 'ENOENT'
+						? `Command failed: ${resolved.cmd} was not found.`
+						: `Command failed: ${err.message}`,
+				);
+				resolve();
+			});
+			child.once('close', (code) => {
+				if (code === 0) {
+					new Notice(`Arete runs: ${label}`);
 				} else {
-					new Notice('Python found and the Arete module is available.');
+					console.error('[Arete] Test configuration failed:', stderr);
+					new Notice(`Command failed: ${(stderr || `exit ${code}`).substring(0, 200)}`);
 				}
-			},
-		);
-		if (child) this.processes.track(child);
+				resolve();
+			});
+		});
 	}
 
 	/** Ask AnkiConnect for its version and tell the user whether it answered. */

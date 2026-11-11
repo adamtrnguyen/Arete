@@ -2,7 +2,9 @@ import '../../test-setup';
 import { AreteProcesses, resolvePythonCommand } from '@infrastructure/arete/PythonProcess';
 import * as path from 'path';
 import { spawn } from 'child_process';
-import { createMockChildProcess } from '../../test-setup';
+import { createMockChildProcess, onLinux } from '../../test-setup';
+
+onLinux();
 
 describe('resolvePythonCommand', () => {
 	const baseSettings: any = {
@@ -75,7 +77,7 @@ describe('resolvePythonCommand', () => {
 		const settings = { ...baseSettings, project_root: '/home/user/project' };
 		const result = resolvePythonCommand(settings);
 		const pythonPath = result.env['PYTHONPATH'] || '';
-		expect(pythonPath).toContain(path.join('/home/user/project', 'src'));
+		expect(pythonPath).toContain('/home/user/project/src');
 	});
 
 	test('macOS PATH augmentation on darwin', () => {

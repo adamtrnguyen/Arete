@@ -1,4 +1,5 @@
 import './test-setup';
+import * as path from 'path';
 import { App, Modal, Notice } from 'obsidian';
 import AretePlugin from '@/main';
 import { SyncService } from '@infrastructure/arete/SyncService';
@@ -70,7 +71,9 @@ describe('AretePlugin Composition', () => {
 		// check-file delegation
 		const mockView = { file: { path: 'test.md' } };
 		await commands['arete-check-file'].editorCallback(null, mockView);
-		expect(plugin.checkService.getCheckResult).toHaveBeenCalledWith('/mock/vault/path/test.md');
+		expect(plugin.checkService.getCheckResult).toHaveBeenCalledWith(
+			path.join('/mock/vault/path', 'test.md'),
+		);
 
 		// integrity: the shared frontmatter check
 		const scan = jest.spyOn(plugin.linkCheckerService, 'findAllUnparsedFrontmatter');

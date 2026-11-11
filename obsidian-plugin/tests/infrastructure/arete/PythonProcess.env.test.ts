@@ -1,5 +1,8 @@
 import '../../test-setup';
 import { resolvePythonCommand } from '@infrastructure/arete/PythonProcess';
+import { onLinux } from '../../test-setup';
+
+onLinux();
 
 describe('resolvePythonCommand: environment', () => {
 	const settings: any = { python_path: 'python3', project_root: '/proj' };

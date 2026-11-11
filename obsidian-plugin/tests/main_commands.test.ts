@@ -1,4 +1,5 @@
 import './test-setup';
+import * as path from 'path';
 import { App, Notice, TFile, setIcon, setTooltip } from 'obsidian';
 import AretePlugin from '@/main';
 import { LocalGraphView } from '@presentation/views/LocalGraphView';
@@ -53,7 +54,7 @@ describe('AretePlugin commands, views and status bar', () => {
 
 			commands['arete-sync-current-file'].callback!();
 
-			expect(spy).toHaveBeenCalledWith(false, '/vault/notes/A.md', true);
+			expect(spy).toHaveBeenCalledWith(false, path.join('/vault', 'notes/A.md'), true);
 		});
 
 		test('Sync Current File tells the user when there is no active note', () => {
@@ -89,7 +90,7 @@ describe('AretePlugin commands, views and status bar', () => {
 
 			commands['arete-check-file'].editorCallback!({}, { file: { path: 'B.md' } });
 
-			expect(spy).toHaveBeenCalledWith('/vault/B.md');
+			expect(spy).toHaveBeenCalledWith(path.join('/vault', 'B.md'));
 		});
 
 		test('Check Current File reports an unknown vault path', () => {

@@ -1,7 +1,9 @@
 import '../../test-setup';
 import { spawn } from 'child_process';
 import { AreteClient } from '@infrastructure/arete/AreteClient';
-import { createMockChildProcess } from '../../test-setup';
+import { createMockChildProcess, onLinux } from '../../test-setup';
+
+onLinux();
 
 describe('AreteClient: one `arete` process per call, JSON on stdout', () => {
 	let settings: any;

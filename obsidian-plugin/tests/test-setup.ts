@@ -432,9 +432,24 @@ jest.mock('obsidian', () => {
 
 export const createMockChildProcess = () => {
 	const child: any = new EventEmitter();
-	child.stdout = new EventEmitter();
-	child.stderr = new EventEmitter();
+	child.stdout = Object.assign(new EventEmitter(), { setEncoding: jest.fn() });
+	child.stderr = Object.assign(new EventEmitter(), { setEncoding: jest.fn() });
 	child.unref = jest.fn();
 	child.kill = jest.fn();
 	return child;
 };
+
+/**
+ * Run a file's tests as on Linux, whatever the host: how Arete is started (the python3
+ * default, path separators) depends on process.platform. Windows has its own tests.
+ */
+export function onLinux(): void {
+	let saved: PropertyDescriptor | undefined;
+	beforeEach(() => {
+		saved = Object.getOwnPropertyDescriptor(process, 'platform');
+		Object.defineProperty(process, 'platform', { value: 'linux' });
+	});
+	afterEach(() => {
+		if (saved) Object.defineProperty(process, 'platform', saved);
+	});
+}

@@ -1,4 +1,5 @@
 import './test-setup';
+import * as path from 'path';
 import { App, Notice } from 'obsidian';
 import AretePlugin from '@/main';
 
@@ -55,8 +56,8 @@ describe('sync on save', () => {
 		await jest.advanceTimersByTimeAsync(1000);
 
 		expect(started(plugin)).toEqual([
-			[false, '/vault/A.md', false],
-			[false, '/vault/B.md', false],
+			[false, path.join('/vault', 'A.md'), false],
+			[false, path.join('/vault', 'B.md'), false],
 		]);
 	});
 

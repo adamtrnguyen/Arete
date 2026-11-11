@@ -1,8 +1,11 @@
 import '../../test-setup';
+import * as path from 'path';
 import { App, Notice } from 'obsidian';
 import { spawn } from 'child_process';
 import * as fs from 'fs';
-import { createMockChildProcess } from '../../test-setup';
+import { createMockChildProcess, onLinux } from '../../test-setup';
+
+onLinux();
 import {
 	isSyncLockHeld,
 	LOG_KEEP_BYTES,
@@ -480,7 +483,7 @@ describe('SyncService', () => {
 	});
 
 	describe('CLI sync log', () => {
-		const logPath = '/mock/vault/path/test-plugin-dir/arete_plugin.log';
+		const logPath = path.join('/mock/vault/path', 'test-plugin-dir', 'arete_plugin.log');
 
 		test('many output lines become one async append, never a sync write', async () => {
 			jest.spyOn(console, 'log').mockImplementation(() => undefined);

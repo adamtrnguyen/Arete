@@ -1,7 +1,9 @@
 import '../../test-setup';
 import { App, Notice, requestUrl } from 'obsidian';
 import { spawn, exec } from 'child_process';
-import { createMockChildProcess } from '../../test-setup';
+import { createMockChildProcess, onLinux } from '../../test-setup';
+
+onLinux();
 import { CheckService } from '@infrastructure/arete/CheckService';
 
 describe('CheckService', () => {
@@ -114,24 +116,52 @@ describe('CheckService', () => {
 		expect(Notice).toHaveBeenCalledWith('Fix failed, check the developer console.');
 	});
 
-	test('testConfig calls exec (success)', async () => {
-		(exec as unknown as jest.Mock).mockImplementation((cmd, opts, cb) => {
-			cb(null, 'Arete module found', '');
-		});
+	test('testConfig runs the resolved command with --help, without a shell', async () => {
+		const child = createMockChildProcess();
+		(spawn as jest.Mock).mockReturnValue(child);
 
-		await service.testConfig();
-		expect(Notice).toHaveBeenCalledWith(expect.stringContaining('Python found'));
+		const done = service.testConfig();
+		child.emit('close', 0, null);
+		await done;
+
+		expect(spawn).toHaveBeenCalledWith('python3', ['-m', 'arete', '--help'], expect.anything());
+		expect(exec).not.toHaveBeenCalled();
+		expect(Notice).toHaveBeenCalledWith('Arete runs: python3 -m arete');
 	});
 
-	test('testConfig calls exec (failure)', async () => {
-		(exec as unknown as jest.Mock).mockImplementation((cmd, opts, cb) => {
-			cb(new Error('Exec failed'), '', 'Stderr noise');
-		});
+	test('testConfig with the arete command runs arete --help', async () => {
+		service.settings.python_path = 'arete';
+		const child = createMockChildProcess();
+		(spawn as jest.Mock).mockReturnValue(child);
 
-		await service.testConfig();
-		expect(Notice).toHaveBeenCalledWith(
-			expect.stringContaining('Command failed: Stderr noise'),
-		);
+		const done = service.testConfig();
+		child.emit('close', 0, null);
+		await done;
+
+		expect(spawn).toHaveBeenCalledWith('arete', ['--help'], expect.anything());
+	});
+
+	test('testConfig reports what the command printed on failure', async () => {
+		const child = createMockChildProcess();
+		(spawn as jest.Mock).mockReturnValue(child);
+
+		const done = service.testConfig();
+		child.stderr.emit('data', 'No module named arete');
+		child.emit('close', 1, null);
+		await done;
+
+		expect(Notice).toHaveBeenCalledWith('Command failed: No module named arete');
+	});
+
+	test('testConfig names a command that is not installed', async () => {
+		const child = createMockChildProcess();
+		(spawn as jest.Mock).mockReturnValue(child);
+
+		const done = service.testConfig();
+		child.emit('error', Object.assign(new Error('spawn python3 ENOENT'), { code: 'ENOENT' }));
+		await done;
+
+		expect(Notice).toHaveBeenCalledWith('Command failed: python3 was not found.');
 	});
 
 	test('testConfig with empty python path', async () => {
