@@ -37,7 +37,7 @@ Run `Arete: Sync` from the command palette (`Cmd/Ctrl + P`). The card schema is 
 
 1.  Download `main.js`, `manifest.json` and `styles.css` from [GitHub Releases](https://github.com/adamtrnguyen/Arete/releases/latest).
 2.  Put them in `<vault>/.obsidian/plugins/arete/` and enable the plugin.
-3.  In the plugin settings, set `Python executable` to the `arete` or `python3` you installed.
+3.  In the plugin settings, set `Python executable` to `arete` (what `uv tool install` puts on PATH). A Python with Arete installed also works: `python3` on macOS and Linux, `python` or `py` on Windows. Quote a path that holds a space: `"C:\Users\Jo Doe\.local\bin\arete.exe"`.
 
 ## License
 

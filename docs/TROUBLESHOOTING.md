@@ -20,7 +20,8 @@ WSL users often face networking hurdles because WSL 2 uses a virtualized network
 
 ## 3. Python Environment (`uv`)
 
--   **`Command not found: arete`**: Ensure you are running commands with `uv run arete` or that your virtual environment is activated.
+-   **`Command not found: arete`**: `uv tool install` puts `arete` in `~/.local/bin` (Windows: `%USERPROFILE%\.local\bin`). Run `uv tool update-shell`, then open a new terminal and restart Obsidian. In a checkout, run `uv run arete`.
+-   **Windows: "another program has <note> open"**: Windows cannot replace a note another program holds open (an editor, a sync client, a virus scanner). Arete waits about 1.5 s, then fails that file's cards with this message and leaves the note as it was. Close the program and sync again.
 -   **Dependency Errors**: Run `uv sync` to ensure all dependencies are correctly installed.
 
 ## 4. Sync Gaps & Missing Cards

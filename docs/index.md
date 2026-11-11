@@ -11,6 +11,11 @@ uv tool install git+https://github.com/adamtrnguyen/Arete
 arete init          # pick the vault, the Anki media folder and the backend
 ```
 
+On Windows, install uv first (PowerShell:
+`powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"`), run the
+same `uv tool install`, then `uv tool update-shell` so that `arete`
+(`%USERPROFILE%\.local\bin\arete.exe`) is on PATH. Restart Obsidian afterwards.
+
 From the [latest release](https://github.com/adamtrnguyen/Arete/releases/latest):
 
 | File | Goes to |

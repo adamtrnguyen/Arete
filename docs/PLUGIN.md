@@ -37,10 +37,10 @@ Build a filtered deck that puts prerequisites first:
 
 ## Settings
 
-- **Python executable**: path to `python3` or the `arete` executable.
+- **Python executable**: `arete`, the command `uv tool install` puts on PATH, or a full path to it (on Windows `%USERPROFILE%\.local\bin\arete.exe`). A Python with Arete installed also works: `python3` on macOS and Linux, `python` or `py` on Windows (a bare `python3` runs `python` there). Quote a path that holds a space. A `.cmd` or `.bat` file is refused; point at the `.exe`.
 - **Project root**: the Arete checkout (the folder with `pyproject.toml`). Needed only when the plugin runs Arete through `uv run`.
 - **Parallel workers**: sync workers, 1 to 16.
-- **Test configuration**: the `Test` button checks the Python executable.
+- **Test configuration**: the `Test` button runs the Python executable setting with `--help` and says whether Arete started.
 
 ## Troubleshooting
 - **Logs**: check the developer console (Cmd+Option+I) or the `run_*.log` files that `arete logs` opens.
