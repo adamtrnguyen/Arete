@@ -281,6 +281,11 @@ class ConnectNoteSession:
         return None
 
 
+def _no_such_model(error: Exception) -> bool:
+    """Whether the add-on refused because the collection holds no type of that name."""
+    return "model was not found" in str(error)
+
+
 def _model_info(name: str, info: Any) -> NoteTypeInfo | None:
     """A note type from `getModelInfo`: kind 1 is cloze."""
     if not isinstance(info, dict):
@@ -605,24 +610,17 @@ class AnkiConnectAdapter(AnkiBridge):
         return await self._invoke("findNotes", query=query)
 
     async def map_nids_to_arete_ids(self, nids: list[int]) -> list[str]:
-        """Convert NIDs to Arete IDs via tags; empty if any notesInfo chunk fails."""
-        if not nids:
-            return []
+        """The first `arete_` tag of each note; a note without one is skipped.
 
+        A failed read raises: an empty answer would build an empty queue and report
+        nothing due.
+        """
         arete_ids = []
-        try:
-            infos: list[dict] = []
-            for i in range(0, len(nids), CHUNK_SIZE):
-                infos.extend(await self._invoke("notesInfo", notes=nids[i : i + CHUNK_SIZE]))
-            for note in infos:
-                tags = note.get("tags", [])
-                for tag in tags:
-                    if tag.startswith("arete_"):
-                        arete_ids.append(tag)
-                        break
-        except Exception as e:
-            self.logger.error(f"Failed to map nids {nids} to arete ids: {e}")
-
+        for i in range(0, len(nids), CHUNK_SIZE):
+            for note in await self._invoke("notesInfo", notes=nids[i : i + CHUNK_SIZE]):
+                tag = next((t for t in note.get("tags", []) if t.startswith("arete_")), None)
+                if tag:
+                    arete_ids.append(tag)
         return arete_ids
 
     async def get_notes_in_deck(self, deck_name: str) -> dict[str, int]:
@@ -660,22 +658,25 @@ class AnkiConnectAdapter(AnkiBridge):
         return bool(res)
 
     async def get_model_styling(self, model_name: str) -> str:
+        """The note type's CSS; "" for a type Anki does not hold, as the direct backend."""
         try:
             res = await self._invoke("modelStyling", modelName=model_name)
-            if isinstance(res, dict):
-                return res.get("css", "")
-            return str(res)
-        except Exception:
-            return ""
+        except Exception as e:
+            if _no_such_model(e):
+                return ""
+            raise
+        if isinstance(res, dict):
+            return res.get("css", "")
+        return str(res)
 
     async def get_model_templates(self, model_name: str) -> dict[str, dict[str, str]]:
+        """`{"Card 1": {"Front", "Back"}}`; {} for a type Anki does not hold."""
         try:
-            res = await self._invoke("modelTemplates", modelName=model_name)
-            # AnkiConnect returns { "Card 1": { "Front": "...", "Back": "..." } }
-            return res
+            return await self._invoke("modelTemplates", modelName=model_name)
         except Exception as e:
-            self.logger.warning(f"[model] modelTemplates failed for '{model_name}': {e}")
-            return {}
+            if _no_such_model(e):
+                return {}
+            raise
 
     async def gui_browse(self, query: str) -> bool:
         """Open the Anki browser via AnkiConnect's guiBrowse action."""
@@ -687,30 +688,30 @@ class AnkiConnectAdapter(AnkiBridge):
             return False
 
     async def get_card_ids_for_arete_ids(self, arete_ids: list[str]) -> list[int]:
-        """Resolve Arete IDs to CIDs, preserving topological input order."""
-        if not arete_ids:
-            return []
-        try:
-            cids_ordered: list[int] = []
-            seen: set[int] = set()
-            CHUNK = 50
-            for start in range(0, len(arete_ids), CHUNK):
-                chunk = arete_ids[start : start + CHUNK]
-                actions = [
-                    {"action": "findCards", "params": {"query": search_term("tag", aid)}}
-                    for aid in chunk
-                ]
-                results = await self._invoke("multi", actions=actions)
-                for result in results:
-                    if isinstance(result, list):
-                        for cid in result:
-                            if cid not in seen:
-                                seen.add(cid)
-                                cids_ordered.append(cid)
-            return cids_ordered
-        except Exception as e:
-            self.logger.error(f"Failed to resolve arete IDs: {e}")
-            return []
+        """Resolve Arete IDs to CIDs, preserving topological input order.
+
+        A failed lookup raises: dropping its cards would build a shorter queue, or none,
+        with "Have you synced?" as the reason.
+        """
+        cids_ordered: list[int] = []
+        seen: set[int] = set()
+        CHUNK = 50
+        for start in range(0, len(arete_ids), CHUNK):
+            chunk = arete_ids[start : start + CHUNK]
+            actions = [
+                {"action": "findCards", "params": {"query": search_term("tag", aid)}}
+                for aid in chunk
+            ]
+            results = await self._invoke("multi", actions=actions)
+            for aid, result in zip(chunk, results, strict=True):
+                if not isinstance(result, list):
+                    error = result.get("error") if isinstance(result, dict) else result
+                    raise RuntimeError(f"looking up the cards of {aid} failed: {error}")
+                for cid in result:
+                    if cid not in seen:
+                        seen.add(cid)
+                        cids_ordered.append(cid)
+        return cids_ordered
 
     async def create_topo_deck(
         self, deck_name: str, cids: list[int], reschedule: bool = True

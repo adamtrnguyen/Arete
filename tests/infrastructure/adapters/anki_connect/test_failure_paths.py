@@ -339,9 +339,10 @@ async def test_mapping_no_nids_asks_anki_nothing():
 
 
 @pytest.mark.asyncio
-async def test_a_failed_nid_mapping_returns_nothing_rather_than_a_partial_list():
+async def test_a_failed_nid_mapping_raises_rather_than_returning_a_partial_list():
     fake = FakeAnki()
     fake.decks.add("D")
     nids = [fake.add({"Front": f"q{i}"}, deck="D", tags=[f"arete_{i:026d}"]) for i in range(3)]
     fake.fail = lambda action, _p: "locked" if action == "notesInfo" else None
-    assert await _adapter(fake).map_nids_to_arete_ids(nids) == []
+    with pytest.raises(Exception, match="locked"):
+        await _adapter(fake).map_nids_to_arete_ids(nids)

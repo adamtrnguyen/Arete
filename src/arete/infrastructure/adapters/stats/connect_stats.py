@@ -40,99 +40,96 @@ class ConnectStatsRepository(StatsRepository):
         stats_list: list[CardStatsAggregate] = []
         CHUNK_SIZE = 500
 
+        # A failed read raises: stats with a chunk missing would look complete.
         for i in range(0, len(nids), CHUNK_SIZE):
             chunk = nids[i : i + CHUNK_SIZE]
 
+            # 1. Find cards
+            query = " OR ".join([f"nid:{n}" for n in chunk])
+            card_ids = await self._invoke("findCards", query=query)
+            if not card_ids:
+                continue
+
+            # 2. Get card info
+            infos = await self._invoke("cardsInfo", cards=card_ids)
+
+            # 3. Try to get FSRS stats (custom action)
+            fsrs_map: dict[int, FsrsMemoryState] = {}
             try:
-                # 1. Find cards
-                query = " OR ".join([f"nid:{n}" for n in chunk])
-                card_ids = await self._invoke("findCards", query=query)
-                if not card_ids:
-                    continue
-
-                # 2. Get card info
-                infos = await self._invoke("cardsInfo", cards=card_ids)
-
-                # 3. Try to get FSRS stats (custom action)
-                fsrs_map: dict[int, FsrsMemoryState] = {}
-                try:
-                    fsrs_results = await self._invoke("getFSRSStats", cards=card_ids)
-                    if fsrs_results and isinstance(fsrs_results, list):
-                        for item in fsrs_results:
-                            # The add-on sends both, or None for both when the card has
-                            # no FSRS memory state.
-                            if item.get("difficulty") is None or item.get("stability") is None:
-                                continue
-                            fsrs_map[item["cardId"]] = FsrsMemoryState(
-                                stability=item["stability"],
-                                difficulty=item["difficulty"] / FSRS_DIFFICULTY_SCALE,
-                                retrievability=None,
-                            )
-                except Exception as e:
-                    logger.warning(f"[fsrs] getFSRSStats unavailable, stats lack FSRS state: {e}")
-
-                # 4. Build aggregates
-                for info in infos:
-                    cid = info.get("cardId")
-                    nid = info.get("note")
-
-                    fsrs_state = fsrs_map.get(cid)
-
-                    # Extract front from fields
-                    front = None
-                    fields = info.get("fields", {})
-                    if fields:
-                        first_key = list(fields.keys())[0]
-                        front = fields[first_key].get("value")
-
-                    stats_list.append(
-                        CardStatsAggregate(
-                            card_id=cid,
-                            note_id=nid,
-                            deck_name=info.get("deckName", "Unknown"),
-                            lapses=info.get("lapses", 0),
-                            ease=info.get("factor", 0),
-                            interval=info.get("interval", 0),
-                            due=info.get("due", 0),
-                            reps=info.get("reps", 0),
-                            fsrs=fsrs_state,
-                            last_review=None,  # Not available via cardsInfo
-                            average_time_ms=0,
-                            reviews=[],
-                            front=front,
+                fsrs_results = await self._invoke("getFSRSStats", cards=card_ids)
+                if fsrs_results and isinstance(fsrs_results, list):
+                    for item in fsrs_results:
+                        # The add-on sends both, or None for both when the card has
+                        # no FSRS memory state.
+                        if item.get("difficulty") is None or item.get("stability") is None:
+                            continue
+                        fsrs_map[item["cardId"]] = FsrsMemoryState(
+                            stability=item["stability"],
+                            difficulty=item["difficulty"] / FSRS_DIFFICULTY_SCALE,
+                            retrievability=None,
                         )
-                    )
-
             except Exception as e:
-                logger.error(f"Failed to fetch card stats chunk: {e}")
+                logger.warning(f"[fsrs] getFSRSStats unavailable, stats lack FSRS state: {e}")
+
+            # 4. Build aggregates
+            for info in infos:
+                cid = info.get("cardId")
+                nid = info.get("note")
+
+                fsrs_state = fsrs_map.get(cid)
+
+                # Extract front from fields
+                front = None
+                fields = info.get("fields", {})
+                if fields:
+                    first_key = list(fields.keys())[0]
+                    front = fields[first_key].get("value")
+
+                stats_list.append(
+                    CardStatsAggregate(
+                        card_id=cid,
+                        note_id=nid,
+                        deck_name=info.get("deckName", "Unknown"),
+                        lapses=info.get("lapses", 0),
+                        ease=info.get("factor", 0),
+                        interval=info.get("interval", 0),
+                        due=info.get("due", 0),
+                        reps=info.get("reps", 0),
+                        fsrs=fsrs_state,
+                        last_review=None,  # Not available via cardsInfo
+                        average_time_ms=0,
+                        reviews=[],
+                        front=front,
+                    )
+                )
 
         return stats_list
 
     async def get_review_history(self, cids: list[int]) -> list[ReviewEntry]:
-        """Fetch review history via AnkiConnect's getReviewsOfCards action."""
+        """Fetch review history via AnkiConnect's getReviewsOfCards action.
+
+        A failed read raises: no history would read as cards never reviewed.
+        """
         if not cids:
             return []
 
         entries: list[ReviewEntry] = []
 
-        try:
-            # getReviewsOfCards returns { cardId: [reviews...] }
-            result = await self._invoke("getReviewsOfCards", cards=cids)
-            if result and isinstance(result, dict):
-                for cid_str, reviews in result.items():
-                    cid = int(cid_str)
-                    for rev in reviews:
-                        entries.append(
-                            ReviewEntry(
-                                card_id=cid,
-                                review_time=rev.get("id", 0) // 1000,
-                                rating=rev.get("ease", 0),
-                                interval=revlog_interval_days(rev.get("ivl", 0)),
-                                last_interval=revlog_interval_days(rev.get("lastIvl", 0)),
-                            )
+        # getReviewsOfCards returns { cardId: [reviews...] }
+        result = await self._invoke("getReviewsOfCards", cards=cids)
+        if result and isinstance(result, dict):
+            for cid_str, reviews in result.items():
+                cid = int(cid_str)
+                for rev in reviews:
+                    entries.append(
+                        ReviewEntry(
+                            card_id=cid,
+                            review_time=rev.get("id", 0) // 1000,
+                            rating=rev.get("ease", 0),
+                            interval=revlog_interval_days(rev.get("ivl", 0)),
+                            last_interval=revlog_interval_days(rev.get("lastIvl", 0)),
                         )
-        except Exception as e:
-            logger.warning(f"Failed to fetch review history: {e}")
+                    )
 
         # Sort by review time
         entries.sort(key=lambda r: r.review_time)
@@ -163,40 +160,30 @@ class ConnectStatsRepository(StatsRepository):
     async def get_deck_params(self, deck_names: list[str]) -> dict[str, dict]:
         """Fetch FSRS parameters for the given decks via AnkiConnect.
 
-        Every deck is read in one request (a multi when there are several); a deck whose
-        read fails, or that Anki does not hold, gets the defaults without affecting the
-        others.
+        Every deck is read in one request (a multi when there are several). A deck Anki
+        does not hold gets the defaults; a failed read raises, since the defaults would
+        pass for the deck's own settings.
         """
-        params: dict[str, dict] = {}
         names = list(dict.fromkeys(deck_names))
         replies: list[Any] = []
-        try:
-            if len(names) == 1:
-                replies = [await self._invoke("getDeckConfig", deck=names[0])]
-            elif names:
-                actions = [
-                    {"action": "getDeckConfig", "version": 6, "params": {"deck": name}}
-                    for name in names
-                ]
-                multi = await self._invoke("multi", actions=actions)
-                if not isinstance(multi, list) or len(multi) != len(names):
-                    raise RuntimeError(f"multi answered {multi!r:.80} for {len(names)} decks")
-                for reply in multi:
-                    error = reply.get("error") if isinstance(reply, dict) else "malformed reply"
-                    replies.append(
-                        RuntimeError(f"AnkiConnect error: {error}") if error else reply["result"]
-                    )
-        except Exception as e:
-            replies = [e] * len(names)
+        if len(names) == 1:
+            replies = [await self._invoke("getDeckConfig", deck=names[0])]
+        elif names:
+            actions = [
+                {"action": "getDeckConfig", "version": 6, "params": {"deck": name}}
+                for name in names
+            ]
+            multi = await self._invoke("multi", actions=actions)
+            if not isinstance(multi, list) or len(multi) != len(names):
+                raise RuntimeError(f"multi answered {multi!r:.80} for {len(names)} decks")
+            for name, reply in zip(names, multi, strict=True):
+                error = reply.get("error") if isinstance(reply, dict) else "malformed reply"
+                if error:
+                    raise RuntimeError(f"AnkiConnect error reading deck {name!r}: {error}")
+                replies.append(reply["result"])
 
-        for deck_name, deck_config in zip(names, replies, strict=True):
-            try:
-                if isinstance(deck_config, Exception):
-                    raise deck_config
-                # The add-on answers False for a deck Anki does not hold.
-                params[deck_name] = deck_params(deck_config) if deck_config else default_params()
-            except Exception as e:
-                logger.warning(f"Failed to fetch deck params for {deck_name}: {e}")
-                params[deck_name] = default_params()
-
-        return params
+        # The add-on answers False for a deck Anki does not hold.
+        return {
+            deck_name: deck_params(deck_config) if deck_config else default_params()
+            for deck_name, deck_config in zip(names, replies, strict=True)
+        }

@@ -274,12 +274,12 @@ async def test_get_card_stats_multiple_nids(repo):
 
 
 @pytest.mark.asyncio
-async def test_get_card_stats_chunk_error_handled(repo):
-    """When an entire chunk fails, it is skipped and does not crash."""
+async def test_get_card_stats_a_failed_chunk_raises(repo):
+    """Stats with a chunk missing would look complete, so the failure is raised."""
     repo._invoke = AsyncMock(side_effect=RuntimeError("Connection refused"))
 
-    result = await repo.get_card_stats([1])
-    assert result == []
+    with pytest.raises(RuntimeError, match="Connection refused"):
+        await repo.get_card_stats([1])
 
 
 @pytest.mark.asyncio
@@ -337,11 +337,11 @@ async def test_get_review_history_success(repo):
 
 
 @pytest.mark.asyncio
-async def test_get_review_history_error_handled(repo):
-    """HTTP errors in review history return empty list."""
+async def test_get_review_history_error_raises(repo):
+    """No history would read as cards never reviewed, so the failure is raised."""
     repo._invoke = AsyncMock(side_effect=RuntimeError("Connection refused"))
-    result = await repo.get_review_history([101])
-    assert result == []
+    with pytest.raises(RuntimeError, match="Connection refused"):
+        await repo.get_review_history([101])
 
 
 @pytest.mark.asyncio
@@ -375,14 +375,12 @@ async def test_get_deck_params_success(repo):
 
 
 @pytest.mark.asyncio
-async def test_get_deck_params_fallback_on_error(repo):
-    """When getDeckConfig fails, defaults are provided."""
+async def test_get_deck_params_raises_when_getdeckconfig_fails(repo):
+    """The defaults would pass for the deck's own settings."""
     repo._invoke = AsyncMock(side_effect=RuntimeError("not available"))
 
-    result = await repo.get_deck_params(["BadDeck"])
-    assert "BadDeck" in result
-    assert result["BadDeck"]["desired_retention"] == 0.9
-    assert result["BadDeck"]["weights"] == []
+    with pytest.raises(RuntimeError, match="not available"):
+        await repo.get_deck_params(["BadDeck"])
 
 
 @pytest.mark.asyncio
@@ -450,21 +448,18 @@ async def test_get_deck_params_reads_every_deck_in_one_request(repo):
 
 
 @pytest.mark.asyncio
-async def test_get_deck_params_a_failing_deck_gets_defaults_alone(repo):
+async def test_get_deck_params_a_failing_deck_raises_with_its_name(repo):
+    """The defaults would pass for the deck's own settings."""
     configs = {"A": {"desiredRetention": 0.7, "fsrsParams6": [1]}, "B": {}}
     repo._invoke, _ = _deck_config_server(configs, failing={"B"})
 
-    result = await repo.get_deck_params(["A", "B"])
-
-    assert result["A"]["desired_retention"] == 0.7
-    assert result["B"] == {"desired_retention": 0.9, "weights": [], "sm2_retention": 0.9}
+    with pytest.raises(RuntimeError, match="deck 'B'"):
+        await repo.get_deck_params(["A", "B"])
 
 
 @pytest.mark.asyncio
-async def test_get_deck_params_a_failed_multi_gives_every_deck_defaults(repo):
+async def test_get_deck_params_a_failed_multi_raises(repo):
     repo._invoke = AsyncMock(side_effect=RuntimeError("down"))
 
-    result = await repo.get_deck_params(["A", "B"])
-
-    assert set(result) == {"A", "B"}
-    assert all(p["desired_retention"] == 0.9 for p in result.values())
+    with pytest.raises(RuntimeError, match="down"):
+        await repo.get_deck_params(["A", "B"])

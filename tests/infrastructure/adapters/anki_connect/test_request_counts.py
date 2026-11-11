@@ -526,12 +526,13 @@ async def test_due_notes_are_mapped_to_arete_ids_in_chunks_of_500():
 
 
 @pytest.mark.asyncio
-async def test_a_failed_chunk_maps_nothing_as_a_failed_request_did():
+async def test_a_failed_chunk_fails_the_mapping_as_a_failed_request_does():
     fake = FakeAnki()
     nids = [fake.add({"Front": f"f{i}"}, tags=[f"arete_{i}"]) for i in range(1200)]
     fake.fail = lambda action, params: "busy" if params.get("notes", [0])[0] == nids[500] else None
 
-    assert await _adapter(fake).map_nids_to_arete_ids(nids) == []
+    with pytest.raises(Exception, match="busy"):
+        await _adapter(fake).map_nids_to_arete_ids(nids)
 
 
 # ---------------------------------------------------------------------------

@@ -29,6 +29,19 @@ def _parse_ids(ids: str) -> list[str]:
     return [i.strip() for i in ids.split(",") if i.strip()]
 
 
+def _run_or_exit(coro):
+    """Run the coroutine; a failure prints its reason on stderr and exits 1.
+
+    Stdout stays clean for the JSON a command prints after.
+    """
+    try:
+        with stdout_to_stderr():
+            return asyncio.run(coro)
+    except Exception as e:
+        typer.secho(f"Error: {e}", fg="red", err=True)
+        raise typer.Exit(1) from e
+
+
 def _run_anki_bridge_action(action_fn, *, result_key: str | None = "ok", **config_kwargs) -> None:
     """Run an async AnkiBridge action with standard config/bridge setup.
 
@@ -45,8 +58,7 @@ def _run_anki_bridge_action(action_fn, *, result_key: str | None = "ok", **confi
         finally:
             await anki.close()
 
-    with stdout_to_stderr():
-        result = asyncio.run(_run())
+    result = _run_or_exit(_run())
     print(json.dumps(result if result_key is None else {result_key: result}))
 
 
@@ -106,8 +118,7 @@ def anki_stats(
         service = await get_stats_service(config)
         return await service.get_enriched_stats(nids_list)
 
-    with stdout_to_stderr():
-        stats = asyncio.run(run())
+    stats = _run_or_exit(run())
     result = [asdict(s) for s in stats]
 
     if json_output:

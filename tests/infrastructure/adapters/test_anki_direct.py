@@ -238,14 +238,14 @@ async def test_map_nids_to_arete_ids(adapter):
 
 
 @pytest.mark.asyncio
-async def test_map_nids_to_arete_ids_handles_missing_note(adapter, mock_repo):
-    """Error on one note should not abort remaining notes."""
+async def test_map_nids_to_arete_ids_raises_on_a_note_it_cannot_read(adapter, mock_repo):
+    """Skipping it would count it as a note without an Arete id, as on AnkiConnect."""
     col = mock_repo.col
     note1 = MagicMock(tags=["arete_01ABC"])
     col.get_note.side_effect = [note1, Exception("Note not found")]
 
-    result = await adapter.map_nids_to_arete_ids([100, 200])
-    assert result == ["arete_01ABC"]
+    with pytest.raises(Exception, match="Note not found"):
+        await adapter.map_nids_to_arete_ids([100, 200])
 
 
 # ---------------------------------------------------------------------------

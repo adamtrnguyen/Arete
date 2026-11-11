@@ -15,6 +15,15 @@ from arete.infrastructure.anki.repository import AnkiRepository
 
 logger = logging.getLogger(__name__)
 
+
+def _as_int(nid: Any) -> int | None:
+    """The note id as a number, or None for a value that is not one."""
+    try:
+        return int(nid)
+    except (TypeError, ValueError):
+        return None
+
+
 _SQL_CHUNK = 500  # ids per IN (...) query, well under SQLite's variable limit
 
 
@@ -29,7 +38,11 @@ class DirectStatsRepository(StatsRepository):
         self.anki_base = anki_base
 
     async def get_card_stats(self, nids: list[int]) -> list[CardStatsAggregate]:
-        """Fetch comprehensive stats for cards belonging to the given note IDs."""
+        """Fetch comprehensive stats for cards belonging to the given note IDs.
+
+        A failed read raises: stats with notes missing would look complete. A note id that
+        is not a number, or names no note, has no cards and no stats.
+        """
         if not nids:
             return []
 
@@ -37,8 +50,7 @@ class DirectStatsRepository(StatsRepository):
 
         with AnkiRepository(self.anki_base) as repo:
             if not repo.col:
-                logger.warning("Could not open Anki collection")
-                return []
+                raise OSError("Anki collection did not open")
 
             # Grouped reads: the cards of every note and the revlog aggregates of every
             # card, one query per chunk; deck and note lookups once per deck and note.
@@ -48,65 +60,63 @@ class DirectStatsRepository(StatsRepository):
             fronts: dict[int, str | None] = {}
 
             for nid in nids:
-                try:
-                    cids = cids_of[int(nid)]
+                key = _as_int(nid)
+                for cid in cids_of.get(key, []) if key is not None else []:
+                    card = repo.col.get_card(cast(Any, cid))
+                    if card.did not in deck_names:
+                        deck = repo.col.decks.get(card.did)
+                        deck_names[card.did] = deck["name"] if deck else "Unknown"
+                    deck_name = deck_names[card.did]
 
-                    for cid in cids:
-                        card = repo.col.get_card(cast(Any, cid))
-                        if card.did not in deck_names:
-                            deck = repo.col.decks.get(card.did)
-                            deck_names[card.did] = deck["name"] if deck else "Unknown"
-                        deck_name = deck_names[card.did]
+                    # Extract FSRS memory state
+                    fsrs_state = fsrs_state_of(card)
 
-                        # Extract FSRS memory state
-                        fsrs_state = fsrs_state_of(card)
+                    # Get front content
+                    if card.nid not in fronts:
+                        fronts[card.nid] = None
+                        try:
+                            note = repo.col.get_note(card.nid)
+                            fronts[card.nid] = note.fields[0] if note.fields else None
+                        except Exception as e:
+                            logger.debug(f"[stats] no note for cid={card.id}: {e}")
+                    front = fronts[card.nid]
 
-                        # Get front content
-                        if card.nid not in fronts:
-                            fronts[card.nid] = None
-                            try:
-                                note = repo.col.get_note(card.nid)
-                                fronts[card.nid] = note.fields[0] if note.fields else None
-                            except Exception as e:
-                                logger.debug(f"[stats] no note for cid={card.id}: {e}")
-                        front = fronts[card.nid]
+                    answer_dist, last_review, avg_time = revlog.get(cid, ({}, None, 0))
 
-                        answer_dist, last_review, avg_time = revlog.get(cid, ({}, None, 0))
-
-                        stats_list.append(
-                            CardStatsAggregate(
-                                card_id=card.id,
-                                note_id=card.nid,
-                                deck_name=deck_name,
-                                lapses=card.lapses,
-                                ease=card.factor,
-                                interval=card.ivl,
-                                due=card.due,
-                                reps=card.reps,
-                                fsrs=fsrs_state,
-                                last_review=last_review,
-                                average_time_ms=avg_time,
-                                reviews=[],  # Populated on demand via get_review_history
-                                front=front,
-                                answer_distribution=dict(answer_dist),
-                            )
+                    stats_list.append(
+                        CardStatsAggregate(
+                            card_id=card.id,
+                            note_id=card.nid,
+                            deck_name=deck_name,
+                            lapses=card.lapses,
+                            ease=card.factor,
+                            interval=card.ivl,
+                            due=card.due,
+                            reps=card.reps,
+                            fsrs=fsrs_state,
+                            last_review=last_review,
+                            average_time_ms=avg_time,
+                            reviews=[],  # Populated on demand via get_review_history
+                            front=front,
+                            answer_distribution=dict(answer_dist),
                         )
-
-                except Exception as e:
-                    logger.warning(f"Failed to fetch stats for nid={nid}: {e}")
+                    )
 
         return stats_list
 
     async def get_review_history(self, cids: list[int]) -> list[ReviewEntry]:
-        """Fetch review history from the revlog table."""
+        """Fetch review history from the revlog table.
+
+        A failed read raises: no history would read as cards never reviewed.
+        """
         if not cids:
             return []
 
         entries: list[ReviewEntry] = []
 
         with AnkiRepository(self.anki_base) as repo:
-            if not repo.col:
-                return []
+            if not repo.col or repo.col.db is None:
+                raise OSError("Anki collection did not open")
 
             # Query revlog for all cids
             # revlog columns: id, cid, usn, ease, ivl, lastIvl, factor, time, type...
@@ -122,66 +132,59 @@ class DirectStatsRepository(StatsRepository):
             placeholders = ",".join("?" * len(cids))
             query = f"SELECT {col_subset} FROM revlog WHERE cid IN ({placeholders}) ORDER BY id ASC"
 
-            try:
-                import json
+            import json
 
-                if repo.col.db is None:
-                    return []
-                for row in repo.col.db.execute(query, *cids):
-                    # Indices:
-                    # 0: id, 1: cid, 2: ease, 3: ivl, 4: lastIvl, 5: data (if the column exists)
-                    data_idx = 5
-                    s_at_review = None
-                    d_at_review = None
-                    r_at_review = None
+            for row in repo.col.db.execute(query, *cids):
+                # Indices:
+                # 0: id, 1: cid, 2: ease, 3: ivl, 4: lastIvl, 5: data (if the column exists)
+                data_idx = 5
+                s_at_review = None
+                d_at_review = None
+                r_at_review = None
 
-                    if has_data and len(row) > data_idx and row[data_idx]:
-                        try:
-                            data = json.loads(row[data_idx])
-                            s_at_review = data.get("s")
-                            d_at_review = data.get("d")
-                            r_at_review = data.get("r")
-                        except Exception as e:
-                            logger.debug(f"[stats] unreadable revlog data: {e}")
+                if has_data and len(row) > data_idx and row[data_idx]:
+                    try:
+                        data = json.loads(row[data_idx])
+                        s_at_review = data.get("s")
+                        d_at_review = data.get("d")
+                        r_at_review = data.get("r")
+                    except Exception as e:
+                        logger.debug(f"[stats] unreadable revlog data: {e}")
 
-                    entries.append(
-                        ReviewEntry(
-                            card_id=row[1],
-                            review_time=row[0] // 1000,
-                            rating=row[2],
-                            interval=revlog_interval_days(row[3]),
-                            last_interval=revlog_interval_days(row[4]),
-                            stability=s_at_review,
-                            difficulty=d_at_review,
-                            retrievability=r_at_review,
-                        )
+                entries.append(
+                    ReviewEntry(
+                        card_id=row[1],
+                        review_time=row[0] // 1000,
+                        rating=row[2],
+                        interval=revlog_interval_days(row[3]),
+                        last_interval=revlog_interval_days(row[4]),
+                        stability=s_at_review,
+                        difficulty=d_at_review,
+                        retrievability=r_at_review,
                     )
-            except Exception as e:
-                logger.warning(f"Failed to fetch review history: {e}")
+                )
 
         return entries
 
     async def get_deck_params(self, deck_names: list[str]) -> dict[str, dict]:
-        """Fetch FSRS parameters (desired retention, weights) for the given decks."""
+        """Fetch FSRS parameters (desired retention, weights) for the given decks.
+
+        A deck Anki does not hold is left out; a failed read raises.
+        """
         params: dict[str, dict] = {}
 
         with AnkiRepository(self.anki_base) as repo:
             if not repo.col:
-                return {}
+                raise OSError("Anki collection did not open")
 
             for deck_name in deck_names:
-                try:
-                    deck = repo.col.decks.by_name(deck_name)
-                    if not deck:
-                        continue
-
-                    # Get deck config (config id is 'conf')
-                    config = repo.col.decks.get_config(deck["conf"])
-                    if not config:
-                        continue
+                deck = repo.col.decks.by_name(deck_name)
+                if not deck:
+                    continue
+                # Get deck config (config id is 'conf')
+                config = repo.col.decks.get_config(deck["conf"])
+                if config:
                     params[deck_name] = deck_params(config)
-                except Exception as e:
-                    logger.warning(f"Failed to fetch params for deck {deck_name}: {e}")
 
         return params
 
@@ -189,17 +192,10 @@ class DirectStatsRepository(StatsRepository):
     def _cids_by_note(repo: AnkiRepository, nids: list) -> dict[int, list[int]]:
         """Card ids per note id, ascending, as find_cards("nid:N") returns them.
 
-        One query per chunk of notes. A chunk whose query fails is left out, so its notes
-        are logged and skipped by the caller as a failed find_cards was.
+        One query per chunk of notes; a failed query raises.
         """
         cids_of: dict[int, list[int]] = {}
-        wanted: list[int] = []
-        for nid in nids:
-            try:
-                wanted.append(int(nid))
-            except (TypeError, ValueError):
-                continue  # the caller reports it
-        wanted = list(dict.fromkeys(wanted))
+        wanted = list(dict.fromkeys(n for n in map(_as_int, nids) if n is not None))
         if repo.col is None or repo.col.db is None:
             return cids_of
         for i in range(0, len(wanted), _SQL_CHUNK):
@@ -208,11 +204,7 @@ class DirectStatsRepository(StatsRepository):
                 f"SELECT nid, id FROM cards WHERE nid IN ({','.join('?' * len(chunk))}) "
                 "ORDER BY nid, id"
             )
-            try:
-                rows = repo.col.db.all(query, *chunk)
-            except Exception as e:
-                logger.warning(f"[stats] card query failed for {len(chunk)} notes: {e}")
-                continue
+            rows = repo.col.db.all(query, *chunk)
             for nid in chunk:
                 cids_of[nid] = []
             for nid, cid in rows:
@@ -226,7 +218,7 @@ class DirectStatsRepository(StatsRepository):
         """Per card: answer counts by rating, last review (s), average time (ms).
 
         One grouped revlog query per chunk of cards. A card with no review is absent; a
-        chunk whose query fails is logged and left out, so its cards get the defaults.
+        failed query raises, since its cards would read as never reviewed.
         """
         out: dict[int, tuple[dict[int, int], int | None, int]] = {}
         if repo.col is None or repo.col.db is None:
@@ -238,11 +230,7 @@ class DirectStatsRepository(StatsRepository):
                 "SELECT cid, ease, COUNT(*), MAX(id), SUM(time) FROM revlog "
                 f"WHERE cid IN ({','.join('?' * len(chunk))}) GROUP BY cid, ease"
             )
-            try:
-                rows = repo.col.db.all(query, *chunk)
-            except Exception as e:
-                logger.warning(f"[stats] revlog query failed for {len(chunk)} cards: {e}")
-                continue
+            rows = repo.col.db.all(query, *chunk)
             totals: dict[int, list[int]] = {}  # cid -> [reviews, time, newest id]
             dists: dict[int, dict[int, int]] = {}
             for cid, ease, count, newest, time_sum in rows:

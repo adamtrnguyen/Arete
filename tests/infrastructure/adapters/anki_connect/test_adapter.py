@@ -117,12 +117,12 @@ async def test_get_model_styling():
     ],
 )
 async def test_model_error_exception(method, expected):
-    """When _invoke raises, model methods return empty defaults."""
+    """A failed request raises: an empty answer would pass for the type's own."""
     adapter = AnkiConnectAdapter()
     with patch.object(adapter, "_invoke", new_callable=AsyncMock) as mock_invoke:
         mock_invoke.side_effect = Exception("Fail")
-        res = await getattr(adapter, method)("Basic")
-        assert res == expected
+        with pytest.raises(Exception, match="Fail"):
+            await getattr(adapter, method)("Basic")
 
 
 @pytest.mark.asyncio
@@ -135,9 +135,11 @@ async def test_model_error_exception(method, expected):
 )
 @respx.mock
 async def test_model_error_api(adapter, method, expected):
-    """When AnkiConnect returns an error, model methods return empty defaults."""
+    """A type Anki does not hold reads as empty, as on the direct backend."""
     respx.post("http://mock-anki:8765").mock(
-        return_value=Response(200, json={"result": None, "error": "Model not found"})
+        return_value=Response(
+            200, json={"result": None, "error": "model was not found: NonExistent"}
+        )
     )
     res = await getattr(adapter, method)("NonExistent")
     assert res == expected
@@ -366,11 +368,12 @@ async def test_map_nids_to_arete_ids(adapter):
 @pytest.mark.asyncio
 @respx.mock
 async def test_map_nids_to_arete_ids_error(adapter):
+    """A failed read raises: an empty answer would report nothing due."""
     respx.post("http://mock-anki:8765").mock(
         return_value=Response(200, json={"result": None, "error": "Anki error"})
     )
-    arete_ids = await adapter.map_nids_to_arete_ids([1])
-    assert arete_ids == []
+    with pytest.raises(Exception, match="Anki error"):
+        await adapter.map_nids_to_arete_ids([1])
 
 
 # ---------------------------------------------------------------------------

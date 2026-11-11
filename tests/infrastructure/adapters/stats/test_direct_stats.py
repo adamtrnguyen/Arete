@@ -47,11 +47,11 @@ async def test_get_card_stats_empty_nids(mock_repo):
 
 @pytest.mark.asyncio
 async def test_get_card_stats_no_collection(mock_repo):
-    """When collection can't be opened, returns empty list."""
+    """A collection that did not open raises: no stats would read as no cards."""
     mock_repo.col = None
     repo = DirectStatsRepository(anki_base=None)
-    result = await repo.get_card_stats([1])
-    assert result == []
+    with pytest.raises(OSError, match="did not open"):
+        await repo.get_card_stats([1])
 
 
 def _db(mock_repo, cards: dict[int, list[int]], revlog: list[tuple] = ()):
@@ -227,8 +227,8 @@ async def test_get_card_stats_multiple_cards_per_note(mock_repo):
 
 
 @pytest.mark.asyncio
-async def test_get_card_stats_error_per_nid_handled(mock_repo):
-    """Exception on one NID doesn't prevent others from being fetched."""
+async def test_get_card_stats_a_card_that_cannot_be_read_raises(mock_repo):
+    """Stats with a card missing would look complete."""
     _db(mock_repo, {1: [101], 2: [201]})
     card = _make_card(cid=201, nid=2)
     mock_repo.col.get_card.side_effect = [Exception("bad card"), card]
@@ -236,14 +236,14 @@ async def test_get_card_stats_error_per_nid_handled(mock_repo):
     mock_repo.col.get_note.return_value = MagicMock(fields=["Q2"])
 
     repo = DirectStatsRepository(anki_base=None)
-    result = await repo.get_card_stats([1, 2])
-
-    assert len(result) == 1
-    assert result[0].card_id == 201
+    with pytest.raises(Exception, match="bad card"):
+        await repo.get_card_stats([1, 2])
 
 
 @pytest.mark.asyncio
-async def test_get_card_stats_a_failed_revlog_query_gives_defaults(mock_repo):
+async def test_get_card_stats_a_failed_revlog_query_raises(mock_repo):
+    """Its cards would read as never reviewed."""
+
     def all_(query, *args):
         if query.startswith("SELECT nid, id FROM cards"):
             return [(3, 301)]
@@ -254,9 +254,8 @@ async def test_get_card_stats_a_failed_revlog_query_gives_defaults(mock_repo):
     mock_repo.col.decks.get.return_value = {"name": "Default"}
     mock_repo.col.get_note.return_value = MagicMock(fields=["Q"])
 
-    [s] = await DirectStatsRepository(anki_base=None).get_card_stats([3])
-
-    assert (s.last_review, s.average_time_ms, s.answer_distribution) == (None, 0, {})
+    with pytest.raises(RuntimeError, match="locked"):
+        await DirectStatsRepository(anki_base=None).get_card_stats([3])
 
 
 # ---------- get_review_history ----------
@@ -272,11 +271,11 @@ async def test_get_review_history_empty_cids(mock_repo):
 
 @pytest.mark.asyncio
 async def test_get_review_history_no_collection(mock_repo):
-    """When collection can't be opened, returns empty list."""
+    """A collection that did not open raises: no history would read as never reviewed."""
     mock_repo.col = None
     repo = DirectStatsRepository(anki_base=None)
-    result = await repo.get_review_history([101])
-    assert result == []
+    with pytest.raises(OSError, match="did not open"):
+        await repo.get_review_history([101])
 
 
 @pytest.mark.asyncio
@@ -346,11 +345,11 @@ async def test_get_review_history_with_fsrs_data(mock_repo):
 
 @pytest.mark.asyncio
 async def test_get_deck_params_no_collection(mock_repo):
-    """When collection can't be opened, returns empty dict."""
+    """A collection that did not open raises."""
     mock_repo.col = None
     repo = DirectStatsRepository(anki_base=None)
-    result = await repo.get_deck_params(["MyDeck"])
-    assert result == {}
+    with pytest.raises(OSError, match="did not open"):
+        await repo.get_deck_params(["MyDeck"])
 
 
 @pytest.mark.asyncio

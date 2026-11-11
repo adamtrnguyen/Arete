@@ -68,24 +68,20 @@ class AnkiDirectAdapter(AnkiBridge):
             return nids
 
     async def map_nids_to_arete_ids(self, nids: list[int]) -> list[str]:
-        """The first `arete_` tag of each note in `nids`; a note without one is skipped."""
-        arete_ids: list[str] = []
+        """The first `arete_` tag of each note in `nids`; a note without one is skipped.
 
+        A note that cannot be read raises, as on AnkiConnect: skipping it would count it
+        as a note without an Arete id.
+        """
+        arete_ids: list[str] = []
         with AnkiRepository(self.anki_base) as repo:
             if not repo.col:
-                return []
-
+                raise OSError("Anki collection did not open")
             for nid in nids:
-                try:
-                    note = repo.col.get_note(cast(Any, nid))
-                    # Check tags for arete_XXX pattern
-                    for tag in note.tags:
-                        if tag.startswith("arete_"):
-                            arete_ids.append(tag)
-                            break
-                except Exception as e:
-                    self.logger.warning(f"Failed to get note {nid}: {e}")
-
+                note = repo.col.get_note(cast(Any, nid))
+                tag = next((t for t in note.tags if t.startswith("arete_")), None)
+                if tag:
+                    arete_ids.append(tag)
         return arete_ids
 
     async def get_notes_in_deck(self, deck_name: str) -> dict[str, int]:

@@ -123,19 +123,21 @@ async def test_card_ids_are_looked_up_fifty_ids_per_request():
 
 
 @pytest.mark.asyncio
-async def test_card_ids_resolve_to_nothing_when_every_lookup_errors():
+async def test_a_failed_card_lookup_raises_with_its_reason():
+    """Dropping its cards would build a shorter queue, or none, as if nothing were synced."""
     fake = Fake()
-    fake.fail = lambda action, _p: "locked" if action == "findCards" else None
-    assert await _adapter(fake).get_card_ids_for_arete_ids(["arete_a", "arete_b"]) == []
+    fake.find_cards = {search_term("tag", "arete_a"): [10]}
+    fake.fail = lambda action, p: "locked" if "arete\\_b" in p.get("query", "") else None
+    with pytest.raises(RuntimeError, match="arete_b failed: locked"):
+        await _adapter(fake).get_card_ids_for_arete_ids(["arete_a", "arete_b"])
 
 
 @pytest.mark.asyncio
-async def test_card_ids_resolve_to_nothing_when_the_multi_request_itself_fails(caplog):
+async def test_card_ids_raise_when_the_multi_request_itself_fails():
     fake = Fake()
     fake.fail = lambda action, _p: "locked" if action == "multi" else None
-    with caplog.at_level(logging.ERROR):
-        assert await _adapter(fake).get_card_ids_for_arete_ids(["arete_a"]) == []
-    assert "Failed to resolve arete IDs: locked" in caplog.text
+    with pytest.raises(Exception, match="locked"):
+        await _adapter(fake).get_card_ids_for_arete_ids(["arete_a"])
 
 
 # --- filtered deck ---
