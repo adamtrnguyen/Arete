@@ -1,0 +1,11 @@
+# LF in the repository and in every checkout, Windows included: the byte-exact tests,
+# the golden JSON and the plugin's prettier check all expect LF. Tests that need CRLF
+# write it themselves.
+* text=auto eol=lf
+
+*.db binary
+*.png binary
+*.anki2 binary
+*.apkg binary
+*.ankiaddon binary
+*.zip binary
