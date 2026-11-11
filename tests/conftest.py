@@ -1,4 +1,6 @@
+import contextlib
 import errno
+import functools
 import os
 import shutil
 import socket
@@ -6,6 +8,7 @@ import subprocess
 import sys
 from pathlib import Path
 from unittest.mock import patch
+from urllib.parse import urlsplit
 
 import pytest
 import requests
@@ -60,11 +63,15 @@ def _snapshot(root: Path) -> dict[str, tuple[int, int]]:
 # bridge would sync into the live collection. Refuse the connection at the socket, so
 # the adapter sees "Anki not running" and auto-selection falls back to the direct
 # backend under the isolated HOME. respx mocks never open a socket, so they still work.
-# The integration container listens on a random port, so it is not affected.
+#
+# One exception: a test marked `integration` may reach the Anki its session was pointed at
+# through ANKI_CONNECT_URL, and only that address. CI's host-network container listens on
+# 127.0.0.1:8765; the container the integration conftest starts itself uses a random port.
 
 _ANKICONNECT_PORT = 8765
 _REAL_CONNECT = socket.socket.connect
 _REAL_CONNECT_EX = socket.socket.connect_ex
+_INTEGRATION_DIR = (Path(__file__).parent / "integration").resolve()
 blocked_ankiconnect_attempts: list[object] = []
 
 
@@ -72,25 +79,58 @@ def _is_ankiconnect(address: object) -> bool:
     return isinstance(address, tuple) and len(address) >= 2 and address[1] == _ANKICONNECT_PORT
 
 
-def _guarded_connect(self, address):
-    if _is_ankiconnect(address):
-        blocked_ankiconnect_attempts.append(os.environ.get("PYTEST_CURRENT_TEST", address))
-        raise ConnectionRefusedError(f"tests may not reach AnkiConnect at {address}")
-    return _REAL_CONNECT(self, address)
+@functools.cache
+def configured_anki_addresses(url: str | None) -> frozenset[tuple[str, int]]:
+    """Every (host, port) a connection to `url` may use: its host as written, and resolved."""
+    if not url:
+        return frozenset()
+    parsed = urlsplit(url)
+    if not parsed.hostname:
+        return frozenset()
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    found = {(parsed.hostname, port)}
+    with contextlib.suppress(OSError):
+        found |= {(info[4][0], port) for info in socket.getaddrinfo(parsed.hostname, port)}
+    return frozenset(found)
 
 
-def _guarded_connect_ex(self, address):
-    if _is_ankiconnect(address):
-        blocked_ankiconnect_attempts.append(os.environ.get("PYTEST_CURRENT_TEST", address))
-        return errno.ECONNREFUSED
-    return _REAL_CONNECT_EX(self, address)
+def ankiconnect_refused(address: object, allowed: frozenset[tuple[str, int]]) -> bool:
+    """Whether the guard refuses a connection to `address`.
+
+    Every connection to port 8765 is refused unless `address` is in `allowed`, which is
+    empty except for a test marked `integration`, where it holds ANKI_CONNECT_URL's addresses.
+    """
+    if not _is_ankiconnect(address):
+        return False
+    return (address[0], address[1]) not in allowed
+
+
+def ankiconnect_allowed(node, environ) -> frozenset[tuple[str, int]]:
+    """The AnkiConnect addresses a test may reach: ANKI_CONNECT_URL's, if it is an integration test."""
+    if node.get_closest_marker("integration") is None:
+        return frozenset()
+    return configured_anki_addresses(environ.get("ANKI_CONNECT_URL"))
 
 
 @pytest.fixture(autouse=True)
-def _no_live_ankiconnect(monkeypatch):
-    """Refuse every socket connection to port 8765, and drop ARETE_* from the environment."""
-    monkeypatch.setattr(socket.socket, "connect", _guarded_connect)
-    monkeypatch.setattr(socket.socket, "connect_ex", _guarded_connect_ex)
+def _no_live_ankiconnect(request, monkeypatch):
+    """Refuse socket connections to port 8765 (`ankiconnect_refused`); drop ARETE_* env vars."""
+    allowed = ankiconnect_allowed(request.node, os.environ)
+
+    def connect(sock, address):
+        if ankiconnect_refused(address, allowed):
+            blocked_ankiconnect_attempts.append(os.environ.get("PYTEST_CURRENT_TEST", address))
+            raise ConnectionRefusedError(f"tests may not reach AnkiConnect at {address}")
+        return _REAL_CONNECT(sock, address)
+
+    def connect_ex(sock, address):
+        if ankiconnect_refused(address, allowed):
+            blocked_ankiconnect_attempts.append(os.environ.get("PYTEST_CURRENT_TEST", address))
+            return errno.ECONNREFUSED
+        return _REAL_CONNECT_EX(sock, address)
+
+    monkeypatch.setattr(socket.socket, "connect", connect)
+    monkeypatch.setattr(socket.socket, "connect_ex", connect_ex)
     for key in [k for k in os.environ if k.startswith("ARETE_")]:
         monkeypatch.delenv(key)
 
@@ -187,7 +227,7 @@ def pytest_sessionfinish(session, exitstatus):
 def pytest_collection_modifyitems(items):
     """Auto-apply the 'integration' marker to all tests under tests/integration/."""
     for item in items:
-        if "/integration/" in str(item.fspath):
+        if item.path.resolve().is_relative_to(_INTEGRATION_DIR):
             item.add_marker(pytest.mark.integration)
 
 
