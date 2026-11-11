@@ -120,6 +120,7 @@ uv run arete queue --deck "Research Methodology" --include-new --cross-deck
 uv run arete queue --dry-run
 
 # Print the preview as JSON: deck, due_count, total_with_prereqs, queue
+# (each queue item: position, id, title, file as a vault-relative path with "/", is_prereq)
 uv run arete queue PATH --dry-run --json
 
 # All due cards across all decks

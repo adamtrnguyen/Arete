@@ -9,7 +9,7 @@ in one place, plus the identity rules of the shared-sync design (section 2.6).
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 import pytest
 
@@ -113,6 +113,20 @@ async def test_of_two_cards_with_one_first_field_in_a_deck_the_later_is_refused(
         f"duplicate first field: c.md #2 (vault/c.md) has the same first field as note "
         f"{a.new_nid} of c.md #1 in deck 'S::Deck' (Basic). Not created: change the card's "
         "first field or its deck"
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_refusal_names_a_windows_path_with_forward_slashes():
+    """The message reads the same whichever OS ran the sync."""
+    first, second = card(1, Front="Same"), card(2, arete_id=ID2, Front="Same")
+    for item in (first, second):
+        item.source_file = item.note.source_file = PureWindowsPath(r"vault\sub\c.md")  # type: ignore[assignment]
+
+    _, b = await run(FakeNoteStore(), first, second)
+
+    assert b.error is not None and b.error.startswith(
+        "duplicate first field: c.md #2 (vault/sub/c.md) has the same first field"
     )
 
 

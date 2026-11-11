@@ -19,7 +19,7 @@ from arete.application.queue.builder import (
     build_dynamic_queue,
     build_simple_queue,
 )
-from arete.application.queue.graph_resolver import build_graph, topological_sort
+from arete.application.queue.graph_resolver import build_graph, topological_sort, vault_relative
 from arete.domain.interfaces import QueuePort
 
 # The one queue-algorithm vocabulary. The CLI exposes exactly this.
@@ -35,7 +35,7 @@ class QueueItem:
     position: int
     id: str
     title: str
-    file: str
+    file: str  # the note, vault-relative with "/" (what Obsidian's getAbstractFileByPath takes)
     is_prereq: bool
 
 
@@ -175,7 +175,7 @@ async def build_study_queue(  # noqa: PLR0913
                     position=idx,
                     id=card_id,
                     title=node.title if node else card_id,
-                    file=node.file_path if node else "",
+                    file=vault_relative(node.file_path, vault_root) if node else "",
                     is_prereq=card_id in prereq_set,
                 )
             )

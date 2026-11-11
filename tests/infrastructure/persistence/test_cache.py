@@ -1,6 +1,6 @@
 import json
 import sqlite3
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 import pytest
 
@@ -137,3 +137,13 @@ def test_opened_cache_closes_when_the_block_ends(tmp_path):
         assert cache.get_hash(Path("a.md"), 1) is None
     with pytest.raises(sqlite3.ProgrammingError):
         cache.get_hash(Path("a.md"), 1)
+
+
+def test_a_windows_path_is_keyed_with_forward_slashes(tmp_path):
+    """The key of a note is one string per note, whichever separator the OS prints."""
+    cache = ContentCache(db_path=tmp_path / "c.db")
+    cache.set_notes([(PureWindowsPath(r"C:\Vault\sub\n.md"), 1, "h", "{}")])  # type: ignore[list-item]
+
+    assert cache.get_note(PureWindowsPath("C:/Vault/sub/n.md"), 1) == ("h", "{}")  # type: ignore[arg-type]
+    [(key,)] = cache._conn.execute("SELECT path FROM cards").fetchall()
+    assert key == "C:/Vault/sub/n.md"

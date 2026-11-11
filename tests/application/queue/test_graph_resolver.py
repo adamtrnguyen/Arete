@@ -1,7 +1,7 @@
 """Tests for graph resolver and queue builder."""
 
 import pathlib
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 import pytest
 from hypothesis import given, settings
@@ -16,6 +16,7 @@ from arete.application.queue.graph_resolver import (
     find_connected_components,
     find_isolated_nodes,
     topological_sort,
+    vault_relative,
 )
 from arete.domain.graph import CardNode, DependencyGraph
 
@@ -856,3 +857,45 @@ def test_the_pre_check_never_skips_a_note_the_parser_would_accept(lines, bom):
         assert body == "\n".join(split[closing + 1 :])
     if not _may_hold_cards(text):
         assert not (isinstance(meta, dict) and meta.get("arete") is True)
+
+
+# --- Paths in output: vault-relative, with "/", on every OS ---
+
+
+@pytest.mark.parametrize(
+    ("root", "path"),
+    [
+        (PurePosixPath("/Users/jo/Obsidian Vault"), "/Users/jo/Obsidian Vault/sub dir/Cramér.md"),
+        (
+            PureWindowsPath(r"C:\Users\Jo Doe\Obsidian Vault"),
+            r"C:\Users\Jo Doe\Obsidian Vault\sub dir\Cramér.md",
+        ),
+    ],
+    ids=["posix", "windows"],
+)
+def test_a_note_is_named_by_the_same_relative_path_on_every_os(root, path):
+    assert vault_relative(path, root) == "sub dir/Cramér.md"
+
+
+def test_a_path_outside_the_vault_is_named_as_it_is():
+    assert vault_relative("/elsewhere/a.md", PurePosixPath("/vault")) == "/elsewhere/a.md"
+
+
+def test_graph_check_names_files_relative_to_the_vault(tmp_path: Path):
+    (tmp_path / "sub").mkdir()
+    card = (
+        "cards:\n  - id: arete_{0}\n    Front: q\n    Back: a\n    deps:\n      requires: [{1}]\n"
+    )
+    (tmp_path / "sub" / "a.md").write_text(
+        "---\narete: true\ndeck: D\n" + card.format("A", "missing") + "---\n", encoding="utf-8"
+    )
+    (tmp_path / "sub" / "b.md").write_text(
+        "---\narete: true\ndeck: D\n" + card.format("A", "x") + "---\n", encoding="utf-8"
+    )
+    (tmp_path / "bad.md").write_bytes(b"\xff\xfe not utf-8 at all")
+
+    health = check_graph_health(tmp_path)
+
+    assert [e.file for e in health.unresolved_refs] in (["sub/a.md"], ["sub/b.md"])
+    assert sorted(health.duplicate_ids[0].files) == ["sub/a.md", "sub/b.md"]
+    assert [s.split(":")[0] for s in health.skipped_files] == ["bad.md"]

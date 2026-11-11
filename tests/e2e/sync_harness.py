@@ -545,7 +545,7 @@ def _error(text: str | None, vault: Path) -> str | None:
     """The error with the run's vault path and every note id masked."""
     if text is None:
         return None
-    for root in (str(vault.resolve()), str(vault)):
+    for root in (str(vault.resolve()), str(vault), vault.resolve().as_posix(), vault.as_posix()):
         text = text.replace(root, "<vault>")
     return re.sub(r"note \d+", "note <id>", re.sub(r"\d{10,}", "<id>", text))
 

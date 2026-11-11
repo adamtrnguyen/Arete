@@ -9,8 +9,9 @@ from __future__ import annotations
 
 import logging
 import shutil
+import sys
 import unicodedata
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -291,6 +292,8 @@ SOURCE_CASES = [
 def test_the_parser_writes_obsidian_source(
     tmp_path: Path, vault_name, rel, line, card_id, field, _addon
 ):
+    if sys.platform == "win32" and "|" in vault_name:
+        pytest.skip("Windows forbids | in a folder name, so no vault can be named so")
     vault = tmp_path / vault_name
     vault.mkdir()
     card: dict[str, Any] = {"Front": "Q", "Back": "A"}
@@ -300,6 +303,23 @@ def test_the_parser_writes_obsidian_source(
         card["id"] = card_id
     notes, _, _ = _parse(vault, rel, {"deck": "D", "cards": [card]})
     assert notes[0].fields["_obsidian_source"] == field
+
+
+@pytest.mark.parametrize(
+    ("root", "note"),
+    [
+        (PurePosixPath("/Users/jo/Obsidian Vault"), "sub dir/Cramér.md"),
+        (PureWindowsPath(r"C:\Users\Jo Doe\Obsidian Vault"), r"sub dir\Cramér.md"),
+    ],
+    ids=["posix", "windows"],
+)
+def test_the_obsidian_source_is_the_same_whichever_os_synced(root, note):
+    """A card synced from Windows and from macOS gets one `_obsidian_source` value."""
+    parser = MarkdownParser(root, root / "media")  # type: ignore[arg-type]
+    assert (
+        parser.source_field(root / note, 12, ID)  # type: ignore[arg-type]
+        == f"Obsidian Vault|sub dir/Cramér.md|12|{ID}"
+    )
 
 
 @pytest.mark.parametrize(

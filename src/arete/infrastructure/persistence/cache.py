@@ -12,6 +12,11 @@ from arete.domain.interfaces import ContentCache as ContentCachePort
 SCHEMA_VERSION = 2
 
 
+def _key(md_path: Path) -> str:
+    """A note's row key: its path as given, with `/` separators on every OS."""
+    return Path(md_path).as_posix()
+
+
 def cache_path(configured: Path | None = None) -> Path:
     """The cache database a run uses: the configured path, else ~/.config/arete/cache.db."""
     return configured if configured is not None else Path.home() / ".config/arete/cache.db"
@@ -71,7 +76,7 @@ class ContentCache(ContentCachePort):
     def get_hash(self, md_path: Path, card_index: int) -> str | None:
         with self._lock:
             cur = self._conn.execute(
-                "SELECT hash FROM cards WHERE path = ? AND idx = ?", (str(md_path), card_index)
+                "SELECT hash FROM cards WHERE path = ? AND idx = ?", (_key(md_path), card_index)
             )
             row = cur.fetchone()
             return row[0] if row else None
@@ -80,7 +85,7 @@ class ContentCache(ContentCachePort):
         with self._lock:
             cur = self._conn.execute(
                 "SELECT hash, note_json FROM cards WHERE path = ? AND idx = ?",
-                (str(md_path), card_index),
+                (_key(md_path), card_index),
             )
             row = cur.fetchone()
             return (row[0], row[1]) if row else None
@@ -91,7 +96,7 @@ class ContentCache(ContentCachePort):
         All rows are written or, if any write fails, none: a failure can only leave
         cards unrecorded, so the next sync checks them again.
         """
-        params = [(str(p), idx, h, nj) for p, idx, h, nj in rows]
+        params = [(_key(p), idx, h, nj) for p, idx, h, nj in rows]
         if not params:
             return
         with self._lock, self._conn:
@@ -113,7 +118,7 @@ class ContentCache(ContentCachePort):
                   AND size = ?
                   AND ABS(mtime - ?) < 0.001
                 """,
-                (str(md_path), size, mtime),
+                (_key(md_path), size, mtime),
             )
             row = cur.fetchone()
             if row:
@@ -138,13 +143,13 @@ class ContentCache(ContentCachePort):
             self._conn.execute(
                 "INSERT OR REPLACE INTO files (path, hash, mtime, size, meta_json) "
                 "VALUES (?, ?, ?, ?, ?)",
-                (str(md_path), current_hash, mtime, size, json_str),
+                (_key(md_path), current_hash, mtime, size, json_str),
             )
             self._conn.commit()
 
     def set_file_metas(self, rows: Iterable[tuple[Path, str, dict[str, Any], float, int]]) -> None:
         """Write many (path, hash, meta, mtime, size) rows in one transaction, all or none."""
-        params = [(str(p), h, mtime, size, json.dumps(meta)) for p, h, meta, mtime, size in rows]
+        params = [(_key(p), h, mtime, size, json.dumps(meta)) for p, h, meta, mtime, size in rows]
         if not params:
             return
         with self._lock, self._conn:

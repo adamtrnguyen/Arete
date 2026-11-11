@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePath
 from typing import TYPE_CHECKING, Any
 
 from arete.application.utils.common import sanitize
@@ -473,6 +473,19 @@ def _in_deck(card_deck: str, deck: str) -> bool:
     return card_deck == deck or card_deck.startswith(deck + "::")
 
 
+def vault_relative(path: str, vault_root: PurePath) -> str:
+    """`path` as the vault-relative string, with `/`, that every output names a note by.
+
+    The same note gets the same string on every OS, `folder/Note.md`, which is the path
+    Obsidian's API takes. `path` is read with the vault root's flavour (Windows or POSIX).
+    A path outside the vault is returned as it is.
+    """
+    try:
+        return type(vault_root)(path).relative_to(vault_root).as_posix()
+    except ValueError:
+        return path
+
+
 def check_graph_health(
     vault_root: Path,
     deck_filter: str | None = None,
@@ -482,7 +495,11 @@ def check_graph_health(
     `deck_filter` restricts the report to that deck and its subdecks.
     """
     full = build_graph(vault_root)
-    skipped = [f"{path}: {err}" for path, err in full.skipped_files]
+
+    def rel(path: str) -> str:
+        return vault_relative(path, vault_root)
+
+    skipped = [f"{rel(path)}: {err}" for path, err in full.skipped_files]
 
     graph = filter_graph_by_deck(full, deck_filter) if deck_filter else full
     scope = set(graph.nodes)
@@ -501,7 +518,7 @@ def check_graph_health(
                 CycleEntry(
                     card_id=cid,
                     title=full.nodes[cid].title if cid in full.nodes else cid,
-                    file=full.nodes[cid].file_path if cid in full.nodes else "unknown",
+                    file=rel(full.nodes[cid].file_path) if cid in full.nodes else "unknown",
                 )
                 for cid in cycle
             ]
@@ -512,7 +529,7 @@ def check_graph_health(
         IsolatedEntry(
             card_id=cid,
             title=graph.nodes[cid].title,
-            file=graph.nodes[cid].file_path,
+            file=rel(graph.nodes[cid].file_path),
         )
         for cid in isolated_ids
     ]
@@ -526,7 +543,7 @@ def check_graph_health(
                 UnresolvedEntry(
                     card_id=cid,
                     title=node.title,
-                    file=node.file_path,
+                    file=rel(node.file_path),
                     missing_refs=refs,
                 )
             )
@@ -537,7 +554,7 @@ def check_graph_health(
     ]
 
     duplicates = [
-        DuplicateIdEntry(card_id=cid, files=files)
+        DuplicateIdEntry(card_id=cid, files=[rel(f) for f in files])
         for cid, files in sorted(full.duplicate_ids.items())
         if cid in scope or not deck_filter
     ]
@@ -590,10 +607,7 @@ def export_graph(vault_root: Path) -> GraphExport:
     graph = build_graph(vault_root)
 
     def rel(path: str) -> str:
-        try:
-            return Path(path).relative_to(vault_root).as_posix()
-        except ValueError:
-            return path
+        return vault_relative(path, vault_root)
 
     nodes = [
         GraphExportNode(id=n.id, title=n.title, file=rel(n.file_path), line=n.line_number)

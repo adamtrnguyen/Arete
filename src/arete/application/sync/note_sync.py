@@ -686,9 +686,9 @@ class NoteSync:
         else:
             what = f"note {holder}"
         return (
-            f"duplicate first field: {card.label} ({card.work.source_file}) has the same "
-            f"first field as {what} in deck '{deck}' ({model}). Not created: change the "
-            "card's first field or its deck"
+            f"duplicate first field: {card.label} ({card.work.source_file.as_posix()}) has "
+            f"the same first field as {what} in deck '{deck}' ({model}). Not created: change "
+            "the card's first field or its deck"
         )
 
     def _new_note(self, card: _Card) -> NewNote | None:
@@ -838,7 +838,9 @@ class NoteSync:
             return self._planned(card)
         if card.error is not None or card.nid is None:
             error = card.error or "no decision was reached for this card"
-            self._log.error(f"ERR file={work.source_file} card={work.source_index} error={error}")
+            self._log.error(
+                f"ERR file={work.source_file.as_posix()} card={work.source_index} error={error}"
+            )
             return UpdateItem(
                 work.source_file, work.source_index, None, None, False, error, work.note
             )
@@ -847,7 +849,7 @@ class NoteSync:
         if card.how != "update":
             new_cid = str(cids[0]) if cids else None
             self._log.info(
-                f"[{'heal' if card.how == 'adopt' else 'create'}] {work.source_file} "
+                f"[{'heal' if card.how == 'adopt' else 'create'}] {work.source_file.as_posix()} "
                 f"#{work.source_index} -> nid={card.nid} cid={new_cid}"
             )
         elif work.note.cid and cids and work.note.cid.strip() not in {str(c) for c in cids}:
