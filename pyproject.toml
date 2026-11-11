@@ -1,6 +1,6 @@
 [project]
 name = "arete"
-version = "3.0.1"
+version = "4.0.0"
 description = "A robust, fast, and feature-rich CLI for syncing Obsidian vault to Anki."
 readme = "README.md"
 license = "GPL-3.0"

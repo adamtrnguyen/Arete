@@ -1,5 +1,85 @@
 # Changelog
 
+## 4.0.0
+
+The vault is the single source of truth, and the command line is the single interface.
+A sync now sets Anki to what the vault says on every run, the plugin runs the `arete`
+command for everything, and the HTTP and MCP servers are gone. Several of the fixes below
+could lose or duplicate notes; update the add-on and restart Anki with this release.
+
+### Breaking
+
+- **A sync overwrites Anki.** For every card it sets Anki's fields, tags, deck and note
+  type to the vault's, on every sync. An edit made in Anki is overwritten. Anki's own
+  `leech` and `marked` tags stay.
+- **A card is its id.** A card is matched by its Anki note id, then its Arete id tag, then
+  its first field, and created only when none matches. A card without its id is a new
+  card. Two cards with the same Arete id are both refused. A card whose first field
+  matches another note in the same deck and note type is refused, on both backends.
+- **Tags are stored as Anki stores them.** A tag with a space becomes two tags.
+- **The servers are removed:** `arete serve daemon` (the HTTP server and every route),
+  `arete serve mcp` and the MCP tools. Use the CLI; its JSON commands are listed under
+  Added. The plugin's "Execution mode", "Server port" and auto-reload settings are gone.
+- **The add-on needs Anki 26.8.1 or later**, and a sync stops with an instruction to update
+  when the installed add-on lacks an action it needs. The deprecated `webCorsOrigin`
+  setting is ignored; use `webCorsOriginList`.
+- **The plugin needs Obsidian 1.7.2 or later.** It sets no default hotkey, and its command
+  names are in sentence case.
+- **One sync runs at a time.** A second one does nothing and exits with status 75.
+- **A single-file sync needs a vault:** a folder holding `.obsidian` above the file, or
+  `vault_root` in the config. Otherwise it is refused.
+- **`--algo simple` is removed.** Use `static`; the result is the same.
+- **Paths in output are vault-relative with `/`** on every system: the queue's JSON `file`
+  and `arete graph check`.
+- The plugin reads a card's Anki ids from its `anki:` block only; a flat `nid:` beside
+  the fields is not read.
+- `scripts/install-windows.ps1` and the `just dev-backend` recipe are removed.
+
+### Fixed
+
+- **A sync reformatted your notes.** Writing ids back re-serialised the whole frontmatter,
+  dropping comments, changing quoting and turning `|` into `|-`. It now edits only the id
+  lines; every other byte, line endings included, stays.
+- **With Anki open, a sync could take over a hand-made note.** Anki's search treats `_`
+  and `*` as wildcards, so a search for note type `My_Type` also matched `My Type`, and
+  the match was converted and overwritten. Names are escaped and results filtered.
+- **Two syncs at once created every new card twice.**
+- **A confirmed prune could delete a note the vault still declares,** when the card's ids
+  had not been written back and the card failed in that run. A note whose Arete id the
+  vault declares is never an orphan, and a run with any error deletes nothing.
+- **"Sync current file" and sync on save wrote the wrong vault into Anki,** and later
+  full syncs kept it. The plugin passes the vault to every command, and cached renders
+  are keyed by the vault they were made for.
+- **A killed sync could leave a note empty.** Every note write replaces the file whole.
+- **Card stats did not load while Anki was open,** and FSRS weights were always empty:
+  they were read from a key Anki does not write.
+- **A failed Anki read was reported as "nothing due".** It is reported as an error.
+- **The plugin's prune command never deleted** and reported success. It now shows what
+  would be deleted and asks.
+- **Clicking a card in the queue builder did nothing.**
+- **Windows:** `vault format` and `vault fix` turned every note's line endings into CRLF;
+  `vault check` and `vault fix` crashed printing to a console; a sync left its log and
+  cache open, so they could not be cleaned up; the plugin could not start `python3`.
+- The plugin no longer marks a sync as done when it failed, and tells you why it failed:
+  add-on out of date, Anki not reachable, Arete or Python not found.
+- A card with no review data shows as neutral, not healthy, and a deck row takes its
+  colour from its cards instead of a summed lapse count.
+
+### Added
+
+- **`arete sync --json`** prints one JSON report of the run, the prune preview included.
+- **`arete anki decks`, `arete queue PATH --dry-run --json` and `arete anki queue-deck`,**
+  which the plugin uses for the deck list and the queue builder.
+- **`arete vault check` reports an Arete id declared twice in one file.**
+- **Windows is tested in CI,** for the Python package and for the plugin.
+- The plugin follows Obsidian's own look, and low retrievability is a warning.
+
+### Changed
+
+- The `anki` library is pinned to 26.8.1, the version the desktop app runs.
+- The add-on calls Anki's current API throughout, so it prints no deprecation warnings.
+- Dependency updates clear the security alerts in shipped code (`certifi`, `urllib3`).
+
 ## 3.0.1
 
 Found by fact-checking 3.0.0. Two bugs could lose data; update before your next
