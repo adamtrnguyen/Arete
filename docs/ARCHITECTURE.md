@@ -42,7 +42,7 @@ src/arete/
 │   ├── utils/                    
 │   │   ├── common.py              to_list, sanitize, detect_anki_paths
 │   │   ├── consts.py
-│   │   ├── fs.py                  iter_markdown_files, file_md5
+│   │   ├── fs.py                  replace_file, replace_text, iter_markdown_files...
 │   │   ├── logging.py             LogEntry, RunRecorder, setup_logging...
 │   │   ├── media.py               build_filename_index, FilenameIndex, transform_images_in_text...
 │   │   ├── text.py                normalize_filename, parse_frontmatter, UniqueKeyLoader...
@@ -86,9 +86,9 @@ src/arete/
 
 | Layer | Modules | Lines | May import |
 |---|---|---|---|
-| `interface` | 4 | 990 | application, composition |
-| `composition` | 2 | 227 | application, infrastructure, domain |
-| `application` | 24 | 5965 | domain (ports only) |
+| `interface` | 4 | 991 | application, composition |
+| `composition` | 2 | 267 | application, infrastructure, domain |
+| `application` | 24 | 6018 | domain (ports only) |
 | `infrastructure` | 11 | 2195 | domain |
 | `domain` | 9 | 869 | nothing in arete |
 

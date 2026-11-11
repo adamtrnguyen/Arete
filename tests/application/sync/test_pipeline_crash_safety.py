@@ -66,14 +66,16 @@ def test_a_failed_id_rewrite_sends_none_of_the_files_cards(vault, monkeypatch):
     head, tail = path.read_text().replace("Back: a\n", "Back: a edited\n", 1).rsplit("---\n", 1)
     path.write_text(head + "- Front: new\n  Back: x\n---\n" + tail)
 
-    real_write = Path.write_bytes
+    import arete.application.sync.id_writeback as id_writeback
 
-    def read_only(self: Path, *args: Any, **kwargs: Any) -> int:
-        if self == path:
+    real_write = id_writeback.replace_file
+
+    def read_only(target: Path, data: bytes) -> None:
+        if target == path:
             raise OSError("read-only file system")
-        return real_write(self, *args, **kwargs)
+        real_write(target, data)
 
-    monkeypatch.setattr(Path, "write_bytes", read_only)
+    monkeypatch.setattr(id_writeback, "replace_file", read_only)
     sent_before = len(anki.sent)
     stats = run(root, anki, cache, prune=True)
 

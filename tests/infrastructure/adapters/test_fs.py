@@ -1,6 +1,13 @@
+import os
+import signal
+import stat
+import subprocess
+import sys
 from unittest.mock import patch
 
-from arete.application.utils.fs import file_md5, iter_markdown_files
+import pytest
+
+from arete.application.utils.fs import file_md5, iter_markdown_files, replace_file
 
 
 def test_iter_markdown_files_simple(tmp_path):
@@ -117,3 +124,106 @@ def test_file_md5(tmp_path):
     f.write_text("hello world!")
     h2 = file_md5(f)
     assert h1 != h2
+
+
+# ---------------------------------------------------------------------------
+# replace_file: every write of a vault note
+# ---------------------------------------------------------------------------
+
+NOTE = b"---\r\narete: true\r\ncards: []\r\n---\r\n\r\nBody \xc3\xa9.\r\n"
+
+
+def _leftovers(folder):
+    return sorted(p.name for p in folder.iterdir() if p.name.endswith(".tmp"))
+
+
+def test_the_new_bytes_replace_the_note_exactly(tmp_path):
+    note = tmp_path / "Bayes.md"
+    note.write_bytes(b"old")
+
+    replace_file(note, NOTE)
+
+    assert note.read_bytes() == NOTE, "CRLF and UTF-8 kept byte for byte"
+    assert _leftovers(tmp_path) == []
+
+
+def test_a_write_that_fails_midway_leaves_the_note_as_it_was(tmp_path, monkeypatch):
+    note = tmp_path / "Bayes.md"
+    note.write_bytes(NOTE)
+
+    def broken_fsync(_fd):
+        raise OSError("disk full")
+
+    monkeypatch.setattr("arete.application.utils.fs.os.fsync", broken_fsync)
+    with pytest.raises(OSError, match="disk full"):
+        replace_file(note, b"half")
+
+    assert note.read_bytes() == NOTE
+    assert _leftovers(tmp_path) == [], "the temp file is removed"
+
+
+def test_the_notes_permissions_are_kept(tmp_path):
+    note = tmp_path / "Bayes.md"
+    note.write_bytes(NOTE)
+    os.chmod(note, 0o640)
+
+    replace_file(note, b"new")
+
+    assert stat.S_IMODE(note.stat().st_mode) == 0o640
+
+
+@pytest.mark.skipif(os.name == "posix" and os.geteuid() == 0, reason="root ignores file modes")
+def test_a_read_only_note_is_refused_and_left_alone(tmp_path):
+    """Replacing it would succeed in a writable folder; writing it in place would not."""
+    note = tmp_path / "Bayes.md"
+    note.write_bytes(NOTE)
+    os.chmod(note, 0o444)
+    try:
+        with pytest.raises(PermissionError):
+            replace_file(note, b"new")
+    finally:
+        os.chmod(note, 0o644)
+
+    assert note.read_bytes() == NOTE
+    assert _leftovers(tmp_path) == []
+
+
+def test_a_symlinked_note_is_written_at_its_target(tmp_path):
+    target = tmp_path / "real.md"
+    target.write_bytes(NOTE)
+    link = tmp_path / "Bayes.md"
+    link.symlink_to(target)
+
+    replace_file(link, b"new")
+
+    assert link.is_symlink() and target.read_bytes() == b"new"
+
+
+KILLED_MID_WRITE = """
+import os, sys, time
+from pathlib import Path
+import arete.application.utils.fs as fs
+
+def slow_fsync(fd):
+    print("writing", flush=True)
+    time.sleep(60)
+
+fs.os.fsync = slow_fsync
+fs.replace_file(Path(sys.argv[1]), b"x" * 100000)
+"""
+
+
+@pytest.mark.skipif(os.name != "posix", reason="SIGKILL")
+def test_a_kill_in_the_middle_of_the_write_leaves_the_note_whole(tmp_path):
+    note = tmp_path / "Bayes.md"
+    note.write_bytes(NOTE)
+    child = subprocess.Popen(
+        [sys.executable, "-c", KILLED_MID_WRITE, str(note)], stdout=subprocess.PIPE, text=True
+    )
+    try:
+        assert child.stdout is not None and child.stdout.readline().strip() == "writing"
+    finally:
+        child.send_signal(signal.SIGKILL)
+        child.wait(timeout=10)
+
+    assert note.read_bytes() == NOTE

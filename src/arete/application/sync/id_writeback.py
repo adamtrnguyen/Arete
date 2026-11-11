@@ -29,6 +29,7 @@ from typing import Any
 import yaml
 
 from arete.application.utils.common import sanitize
+from arete.application.utils.fs import replace_file
 from arete.application.utils.text import (
     _split_frontmatter,
     parse_frontmatter,
@@ -68,8 +69,11 @@ def read_exact(path: Path) -> str:
 
 
 def write_exact(path: Path, text: str) -> None:
-    """Write `text` with no newline translation, so a CRLF file stays CRLF."""
-    path.write_bytes(text.encode("utf-8"))
+    """Write `text` with no newline translation, so a CRLF file stays CRLF.
+
+    The note is replaced whole (`replace_file`): a kill mid-write leaves it as it was.
+    """
+    replace_file(path, text.encode("utf-8"))
 
 
 class _Refused(Exception):

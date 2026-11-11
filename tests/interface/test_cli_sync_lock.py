@@ -1,18 +1,28 @@
-"""`arete sync` while another sync holds the lock: exit 75, one line on stderr, nothing touched.
+"""`arete sync` against another process, both real: the lock, and SIGTERM.
 
-Both are real processes: one holds the lock on the cache, the other is the CLI. The CLI is
-pointed at throwaway paths for everything (HOME, cache, logs, Anki, media) and at a closed
-port for AnkiConnect, so it can reach no real collection whatever happens.
+While another process holds the lock on the cache, the CLI exits 75 with one line on
+stderr and touches nothing. It is pointed at throwaway paths for everything (HOME, cache,
+logs, Anki, media) and at a closed port for AnkiConnect, so it can reach no real
+collection whatever happens. Sent SIGTERM, a sync stops at its next await, its cleanup
+runs, and it exits 143.
 """
 
 from __future__ import annotations
 
 import os
+import signal
 import subprocess
 import sys
 from pathlib import Path
 
-from arete.composition.orchestrator import EXIT_SYNC_LOCKED, SYNC_LOCKED_MESSAGE
+import pytest
+
+from arete.composition.orchestrator import (
+    EXIT_SYNC_LOCKED,
+    EXIT_SYNC_TERMINATED,
+    SYNC_LOCKED_MESSAGE,
+    SYNC_TERMINATED_MESSAGE,
+)
 from arete.infrastructure.persistence.sync_lock import lock_path_for
 from tests.infrastructure.persistence.test_sync_lock import held_by_another_process
 
@@ -57,3 +67,38 @@ def test_a_sync_refused_by_the_lock_exits_75_and_touches_nothing(tmp_path: Path)
     assert not Path(env["ARETE_CACHE_DB"]).exists(), "the cache was not opened"
     assert not (tmp_path / "logs").exists(), "no run was logged"
     assert not (tmp_path / "anki").exists(), "Anki was not opened"
+
+
+TERMINATED_WHILE_RUNNING = """
+import asyncio
+from unittest.mock import patch
+from arete.composition import orchestrator
+
+async def running(config, **kwargs):
+    try:
+        print("running", flush=True)
+        await asyncio.sleep(60)
+    finally:
+        print("cleaned up", flush=True)
+
+with patch.object(orchestrator, "execute_sync", running):
+    asyncio.run(orchestrator.run_sync_logic(object()))
+"""
+
+
+@pytest.mark.skipif(os.name != "posix", reason="SIGTERM is a POSIX signal")
+def test_sigterm_stops_the_sync_at_an_await_with_its_cleanup_run(tmp_path: Path):
+    child = subprocess.Popen(
+        [sys.executable, "-c", TERMINATED_WHILE_RUNNING],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env={**os.environ, "HOME": str(tmp_path)},
+    )
+    assert child.stdout is not None and child.stdout.readline().strip() == "running"
+    child.send_signal(signal.SIGTERM)
+    out, err = child.communicate(timeout=30)
+
+    assert child.returncode == EXIT_SYNC_TERMINATED, err
+    assert "cleaned up" in out
+    assert SYNC_TERMINATED_MESSAGE in err

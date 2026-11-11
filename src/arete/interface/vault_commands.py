@@ -63,6 +63,7 @@ def fix(
     path: Annotated[Path, typer.Argument(help="Path to the markdown file to fix.")],
 ):
     """Attempt to automatically fix common format errors in a file."""
+    from arete.application.utils.fs import replace_text
     from arete.application.utils.text import apply_fixes
     from arete.application.validation import validate_arete_file
 
@@ -80,7 +81,7 @@ def fix(
                 "  (Note: File still has validation errors that cannot be auto-fixed)", fg="yellow"
             )
     else:
-        path.write_text(fixed_content, encoding="utf-8")
+        replace_text(path, fixed_content)
         typer.secho("✨ File auto-fixed!", fg="green")
         typer.echo("  - Replaced tabs with spaces")
         typer.echo("  - Added missing cards list (if applicable)")

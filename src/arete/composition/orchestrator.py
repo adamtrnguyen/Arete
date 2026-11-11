@@ -1,8 +1,12 @@
 """Sync orchestration — wires up services and runs the pipeline."""
 
+import asyncio
+import contextlib
 import logging
 import platform
+import signal
 import sys
+from collections.abc import Iterator
 from contextlib import ExitStack
 from pathlib import Path
 
@@ -20,6 +24,14 @@ from arete.infrastructure.persistence.sync_lock import LockHeld, exclusive_lock,
 # The exit status of a sync refused because another sync holds the lock (EX_TEMPFAIL).
 EXIT_SYNC_LOCKED = 75
 SYNC_LOCKED_MESSAGE = "Another Arete sync is running, so this sync did nothing. Run it again after."
+
+
+# The exit status of a sync stopped by SIGTERM (128 + 15, as a shell reports it).
+EXIT_SYNC_TERMINATED = 143
+SYNC_TERMINATED_MESSAGE = (
+    "Sync terminated: it stopped between steps, so every file it wrote is whole. "
+    "Run it again to finish."
+)
 
 
 class SyncLocked(Exception):
@@ -120,11 +132,17 @@ async def run_sync_logic(
     """Orchestrates the sync process using the provided config.
 
     A sync refused by the lock prints its one-line message on stderr and exits with
-    `EXIT_SYNC_LOCKED`, so a caller can tell it from a failed sync (exit 1).
+    `EXIT_SYNC_LOCKED`, so a caller can tell it from a failed sync (exit 1). SIGTERM stops
+    the sync at its next await (`_sigterm_cancels`): cleanup runs, the lock is released,
+    and it exits with `EXIT_SYNC_TERMINATED`.
     """
     logger = logging.getLogger("arete.main")
     try:
-        stats = await execute_sync(config, confirm_prune=confirm_prune, prompt=prompt)
+        with _sigterm_cancels():
+            stats = await execute_sync(config, confirm_prune=confirm_prune, prompt=prompt)
+    except asyncio.CancelledError as e:
+        print(SYNC_TERMINATED_MESSAGE, file=sys.stderr)
+        raise SystemExit(EXIT_SYNC_TERMINATED) from e
     except SyncLocked as e:
         print(e, file=sys.stderr)
         raise SystemExit(EXIT_SYNC_LOCKED) from e
@@ -143,3 +161,25 @@ async def run_sync_logic(
 
     if stats.total_errors and not config.keep_going:
         raise SyncFailedError(f"{stats.total_errors} errors during sync")
+
+
+@contextlib.contextmanager
+def _sigterm_cancels() -> Iterator[None]:
+    """While the block runs, SIGTERM cancels the running task instead of killing the process.
+
+    The cancellation lands at the task's next await. No vault write awaits, so a file is
+    never left half written by it, and `finally` blocks (the bridge, the cache, the lock)
+    run. Where the loop cannot take a signal handler (Windows, or off the main thread)
+    SIGTERM keeps its default.
+    """
+    loop = asyncio.get_running_loop()
+    task = asyncio.current_task()
+    try:
+        loop.add_signal_handler(signal.SIGTERM, task.cancel if task else lambda: None)
+    except (NotImplementedError, RuntimeError, ValueError):
+        yield
+        return
+    try:
+        yield
+    finally:
+        loop.remove_signal_handler(signal.SIGTERM)

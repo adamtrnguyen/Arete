@@ -14,7 +14,7 @@ from arete.application.sync.id_writeback import (
     write_exact,
 )
 from arete.application.utils.common import sanitize
-from arete.application.utils.fs import iter_markdown_files
+from arete.application.utils.fs import iter_markdown_files, replace_text
 from arete.application.utils.text import parse_frontmatter, rebuild_markdown_with_frontmatter
 from arete.domain.interfaces import ContentCache
 from arete.domain.models import UpdateItem
@@ -212,7 +212,7 @@ class VaultService:
                     if dry_run:
                         self.logger.info(f"[dry-run] Would format {md_path.name}")
                     else:
-                        md_path.write_text(new_text, encoding="utf-8")
+                        replace_text(md_path, new_text)
                         self.logger.debug(f"[format] {md_path.name}: normalized YAML")
                     count += 1
             except Exception as e:

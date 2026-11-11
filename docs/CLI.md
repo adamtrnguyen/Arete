@@ -78,6 +78,10 @@ One sync runs at a time per cache database. A sync started while another holds t
 `Another Arete sync is running, so this sync did nothing.`, and exits with status 75. A dry
 run takes the lock too. Exit status 1 is a sync that ran and failed.
 
+Every write of a note (ids, `vault format`, `vault fix`) replaces the file whole, so a sync
+killed while writing leaves the note as it was or as written, never cut short. Sent SIGTERM,
+a sync stops at its next step, between file writes, and exits with status 143.
+
 ## Queue (Dependency-Sorted Study Sessions)
 
 Arete supports dependency-aware study queues. By tagging notes with prerequisites, you can generate filtered decks in Anki that ensure you learn concepts in dependency order.
