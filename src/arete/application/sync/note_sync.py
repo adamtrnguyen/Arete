@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import unicodedata
 from collections.abc import Collection, Sequence
 from contextlib import AsyncExitStack
 from dataclasses import dataclass, field
@@ -159,11 +160,15 @@ def _key_of(arete_id: str | None) -> str | None:
 def _type_fields(info: NoteTypeInfo, fields: dict[str, str]) -> dict[str, str]:
     """The vault's fields under the type's names, in the type's order; others dropped.
 
-    A vault field matches a type field by exact name, else ignoring case.
+    A vault field matches a type field by exact name, else ignoring case. Values are in
+    NFC, the form Anki stores a note's text in: a decomposed character (macOS file names
+    hold them, and a file name is part of `_obsidian_source`) would differ from what Anki
+    holds on every sync.
     """
     by_fold = {name.casefold(): name for name in info.fields}
     out: dict[str, str] = {}
     for name, value in fields.items():
+        value = unicodedata.normalize("NFC", value)
         if name in info.fields:
             out[name] = value
         elif (target := by_fold.get(name.casefold())) and target not in fields:

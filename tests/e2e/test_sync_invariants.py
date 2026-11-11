@@ -806,3 +806,22 @@ async def test_inv5_the_file_bytes_differ_only_in_id_lines(
     assert _without_id_lines(after[filename]) == _without_id_lines(before[filename])
     kept_ids = [line for line in _split(before[filename])[0] if re.match(r"^\s*(- )?id:", line)]
     assert all(line in _split(after[filename])[0] for line in kept_ids), "an id was rewritten"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("name", ALL)
+async def test_inv1_a_decomposed_character_needs_nothing_from_a_second_sync(
+    name: str, tmp_path: Path
+):
+    """Anki stores text in NFC; a decomposed `é` in a field or a file name must still settle."""
+    decomposed = "Crémer"
+    w = _world(name, tmp_path, CARD.replace("The vault's answer.", f"{decomposed} bound."))
+    w.md.rename(w.vault / f"{decomposed}.md")
+    try:
+        _, [first] = await w.sync()
+        _, [dry] = await w.sync(dry_run=True)
+        _, [second] = await w.sync()
+
+        assert first.ok and not dry.changed and not second.changed
+    finally:
+        w.backend.close()
