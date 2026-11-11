@@ -209,3 +209,29 @@ def test_angle_brackets_in_math_are_html_escaped():
     out = markdown_to_anki_html("$a<b$ and $c>d$")
     assert r"\(a&lt;b\)" in out
     assert r"\(c&gt;d\)" in out
+
+
+def test_bold_inside_italics_nests_instead_of_splitting_the_italics():
+    """The pinned markdown library keeps `**b**` inside `*...*` as strong inside one em."""
+    html = markdown_to_anki_html("*Benefits will **not** be **denied except** when*")
+
+    assert html == (
+        "<p><em>Benefits will <strong>not</strong> be <strong>denied except</strong> when</em></p>"
+    )
+
+
+def test_the_markdown_library_is_pinned_to_one_version():
+    """A card's HTML is this library's output, so the CLI and the plugin must run the same one."""
+    import re
+    import tomllib
+    from pathlib import Path
+
+    import markdown
+
+    project = tomllib.loads(
+        (Path(__file__).resolve().parents[3] / "pyproject.toml").read_text(encoding="utf-8")
+    )
+    [pin] = [d for d in project["project"]["dependencies"] if d.startswith("markdown")]
+
+    assert re.fullmatch(r"markdown==\d+(\.\d+)+", pin)
+    assert pin == f"markdown=={markdown.__version__}"

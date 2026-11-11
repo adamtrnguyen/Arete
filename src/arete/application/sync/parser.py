@@ -4,7 +4,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from arete.application.sync.converter import markdown_to_anki_html
+from arete.application.sync.converter import RENDERER_LIBRARY, markdown_to_anki_html
 from arete.application.utils.common import sanitize, to_list
 from arete.application.utils.media import transform_images_in_text, transform_wikilinks_to_uri
 from arete.application.utils.text import card_content_hash
@@ -29,12 +29,13 @@ class MarkdownParser:
         self.default_deck = default_deck
         self.logger = logger or logging.getLogger(__name__)
         # Everything a render reads besides the card and its file: a cached render made
-        # under other values (another vault root or name, media folder, default deck or
-        # renderer) is stale, though the card is not.
+        # under other values (another vault root or name, media folder, default deck,
+        # renderer or markdown library) is stale, though the card is not.
         self.render_key = hashlib.sha256(
             json.dumps(
                 [
                     RENDER_VERSION,
+                    RENDERER_LIBRARY,
                     str(vault_root),
                     vault_root.name,
                     str(anki_media_dir),

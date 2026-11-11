@@ -9,6 +9,11 @@ from markdown.extensions import Extension
 from markdown.postprocessors import Postprocessor
 from markdown.preprocessors import Preprocessor
 
+# The library that turns markdown into HTML, with its version. Two versions can render the
+# same text differently (nested emphasis is one case), so a render cached under one is not
+# reused under another.
+RENDERER_LIBRARY = f"markdown {markdown.__version__}"
+
 # A line prefix made only of blockquote markers ("> ", ">> ", "  > ").
 _QUOTE_PREFIX = re.compile(r"[ \t]*(?:>[ \t]?)+")
 _QUOTE_LINE = re.compile(r"(?m)^[ \t]*(?:>[ \t]?)+")

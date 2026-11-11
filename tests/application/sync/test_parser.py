@@ -402,3 +402,14 @@ def test_custom_model_does_not_send_arete_keys_as_fields(tmp_path):
     leaked = {"id", "deps", "anki", "__line__"} & set(notes[0].fields)
     assert not leaked
     assert {"Front", "Back"} <= set(notes[0].fields)
+
+
+def test_the_render_key_changes_with_the_markdown_library(tmp_path, monkeypatch):
+    """A render cached under one markdown version is not reused under another."""
+    import arete.application.sync.parser as parser_module
+
+    here = parser_module.MarkdownParser(tmp_path, tmp_path / "media").render_key
+    monkeypatch.setattr(parser_module, "RENDERER_LIBRARY", "markdown 0.0.1")
+    there = parser_module.MarkdownParser(tmp_path, tmp_path / "media").render_key
+
+    assert here != there
