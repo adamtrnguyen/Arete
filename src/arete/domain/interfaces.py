@@ -20,10 +20,12 @@ from .models import HeldNote, NewNote, NoteChange, NoteTypeInfo
 class ContentCache(Protocol):
     """Protocol for the file-content cache."""
 
+    @abstractmethod
     def get_file_meta_by_stat(
         self, md_path: Path, mtime: float, size: int
     ) -> dict[str, Any] | None: ...
 
+    @abstractmethod
     def set_file_meta(
         self,
         md_path: Path,
@@ -33,14 +35,18 @@ class ContentCache(Protocol):
         size: int = 0,
     ) -> None: ...
 
+    @abstractmethod
     def set_file_metas(self, rows: list[tuple[Path, str, dict[str, Any], float, int]]) -> None:
         """Write (path, hash, meta, mtime, size) rows in one transaction, all or none."""
         ...
 
+    @abstractmethod
     def get_hash(self, md_path: Path, card_index: int) -> str | None: ...
 
+    @abstractmethod
     def get_note(self, md_path: Path, card_index: int) -> tuple[str, str | None] | None: ...
 
+    @abstractmethod
     def set_notes(self, rows: list[tuple[Path, int, str, str]]) -> None:
         """Write (path, index, hash, note_json) rows in one transaction, all or none.
 
@@ -48,6 +54,7 @@ class ContentCache(Protocol):
         """
         ...
 
+    @abstractmethod
     def clear(self) -> None: ...
 
 
@@ -98,28 +105,34 @@ class NoteStoreSession(Protocol):
     Nothing here deletes a note or a card, and nothing reads or writes scheduling.
     """
 
+    @abstractmethod
     async def note_types(
         self, names: Collection[str]
     ) -> dict[str, NoteTypeInfo | None | Exception]:
         """Per name: the type, None when Anki has no type of that name, or the read error."""
         ...
 
+    @abstractmethod
     async def add_field(self, model: str, field: str) -> None:
         """Append an empty field to a note type that lacks it; raise if that fails."""
         ...
 
+    @abstractmethod
     async def deck_names(self) -> set[str]:
         """Every deck name Anki holds."""
         ...
 
+    @abstractmethod
     async def create_decks(self, names: Collection[str]) -> dict[str, Exception | None]:
         """Create each deck that does not exist; per name, None or the error."""
         ...
 
+    @abstractmethod
     async def read_notes(self, nids: Sequence[int]) -> dict[int, HeldNote | None | Exception]:
         """Per nid: the note with its cards and home decks, None if Anki holds no such note."""
         ...
 
+    @abstractmethod
     async def find_by_arete_ids(
         self, arete_ids: Sequence[str]
     ) -> dict[str, list[HeldNote] | Exception]:
@@ -129,6 +142,7 @@ class NoteStoreSession(Protocol):
         """
         ...
 
+    @abstractmethod
     async def scan_model(self, model: str) -> list[HeldNote]:
         """Every note of the type, for matching by content; raise if the scan fails.
 
@@ -136,6 +150,7 @@ class NoteStoreSession(Protocol):
         """
         ...
 
+    @abstractmethod
     async def create_notes(self, notes: Sequence[NewNote]) -> list[int | Exception]:
         """Add each note; its nid, or the error. `OutcomeUnknown`: it may have been added.
 
@@ -144,6 +159,7 @@ class NoteStoreSession(Protocol):
         """
         ...
 
+    @abstractmethod
     async def apply_changes(self, changes: Sequence[NoteChange]) -> list[Exception | None]:
         """Apply each change in the order retype, fields, add tags, remove tags, home deck.
 
