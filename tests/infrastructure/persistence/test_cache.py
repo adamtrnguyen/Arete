@@ -38,7 +38,7 @@ def test_note_json_storage(tmp_path):
     with sqlite3.connect(db_path) as conn:
         cursor = conn.cursor()
         row = cursor.execute(
-            "SELECT note_json FROM cards WHERE path=? AND idx=?", (str(md_file), card_index)
+            "SELECT note_json FROM cards WHERE path=? AND idx=?", (md_file.as_posix(), card_index)
         ).fetchone()
         assert row is not None
         assert row[0] == note_json

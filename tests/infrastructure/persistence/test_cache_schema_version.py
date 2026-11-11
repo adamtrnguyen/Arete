@@ -82,7 +82,7 @@ def test_set_file_metas_round_trips_every_column(tmp_path: Path):
     p = Path("/v/a.md")
     cache.set_file_metas([(p, "hash1", {"arete": True, "cards": [1]}, 100.25, 7)])
     assert _rows(tmp_path / "c.db", "files") == [
-        (str(p), "hash1", 100.25, 7, '{"arete": true, "cards": [1]}')
+        (p.as_posix(), "hash1", 100.25, 7, '{"arete": true, "cards": [1]}')
     ]
     assert cache.get_file_meta_by_stat(p, 100.25, 7) == {"arete": True, "cards": [1]}
     cache.set_file_metas([])
