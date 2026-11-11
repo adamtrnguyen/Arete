@@ -369,7 +369,6 @@ class MarkdownParser:
                     fields=fields,
                     tags=card_tags,
                     start_line=start_line,
-                    end_line=start_line,  # Frontmatter cards are single-block usually
                     nid=nid,
                     cid=cid,
                     content_hash=content_hash,

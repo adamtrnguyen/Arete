@@ -30,7 +30,6 @@ def _item(front: str = "<p>Front</p>", nid: int | None = None) -> WorkItem:
         fields={"Front": front, "Back": "Back"},
         tags=["tag1", ID],
         start_line=1,
-        end_line=10,
         source_file=Path("test.md"),
         source_index=1,
         nid=None if nid is None else str(nid),

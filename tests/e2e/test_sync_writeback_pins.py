@@ -27,7 +27,6 @@ def _item(nid: int | str | None = None, model: str = "Basic", **fields: str) -> 
         fields={**fields, "_obsidian_source": f"vault|pins.md|5|{ID}"},
         tags=["t", ID],
         start_line=5,
-        end_line=5,
         source_file=Path("pins.md"),
         source_index=1,
         nid=None if nid is None else str(nid),

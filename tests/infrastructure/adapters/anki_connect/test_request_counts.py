@@ -40,7 +40,6 @@ def _item(
         fields={"Front": front or f"q{i}", "Back": "b", "_obsidian_source": f"v|f.md|{i}|x"},
         tags=[_id(i)] if tags is None else tags,
         start_line=1,
-        end_line=2,
         nid=str(nid) if nid else None,
         source_file=Path("f.md"),
         source_index=i,

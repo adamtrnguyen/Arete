@@ -40,7 +40,6 @@ def _item(tags: list[str] | None = None, nid: int | None = None, model: str = "B
         fields={"Front": "q", "Back": "a", "_obsidian_source": "v|f.md|1|x"},
         tags=[ID] if tags is None else tags,
         start_line=1,
-        end_line=2,
         nid=str(nid) if nid else None,
         source_file=Path("f.md"),
         source_index=1,

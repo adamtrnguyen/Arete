@@ -23,7 +23,6 @@ def _item(i: int, deck: str, nid: int | None = None, back: str = "b", extra_tag:
         fields={"Front": f"batched front {i}", "Back": back},
         tags=tags,
         start_line=1,
-        end_line=2,
         nid=str(nid) if nid else None,
         source_file=Path("batched.md"),
         source_index=i,

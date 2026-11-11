@@ -61,7 +61,6 @@ async def test_bridge_sync_add_new(bridge_runner):
         source_file=Path("test.md"),
         source_index=1,
         start_line=1,
-        end_line=1,
     )
     item = WorkItem(note=note, source_file=Path("test.md"), source_index=1)
 
@@ -95,7 +94,6 @@ async def test_bridge_sync_update_existing(bridge_runner):
         source_file=Path("test.md"),
         source_index=1,
         start_line=1,
-        end_line=1,
     )
     res1 = await bridge_runner.sync_notes(
         [WorkItem(note=initial_note, source_file=Path("test.md"), source_index=1)]
@@ -112,7 +110,6 @@ async def test_bridge_sync_update_existing(bridge_runner):
         source_file=Path("test.md"),
         source_index=1,
         start_line=1,
-        end_line=1,
     )
     res2 = await bridge_runner.sync_notes(
         [WorkItem(note=updated_note, source_file=Path("test.md"), source_index=1)]
@@ -139,7 +136,6 @@ async def test_bridge_get_notes_in_deck(bridge_runner):
         source_file=Path("a.md"),
         source_index=0,
         start_line=1,
-        end_line=1,
     )
     n2 = AnkiNote(
         model="Basic",
@@ -149,7 +145,6 @@ async def test_bridge_get_notes_in_deck(bridge_runner):
         source_file=Path("b.md"),
         source_index=0,
         start_line=1,
-        end_line=1,
     )
 
     await bridge_runner.sync_notes(
@@ -180,7 +175,6 @@ async def test_bridge_delete_notes(bridge_runner):
         source_file=Path("a.md"),
         source_index=0,
         start_line=1,
-        end_line=1,
     )
     res = await bridge_runner.sync_notes([WorkItem(note=n1, source_file=Path("a"), source_index=0)])
     nid = int(res[0].new_nid)

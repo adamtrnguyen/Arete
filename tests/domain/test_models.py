@@ -63,7 +63,6 @@ class TestAnkiNote:
             fields={"Front": "What is 2+2?", "Back": "4"},
             tags=["math", "arithmetic"],
             start_line=10,
-            end_line=15,
             source_file=Path("/vault/note.md"),
             source_index=1,
         )
@@ -74,7 +73,6 @@ class TestAnkiNote:
         assert basic_note.fields["Front"] == "What is 2+2?"
         assert basic_note.tags == ["math", "arithmetic"]
         assert basic_note.start_line == 10
-        assert basic_note.end_line == 15
         assert basic_note.source_file == Path("/vault/note.md")
         assert basic_note.source_index == 1
 
@@ -90,7 +88,6 @@ class TestAnkiNote:
             fields={"Text": "{{c1::answer}}"},
             tags=[],
             start_line=1,
-            end_line=2,
             source_file=Path("x.md"),
             source_index=1,
             nid="12345",
@@ -127,7 +124,6 @@ class TestAnkiNote:
             fields={"Front": "Q", "Back": "A"},
             tags=[],
             start_line=1,
-            end_line=2,
             source_file=Path("f.md"),
             source_index=1,
             nid="111",
@@ -152,7 +148,6 @@ class TestWorkItem:
             fields={"Front": "Q"},
             tags=[],
             start_line=1,
-            end_line=2,
             source_file=Path("f.md"),
             source_index=1,
         )

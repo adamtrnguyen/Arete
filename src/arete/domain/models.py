@@ -31,7 +31,6 @@ class AnkiNote:
         fields: Mapping of Anki field names to HTML content (pre-rendered by Parser).
         tags: List of tags to associate with the note.
         start_line: First line of the card in the source Markdown.
-        end_line: Last line of the card in the source Markdown.
         source_file: Path to the original Markdown file.
         source_index: 1-based index of this card within the source file.
         nid: Existing Note ID from Obsidian frontmatter (if any).
@@ -48,7 +47,6 @@ class AnkiNote:
     fields: dict[str, str]
     tags: list[str]
     start_line: int
-    end_line: int
 
     source_file: Path
     source_index: int
@@ -74,7 +72,11 @@ class AnkiNote:
 
     @classmethod
     def from_dict(cls, d: dict) -> "AnkiNote":
-        d = {k: v for k, v in d.items() if k not in ("render_version", "unchanged")}
+        """A cached note; keys this class does not hold (an older entry's) are ignored."""
+        from dataclasses import fields
+
+        known = {f.name for f in fields(cls)} - {"unchanged"}
+        d = {k: v for k, v in d.items() if k in known}
         d["source_file"] = Path(d["source_file"])
         return cls(**d)
 

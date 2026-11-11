@@ -97,7 +97,7 @@ async def true_source_lines(
             failed.add(u.source_file)
             continue
         u.note.fields["_obsidian_source"] = new
-        u.note.start_line = u.note.end_line = line
+        u.note.start_line = line
         if u.note.content_hash:
             rows.append(
                 (u.source_file, u.source_index, u.note.content_hash, json.dumps(u.note.to_dict()))
@@ -256,13 +256,11 @@ async def run_pipeline(
     sync_semaphore = asyncio.Semaphore(max_sync_concurrency)
 
     async def producer_file(md_file: Path, meta: dict[str, Any], is_fresh: bool):
-        recorder.files_scanned += 1
         try:
             notes, skipped_indices, inventory = parser.parse_file(
                 md_file, meta, cache, name_index, is_fresh
             )
             recorder.cards_generated += len(notes) + len(skipped_indices)
-            recorder.cards_cached_content += sum(1 for n in notes if n.unchanged)
 
             recorder.add_inventory(inventory)
 

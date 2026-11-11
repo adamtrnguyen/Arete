@@ -44,7 +44,6 @@ def sample_note():
         fields={"Front": r"**bold** and math \(\frac{1}{2}\)", "Back": "A"},
         tags=["tag1"],
         start_line=1,
-        end_line=10,
         source_file=Path("test.md"),
         source_index=1,
     )
@@ -58,7 +57,6 @@ def simple_note():
         fields={"Front": "Front", "Back": "Back"},
         tags=["tag1"],
         start_line=1,
-        end_line=10,
         source_file=Path("test.md"),
         source_index=1,
     )

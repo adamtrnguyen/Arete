@@ -19,9 +19,7 @@ class LogEntry:
 @dataclass
 class RunRecorder:
     # Stats
-    files_scanned: int = 0
     cards_generated: int = 0
-    cards_cached_content: int = 0
     cards_synced: int = 0
     cards_failed: int = 0
 

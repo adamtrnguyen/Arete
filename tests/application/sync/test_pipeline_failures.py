@@ -53,7 +53,6 @@ async def test_pipeline_consumer_error(config):
         fields={"Front": "F", "Back": "B"},
         tags=[],
         start_line=1,
-        end_line=2,
         source_file=Path("/v/test.md"),
         source_index=1,
         content_hash="h1",

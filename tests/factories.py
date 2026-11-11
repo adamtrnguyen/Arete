@@ -105,7 +105,6 @@ def anki_note(
         fields={"Front": front, "Back": back},
         tags=list(tags) if tags else [],
         start_line=1,
-        end_line=5,
         source_file=source_file or Path("Concept.md"),
         source_index=source_index,
         nid=nid,

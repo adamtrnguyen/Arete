@@ -232,7 +232,6 @@ def test_write_back_matches_the_card_by_id_not_position(vault):
         fields={},
         tags=[],
         start_line=0,
-        end_line=0,
         source_file=path,
         source_index=1,
         arete_id="arete_A",

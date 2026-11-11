@@ -33,7 +33,6 @@ def mock_components():
         fields={"Front": "Q", "Back": "A"},
         tags=[],
         start_line=1,
-        end_line=10,
         source_file=Path("/vault/test.md"),
         source_index=1,
     )

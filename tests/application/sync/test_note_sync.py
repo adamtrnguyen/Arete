@@ -41,7 +41,6 @@ def card(
         fields=dict(fields),
         tags=[*(tags or []), *([arete_id] if arete_id else [])],
         start_line=1,
-        end_line=1,
         source_file=Path("vault/c.md"),
         source_index=idx,
         nid=None if nid is None else str(nid),

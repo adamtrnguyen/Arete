@@ -34,7 +34,6 @@ def _item(i: int) -> WorkItem:
         fields={"Front": f"<p>Benchmark question {i}</p>", "Back": f"<p>Answer {i}</p>"},
         tags=["bench", arete_id],
         start_line=1,
-        end_line=1,
         source_file=Path("bench.md"),
         source_index=i,
         arete_id=arete_id,
