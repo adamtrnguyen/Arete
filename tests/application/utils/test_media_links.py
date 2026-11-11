@@ -3,8 +3,6 @@
 import logging
 import os
 
-import pytest
-
 from arete.application.sync.converter import markdown_to_anki_html
 from arete.application.utils.media import build_filename_index, transform_wikilinks_to_uri
 
@@ -42,16 +40,20 @@ def test_the_link_survives_markdown_rendering_as_an_anchor():
     )
 
 
-@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores file modes")
-def test_an_unreadable_attachment_subfolder_is_skipped_not_fatal(tmp_path):
+def test_an_unreadable_attachment_subfolder_is_skipped_not_fatal(tmp_path, monkeypatch):
+    """A folder the walk may not list (no permission, on any OS) is left out, not fatal."""
     attachments = tmp_path / "attachments"
     (attachments / "open").mkdir(parents=True)
     (attachments / "locked").mkdir()
     (attachments / "open" / "a.png").write_bytes(b"a")
     (attachments / "locked" / "b.png").write_bytes(b"b")
-    (attachments / "locked").chmod(0o000)
-    try:
-        index = build_filename_index(tmp_path, logging.getLogger("test_media_links"))
-    finally:
-        (attachments / "locked").chmod(0o755)
+    real_scandir = os.scandir
+
+    def scandir(path):
+        if os.path.basename(path) == "locked":
+            raise PermissionError(13, "Permission denied", path)
+        return real_scandir(path)
+
+    monkeypatch.setattr(os, "scandir", scandir)
+    index = build_filename_index(tmp_path, logging.getLogger("test_media_links"))
     assert list(index) == ["a.png"]

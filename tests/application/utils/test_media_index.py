@@ -47,7 +47,8 @@ def tree(tmp_path: Path) -> Path:
     os.symlink(outside / "missing.png", att / "broken.png")
     os.symlink(outside / "dir", att / "linkdir")  # a symlinked folder is not entered
     os.symlink(outside / "dir", vault / "media")  # a symlinked media root is
-    os.mkfifo(att / "pipe.png")
+    if hasattr(os, "mkfifo"):  # no FIFO can exist on Windows; on POSIX the walk skips it
+        os.mkfifo(att / "pipe.png")
     (vault / "note.png").write_bytes(b"n")  # outside every media folder
     return vault
 

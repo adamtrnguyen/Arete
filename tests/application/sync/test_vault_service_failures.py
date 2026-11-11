@@ -157,7 +157,7 @@ def test_record_synced_logs_a_failure_and_still_records_the_rest(vault, caplog):
 # --- format_vault ---
 
 
-@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores file modes")
+@pytest.mark.skipif(os.name == "posix" and os.geteuid() == 0, reason="root ignores file modes")
 def test_format_vault_logs_an_unwritable_file_and_formats_the_others(vault, cache, caplog):
     messy = '---\narete: true\ndeck: D\ncards:\n  - Front: "A"\n    Back: "x\\ny"\n---\nbody\n'
     locked = vault / "Locked.md"
@@ -175,7 +175,7 @@ def test_format_vault_logs_an_unwritable_file_and_formats_the_others(vault, cach
     assert "|-" in open_.read_text(encoding="utf-8")
 
 
-@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores file modes")
+@pytest.mark.skipif(os.name == "posix" and os.geteuid() == 0, reason="root ignores file modes")
 def test_format_vault_count_excludes_files_that_could_not_be_written(vault, cache):
     messy = '---\narete: true\ndeck: D\ncards:\n  - Front: "A"\n    Back: "x\\ny"\n---\nbody\n'
     locked = vault / "Locked.md"
