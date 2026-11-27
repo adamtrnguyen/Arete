@@ -217,7 +217,6 @@ class GuiActions:
                 deck["mid"] = savedMid
             addCards.editor.set_note(ankiNote)
             addCards.activateWindow()
-            aqt.dialogs.open("AddCards", self.window())
             addCards.setAndFocusNote(addCards.editor.note)
 
         currentWindow = aqt.dialogs._dialogs["AddCards"][1]

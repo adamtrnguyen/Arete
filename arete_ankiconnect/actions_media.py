@@ -4,6 +4,7 @@ import base64
 import glob
 import hashlib
 import os
+import re
 import tempfile
 import unicodedata
 from pathlib import Path
@@ -13,6 +14,9 @@ from . import util
 
 class MediaActions:
     """Media folder actions with path-traversal protection."""
+
+    # Matches Anki's MediaManager._illegalCharReg without invoking deprecated stripIllegal.
+    _ILLEGAL_CHAR_RE = re.compile(r'[][><:"/?*^\\|\0\r\n]')
 
     def _validateMediaFilename(self, filename):
         if (
@@ -128,16 +132,17 @@ class MediaActions:
             return False
         filename = os.path.basename(filename)
         filename = unicodedata.normalize("NFC", filename)
-        filename = self.media().stripIllegal(filename)
+        filename = self._ILLEGAL_CHAR_RE.sub("", filename)
         if filename in {"", ".", ".."}:
             return False
 
-        path = os.path.join(self.media().dir(), filename)
-        if os.path.isfile(path):
-            with open(path, "rb") as file:
-                return base64.b64encode(file.read()).decode("ascii")
+        media_dir = Path(self.media().dir()).resolve()
+        path = (media_dir / filename).resolve()
+        if not path.is_relative_to(media_dir) or not path.is_file():
+            return False
 
-        return False
+        with open(path, "rb") as file:
+            return base64.b64encode(file.read()).decode("ascii")
 
     @util.api()
     def getMediaFilesNames(self, pattern="*"):
@@ -150,11 +155,10 @@ class MediaActions:
         ):
             raise Exception(f"invalid media pattern: {pattern!r}")
         media_dir = Path(self.media().dir()).resolve()
-        search_path = os.path.join(str(media_dir), pattern)
         return [
-            os.path.basename(p)
-            for p in glob.glob(search_path)
-            if Path(p).resolve().is_relative_to(media_dir)
+            name
+            for name in glob.glob(pattern, root_dir=media_dir)
+            if (media_dir / name).resolve().is_relative_to(media_dir)
         ]
 
     @util.api()

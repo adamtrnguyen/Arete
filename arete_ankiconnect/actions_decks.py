@@ -1,6 +1,5 @@
 """Deck, deck-config, and package import/export AnkiConnect actions."""
 
-import anki.utils
 from anki.collection import (
     DeckIdLimit,
     ExportAnkiPackageOptions,
@@ -73,19 +72,12 @@ class DeckActions:
 
     @util.api()
     def changeDeck(self, cards, deck):
+        if not isinstance(cards, list) or not all(type(c) is int for c in cards):
+            raise Exception("cards must be a list of integer card IDs")
         col = self.collection()
         did = col.decks.id(deck)
-        mod = int_time()
-        usn = col.usn()
-
-        scids = anki.utils.ids2str(cards)
-        col.sched.remFromDyn(cards)
-        col.db.execute(
-            "update cards set usn=?, mod=?, did=? where id in " + scids,
-            usn,
-            mod,
-            did,
-        )
+        if cards:
+            col.set_deck(cards, int(did))
         self.scheduleRefresh()
 
     @util.api()
@@ -96,11 +88,15 @@ class DeckActions:
             raise Exception(
                 "Since Anki 2.1.28 it's not possible to delete decks without deleting cards as well"
             )
-        existing = [d for d in decks if d in self.deckNames()]
-        for deck in existing:
-            did = self.decks().id(deck)
-            self.decks().remove([did])
-        if existing:
+        deck_map = {
+            entry.name: entry.id
+            for entry in self.decks().all_names_and_ids(
+                skip_empty_default=False, include_filtered=True
+            )
+        }
+        dids = list(dict.fromkeys(deck_map[d] for d in decks if d in deck_map))
+        if dids:
+            self.decks().remove(dids)
             self.scheduleRefresh()
 
     @util.api()
@@ -163,7 +159,9 @@ class DeckActions:
             return False
 
         config = collection.decks.get_config(configId)
-        return collection.decks.add_config_returning_id(name, config)
+        new_id = collection.decks.add_config_returning_id(name, config)
+        self.scheduleRefresh()
+        return new_id
 
     @util.api()
     def removeDeckConfigId(self, configId):
@@ -181,7 +179,9 @@ class DeckActions:
         collection = self.collection()
         scheduler = self.scheduler()
         responseDict = {}
-        deckIds = [collection.decks.id(d) for d in decks]
+        deckIds = {did for d in decks if (did := collection.decks.id(d, create=False)) is not None}
+        if not deckIds:
+            return responseDict
 
         allDeckNodes = self.collectDeckTreeChildren(scheduler.deck_due_tree())
         for deckId, deckNode in allDeckNodes.items():

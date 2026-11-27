@@ -40,6 +40,26 @@ def _sanitize_header_value(value: str) -> str:
     return value.replace("\r", "").replace("\n", "")
 
 
+def _is_localhost_origin(origin: str) -> bool:
+    if origin in {
+        "http://localhost",
+        "https://localhost",
+        "http://127.0.0.1",
+        "https://127.0.0.1",
+    }:
+        return True
+    for prefix in (
+        "http://localhost:",
+        "https://localhost:",
+        "http://127.0.0.1:",
+        "https://127.0.0.1:",
+    ):
+        if origin.startswith(prefix):
+            port = origin[len(prefix) :]
+            return port.isdigit() and 1 <= int(port) <= 65535
+    return False
+
+
 def _validate_request(params: object) -> None:
     if not isinstance(params, dict):
         raise ValueError("request body must be a JSON object")
@@ -108,10 +128,13 @@ class WebClient:
         self.readBuff = bytearray()
         self.writeBuff = b""
         self.lastActivity = time.monotonic()
+        self.dispatching = False
 
     def advance(self, recvSize=RECV_SIZE):
         if self.sock is None:
             return False
+        if self.dispatching:
+            return True
 
         now = time.monotonic()
         if now - self.lastActivity > CLIENT_IDLE_TIMEOUT_S:
@@ -172,10 +195,14 @@ class WebClient:
             return False
 
         del self.readBuff[:length]
+        self.dispatching = True
         try:
             self.writeBuff += self.handler(req)
         except Exception as e:
             self.writeBuff = self._errorResponse("500 Internal Server Error", str(e))
+        finally:
+            self.dispatching = False
+            self.lastActivity = time.monotonic()
         return True
 
     def _handleReadable(self, recvSize, now):
@@ -295,14 +322,16 @@ class WebServer:
                 return
 
     def advanceClients(self):
-        alive = []
-        for client in self.clients:
+        for client in list(self.clients):
+            if client not in self.clients:
+                continue
             try:
-                if client.advance():
-                    alive.append(client)
+                keep = client.advance()
             except Exception:
                 client.close()
-        self.clients = alive
+                keep = False
+            if not keep and client in self.clients:
+                self.clients.remove(client)
 
     def listen(self):
         self.close()
@@ -321,7 +350,7 @@ class WebServer:
             body = b""
             headers = self.buildHeaders(corsOrigin, body)
 
-            if req.headers.get(b"access-control-request-private-network") == b"true":
+            if allowed and req.headers.get(b"access-control-request-private-network") == b"true":
                 # include this header so that if a public origin is included in the whitelist,
                 # then browsers won't fail requests due to the private network access check
                 headers.append(["Access-Control-Allow-Private-Network", "true"])
@@ -395,15 +424,7 @@ class WebServer:
             if originStr in webCorsOriginList:
                 corsOrigin = originStr
                 allowed = True
-            elif "http://localhost" in webCorsOriginList and (
-                originStr == "https://localhost"
-                or originStr.startswith("http://localhost:")
-                or originStr.startswith("https://localhost:")
-                or originStr == "http://127.0.0.1"
-                or originStr == "https://127.0.0.1"
-                or originStr.startswith("http://127.0.0.1:")
-                or originStr.startswith("https://127.0.0.1:")
-            ):
+            elif "http://localhost" in webCorsOriginList and _is_localhost_origin(originStr):
                 corsOrigin = originStr
                 allowed = True
         else:

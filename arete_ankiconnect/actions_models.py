@@ -163,8 +163,8 @@ class ModelActions:
                 if back and findText in tmpls["afmt"]:
                     checkForText = True
                     tmpls["afmt"] = tmpls["afmt"].replace(findText, replaceText)
-            models.update_dict(model)
             if checkForText:
+                models.update_dict(model)
                 updatedModels += 1
         if updatedModels:
             self.scheduleRefresh()

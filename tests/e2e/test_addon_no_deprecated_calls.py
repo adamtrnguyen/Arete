@@ -64,10 +64,6 @@ ALLOWED: dict[tuple[str, str], str] = {
     ): "Collection.set_deck is current; DeckManager.set_deck is the deprecated one",
     ("flush", "self.log"): "a file object",
     ("flush", "f"): "a file object",
-    (
-        "stripIllegal",
-        "self.media()",
-    ): "Anki offers no public replacement (media.py _legacy_strip_illegal)",
 }
 
 
@@ -154,6 +150,7 @@ def _driven_actions(host: AddonHost, tmp_path: Path) -> list[tuple[str, dict[str
         ("replaceTags", {"notes": [nid], "tag_to_replace": "alpha", "replace_with_tag": "beta"}),
         ("replaceTagsInAllNotes", {"tag_to_replace": "beta", "replace_with_tag": "gamma"}),
         ("storeMediaFile", {"filename": "a.txt", "data": base64.b64encode(b"hi").decode()}),
+        ("retrieveMediaFile", {"filename": "a.txt"}),
         ("reloadCollection", {}),
         (
             "addNote",

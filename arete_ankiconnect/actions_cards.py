@@ -30,6 +30,11 @@ _SENSITIVE_CARD_KEYS = frozenset(
 class CardActions:
     """Card queries, suspension, ease/state edits, reviews, and stats actions."""
 
+    @staticmethod
+    def _requireIntCardIds(cards):
+        if not isinstance(cards, list) or not all(type(c) is int for c in cards):
+            raise Exception("cards must be a list of integer card IDs")
+
     @util.api()
     def getNumCardsReviewedToday(self):
         return self.database().scalar(
@@ -59,6 +64,10 @@ class CardActions:
 
     @util.api()
     def setEaseFactors(self, cards, easeFactors):
+        if not isinstance(cards, list) or not isinstance(easeFactors, list):
+            raise Exception("cards and easeFactors must be lists")
+        if len(easeFactors) != len(cards):
+            raise Exception("easeFactors length must match cards length")
         couldSetEaseFactors = []
         for i, card in enumerate(cards):
             try:
@@ -71,6 +80,8 @@ class CardActions:
             ankiCard.factor = easeFactors[i]
             self.collection().update_card(ankiCard, skip_undo_entry=True)
 
+        if any(couldSetEaseFactors):
+            self.scheduleRefresh()
         return couldSetEaseFactors
 
     @util.api()
@@ -92,6 +103,7 @@ class CardActions:
             for i, key in enumerate(keys):
                 setattr(ankiCard, key, newValues[i])
             self.collection().update_card(ankiCard, skip_undo_entry=True)
+            self.scheduleRefresh()
             result.append(True)
         except Exception as e:
             result.append([False, str(e)])
@@ -166,6 +178,7 @@ class CardActions:
 
     @util.api()
     def areDue(self, cards):
+        self._requireIntCardIds(cards)
         due = []
         for card in cards:
             if self.findCards(f"cid:{card} is:new"):
@@ -186,6 +199,7 @@ class CardActions:
 
     @util.api()
     def getIntervals(self, cards, complete=False):
+        self._requireIntCardIds(cards)
         intervals = []
         for card in cards:
             if self.findCards(f"cid:{card} is:new"):
@@ -267,6 +281,9 @@ class CardActions:
 
     @util.api()
     def cardsToNotes(self, cards):
+        self._requireIntCardIds(cards)
+        if not cards:
+            return []
         return self.collection().db.list(
             "select distinct nid from cards where id in " + anki.utils.ids2str(cards)
         )
@@ -280,6 +297,7 @@ class CardActions:
 
     @util.api()
     def relearnCards(self, cards):
+        self._requireIntCardIds(cards)
         if not cards:
             return
         col = self.collection()
@@ -307,15 +325,20 @@ class CardActions:
                 success.append(True)
             except NotFoundError:
                 success.append(False)
+        if any(success):
+            self.scheduleRefresh()
         return success
 
     @util.api()
     def cardReviews(self, deck, startID):
+        did = self.decks().id(deck, create=False)
+        if did is None:
+            return []
         return self.database().all(
             "select id, cid, usn, ease, ivl, lastIvl, factor, time, type from revlog "
             "where id>? and cid in (select id from cards where did=?)",
             startID,
-            self.decks().id(deck),
+            did,
         )
 
     @util.api()
@@ -352,10 +375,13 @@ class CardActions:
 
     @util.api()
     def getLatestReviewID(self, deck):
+        did = self.decks().id(deck, create=False)
+        if did is None:
+            return 0
         return (
             self.database().scalar(
                 "select max(id) from revlog where cid in (select id from cards where did=?)",
-                self.decks().id(deck),
+                did,
             )
             or 0
         )

@@ -274,6 +274,7 @@ class NoteActions:
     @util.api()
     def clearUnusedTags(self):
         self.collection().tags.clear_unused_tags()
+        self.scheduleRefresh()
 
     @util.api()
     def replaceTags(self, notes, tag_to_replace, replace_with_tag):
@@ -291,7 +292,7 @@ class NoteActions:
                     self.collection().update_note(note, skip_undo_entry=True)
         finally:
             self.window().progress.finish()
-        self.window().reset()
+        self.scheduleRefresh()
 
     @util.api()
     def replaceTagsInAllNotes(self, tag_to_replace, replace_with_tag):
@@ -306,7 +307,7 @@ class NoteActions:
                     collection.update_note(note, skip_undo_entry=True)
         finally:
             self.window().progress.finish()
-        self.window().reset()
+        self.scheduleRefresh()
 
     @util.api()
     def findNotes(self, query=None):

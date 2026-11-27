@@ -844,3 +844,265 @@ def test_parse_anki_version_handles_prerelease_suffixes():
     assert parse("26.8.1") == (26, 8, 1)
     assert parse("26.8.1rc1") == (26, 8, 1)
     assert parse("26.8.1-beta2") == (26, 8, 1)
+
+
+def test_action_count_preserved(host: AddonHost):
+    assert len(host._addon.actions) == 116
+
+
+def test_card_id_sql_and_query_injection_rejected(host: AddonHost):
+    (nid_a, cid_a), (_, cid_b) = _seed(host, count=2, deck="Home")
+    _ok(host, "createDeck", deck="Moved")
+
+    for bad_cards in (
+        ["1) OR 1=1 --"],
+        ["1) UNION SELECT id FROM notes --"],
+        [True],
+        [cid_a, "2"],
+        "not-a-list",
+    ):
+        for action, extra in (
+            ("cardsToNotes", {}),
+            ("changeDeck", {"deck": "Moved"}),
+            ("relearnCards", {}),
+            ("areDue", {}),
+            ("getIntervals", {}),
+        ):
+            reply = _call(host, action, cards=bad_cards, **extra)
+            assert reply["error"] is not None, f"{action} accepted {bad_cards!r}"
+
+    # Valid changeDeck removes cards from filtered decks and moves via col.set_deck
+    _ok(host, "createFilteredDeck", name="Arete::Queue", cids=[cid_a])
+    _ok(host, "changeDeck", cards=[cid_a, cid_b], deck="Moved")
+    assert _ok(host, "getHomeDecks", cards=[cid_a, cid_b]) == [
+        {"homeDeck": "Moved", "filteredDeck": None},
+        {"homeDeck": "Moved", "filteredDeck": None},
+    ]
+    assert _ok(host, "cardsToNotes", cards=[cid_a]) == [nid_a]
+    assert _ok(host, "cardsToNotes", cards=[]) == []
+
+
+def test_web_advance_clients_reentrancy_preserves_reply_and_new_clients():
+    web = _load_web_module()
+    c1_a, c1_b = socket.socketpair()
+    c2_a, c2_b = socket.socketpair()
+    try:
+        c1_a.setblocking(False)
+        c2_a.setblocking(False)
+        server: Any = None
+
+        def handler(params: dict[str, Any]) -> dict[str, Any]:
+            if params["action"] == "requestPermission":
+                # Simulate >10s modal dialog with multiple nested 25ms ticks and a new client.
+                c1.lastActivity = time.monotonic() - (web.CLIENT_IDLE_TIMEOUT_S + 5.0)
+                server.advanceClients()
+                server.clients.append(web.WebClient(c2_a, server.handlerWrapper))
+                server.advanceClients()
+                return {"result": {"permission": "granted"}, "error": None}
+            return {"result": "pong", "error": None}
+
+        server = web.WebServer(handler)
+        c1 = web.WebClient(c1_a, server.handlerWrapper)
+        server.clients = [c1]
+
+        body1 = b'{"action": "requestPermission", "version": 6}'
+        c1_b.sendall(
+            b"POST / HTTP/1.1\r\nContent-Length: " + str(len(body1)).encode() + b"\r\n\r\n" + body1
+        )
+        # C2 sends partial headers while modal is open
+        body2 = b'{"action": "ping", "version": 6}'
+        req2 = (
+            b"POST / HTTP/1.1\r\nContent-Length: " + str(len(body2)).encode() + b"\r\n\r\n" + body2
+        )
+        c2_b.sendall(req2[:15])
+
+        server.advanceClients()
+
+        # C1 got its full 200 OK response instead of being timed out mid-modal
+        resp1 = c1_b.recv(4096)
+        assert b"HTTP/1.1 200 OK" in resp1
+        assert b'"permission": "granted"' in resp1
+
+        # C2 was NOT orphaned when outer advanceClients returned, and still completes cleanly
+        assert len(server.clients) == 1
+        c2_b.sendall(req2[15:])
+        server.advanceClients()
+        assert server.clients == []
+        resp2 = c2_b.recv(4096)
+        assert b"HTTP/1.1 200 OK" in resp2
+        assert b'"result": "pong"' in resp2
+    finally:
+        for sock in (c1_a, c1_b, c2_a, c2_b):
+            sock.close()
+
+
+def test_web_options_private_network_and_localhost_port_validation():
+    web = _load_web_module()
+    server = web.WebServer(lambda _p: {"result": "ok", "error": None})
+
+    # Disallowed OPTIONS must not emit Access-Control-Allow-Private-Network
+    evil_opt = web.WebRequest(
+        b"OPTIONS",
+        {b"origin": b"https://evil.example", b"access-control-request-private-network": b"true"},
+        b"",
+    )
+    resp_evil = server.handlerWrapper(evil_opt)
+    assert b"Access-Control-Allow-Private-Network" not in resp_evil
+
+    # Allowed OPTIONS keeps Access-Control-Allow-Private-Network
+    ok_opt = web.WebRequest(
+        b"OPTIONS",
+        {b"origin": b"http://localhost:8765", b"access-control-request-private-network": b"true"},
+        b"",
+    )
+    resp_ok = server.handlerWrapper(ok_opt)
+    assert b"Access-Control-Allow-Private-Network: true\r\n" in resp_ok
+
+    # Non-numeric or out-of-range port suffixes on localhost/127.0.0.1 are rejected
+    for bad_origin in (
+        b"http://localhost:80.evil.com",
+        b"http://localhost:@evil.com",
+        b"http://localhost:abc",
+        b"http://localhost:0",
+        b"http://localhost:99999",
+        b"http://127.0.0.1:evil",
+    ):
+        allowed, _ = server.allowOrigin(web.WebRequest(b"POST", {b"origin": bad_origin}, b""))
+        assert allowed is False, f"unexpectedly allowed {bad_origin!r}"
+
+
+def test_delete_decks_parent_and_child_does_not_resurrect_parent(host: AddonHost):
+    _ok(host, "createDeck", deck="Parent")
+    _ok(host, "createDeck", deck="Parent::Child")
+
+    assert _call(host, "deleteDecks", decks=["Parent"], cardsToo=False)["error"] is not None
+    _ok(host, "deleteDecks", decks=["Parent", "Parent::Child"], cardsToo=True)
+
+    names = _ok(host, "deckNames")
+    assert "Parent" not in names
+    assert "Parent::Child" not in names
+
+
+def test_readonly_deck_queries_do_not_create_ghost_decks(host: AddonHost):
+    before = set(_ok(host, "deckNames"))
+    assert _ok(host, "cardReviews", deck="NoSuchReviewsDeck", startID=0) == []
+    assert _ok(host, "getLatestReviewID", deck="NoSuchLatestDeck") == 0
+    assert _ok(host, "getDeckStats", decks=["NoSuchStatsDeck"]) == {}
+    assert set(_ok(host, "deckNames")) == before
+
+
+def test_retrieve_media_file_strips_illegal_chars_blocks_symlinks_and_glob_brackets(
+    host: AddonHost, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+):
+    payload = b"hello media"
+    _ok(host, "storeMediaFile", filename="sample.txt", data=base64.b64encode(payload).decode())
+
+    # Illegal characters are stripped matching Anki's _illegalCharReg, without deprecation warning
+    assert _ok(host, "retrieveMediaFile", filename='sam*p?l:e".txt') == base64.b64encode(
+        payload
+    ).decode("ascii")
+    assert "deprecated" not in capsys.readouterr().out.lower()
+    assert _ok(host, "retrieveMediaFile", filename=123) is False
+    assert _ok(host, "retrieveMediaFile", filename="missing.txt") is False
+
+    # Symlink inside collection.media pointing outside media_dir is refused with False
+    outside = tmp_path / "secret.txt"
+    outside.write_text("top-secret", encoding="utf-8")
+    media_dir = Path(host.col.media.dir())
+    escape_link = media_dir / "escape.txt"
+    escape_link.symlink_to(outside)
+    assert _ok(host, "retrieveMediaFile", filename="escape.txt") is False
+    assert "escape.txt" not in _ok(host, "getMediaFilesNames", pattern="*")
+
+    # getMediaFilesNames works even when media_dir path contains glob metacharacters like [1]
+    bracket_dir = tmp_path / "anki [1]" / "collection.media"
+    bracket_dir.mkdir(parents=True)
+    (bracket_dir / "pic.png").write_bytes(b"png")
+    orig_dir = host.col.media.dir
+    host.col.media.dir = lambda: str(bracket_dir)  # type: ignore[method-assign]
+    try:
+        assert _ok(host, "getMediaFilesNames", pattern="*.png") == ["pic.png"]
+    finally:
+        host.col.media.dir = orig_dir  # type: ignore[method-assign]
+
+
+def test_util_download_closes_http_client(tmp_path: Path):
+    (tmp_path / "config.json").write_text("{}", encoding="utf-8")
+    util_mod, _ = _load_util_module(tmp_path, lambda _name: {})
+    closed: list[bool] = []
+
+    class FakeClient:
+        timeout = 0.0
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_exc):
+            closed.append(True)
+
+        def get(self, _url: str):
+            return types.SimpleNamespace(status_code=200)
+
+        def stream_content(self, _resp):
+            return b"payload"
+
+    util_mod.anki.sync.AnkiRequestsClient = FakeClient  # type: ignore[attr-defined]
+    assert util_mod.download("https://example.test/a.png") == b"payload"
+    assert closed == [True]
+
+
+def test_tier3_refresh_and_validation_hygiene(host: AddonHost):
+    (nid_a, cid_a), _ = _seed(host, count=2)
+    refreshes: list[bool] = []
+    host._addon.scheduleRefresh = lambda: refreshes.append(True)
+
+    # setEaseFactors validates length and schedules refresh
+    assert _call(host, "setEaseFactors", cards=[cid_a], easeFactors=[])["error"] is not None
+    assert _ok(host, "setEaseFactors", cards=[cid_a], easeFactors=[2600]) == [True]
+    assert len(refreshes) == 1
+
+    refreshes.clear()
+    assert _ok(host, "setSpecificValueOfCard", card=cid_a, keys=["factor"], newValues=[2700]) == [
+        True
+    ]
+    assert len(refreshes) == 1
+
+    refreshes.clear()
+    assert _ok(host, "answerCards", answers=[{"cardId": cid_a, "ease": 3}]) == [True]
+    assert len(refreshes) == 1
+
+    refreshes.clear()
+    assert isinstance(_ok(host, "cloneDeckConfigId", name="Cloned"), int)
+    assert len(refreshes) == 1
+
+    refreshes.clear()
+    _ok(host, "clearUnusedTags")
+    assert len(refreshes) == 1
+
+    refreshes.clear()
+    _ok(host, "replaceTags", notes=[nid_a], tag_to_replace="missing", replace_with_tag="x")
+    assert len(refreshes) == 1
+
+    # findAndReplaceInModels does not call update_dict when no text matched
+    updates: list[str] = []
+    orig_update = host.col.models.update_dict
+
+    def spy_update(model, *args, **kwargs):
+        updates.append(model["name"])
+        return orig_update(model, *args, **kwargs)
+
+    host.col.models.update_dict = spy_update  # type: ignore[method-assign]
+    try:
+        assert (
+            _ok(
+                host,
+                "findAndReplaceInModels",
+                modelName="Basic",
+                findText="NO_SUCH_NEEDLE_XYZ",
+                replaceText="Y",
+            )
+            == 0
+        )
+        assert updates == []
+    finally:
+        host.col.models.update_dict = orig_update  # type: ignore[method-assign]

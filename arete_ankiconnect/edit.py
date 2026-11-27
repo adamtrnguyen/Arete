@@ -255,7 +255,7 @@ class Edit(aqt.editcurrent.EditCurrent):
     # In the case of the first two issues, strictly speaking, the fix is not ideal:
     # the window appears in background first, and then quickly pops into foreground.
     # It is not *too* unsightly, probably, no-one will notice this;
-    # still, a better solution must be possible. TODO find one!
+    # a cleaner platform-native activation path may exist in future Qt versions.
     #
     # Note that operation systems, notably Windows, and desktop managers, may restrict
     # background applications from raising windows to prevent them from interrupting

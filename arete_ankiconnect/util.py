@@ -33,14 +33,14 @@ class MediaType(enum.Enum):
 
 
 def download(url):
-    client = anki.sync.AnkiRequestsClient()
-    client.timeout = setting("webTimeout") / 1000
+    with anki.sync.AnkiRequestsClient() as client:
+        client.timeout = setting("webTimeout") / 1000
 
-    resp = client.get(url)
-    if resp.status_code != 200:
-        raise Exception(f"{url} download failed with return code {resp.status_code}")
+        resp = client.get(url)
+        if resp.status_code != 200:
+            raise Exception(f"{url} download failed with return code {resp.status_code}")
 
-    return client.stream_content(resp)
+        return client.stream_content(resp)
 
 
 def api():
