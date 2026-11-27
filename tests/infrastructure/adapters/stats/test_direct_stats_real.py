@@ -91,6 +91,8 @@ def _build(base: Path) -> list:
 
         card = col.get_card(cids[2])
         card.memory_state = FSRSMemoryState(stability=12.5, difficulty=6.1)
+        card.decay = 0.2
+        card.desired_retention = 0.85
         col.update_card(card)
         return nids
     finally:
@@ -113,4 +115,10 @@ def test_grouped_stats_equal_the_per_card_reads(tmp_path, pick):
         col.close()
     assert want, "the oracle found no cards"
     assert any(s.answer_distribution for s in want) and any(s.fsrs for s in want)
+    assert any(
+        s.fsrs
+        and s.fsrs.decay == pytest.approx(0.2)
+        and s.fsrs.desired_retention == pytest.approx(0.85)
+        for s in got
+    )
     assert got == want

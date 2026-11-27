@@ -26,6 +26,42 @@ from arete.infrastructure.adapters.stats.deck_config import deck_params, default
 logger = logging.getLogger(__name__)
 
 
+def _optional_float(value: Any) -> float | None:
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return float(value)
+    return None
+
+
+def _parse_fsrs_results(
+    fsrs_results: Any,
+) -> tuple[dict[int, FsrsMemoryState], dict[int, int]]:
+    """Parse additive FSRS-6 fields and fallback `last_review_time` from `getFSRSStats`."""
+    fsrs_map: dict[int, FsrsMemoryState] = {}
+    last_review_map: dict[int, int] = {}
+    if not fsrs_results or not isinstance(fsrs_results, list):
+        return fsrs_map, last_review_map
+
+    for item in fsrs_results:
+        if not isinstance(item, dict) or item.get("cardId") is None:
+            continue
+        cid = item["cardId"]
+        lrt = item.get("last_review_time")
+        if isinstance(lrt, int) and not isinstance(lrt, bool) and lrt > 0:
+            last_review_map[cid] = lrt
+
+        # The add-on sends both, or None for both when the card has no FSRS memory state.
+        if item.get("difficulty") is None or item.get("stability") is None:
+            continue
+        fsrs_map[cid] = FsrsMemoryState(
+            stability=item["stability"],
+            difficulty=item["difficulty"] / FSRS_DIFFICULTY_SCALE,
+            retrievability=None,
+            decay=_optional_float(item.get("decay")),
+            desired_retention=_optional_float(item.get("desired_retention")),
+        )
+    return fsrs_map, last_review_map
+
+
 class ConnectStatsRepository(StatsRepository):
     """Fetches card statistics via AnkiConnect HTTP API.
 
@@ -78,19 +114,10 @@ class ConnectStatsRepository(StatsRepository):
 
             # 3. Try to get FSRS stats (custom action)
             fsrs_map: dict[int, FsrsMemoryState] = {}
+            last_review_map: dict[int, int] = {}
             try:
                 fsrs_results = await self._invoke("getFSRSStats", cards=card_ids)
-                if fsrs_results and isinstance(fsrs_results, list):
-                    for item in fsrs_results:
-                        # The add-on sends both, or None for both when the card has
-                        # no FSRS memory state.
-                        if item.get("difficulty") is None or item.get("stability") is None:
-                            continue
-                        fsrs_map[item["cardId"]] = FsrsMemoryState(
-                            stability=item["stability"],
-                            difficulty=item["difficulty"] / FSRS_DIFFICULTY_SCALE,
-                            retrievability=None,
-                        )
+                fsrs_map, last_review_map = _parse_fsrs_results(fsrs_results)
             except Exception as e:
                 logger.warning(f"[fsrs] getFSRSStats unavailable, stats lack FSRS state: {e}")
 
@@ -119,7 +146,7 @@ class ConnectStatsRepository(StatsRepository):
                         due=info.get("due", 0),
                         reps=info.get("reps", 0),
                         fsrs=fsrs_state,
-                        last_review=None,  # Not available via cardsInfo
+                        last_review=last_review_map.get(cid),
                         average_time_ms=0,
                         reviews=[],
                         front=front,

@@ -26,7 +26,17 @@ def review(rating=3, interval=10.0, last_interval=5.0, stability=None, retrievab
     )
 
 
-def card(*, stability=None, last_review=None, interval=10, reps=5, lapses=1, reviews=()):
+def card(
+    *,
+    stability=None,
+    last_review=None,
+    interval=10,
+    reps=5,
+    lapses=1,
+    reviews=(),
+    decay=None,
+    desired_retention=None,
+):
     return CardStatsAggregate(
         card_id=1,
         note_id=1,
@@ -36,7 +46,12 @@ def card(*, stability=None, last_review=None, interval=10, reps=5, lapses=1, rev
         interval=interval,
         due=0,
         reps=reps,
-        fsrs=FsrsMemoryState(stability=stability, difficulty=0.5)
+        fsrs=FsrsMemoryState(
+            stability=stability,
+            difficulty=0.5,
+            decay=decay,
+            desired_retention=desired_retention,
+        )
         if stability is not None
         else None,
         last_review=last_review,
@@ -232,3 +247,58 @@ def test_deck_parameters_are_carried_through():
     bare = enrich(card())
     assert bare.desired_retention is None
     assert bare.weights == []
+
+
+# --- FSRS-6 power-law decay & desired-retention schedule adherence ---
+
+
+def test_retrievability_uses_fsrs6_power_law_for_overdue_card():
+    """At t = 5S with default FSRS-6 decay (0.1542), R is ~76.1% (not exponential 59.0%)."""
+    e = enrich(card(stability=10.0, last_review=days_ago(50)))
+    expected = (1.0 + (0.9 ** (-1.0 / 0.1542) - 1.0) * 5.0) ** (-0.1542)
+    assert e.current_retrievability == pytest.approx(expected, abs=1e-3)
+    assert e.current_retrievability > 0.75
+
+
+def test_retrievability_prefers_card_decay_over_deck_weights():
+    """Per-card FSRS-6 decay takes precedence over deck weights."""
+    weights_21 = [0.5] * 20 + [0.15]
+    c = card(stability=10.0, last_review=days_ago(50), decay=0.3)
+    e = enrich(c, {"weights": weights_21})
+    expected = (1.0 + (0.9 ** (-1.0 / 0.3) - 1.0) * 5.0) ** (-0.3)
+    assert e.current_retrievability == pytest.approx(expected, abs=1e-3)
+
+
+@pytest.mark.parametrize(
+    ("weights", "expected_decay"),
+    [
+        ([0.4] * 20 + [0.2], 0.2),  # FSRS-6 21 weights -> weights[20]
+        ([0.4] * 19, 0.5),  # FSRS-5 19 weights -> fixed 0.5
+        ([0.4] * 17, 0.5),  # FSRS-4.5 17 weights -> fixed 0.5
+        ([], 0.1542),  # no weights -> FSRS-6 default
+    ],
+    ids=["fsrs6-21w", "fsrs5-19w", "fsrs45-17w", "default-fsrs6"],
+)
+def test_retrievability_resolves_decay_from_deck_weights(weights, expected_decay):
+    e = enrich(card(stability=10.0, last_review=days_ago(50)), {"weights": weights})
+    expected = (1.0 + (0.9 ** (-1.0 / expected_decay) - 1.0) * 5.0) ** (-expected_decay)
+    assert e.current_retrievability == pytest.approx(expected, abs=1e-3)
+
+
+def test_schedule_adherence_uses_deck_desired_retention():
+    """At desired_retention=0.85 (FSRS-6 default decay), predicted_ivl for S=10 is ~19.06d."""
+    factor = 0.9 ** (-1.0 / 0.1542) - 1.0
+    predicted = (10.0 / factor) * (0.85 ** (-1.0 / 0.1542) - 1.0)
+    e = enrich(card(stability=10.0, interval=19), {"desired_retention": 0.85})
+    assert e.schedule_adherence == pytest.approx(19.0 / predicted, rel=1e-6)
+    assert e.schedule_adherence == pytest.approx(1.0, abs=0.01)
+
+
+def test_schedule_adherence_prefers_card_desired_retention_over_deck():
+    """Per-card desired_retention overrides deck_params desired_retention."""
+    factor = 0.9 ** (-1.0 / 0.2) - 1.0
+    predicted = (10.0 / factor) * (0.85 ** (-1.0 / 0.2) - 1.0)
+    c = card(stability=10.0, interval=19, decay=0.2, desired_retention=0.85)
+    e = enrich(c, {"desired_retention": 0.9})
+    assert e.desired_retention == 0.85
+    assert e.schedule_adherence == pytest.approx(19.0 / predicted, rel=1e-6)

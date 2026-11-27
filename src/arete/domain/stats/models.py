@@ -16,12 +16,16 @@ class FsrsMemoryState:
         stability: Days until recall probability drops to 90%.
         difficulty: Card difficulty (0.0-1.0 normalized from Anki's 1-10 scale).
         retrievability: Current probability of recall (0.0-1.0).
+        decay: Optional FSRS-6 per-card forgetting-curve decay exponent (w[20]).
+        desired_retention: Optional per-card desired retention target (0.0-1.0).
 
     """
 
     stability: float
     difficulty: float
     retrievability: float | None = None
+    decay: float | None = None
+    desired_retention: float | None = None
 
 
 def revlog_interval_days(ivl: int) -> float:

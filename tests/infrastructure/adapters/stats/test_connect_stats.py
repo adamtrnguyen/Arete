@@ -505,3 +505,42 @@ async def test_connect_stats_shares_ankiconnect_client_transport():
     assert await stats_repo.get_card_stats([1]) == []
     client._http_request.assert_awaited_once()
     await stats_repo.close()
+
+
+@pytest.mark.asyncio
+async def test_get_card_stats_extracts_fsrs6_decay_desired_retention_and_last_review_time(repo):
+    """Additive FSRS-6 fields from getFSRSStats populate FsrsMemoryState and last_review."""
+    repo._invoke = AsyncMock(
+        side_effect=[
+            [101],
+            [
+                {
+                    "cardId": 101,
+                    "note": 1,
+                    "deckName": "Math",
+                    "interval": 19,
+                    "reps": 4,
+                    "fields": {"Front": {"value": "Q"}},
+                }
+            ],
+            [
+                {
+                    "cardId": 101,
+                    "difficulty": 4.5,
+                    "stability": 10.0,
+                    "decay": 0.2,
+                    "desired_retention": 0.85,
+                    "last_review_time": 1700001234,
+                }
+            ],
+        ]
+    )
+
+    [s] = await repo.get_card_stats([1])
+
+    assert s.fsrs is not None
+    assert s.fsrs.stability == 10.0
+    assert s.fsrs.difficulty == 0.45
+    assert s.fsrs.decay == 0.2
+    assert s.fsrs.desired_retention == 0.85
+    assert s.last_review == 1700001234

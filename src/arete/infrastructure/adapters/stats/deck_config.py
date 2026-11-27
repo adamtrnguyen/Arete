@@ -3,8 +3,8 @@
 Both backends read the same JSON: `col.decks.get_config` directly, and the add-on's
 `getDeckConfig`, which returns `col.decks.config_dict_for_deck_id`. Its keys are Anki's
 `DeckConfSchema11` (rslib/src/deckconfig/schema11.rs, serde camelCase): `desiredRetention`
-and `sm2Retention` at the top level, and the FSRS parameters in `fsrsParams6`,
-`fsrsParams5` and `fsrsWeights` (the FSRS-4 set).
+and `sm2Retention` at the top level, and the FSRS parameters in `fsrsParams7`,
+`fsrsParams6`, `fsrsParams5` and `fsrsWeights` (the FSRS-4 set).
 """
 
 from __future__ import annotations
@@ -22,10 +22,10 @@ def default_params() -> dict[str, Any]:
 def fsrs_weights(config: dict[str, Any]) -> list[float]:
     """The FSRS parameters Anki schedules the deck with.
 
-    The first non-empty of `fsrsParams6`, `fsrsParams5`, `fsrsWeights`, as Anki's
-    `DeckConfig::fsrs_params` picks them (rslib/src/deckconfig/mod.rs).
+    The first non-empty of `fsrsParams7`, `fsrsParams6`, `fsrsParams5`, `fsrsWeights`,
+    as Anki's `DeckConfig::fsrs_params` picks them (rslib/src/deckconfig/mod.rs).
     """
-    for key in ("fsrsParams6", "fsrsParams5", "fsrsWeights"):
+    for key in ("fsrsParams7", "fsrsParams6", "fsrsParams5", "fsrsWeights"):
         if weights := config.get(key):
             return list(weights)
     return []

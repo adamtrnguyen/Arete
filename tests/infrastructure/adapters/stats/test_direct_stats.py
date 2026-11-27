@@ -415,3 +415,31 @@ async def test_get_review_history_chunks_over_sql_chunk_and_sorts(mock_repo):
     assert [r.review_time for r in result] == [1000000000, 2000000000]
     assert mock_repo.col.db.execute.call_count == 3
     await repo.close()
+
+
+@pytest.mark.asyncio
+async def test_get_card_stats_extracts_fsrs6_fields_and_last_review_fallback(mock_repo):
+    """Anki 26 Card decay, desired_retention, and last_review_time fallback are extracted."""
+    card = _make_card(cid=202, nid=2)
+    ms = MagicMock()
+    ms.difficulty = 6.0
+    ms.stability = 15.0
+    card.memory_state = ms
+    card.decay = 0.22
+    card.desired_retention = 0.85
+    card.last_review_time = 1700005678
+
+    _db(mock_repo, {2: [202]})  # no revlog rows -> falls back to card.last_review_time
+    mock_repo.col.get_card.return_value = card
+    mock_repo.col.decks.get.return_value = {"name": "Default"}
+    mock_repo.col.get_note.return_value = MagicMock(fields=["Q"])
+
+    repo = DirectStatsRepository(anki_base=None)
+    [s] = await repo.get_card_stats([2])
+
+    assert s.fsrs is not None
+    assert s.fsrs.stability == 15.0
+    assert s.fsrs.difficulty == 0.6
+    assert s.fsrs.decay == 0.22
+    assert s.fsrs.desired_retention == 0.85
+    assert s.last_review == 1700005678

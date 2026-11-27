@@ -52,11 +52,23 @@ def test_a_deck_with_no_params_has_no_weights(col):
 @pytest.mark.parametrize(
     ("config", "expected"),
     [
-        ({"fsrsParams6": [6.0], "fsrsParams5": [5.0], "fsrsWeights": [4.0]}, [6.0]),
+        (
+            {
+                "fsrsParams7": [7.0],
+                "fsrsParams6": [6.0],
+                "fsrsParams5": [5.0],
+                "fsrsWeights": [4.0],
+            },
+            [7.0],
+        ),
+        (
+            {"fsrsParams7": [], "fsrsParams6": [6.0], "fsrsParams5": [5.0], "fsrsWeights": [4.0]},
+            [6.0],
+        ),
         ({"fsrsParams6": [], "fsrsParams5": [5.0], "fsrsWeights": [4.0]}, [5.0]),
         ({"fsrsParams6": [], "fsrsParams5": [], "fsrsWeights": [4.0]}, [4.0]),
     ],
-    ids=["fsrs6", "fsrs5", "fsrs4"],
+    ids=["fsrs7", "fsrs6", "fsrs5", "fsrs4"],
 )
 def test_the_weights_are_the_first_set_anki_would_schedule_with(config, expected):
     assert fsrs_weights(config) == expected

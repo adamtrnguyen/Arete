@@ -21,6 +21,20 @@ from arete.infrastructure.anki.repository import AnkiRepository
 logger = logging.getLogger(__name__)
 
 
+def _optional_float(value: Any) -> float | None:
+    """Coerce a real number to float, ignoring None, booleans, and mock placeholders."""
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return float(value)
+    return None
+
+
+def _optional_positive_int(value: Any) -> int | None:
+    """Return a positive integer timestamp, ignoring None, booleans, and non-ints."""
+    if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+        return value
+    return None
+
+
 def fsrs_state_of(card: Any) -> FsrsMemoryState | None:
     """Return the card's FSRS state in 0-1 difficulty units, or None if unreviewed under FSRS."""
     ms = card.memory_state  # Optional[FsrsMemoryState protobuf]
@@ -30,6 +44,8 @@ def fsrs_state_of(card: Any) -> FsrsMemoryState | None:
         stability=ms.stability,
         difficulty=ms.difficulty / FSRS_DIFFICULTY_SCALE,
         retrievability=None,  # computed by the application layer
+        decay=_optional_float(getattr(card, "decay", None)),
+        desired_retention=_optional_float(getattr(card, "desired_retention", None)),
     )
 
 
@@ -99,6 +115,10 @@ class DirectStatsRepository(StatsRepository):
                     front = fronts[card.nid]
 
                     answer_dist, last_review, avg_time = revlog.get(cid, ({}, None, 0))
+                    if last_review is None:
+                        last_review = _optional_positive_int(
+                            getattr(card, "last_review_time", None)
+                        )
 
                     stats_list.append(
                         CardStatsAggregate(
