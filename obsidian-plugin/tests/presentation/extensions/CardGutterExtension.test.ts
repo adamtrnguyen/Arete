@@ -22,7 +22,12 @@ jest.mock('obsidian', () => ({
 import { EditorState, RangeSet, TransactionSpec } from '@codemirror/state';
 import type { GutterMarker } from '@codemirror/view';
 import type { AnkiCardStats } from '@/domain/stats';
-import { cardRangesField, createCardGutter } from '@/presentation/extensions/CardGutterExtension';
+import {
+	cardRangesField,
+	createCardGutter,
+	highlightCardEffect,
+} from '@/presentation/extensions/CardGutterExtension';
+import { EditorView } from '@codemirror/view';
 import { CardParserService } from '@/application/services/CardParserService';
 import { ankiCardStats, card, noteYaml } from '../../factories';
 
@@ -500,5 +505,33 @@ describe('card gutter DOM', () => {
 			['is-hovered', false],
 			['is-active', false],
 		]);
+	});
+});
+
+describe('cardHighlightField', () => {
+	it('maps highlight line decorations through document edits', () => {
+		const g = setup(threeCards());
+		// Highlight card 1
+		g.apply({ effects: highlightCardEffect.of({ cardIndex: 1 }) });
+
+		const decosBefore = g.view.state.facet(EditorView.decorations);
+		expect(decosBefore.length).toBeGreaterThan(0);
+		const readFroms = () => {
+			const out: number[] = [];
+			for (const src of g.view.state.facet(EditorView.decorations)) {
+				const set = typeof src === 'function' ? src(g.view as any) : src;
+				for (const it = set.iter(); it.value; it.next()) out.push(it.from);
+			}
+			return out;
+		};
+
+		const before = readFroms();
+		expect(before.length).toBeGreaterThan(0);
+
+		const prefix = '# inserted line\n';
+		g.apply({ changes: { from: 0, insert: prefix } });
+		const after = readFroms();
+
+		expect(after).toEqual(before.map((pos) => pos + prefix.length));
 	});
 });

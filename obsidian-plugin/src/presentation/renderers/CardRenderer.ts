@@ -1,4 +1,5 @@
 import { App, Component, MarkdownRenderer } from 'obsidian';
+import { isReservedCardKey } from '@/domain/cardKeys';
 import { debugLog } from '@/domain/debugLog';
 
 export class CardRenderer {
@@ -18,7 +19,7 @@ export class CardRenderer {
 
 		for (const [key, value] of Object.entries(card)) {
 			// Exclude structural/system fields from rendering
-			if (['id', 'model', 'anki', 'deps'].includes(key)) {
+			if (isReservedCardKey(key)) {
 				continue;
 			}
 

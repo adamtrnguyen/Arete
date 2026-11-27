@@ -124,6 +124,15 @@
 	overflow: hidden;
 }
 
+.arete-yaml-parse-error {
+	padding: var(--size-2-2) var(--size-4-3);
+	font-size: var(--font-ui-smaller);
+	color: var(--text-error);
+	background: color-mix(in oklch, var(--color-red) 10%, transparent);
+	border-bottom: var(--border-width) solid var(--color-red);
+	flex-shrink: 0;
+}
+
 .arete-yaml-editor-panel .cm-editor {
 	height: 100%;
 	font-size: var(--code-size);

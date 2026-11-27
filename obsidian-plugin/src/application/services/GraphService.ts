@@ -15,43 +15,70 @@ export class GraphService {
 		this.settings = settings;
 	}
 
+	private normalizedPrefix(): string {
+		return (this.settings.graph_tag_prefix ?? '').trim().replace(/^#/, '').replace(/\/+$/, '');
+	}
+
+	private matchesPrefix(tag: unknown, prefix: string): boolean {
+		if (typeof tag !== 'string') return false;
+		const normalized = tag.trim().replace(/^#/, '');
+		return normalized === prefix || normalized.startsWith(`${prefix}/`);
+	}
+
+	private hasExactTag(rawTags: unknown, prefix: string, tagToAdd: string): boolean {
+		if (rawTags == null) return false;
+		const list = Array.isArray(rawTags) ? rawTags : [rawTags];
+		const matches = list.filter((t) => this.matchesPrefix(t, prefix));
+		return (
+			matches.length === 1 &&
+			typeof matches[0] === 'string' &&
+			matches[0].trim().replace(/^#/, '') === tagToAdd
+		);
+	}
+
 	async updateGraphTags(file: TFile, stats: ConceptStats) {
 		if (!this.settings.graph_coloring_enabled) return;
 
+		const prefix = this.normalizedPrefix();
+		if (!prefix) return;
+
 		const state = this.calculateRetentionState(stats);
-		const tagToAdd = `${this.settings.graph_tag_prefix}/${state}`;
-		const prefix = this.settings.graph_tag_prefix;
+		const tagToAdd = `${prefix}/${state}`;
+
+		const cachedTags = this.app.metadataCache.getFileCache(file)?.frontmatter?.tags;
+		if (cachedTags !== undefined && this.hasExactTag(cachedTags, prefix, tagToAdd)) {
+			return;
+		}
 
 		await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
-			let tags = frontmatter['tags'] || [];
-			if (!Array.isArray(tags)) {
-				// Handle single string tag
-				tags = [tags];
-			}
+			const rawTags = frontmatter['tags'];
+			if (this.hasExactTag(rawTags, prefix, tagToAdd)) return;
+
+			const tags: unknown[] =
+				rawTags == null ? [] : Array.isArray(rawTags) ? rawTags : [rawTags];
 
 			// 1. Remove existing retention tags
-			tags = tags.filter((t: string) => !t.startsWith(prefix));
+			const nextTags = tags.filter((t) => !this.matchesPrefix(t, prefix));
 
 			// 2. Add new tag
-			tags.push(tagToAdd);
+			nextTags.push(tagToAdd);
 
-			frontmatter['tags'] = tags;
+			frontmatter['tags'] = nextTags;
 		});
 	}
 
 	async clearGraphTags(file: TFile) {
-		const prefix = this.settings.graph_tag_prefix;
+		const prefix = this.normalizedPrefix();
+		if (!prefix) return;
 
 		await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
-			let tags = frontmatter['tags'];
-			if (!tags) return;
+			const rawTags = frontmatter['tags'];
+			if (rawTags == null) return;
 
-			if (!Array.isArray(tags)) {
-				tags = [tags];
-			}
+			const tags: unknown[] = Array.isArray(rawTags) ? rawTags : [rawTags];
 
 			// Remove all retention tags
-			const newTags = tags.filter((t: string) => !t.startsWith(prefix));
+			const newTags = tags.filter((t) => !this.matchesPrefix(t, prefix));
 
 			// Only update if changes were made
 			if (newTags.length !== tags.length) {
@@ -77,7 +104,20 @@ export class GraphService {
 	}
 
 	async clearAllTags() {
-		const files = this.app.vault.getMarkdownFiles();
+		const prefix = this.normalizedPrefix();
+		if (!prefix) {
+			new Notice('Graph tag prefix is empty.');
+			return;
+		}
+
+		const files = this.app.vault.getMarkdownFiles().filter((file) => {
+			const cache = this.app.metadataCache.getFileCache(file);
+			if (!cache) return true;
+			const rawTags = cache.frontmatter?.tags;
+			if (rawTags == null) return false;
+			const list = Array.isArray(rawTags) ? rawTags : [rawTags];
+			return list.some((t) => this.matchesPrefix(t, prefix));
+		});
 		let count = 0;
 		new Notice(`Clearing graph tags from ${files.length} files...`);
 

@@ -43,7 +43,7 @@ describe('CardYamlEditorView: editing the card list in frontmatter', () => {
 
 	describe('addCard', () => {
 		it('inserts a blank Basic card after the current one and selects it', async () => {
-			const { view, fm } = makeView(cards());
+			const { view, fm, note } = makeView(cards());
 			await view.loadCards();
 			view.currentCardIndex = 1;
 
@@ -57,7 +57,9 @@ describe('CardYamlEditorView: editing the card list in frontmatter', () => {
 				'c',
 			]);
 			expect(view.currentCardIndex).toBe(2);
-			expect(view.cards).toBe(fm.cards);
+			expect(view.cards).toEqual(fm.cards);
+			expect(view.cards).not.toBe(fm.cards);
+			expect(view.ownWriteMtime).toBe(note.stat.mtime);
 		});
 
 		it('creates the cards list when the note has none', async () => {
@@ -288,6 +290,7 @@ describe('CardYamlEditorView: loading cards', () => {
 });
 
 describe('CardYamlEditorView: card to YAML', () => {
+	const obsidian = jest.requireMock('obsidian');
 	const yamlOf = (card: Card) => {
 		const { view } = makeView([card]);
 		view.cards = [card];
@@ -300,54 +303,22 @@ describe('CardYamlEditorView: card to YAML', () => {
 		expect(view.extractCardYaml(3)).toBe('# No card selected\n');
 	});
 
-	it('writes content fields as |- block scalars, even when plain', () => {
-		expect(yamlOf({ Front: 'q', Back: 'a' })).toBe('Front: |-\n  q\nBack: |-\n  a');
-	});
-
-	it('indents every line of a multi-line value', () => {
-		expect(yamlOf({ Front: 'one\ntwo\n' })).toBe('Front: |-\n  one\n  two');
-	});
-
-	it('writes an empty content field as an empty string', () => {
-		expect(yamlOf({ Front: '' })).toBe("Front: ''");
-	});
-
-	it('block-scalars a non-content string that holds YAML-special characters', () => {
-		expect(yamlOf({ Source: 'a: b' })).toBe('Source: |-\n  a: b');
-		expect(yamlOf({ Source: 'plain' })).toBe('Source: plain');
-	});
-
-	it('writes non-string scalars as they are', () => {
-		expect(yamlOf({ id: 'a1', count: 3, flag: true })).toBe('id: a1\ncount: 3\nflag: true');
-	});
-
-	it('block-scalars a value with an underscore, such as an arete id (same YAML value)', () => {
-		expect(yamlOf({ id: 'arete_1' })).toBe('id: |-\n  arete_1');
-	});
-
-	it('writes deps as a structure with only the non-empty lists', () => {
-		expect(yamlOf({ deps: { requires: ['x', 'y'], related: [] } })).toBe(
-			'deps:\n  requires:\n    - x\n    - y',
-		);
-		expect(yamlOf({ deps: { requires: [], related: ['z'] } })).toBe(
-			'deps:\n  related:\n    - z',
-		);
-		expect(yamlOf({ deps: { requires: ['x'], related: ['z'] } })).toBe(
-			'deps:\n  requires:\n    - x\n  related:\n    - z',
-		);
-	});
-
-	it('resets a deps value that is not a mapping to an empty one', () => {
-		expect(yamlOf({ deps: {} })).toBe('deps: {}');
-		expect(yamlOf({ deps: 'x' })).toBe('deps: {}');
-		expect(yamlOf({ deps: null })).toBe('deps: {}');
-	});
-
-	it('writes the anki block with only the ids that exist', () => {
-		expect(yamlOf({ anki: { nid: 11, cid: 22 } })).toBe('anki:\n  nid: 11\n  cid: 22');
-		expect(yamlOf({ anki: { nid: 11 } })).toBe('anki:\n  nid: 11');
-		expect(yamlOf({ anki: {} })).toBe('anki: {}');
-		expect(yamlOf({ anki: 'x' })).toBe('anki: {}');
+	it('round-trips arbitrary structured cards losslessly via stringifyYaml', () => {
+		const complex = {
+			id: 'arete_1',
+			model: 'Basic',
+			deck: 'Math::Calc',
+			tags: ['exam', 'important'],
+			markdown: false,
+			Front: '  indented\n---\n"quoted": value $x^2$',
+			Back: 'one\ntwo\n',
+			Source: 'a: b',
+			count: 3,
+			deps: { requires: ['x', 'y'], related: ['z'] },
+			anki: { nid: 11, cid: 22 },
+		};
+		const dumped = yamlOf(complex);
+		expect(obsidian.parseYaml(dumped)).toEqual(complex);
 	});
 });
 
@@ -370,19 +341,23 @@ describe('CardYamlEditorView: YAML back to a card', () => {
 		expect(obsidian.parseYaml).toHaveBeenCalledWith('Front: q');
 	});
 
-	it('returns an empty card for empty YAML', () => {
-		obsidian.parseYaml = jest.fn().mockReturnValue(null);
+	it('returns null for empty, scalar, or list YAML', () => {
 		const { view } = makeView([]);
-		expect(view.parseYamlToCard('')).toEqual({});
+		obsidian.parseYaml = jest.fn().mockReturnValue(null);
+		expect(view.parseYamlToCard('')).toBeNull();
+		obsidian.parseYaml = jest.fn().mockReturnValue('plain string');
+		expect(view.parseYamlToCard('plain string')).toBeNull();
+		obsidian.parseYaml = jest.fn().mockReturnValue(['a', 'b']);
+		expect(view.parseYamlToCard('- a\n- b')).toBeNull();
 	});
 
-	it('returns an empty card, and logs, when the YAML does not parse', () => {
+	it('returns null, and logs, when the YAML does not parse', () => {
 		obsidian.parseYaml = jest.fn().mockImplementation(() => {
 			throw new Error('bad yaml');
 		});
 		const log = jest.spyOn(console, 'error').mockImplementation(() => {});
 		const { view } = makeView([]);
-		expect(view.parseYamlToCard('{')).toEqual({});
+		expect(view.parseYamlToCard('{')).toBeNull();
 		expect(log).toHaveBeenCalled();
 	});
 });
@@ -422,18 +397,92 @@ describe('CardYamlEditorView: writing the edited card back', () => {
 		]);
 	});
 
-	it('in field mode writes the YAML built from the field edits, not the editor text', async () => {
-		const { view, fm } = withEditor('STALE', { id: 'a', Front: 'from fields' });
+	it('aborts writing and shows an inline error when source YAML is invalid', async () => {
+		const log = jest.spyOn(console, 'error').mockImplementation(() => {});
+		const { view, app, fm } = makeView(cards());
 		await view.loadCards();
-		view.viewMode = 'fields';
-		view.cards[0].Front = 'from fields';
+		view.parseErrorEl = createMockElement('div');
+		view.editorView = { state: { doc: { toString: () => 'Front: [unclosed' } } };
+		view.viewMode = 'source';
 
 		await view.syncToMain();
 
-		const parsedText = (obsidian.parseYaml as jest.Mock).mock.calls[0][0];
-		expect(parsedText).toContain('Front: |-\n  from fields');
-		expect(parsedText).not.toContain('STALE');
-		expect(fm.cards[0]).toEqual({ id: 'a', Front: 'from fields' });
+		expect(app.fileManager.processFrontMatter).not.toHaveBeenCalled();
+		expect(fm.cards[0]).toEqual({ id: 'a', Front: 'A', Back: 'a' });
+		expect(view.parseErrorEl.show).toHaveBeenCalled();
+		expect(view.parseErrorEl.setText).toHaveBeenCalledWith(
+			expect.stringContaining('Invalid YAML'),
+		);
+		log.mockRestore();
+	});
+
+	it('in field mode writes the structured cloned card directly without YAML round-trip', async () => {
+		const { view, fm } = withEditor('STALE', { id: 'a', Front: 'unused' });
+		fm.cards[0].tags = ['math', 'calc'];
+		fm.cards[0].markdown = false;
+		await view.loadCards();
+		view.viewMode = 'fields';
+		view.cards[0].Front = '---\n"quoted": value';
+
+		await view.syncToMain();
+
+		expect(obsidian.parseYaml).not.toHaveBeenCalled();
+		expect(fm.cards[0]).toEqual({
+			id: 'a',
+			Front: '---\n"quoted": value',
+			Back: 'a',
+			tags: ['math', 'calc'],
+			markdown: false,
+		});
+		expect(fm.cards[0]).not.toBe(view.cards[0]);
+	});
+
+	it('binds target file and card index at schedule time and flushes before switching cards', async () => {
+		jest.useFakeTimers();
+		try {
+			const { view, fm } = makeView(cards());
+			await view.loadCards();
+			view.viewMode = 'fields';
+			view.currentCardIndex = 0;
+			view.cards[0].Front = 'edited card 0';
+			view.debouncedSyncToMain();
+
+			// Immediately switch to card 2 before the 300ms timer fires
+			view.selectCard(2);
+			await Promise.resolve();
+			jest.advanceTimersByTime(300);
+			await Promise.resolve();
+
+			expect(fm.cards[0].Front).toBe('edited card 0');
+			expect(fm.cards[2].Front).toBe('C');
+		} finally {
+			jest.useRealTimers();
+		}
+	});
+
+	it('flushes pending edits on close before destroying the editor', async () => {
+		jest.useFakeTimers();
+		try {
+			const { view, fm } = makeView(cards());
+			await view.loadCards();
+			view.viewMode = 'fields';
+			view.cards[0].Front = 'saved on close';
+			view.debouncedSyncToMain();
+
+			await view.onClose();
+
+			expect(fm.cards[0].Front).toBe('saved on close');
+		} finally {
+			jest.useRealTimers();
+		}
+	});
+
+	it('does not mutate cached frontmatter objects when loading or editing', async () => {
+		const initial = cards();
+		const { view } = makeView(initial);
+		await view.loadCards();
+		view.cards[0].Front = 'mutated locally';
+		expect(initial[0].Front).toBe('A');
 	});
 
 	it('does not invent a card when the selection is not in the frontmatter', async () => {
@@ -488,15 +537,44 @@ describe('CardYamlEditorView: writing the edited card back', () => {
 		view.onFileParsed(note);
 		expect(view.syncFromMain).not.toHaveBeenCalled();
 	});
+
+	it('skips the own-write parse echo after addCard, deleteCard, and reorderCards', async () => {
+		const { view, note } = makeView(cards());
+		view.syncFromMain = jest.fn();
+		await view.loadCards();
+
+		await view.addCard();
+		view.onFileParsed(note);
+		expect(view.syncFromMain).not.toHaveBeenCalled();
+
+		await view.reorderCards(0, 1);
+		view.onFileParsed(note);
+		expect(view.syncFromMain).not.toHaveBeenCalled();
+
+		await view.deleteCard(0);
+		view.onFileParsed(note);
+		expect(view.syncFromMain).not.toHaveBeenCalled();
+	});
 });
 
 describe('CardYamlEditorView: field editor', () => {
-	it('lists the content fields, hides structural keys, and writes edits back to the card', () => {
+	it('lists the content fields, hides reserved structural keys, and writes edits back to the card', () => {
 		jest.useFakeTimers();
 		try {
-			const { view } = makeView([
-				{ id: 'a', model: 'Basic', Front: 'q', Back: 'a', anki: { nid: 1 }, __line__: 4 },
-			]);
+			const sample = {
+				id: 'a',
+				model: 'Basic',
+				deck: 'Math',
+				tags: ['exam'],
+				markdown: true,
+				cid: 10,
+				nid: 20,
+				Front: 'q',
+				Back: 'a',
+				anki: { nid: 1 },
+				__line__: 4,
+			};
+			const { view } = makeView([sample]);
 			const inputs: Record<string, any> = {};
 			const group = createMockElement('div', {
 				createEl: jest.fn((tag: string, o: any) => {
@@ -508,9 +586,7 @@ describe('CardYamlEditorView: field editor', () => {
 			view.fieldEditorContainer = createMockElement('div', {
 				createDiv: jest.fn(() => group),
 			});
-			view.cards = [
-				{ id: 'a', model: 'Basic', Front: 'q', Back: 'a', anki: { nid: 1 }, __line__: 4 },
-			];
+			view.cards = [sample];
 			view.fileModel = 'Basic';
 			view.renderDependencySection = jest.fn();
 			view.debouncedSyncToMain = jest.fn();
@@ -532,7 +608,7 @@ describe('CardYamlEditorView: field editor', () => {
 		}
 	});
 
-	it('creates the deps structure and writes dependency changes into it', () => {
+	it('does not mutate deps on view, and creates deps only when dependencies are edited', () => {
 		const { view } = makeView([{ id: 'a', Front: 'q' }]);
 		view.fieldEditorContainer = createMockElement('div');
 		view.cards = [{ id: 'a', Front: 'q' }];
@@ -544,20 +620,47 @@ describe('CardYamlEditorView: field editor', () => {
 
 		view.renderFieldEditor();
 
-		expect(view.cards[0].deps).toEqual({ requires: [], related: [] });
+		expect(view.cards[0].deps).toBeUndefined();
 		sections['requires'](['arete_x']);
 		sections['related'](['arete_y']);
 		expect(view.cards[0].deps).toEqual({ requires: ['arete_x'], related: ['arete_y'] });
 		expect(view.debouncedSyncToMain).toHaveBeenCalledTimes(2);
 	});
 
-	it('replaces a deps value that is not an object', () => {
+	it('handles a non-object deps value without mutating on view, replacing it on edit', () => {
 		const { view } = makeView([{ id: 'a', deps: 'junk' }]);
 		view.fieldEditorContainer = createMockElement('div');
 		view.cards = [{ id: 'a', deps: 'junk' }];
-		view.renderDependencySection = jest.fn();
+		view.debouncedSyncToMain = jest.fn();
+		const sections: Record<string, (v: string[]) => void> = {};
+		view.renderDependencySection = jest.fn((label: string, init: string[], cb: any) => {
+			expect(init).toEqual([]);
+			sections[label] = cb;
+		});
 		view.renderFieldEditor();
-		expect(view.cards[0].deps).toEqual({ requires: [], related: [] });
+		expect(view.cards[0].deps).toBe('junk');
+		sections['requires'](['arete_x']);
+		expect(view.cards[0].deps).toEqual({ requires: ['arete_x'] });
+	});
+
+	it('renderIndex tolerates null cards and non-string Front values', () => {
+		const { view } = makeView([]);
+		const listEl = createMockElement('div', {
+			setAttribute: jest.fn(),
+		});
+		const indexEl = createMockElement('div', {
+			createDiv: jest
+				.fn()
+				.mockReturnValueOnce(createMockElement('div'))
+				.mockReturnValueOnce(listEl),
+		});
+		view.indexContainer = indexEl;
+		view.cards = [null, { Front: 12345 }, { Text: true }];
+		view.getCardWarning = jest.fn().mockReturnValue(false);
+		// Restore real renderIndex on this test view
+		view.renderIndex = (CardYamlEditorView.prototype as any).renderIndex.bind(view);
+
+		expect(() => view.renderIndex()).not.toThrow();
 	});
 
 	it('renders nothing for an empty card list', () => {

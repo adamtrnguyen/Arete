@@ -87,7 +87,12 @@ export class DashboardView extends ItemView {
 		if (Object.keys(this.plugin.statsService.getCache().concepts).length === 0) {
 			// Awaited, so the first render has data instead of an empty state.
 			new Notice('Syncing Anki stats...');
-			await this.plugin.statsService.refreshStats();
+			try {
+				await this.plugin.statsService.refreshStats();
+			} catch (e) {
+				console.error('[Arete] Failed to sync Anki stats:', e);
+				new Notice('Failed to refresh stats, check that Anki is running.');
+			}
 		}
 		this.render();
 	}
@@ -158,6 +163,9 @@ export class DashboardView extends ItemView {
 				await this.plugin.statsService.refreshStats();
 				await this.plugin.saveStats();
 				this.render();
+			} catch (e) {
+				console.error('[Arete] Failed to refresh stats:', e);
+				new Notice('Failed to refresh stats, check that Anki is running.');
 			} finally {
 				refreshBtn.setDisabled(false);
 			}
@@ -477,11 +485,12 @@ export class DashboardView extends ItemView {
 			return;
 		}
 
+		const isSm2 = this.plugin.settings.stats_algorithm === 'sm2';
 		const table = container.createEl('table', { cls: 'arete-leech-table' });
 
 		const thead = table.createEl('thead');
 		const headerRow = thead.createEl('tr');
-		['Card (front)', 'Difficulty', 'Lapses', 'Actions'].forEach((text) => {
+		['Card (front)', isSm2 ? 'Ease' : 'Difficulty', 'Lapses', 'Actions'].forEach((text) => {
 			headerRow.createEl('th', { text });
 		});
 
@@ -502,15 +511,19 @@ export class DashboardView extends ItemView {
 				this.plugin.settings,
 			);
 
-			// Diff/Ease (use 'issue' precalc or raw), flagged like the metric it shows
+			// Metric column follows the active algorithm setting, flagged like every other view
 			const cellDiff = row.createEl('td');
-			cellDiff.textContent = leech.ease
-				? `${(leech.ease / 10).toFixed(0)}% ease`
-				: leech.difficulty != null
-					? `${difficultyOutOfTen(leech.difficulty).toFixed(1)} diff`
-					: '-';
+			if (isSm2) {
+				cellDiff.textContent =
+					leech.ease > 0 ? `${(leech.ease / 10).toFixed(0)}% ease` : '-';
+			} else {
+				cellDiff.textContent =
+					leech.difficulty != null
+						? `${difficultyOutOfTen(leech.difficulty).toFixed(1)} diff`
+						: '-';
+			}
 			const diffFlag = flagClass(
-				leech.ease ? states.ease : leech.difficulty != null ? states.difficulty : 'none',
+				isSm2 ? states.ease : leech.difficulty != null ? states.difficulty : 'none',
 			);
 			if (diffFlag) cellDiff.addClass(diffFlag);
 

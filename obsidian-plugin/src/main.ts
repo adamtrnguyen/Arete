@@ -271,9 +271,14 @@ export default class AretePlugin extends Plugin {
 			name: 'Sync stats (refresh Anki data)',
 			callback: async () => {
 				new Notice('Refreshing stats...');
-				const results = await this.statsService.refreshStats();
-				await this.onStatsRefreshed(results);
-				new Notice('Stats refreshed.');
+				try {
+					const results = await this.statsService.refreshStats();
+					await this.onStatsRefreshed(results);
+					new Notice('Stats refreshed.');
+				} catch (err) {
+					console.error('[Arete] Failed to refresh stats:', err);
+					new Notice('Failed to refresh stats, check that Anki is running.');
+				}
 			},
 		});
 

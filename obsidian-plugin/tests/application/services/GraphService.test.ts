@@ -97,4 +97,63 @@ describe('GraphService', () => {
 		service.updateSettings(newSettings);
 		expect(service.settings.graph_tag_prefix).toBe('new/prefix');
 	});
+
+	test('ignores empty or whitespace graph_tag_prefix without wiping tags', async () => {
+		settings.graph_tag_prefix = '   ';
+		const file = { path: 'test.md' } as TFile;
+		await service.updateGraphTags(file, { score: 0.25 } as any);
+		await service.clearGraphTags(file);
+		expect(app.fileManager.processFrontMatter).not.toHaveBeenCalled();
+
+		await service.clearAllTags();
+		expect(Notice).toHaveBeenCalledWith('Graph tag prefix is empty.');
+	});
+
+	test('matches exact prefix boundary and preserves non-string and sibling tags', async () => {
+		const file = { path: 'test.md' } as TFile;
+		const stats = { score: 0.25 } as any;
+
+		(app.fileManager.processFrontMatter as jest.Mock).mockImplementation((_f, cb) => {
+			const fm = {
+				tags: [
+					'#arete/retention/high',
+					'arete/retention',
+					'arete/retention-notes',
+					42,
+					null,
+				],
+			};
+			cb(fm);
+			expect(fm.tags).toEqual(['arete/retention-notes', 42, null, 'arete/retention/low']);
+		});
+
+		await service.updateGraphTags(file, stats);
+		expect(app.fileManager.processFrontMatter).toHaveBeenCalledTimes(1);
+	});
+
+	test('skips processFrontMatter when cached tags already have the exact target tag', async () => {
+		const file = { path: 'test.md' } as TFile;
+		(app.metadataCache.getFileCache as jest.Mock).mockReturnValue({
+			frontmatter: { tags: ['topic', 'arete/retention/high'] },
+		});
+
+		await service.updateGraphTags(file, { score: 0.05 } as any);
+		expect(app.fileManager.processFrontMatter).not.toHaveBeenCalled();
+	});
+
+	test('clearAllTags pre-filters files using metadataCache', async () => {
+		const match = { path: 'match.md' } as TFile;
+		const unrelated = { path: 'unrelated.md' } as TFile;
+		(app.vault.getMarkdownFiles as jest.Mock).mockReturnValue([match, unrelated]);
+		(app.metadataCache.getFileCache as jest.Mock).mockImplementation((f: TFile) =>
+			f.path === 'match.md'
+				? { frontmatter: { tags: ['arete/retention/low'] } }
+				: { frontmatter: { tags: ['unrelated'] } },
+		);
+		service.clearGraphTags = jest.fn().mockResolvedValue(undefined);
+
+		await service.clearAllTags();
+		expect(service.clearGraphTags).toHaveBeenCalledTimes(1);
+		expect(service.clearGraphTags).toHaveBeenCalledWith(match);
+	});
 });

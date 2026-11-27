@@ -9,7 +9,13 @@ import type {
 	StatsCache,
 	SyncedCardState,
 } from '@/domain/stats';
-import { cardState, emptyCardStateCounts, uniqueCardStats } from '@/domain/stats';
+import {
+	cardState,
+	difficultyOutOfTen,
+	emptyCardStateCounts,
+	metricStates,
+	uniqueCardStats,
+} from '@/domain/stats';
 import { debugLog } from '@/domain/debugLog';
 
 export class StatsService {
@@ -101,6 +107,8 @@ export class StatsService {
 
 		if (nidMap.size === 0) {
 			debugLog('[Arete] No linked Anki cards found in vault.');
+			this.cache.concepts = {};
+			this.cache.lastFetched = Date.now();
 			return [];
 		}
 
@@ -187,34 +195,23 @@ export class StatsService {
 			}
 			conceptDeckCounts[meta.file.path][deck]++;
 
-			// Check if problematic
-			let isProblematic = false;
+			// Check if problematic using the shared domain thresholds
+			const states = metricStates(stat, this.settings);
 			const issues: string[] = [];
 
-			// Common: Lapses
-			if (stat.lapses >= this.settings.stats_lapse_threshold) {
-				isProblematic = true;
+			if (states.lapses === 'error') {
 				issues.push(`Lapses: ${stat.lapses}`);
 			}
 
-			// Algo Specific
 			if (this.settings.stats_algorithm === 'fsrs') {
-				if (
-					stat.difficulty !== undefined &&
-					stat.difficulty > this.settings.stats_difficulty_threshold
-				) {
-					isProblematic = true;
-					issues.push(`Diff: ${(stat.difficulty * 100).toFixed(0)}%`);
+				if (states.difficulty === 'error' && stat.difficulty != null) {
+					issues.push(`Diff: ${difficultyOutOfTen(stat.difficulty).toFixed(1)}/10`);
 				}
-			} else {
-				// SM-2
-				if (stat.ease < this.settings.stats_ease_threshold) {
-					isProblematic = true;
-					issues.push(`Ease: ${(stat.ease / 10).toFixed(0)}%`);
-				}
+			} else if (states.ease === 'warning') {
+				issues.push(`Ease: ${(stat.ease / 10).toFixed(0)}%`);
 			}
 
-			if (isProblematic) {
+			if (issues.length > 0) {
 				concept.problematicCardsCount++;
 				concept.problematicCards.push({
 					front: meta.front,
@@ -433,48 +430,48 @@ export class StatsService {
 	}
 
 	async fetchAnkiCardStats(nids: number[]): Promise<AnkiCardStats[]> {
+		let data: unknown;
 		try {
-			const data: any = await this.client.getCardStats(nids);
-
-			if (Array.isArray(data)) {
-				// Map snake_case (Python) to camelCase (TS)
-				// difficulty arrives normalized 0..1; views scale it with difficultyOutOfTen
-				return data.map((d: any) => ({
-					cardId: d.card_id,
-					noteId: d.note_id,
-					lapses: d.lapses,
-					ease: d.ease,
-					difficulty: d.difficulty, // 0..1
-					deckName: d.deck_name,
-					interval: d.interval,
-					due: d.due,
-					reps: d.reps,
-					averageTime: d.average_time_ms, // Updated field name
-					front: d.front,
-					// Enriched fields mapping (only for FSRS)
-					stability: d.stability,
-					retrievability: d.current_retrievability,
-					daysOverdue: d.days_overdue,
-					volatility: d.volatility,
-					lapseRate: d.lapse_rate,
-					intervalGrowth: d.interval_growth,
-					pressFatigue: d.press_fatigue,
-					retAtReview: d.ret_at_review,
-					scheduleAdherence: d.schedule_adherence,
-					isOverlearning: d.is_overlearning,
-					answerDistribution: d.answer_distribution,
-					desiredRetention: d.desired_retention,
-					weights: d.weights,
-					fsrsHistoryMissing: d.fsrs_history_missing,
-				}));
-			} else {
-				console.warn('[Arete] Unexpected stats response format:', data);
-			}
+			data = await this.client.getCardStats(nids);
 		} catch (e) {
 			console.error('[Arete] Failed to fetch stats via AreteClient:', e);
-			// Caller should handle UI feedback
+			throw e;
 		}
 
-		return [];
+		if (!Array.isArray(data)) {
+			console.error('[Arete] Unexpected stats response format:', data);
+			throw new Error('Unexpected stats response format.');
+		}
+
+		// Map snake_case (Python) to camelCase (TS)
+		// difficulty arrives normalized 0..1; views scale it with difficultyOutOfTen
+		return data.map((d: any) => ({
+			cardId: d.card_id,
+			noteId: d.note_id,
+			lapses: d.lapses,
+			ease: d.ease,
+			difficulty: d.difficulty, // 0..1
+			deckName: d.deck_name,
+			interval: d.interval,
+			due: d.due,
+			reps: d.reps,
+			averageTime: d.average_time_ms, // Updated field name
+			front: d.front,
+			// Enriched fields mapping (only for FSRS)
+			stability: d.stability,
+			retrievability: d.current_retrievability,
+			daysOverdue: d.days_overdue,
+			volatility: d.volatility,
+			lapseRate: d.lapse_rate,
+			intervalGrowth: d.interval_growth,
+			pressFatigue: d.press_fatigue,
+			retAtReview: d.ret_at_review,
+			scheduleAdherence: d.schedule_adherence,
+			isOverlearning: d.is_overlearning,
+			answerDistribution: d.answer_distribution,
+			desiredRetention: d.desired_retention,
+			weights: d.weights,
+			fsrsHistoryMissing: d.fsrs_history_missing,
+		}));
 	}
 }

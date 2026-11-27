@@ -220,6 +220,24 @@ describe('DashboardView shell', () => {
 		expect(render).toHaveBeenCalledTimes(1);
 	});
 
+	it('catches refresh failures in onOpen and refresh button with actionable notice', async () => {
+		const { Notice } = jest.requireMock('obsidian');
+		(Notice as jest.Mock).mockClear();
+		const errSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+		const m = mount();
+		m.plugin.statsService.refreshStats.mockRejectedValue(new Error('Anki offline'));
+
+		await m.view.onOpen();
+		expect(m.container.addClass).toHaveBeenCalledWith('arete-dashboard-container');
+		expect(Notice).toHaveBeenCalledWith('Failed to refresh stats, check that Anki is running.');
+
+		(Notice as jest.Mock).mockClear();
+		await m.rec.extraButtons[0].onClick!();
+		expect(m.plugin.saveStats).not.toHaveBeenCalled();
+		expect(Notice).toHaveBeenCalledWith('Failed to refresh stats, check that Anki is running.');
+		errSpy.mockRestore();
+	});
+
 	it('shows empty and success states with icons and classes', () => {
 		const m = mount();
 		const el = createMockElement('div');

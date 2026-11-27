@@ -9,8 +9,10 @@ import {
 	setTooltip,
 	Notice,
 	parseYaml,
+	stringifyYaml,
 	TFile,
 } from 'obsidian';
+import { isReservedCardKey } from '@/domain/cardKeys';
 import { difficultyOutOfTen, dueEpochSeconds, metricStates } from '@/domain/stats';
 import { flagClass } from '@/presentation/cardStateClass';
 import { EditorView, lineNumbers, keymap } from '@codemirror/view';
@@ -46,6 +48,31 @@ interface CardData {
 	[key: string]: any;
 }
 
+interface PendingSync {
+	file: TFile;
+	cardIndex: number;
+	mode: ViewMode;
+	sourceText?: string;
+	cardSnapshot?: CardData;
+}
+
+function cloneValue<T>(value: T): T {
+	if (Array.isArray(value)) {
+		return value.map((item) => cloneValue(item)) as unknown as T;
+	}
+	if (value && typeof value === 'object') {
+		if (value instanceof Date) {
+			return new Date(value.getTime()) as unknown as T;
+		}
+		const copy: Record<string, unknown> = {};
+		for (const [k, v] of Object.entries(value)) {
+			copy[k] = cloneValue(v);
+		}
+		return copy as T;
+	}
+	return value;
+}
+
 // Annotation to prevent infinite sync loops
 const syncAnnotation = Annotation.define<boolean>();
 
@@ -70,6 +97,7 @@ export class CardYamlEditorView extends ItemView {
 	plugin: YamlEditorHost;
 	private editorView: EditorView | null = null;
 	private indexContainer: HTMLElement | null = null;
+	private parseErrorEl: HTMLElement | null = null;
 	private editorContainer: HTMLElement | null = null;
 	private fieldEditorContainer: HTMLElement | null = null;
 	private previewContainer: HTMLElement | null = null;
@@ -77,6 +105,7 @@ export class CardYamlEditorView extends ItemView {
 
 	private currentCardIndex = 0;
 	private cards: CardData[] = [];
+	private loadedSourceCards: unknown[] | null = null;
 
 	private currentFilePath: string | null = null;
 	private isUpdatingFromMain = false;
@@ -87,29 +116,7 @@ export class CardYamlEditorView extends ItemView {
 	private previewRevision = 0;
 	private previewComponent: Component | null = null;
 	private syncDebounceTimer: ReturnType<typeof setTimeout> | null = null;
-
-	/**
-	 * Keys that describe a card rather than fill it. Everything else is an Anki
-	 * field and gets handed to the template renderer.
-	 */
-	private static readonly RESERVED_CARD_KEYS = new Set([
-		'id',
-		'ID',
-		'model',
-		'Model',
-		'deck',
-		'Deck',
-		'tags',
-		'Tags',
-		'anki',
-		'Anki',
-		'deps',
-		'Deps',
-		'markdown',
-		'cid',
-		'nid',
-		'__line__',
-	]);
+	private pendingSync: PendingSync | null = null;
 
 	constructor(leaf: WorkspaceLeaf, plugin: YamlEditorHost) {
 		super(leaf);
@@ -140,6 +147,10 @@ export class CardYamlEditorView extends ItemView {
 
 		// Toolbar
 		this.toolbarContainer = rightPanel.createDiv({ cls: 'arete-editor-toolbar' });
+
+		// Non-destructive inline YAML error banner
+		this.parseErrorEl = rightPanel.createDiv({ cls: 'arete-yaml-parse-error' });
+		this.parseErrorEl.hide();
 
 		// Containers for different modes
 
@@ -175,20 +186,31 @@ export class CardYamlEditorView extends ItemView {
 	}
 
 	async onClose() {
+		await this.flushPendingSync();
 		this.clearPreview();
 		if (this.editorView) {
 			this.editorView.destroy();
 			this.editorView = null;
 		}
-		if (this.syncDebounceTimer) {
-			clearTimeout(this.syncDebounceTimer);
+	}
+
+	private setParseError(message: string | null) {
+		if (!this.parseErrorEl) return;
+		if (message) {
+			this.parseErrorEl.setText(message);
+			this.parseErrorEl.show();
+		} else {
+			this.parseErrorEl.setText('');
+			this.parseErrorEl.hide();
 		}
 	}
 
 	private async loadCards() {
+		this.setParseError(null);
 		const activeFile = this.app.workspace.getActiveFile();
 		if (!activeFile) {
 			this.cards = [];
+			this.loadedSourceCards = null;
 			this.fileModel = 'Basic';
 			this.currentFilePath = null;
 			return;
@@ -203,8 +225,10 @@ export class CardYamlEditorView extends ItemView {
 		const cache = this.app.metadataCache.getFileCache(activeFile);
 		this.fileModel = cache?.frontmatter?.model || 'Basic';
 		if (cache?.frontmatter?.cards && Array.isArray(cache.frontmatter.cards)) {
-			this.cards = cache.frontmatter.cards as CardData[];
+			this.loadedSourceCards = cache.frontmatter.cards;
+			this.cards = cache.frontmatter.cards.map((c: CardData) => cloneValue(c));
 		} else {
+			this.loadedSourceCards = null;
 			this.cards = [];
 		}
 
@@ -221,12 +245,19 @@ export class CardYamlEditorView extends ItemView {
 		if (activeFile && activeFile.path === this.currentFilePath) {
 			const cache = this.app.metadataCache.getFileCache(activeFile);
 			const cards = cache?.frontmatter?.cards;
-			if (cards !== undefined && cards === this.cards) return;
+			if (cards !== undefined && cards === this.loadedSourceCards) return;
 		}
-		this.loadCards().then(() => {
-			this.renderIndex();
-			this.refreshActiveView();
-		});
+		const reload = () => {
+			this.loadCards().then(() => {
+				this.renderIndex();
+				this.refreshActiveView();
+			});
+		};
+		if (this.pendingSync || this.syncDebounceTimer) {
+			void this.flushPendingSync().then(reload);
+		} else {
+			reload();
+		}
 	}
 
 	private refreshActiveView() {
@@ -272,7 +303,8 @@ export class CardYamlEditorView extends ItemView {
 				item.addClass('is-active');
 			}
 
-			const frontText = card['Front'] || card['Text'] || '';
+			const rawFront = card?.['Front'] ?? card?.['Text'] ?? '';
+			const frontText = typeof rawFront === 'string' ? rawFront : String(rawFront);
 			if (frontText) {
 				setTooltip(item, frontText.substring(0, 50) + (frontText.length > 50 ? '...' : ''));
 			}
@@ -538,6 +570,8 @@ export class CardYamlEditorView extends ItemView {
 	}
 
 	private setViewMode(mode: ViewMode) {
+		void this.flushPendingSync();
+		this.setParseError(null);
 		if (mode !== ViewMode.Preview) this.clearPreview();
 		this.viewMode = mode;
 		this.renderToolbar();
@@ -563,7 +597,7 @@ export class CardYamlEditorView extends ItemView {
 		this.fieldEditorContainer.empty();
 
 		const card = this.cards[this.currentCardIndex];
-		if (!card) return;
+		if (!card || typeof card !== 'object') return;
 
 		const modelName = this.getCardModel(card);
 		this.fieldEditorContainer.createDiv({
@@ -571,28 +605,26 @@ export class CardYamlEditorView extends ItemView {
 			text: modelName,
 		});
 
-		// Ensure deps structure exists
-		if (!card.deps || typeof card.deps !== 'object') {
-			card.deps = {};
-		}
-		const deps = card.deps as any;
-		if (!deps.requires) deps.requires = [];
-		if (!deps.related) deps.related = [];
+		// Read existing dependencies without mutating the card object on view.
+		const existingDeps =
+			card.deps && typeof card.deps === 'object' && !Array.isArray(card.deps)
+				? (card.deps as { requires?: string[]; related?: string[] })
+				: null;
+		const requires = Array.isArray(existingDeps?.requires) ? existingDeps.requires : [];
+		const related = Array.isArray(existingDeps?.related) ? existingDeps.related : [];
 
-		// Standard fields to exclude from generic loop
-		const excludeFields = ['id', 'model', 'deps', 'prerequisites', 'related', 'anki'];
-
-		// Render generic fields
+		// Render generic scalar content fields
 		const inputs: HTMLTextAreaElement[] = [];
 		Object.entries(card).forEach(([key, value]) => {
-			if (excludeFields.includes(key) || key.startsWith('__')) return;
+			if (isReservedCardKey(key)) return;
+			if (value !== null && typeof value === 'object') return;
 
 			const group = this.fieldEditorContainer?.createDiv({ cls: 'arete-field-group' });
 			group?.createEl('label', { cls: 'arete-field-label', text: key });
 
 			const input = group?.createEl('textarea', {
 				cls: 'arete-field-input',
-				text: String(value),
+				text: value == null ? '' : String(value),
 			}) as HTMLTextAreaElement;
 			if (input) inputs.push(input);
 
@@ -604,15 +636,22 @@ export class CardYamlEditorView extends ItemView {
 		});
 		setTimeout(() => fitTextareas(inputs), 0);
 
-		// Render Dependency Fields
-		this.renderDependencySection('requires', deps.requires || [], (newDeps) => {
-			deps.requires = newDeps;
+		const updateDeps = (depKey: 'requires' | 'related', newDeps: string[]) => {
+			const current =
+				card.deps && typeof card.deps === 'object' && !Array.isArray(card.deps)
+					? (card.deps as Record<string, unknown>)
+					: {};
+			card.deps = { ...current, [depKey]: newDeps };
 			this.debouncedSyncToMain();
+		};
+
+		// Render Dependency Fields
+		this.renderDependencySection('requires', requires, (newDeps) => {
+			updateDeps('requires', newDeps);
 		});
 
-		this.renderDependencySection('related', deps.related || [], (newDeps) => {
-			deps.related = newDeps;
-			this.debouncedSyncToMain();
+		this.renderDependencySection('related', related, (newDeps) => {
+			updateDeps('related', newDeps);
 		});
 	}
 
@@ -712,7 +751,7 @@ export class CardYamlEditorView extends ItemView {
 	private extractCardFields(card: CardData): Record<string, string> {
 		const fields: Record<string, string> = {};
 		for (const [key, value] of Object.entries(card)) {
-			if (CardYamlEditorView.RESERVED_CARD_KEYS.has(key)) continue;
+			if (isReservedCardKey(key)) continue;
 			if (value === null || value === undefined) continue;
 			if (typeof value === 'object') continue;
 			fields[key] = String(value);
@@ -769,98 +808,106 @@ export class CardYamlEditorView extends ItemView {
 	private extractCardYaml(index: number): string {
 		if (index < 0 || index >= this.cards.length) return '# No card selected\n';
 		const card = this.cards[index];
-		return Object.entries(card)
-			.map(([key, value]) => {
-				// Ensure deps is ALWAYS treated as a structure, never a raw string
-				if (key === 'deps') {
-					if (typeof value === 'object' && value !== null) {
-						const lines = [`deps:`];
-						const deps = value as any;
-
-						if (Array.isArray(deps.requires) && deps.requires.length > 0) {
-							lines.push(`  requires:`);
-							deps.requires.forEach((req: string) => lines.push(`    - ${req}`));
-						}
-						if (Array.isArray(deps.related) && deps.related.length > 0) {
-							lines.push(`  related:`);
-							deps.related.forEach((rel: string) => lines.push(`    - ${rel}`));
-						}
-						if (lines.length === 1) return `deps: {}`; // Empty object
-						return lines.join('\n');
-					}
-					// If deps is anything else (string, null, etc.), force reset to empty dict
-					return `deps: {}`;
-				}
-
-				if (key === 'anki') {
-					if (typeof value === 'object' && value !== null) {
-						const ankiBlock = value as any;
-						const lines = [`anki:`];
-						if (ankiBlock.nid) lines.push(`  nid: ${ankiBlock.nid}`);
-						if (ankiBlock.cid) lines.push(`  cid: ${ankiBlock.cid}`);
-						// If empty anki block, just return anki: {}
-						if (lines.length === 1) return `anki: {}`;
-						return lines.join('\n');
-					}
-					return `anki: {}`;
-				}
-
-				// Use |- block scalar for safer string handling (quotes, etc.)
-				const isContentField = ['Front', 'Back', 'Text', 'Back Extra'].includes(key);
-
-				if (typeof value === 'string') {
-					// Check for special characters that often need quoting or indicate math/LaTeX
-					// matching the Python dumper triggers for consistency.
-					const needsFormatting = /[\\${}^_~'":#[\]\t\n]/.test(value);
-
-					if (needsFormatting || isContentField) {
-						if (!value) return `${key}: ''`;
-						// Strip trailing newline for |- style
-						const cleanValue = value.replace(/\n$/, '');
-						return `${key}: |-\n  ${cleanValue.replace(/\n/g, '\n  ')}`;
-					}
-				}
-				return `${key}: ${value}`;
-			})
-			.join('\n');
+		if (!card || typeof card !== 'object') return '# No card selected\n';
+		return stringifyYaml(card);
 	}
 
-	private parseYamlToCard(yamlStr: string): CardData {
+	private parseYamlToCard(yamlStr: string): CardData | null {
 		try {
-			const raw = parseYaml(yamlStr) || {};
+			const raw = parseYaml(yamlStr);
+			if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
+				return null;
+			}
 			return raw as CardData;
 		} catch (e) {
 			console.error('[Arete] Failed to parse card YAML:', e);
-			return {};
+			return null;
 		}
+	}
+
+	private capturePendingSync(): PendingSync | null {
+		const activeFile = this.app.workspace.getActiveFile();
+		if (!activeFile) return null;
+		const cardIndex = this.currentCardIndex;
+		const mode = this.viewMode;
+		if (mode === ViewMode.Source) {
+			if (!this.editorView) return null;
+			return {
+				file: activeFile,
+				cardIndex,
+				mode,
+				sourceText: this.editorView.state.doc.toString(),
+			};
+		}
+		const card = this.cards[cardIndex];
+		if (!card || typeof card !== 'object') return null;
+		return {
+			file: activeFile,
+			cardIndex,
+			mode,
+			cardSnapshot: cloneValue(card),
+		};
 	}
 
 	private debouncedSyncToMain() {
 		if (this.syncDebounceTimer) clearTimeout(this.syncDebounceTimer);
-		this.syncDebounceTimer = setTimeout(() => this.syncToMain(), SYNC_DEBOUNCE_MS);
+		this.pendingSync = this.capturePendingSync();
+		this.syncDebounceTimer = setTimeout(() => {
+			this.syncDebounceTimer = null;
+			const payload = this.pendingSync;
+			this.pendingSync = null;
+			void this.syncToMain(payload ?? undefined);
+		}, SYNC_DEBOUNCE_MS);
 	}
 
-	private async syncToMain() {
-		if (!this.editorView) return;
-		const activeFile = this.app.workspace.getActiveFile();
-		if (!activeFile) return;
-
-		let yamlContent = '';
-		if (this.viewMode === ViewMode.Source) {
-			yamlContent = this.editorView.state.doc.toString();
-		} else {
-			yamlContent = this.extractCardYaml(this.currentCardIndex);
+	private async flushPendingSync(): Promise<void> {
+		if (this.syncDebounceTimer) {
+			clearTimeout(this.syncDebounceTimer);
+			this.syncDebounceTimer = null;
 		}
-		const updatedCard = this.parseYamlToCard(yamlContent);
+		const payload = this.pendingSync;
+		this.pendingSync = null;
+		if (!payload) return;
+		try {
+			await this.syncToMain(payload);
+		} catch (e) {
+			console.error('[Arete] Failed to save pending card edit:', e);
+		}
+	}
+
+	private async syncToMain(payload?: PendingSync) {
+		const target = payload ?? this.capturePendingSync();
+		if (!target) return;
+
+		let updatedCard: CardData | null;
+		if (target.mode === ViewMode.Source) {
+			updatedCard = this.parseYamlToCard(target.sourceText ?? '');
+			if (!updatedCard) {
+				this.setParseError('Invalid YAML: fix syntax errors to save changes.');
+				return;
+			}
+			this.setParseError(null);
+			if (
+				this.currentFilePath === target.file.path &&
+				target.cardIndex >= 0 &&
+				target.cardIndex < this.cards.length
+			) {
+				this.cards[target.cardIndex] = cloneValue(updatedCard);
+			}
+		} else {
+			if (!target.cardSnapshot) return;
+			this.setParseError(null);
+			updatedCard = cloneValue(target.cardSnapshot);
+		}
 
 		this.isUpdatingFromMain = true;
 		try {
-			await this.app.fileManager.processFrontMatter(activeFile, (frontmatter) => {
-				if (frontmatter.cards && frontmatter.cards[this.currentCardIndex]) {
-					frontmatter.cards[this.currentCardIndex] = updatedCard;
+			await this.app.fileManager.processFrontMatter(target.file, (frontmatter) => {
+				if (Array.isArray(frontmatter.cards) && frontmatter.cards[target.cardIndex]) {
+					frontmatter.cards[target.cardIndex] = updatedCard;
 				}
 			});
-			this.ownWriteMtime = activeFile.stat?.mtime ?? null;
+			this.ownWriteMtime = target.file.stat?.mtime ?? null;
 		} finally {
 			this.isUpdatingFromMain = false;
 		}
@@ -874,7 +921,12 @@ export class CardYamlEditorView extends ItemView {
 	onFileParsed(file: TFile) {
 		const activeFile = this.app.workspace.getActiveFile();
 		if (!activeFile || activeFile.path !== file.path) return;
-		if (this.isUpdatingFromMain || file.stat?.mtime === this.ownWriteMtime) return;
+		if (
+			this.isUpdatingFromMain ||
+			(this.ownWriteMtime !== null && file.stat?.mtime === this.ownWriteMtime)
+		) {
+			return;
+		}
 		this.syncFromMain();
 	}
 
@@ -951,6 +1003,8 @@ export class CardYamlEditorView extends ItemView {
 
 	selectCard(index: number, requestFocus = false) {
 		if (index < 0 || index >= this.cards.length) return;
+		void this.flushPendingSync();
+		this.setParseError(null);
 
 		if (this.indexContainer) {
 			const prevActive = this.indexContainer.querySelector(
@@ -980,12 +1034,15 @@ export class CardYamlEditorView extends ItemView {
 
 	/** Jump to a card after loading the active file; a file switch resets the position. */
 	async showCardIndex(cardIndex: number) {
+		await this.flushPendingSync();
 		await this.loadCards();
 		this.focusCard(cardIndex);
 	}
 
 	focusCard(cardIndex: number) {
 		if (cardIndex >= 0 && cardIndex < this.cards.length) {
+			void this.flushPendingSync();
+			this.setParseError(null);
 			this.currentCardIndex = cardIndex;
 			this.renderIndex();
 			this.refreshActiveView();
@@ -996,25 +1053,40 @@ export class CardYamlEditorView extends ItemView {
 		const activeFile = this.app.workspace.getActiveFile();
 		if (!activeFile) return;
 
-		// Insert at current position + 1
-		const insertIndex = this.currentCardIndex + 1;
+		await this.flushPendingSync();
 
-		await this.app.fileManager.processFrontMatter(activeFile, (frontmatter) => {
-			if (!frontmatter.cards) frontmatter.cards = [];
+		// Insert at current position + 1 (or 0 when the list is empty)
+		const insertIndex = this.cards.length === 0 ? 0 : this.currentCardIndex + 1;
+		let updatedCards: CardData[] | null = null;
 
-			// New card with model: Basic
-			const newCard = {
-				model: 'Basic',
-				Front: '',
-				Back: '',
-			};
+		this.isUpdatingFromMain = true;
+		try {
+			await this.app.fileManager.processFrontMatter(activeFile, (frontmatter) => {
+				if (!Array.isArray(frontmatter.cards)) frontmatter.cards = [];
 
-			// Insert at position after current card
-			frontmatter.cards.splice(insertIndex, 0, newCard);
-		});
+				// New card with model: Basic
+				const newCard = {
+					model: 'Basic',
+					Front: '',
+					Back: '',
+				};
 
-		await this.loadCards();
-		this.currentCardIndex = insertIndex;
+				// Insert at position after current card
+				frontmatter.cards.splice(insertIndex, 0, newCard);
+				updatedCards = frontmatter.cards.map((c: CardData) => cloneValue(c));
+			});
+			this.ownWriteMtime = activeFile.stat?.mtime ?? null;
+		} finally {
+			this.isUpdatingFromMain = false;
+		}
+
+		if (updatedCards) {
+			this.cards = updatedCards;
+			this.currentCardIndex = Math.min(insertIndex, this.cards.length - 1);
+		} else {
+			await this.loadCards();
+			this.currentCardIndex = Math.min(insertIndex, Math.max(0, this.cards.length - 1));
+		}
 		this.renderIndex();
 		this.refreshActiveView();
 	}
@@ -1023,13 +1095,27 @@ export class CardYamlEditorView extends ItemView {
 		const activeFile = this.app.workspace.getActiveFile();
 		if (!activeFile) return;
 
-		await this.app.fileManager.processFrontMatter(activeFile, (frontmatter) => {
-			if (frontmatter.cards) {
-				frontmatter.cards.splice(index, 1);
-			}
-		});
+		await this.flushPendingSync();
 
-		await this.loadCards();
+		let updatedCards: CardData[] | null = null;
+		this.isUpdatingFromMain = true;
+		try {
+			await this.app.fileManager.processFrontMatter(activeFile, (frontmatter) => {
+				if (Array.isArray(frontmatter.cards)) {
+					frontmatter.cards.splice(index, 1);
+					updatedCards = frontmatter.cards.map((c: CardData) => cloneValue(c));
+				}
+			});
+			this.ownWriteMtime = activeFile.stat?.mtime ?? null;
+		} finally {
+			this.isUpdatingFromMain = false;
+		}
+
+		if (updatedCards) {
+			this.cards = updatedCards;
+		} else {
+			await this.loadCards();
+		}
 		if (this.currentCardIndex >= this.cards.length) {
 			this.currentCardIndex = Math.max(0, this.cards.length - 1);
 		}
@@ -1041,12 +1127,22 @@ export class CardYamlEditorView extends ItemView {
 		const activeFile = this.app.workspace.getActiveFile();
 		if (!activeFile) return;
 
-		await this.app.fileManager.processFrontMatter(activeFile, (frontmatter) => {
-			if (frontmatter.cards) {
-				const [removed] = frontmatter.cards.splice(fromIndex, 1);
-				frontmatter.cards.splice(toIndex, 0, removed);
-			}
-		});
+		await this.flushPendingSync();
+
+		let updatedCards: CardData[] | null = null;
+		this.isUpdatingFromMain = true;
+		try {
+			await this.app.fileManager.processFrontMatter(activeFile, (frontmatter) => {
+				if (Array.isArray(frontmatter.cards)) {
+					const [removed] = frontmatter.cards.splice(fromIndex, 1);
+					frontmatter.cards.splice(toIndex, 0, removed);
+					updatedCards = frontmatter.cards.map((c: CardData) => cloneValue(c));
+				}
+			});
+			this.ownWriteMtime = activeFile.stat?.mtime ?? null;
+		} finally {
+			this.isUpdatingFromMain = false;
+		}
 
 		if (this.currentCardIndex === fromIndex) {
 			this.currentCardIndex = toIndex;
@@ -1056,7 +1152,11 @@ export class CardYamlEditorView extends ItemView {
 			this.currentCardIndex++;
 		}
 
-		await this.loadCards();
+		if (updatedCards) {
+			this.cards = updatedCards;
+		} else {
+			await this.loadCards();
+		}
 		this.renderIndex();
 		this.refreshActiveView();
 	}

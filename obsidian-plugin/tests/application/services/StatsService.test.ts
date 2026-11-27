@@ -154,7 +154,7 @@ describe('StatsService', () => {
 
 		const stats = await service.refreshStats();
 		expect(stats[0].problematicCardsCount).toBe(1);
-		expect(stats[0].problematicCards[0].issue).toContain('Diff: 80%');
+		expect(stats[0].problematicCards[0].issue).toContain('Diff: 8.0/10');
 	});
 
 	test('merges multiple cards per nid (FSRS)', async () => {
@@ -288,16 +288,42 @@ describe('StatsService', () => {
 			);
 		});
 
-		test('handles unexpected response format', async () => {
+		test('throws on unexpected response format', async () => {
+			const errSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
 			client.getCardStats = jest.fn().mockResolvedValue({ error: 'not array' });
-			const stats = await service.fetchAnkiCardStats([101]);
-			expect(stats).toEqual([]);
+			await expect(service.fetchAnkiCardStats([101])).rejects.toThrow(
+				'Unexpected stats response format.',
+			);
+			errSpy.mockRestore();
 		});
 
-		test('handles client error', async () => {
+		test('propagates client error instead of wiping stats', async () => {
+			const errSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
 			client.getCardStats = jest.fn().mockRejectedValue(new Error('Network error'));
-			const stats = await service.fetchAnkiCardStats([101]);
-			expect(stats).toEqual([]);
+			await expect(service.fetchAnkiCardStats([101])).rejects.toThrow('Network error');
+			errSpy.mockRestore();
+		});
+
+		test('refreshStats preserves existing cache when fetch fails and clears when vault has no linked cards', async () => {
+			const existing = { 'old.md': { filePath: 'old.md', totalCards: 1 } as any };
+			service.cache = { concepts: existing, lastFetched: 42 };
+
+			const file = { path: 'test.md', basename: 'Test' } as TFile;
+			(app.vault.getMarkdownFiles as jest.Mock).mockReturnValue([file]);
+			(app.metadataCache.getFileCache as jest.Mock).mockReturnValue({
+				frontmatter: { arete: true, cards: [{ anki: { nid: '101' } }] },
+			});
+			const errSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+			client.getCardStats = jest.fn().mockRejectedValue(new Error('Anki offline'));
+
+			await expect(service.refreshStats()).rejects.toThrow('Anki offline');
+			expect(service.getCache().concepts).toBe(existing);
+			errSpy.mockRestore();
+
+			// When the vault genuinely has zero linked cards, cache is cleared.
+			(app.metadataCache.getFileCache as jest.Mock).mockReturnValue({});
+			await expect(service.refreshStats()).resolves.toEqual([]);
+			expect(service.getCache().concepts).toEqual({});
 		});
 	});
 

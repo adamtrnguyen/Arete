@@ -177,7 +177,8 @@ describe('CardYamlEditorView leaf changes and field sizing', () => {
 		view.handleActiveFileChange();
 		await settle();
 		expect(view.refreshActiveView).toHaveBeenCalledTimes(1);
-		expect(view.cards).toBe(cards);
+		expect(view.cards).toEqual(cards);
+		expect(view.cards).not.toBe(cards);
 	});
 
 	it('sizes every field with all writes before any read (one layout)', async () => {

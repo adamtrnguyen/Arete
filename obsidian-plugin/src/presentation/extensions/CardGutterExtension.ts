@@ -277,6 +277,9 @@ const cardHighlightField = StateField.define<DecorationSet>({
 		return Decoration.none;
 	},
 	update(decorations, tr) {
+		if (tr.docChanged) {
+			decorations = decorations.map(tr.changes);
+		}
 		// Check for highlight effect
 		for (const e of tr.effects) {
 			if (e.is(highlightCardEffect)) {

@@ -126,8 +126,11 @@ describe('StatsService.refreshStats: which cards count and when they are flagged
 			expect(c.score).toBe(3 / 4);
 		});
 
-		it('ease exactly at the threshold is not flagged', async () => {
-			reply([{ noteId: 1, cardId: 1, ease: 2100 }]);
+		it('ease exactly at the threshold or zero (unscheduled) is not flagged', async () => {
+			reply([
+				{ noteId: 1, cardId: 1, ease: 2100 },
+				{ noteId: 2, cardId: 2, ease: 0 },
+			]);
 			const [c] = await service.refreshStats();
 			expect(c.problematicCardsCount).toBe(0);
 		});
@@ -162,13 +165,20 @@ describe('StatsService.refreshStats: which cards count and when they are flagged
 			files['a.md'] = note([1, 2].map((n) => ({ anki: { nid: String(n) }, Front: `q${n}` })));
 		});
 
-		it('flags difficulty above the threshold, not at it, and ignores ease', async () => {
+		it('flags difficulty at and above the threshold, and ignores ease', async () => {
+			files['a.md'] = note(
+				[1, 2, 3].map((n) => ({ anki: { nid: String(n) }, Front: `q${n}` })),
+			);
 			reply([
-				{ noteId: 1, cardId: 1, difficulty: 0.9, ease: 100 },
-				{ noteId: 2, cardId: 2, difficulty: 0.91, ease: 100 },
+				{ noteId: 1, cardId: 1, difficulty: 0.89, ease: 100 },
+				{ noteId: 2, cardId: 2, difficulty: 0.9, ease: 100 },
+				{ noteId: 3, cardId: 3, difficulty: 0.91, ease: 100 },
 			]);
 			const [c] = await service.refreshStats();
-			expect(c.problematicCards.map((p) => [p.noteId, p.issue])).toEqual([[2, 'Diff: 91%']]);
+			expect(c.problematicCards.map((p) => [p.noteId, p.issue])).toEqual([
+				[2, 'Diff: 9.0/10'],
+				[3, 'Diff: 9.1/10'],
+			]);
 		});
 
 		it('averages difficulty to two decimals over the cards that have one', async () => {

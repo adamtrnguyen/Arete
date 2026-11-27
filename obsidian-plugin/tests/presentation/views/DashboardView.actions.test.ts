@@ -111,11 +111,12 @@ describe('DashboardView actions', () => {
 			expect(all(root, (n) => n.tag === 'table')).toHaveLength(0);
 		});
 
-		it('lists each leech with tags stripped, the right metric, and lapses flagged by the shared cut-offs', async () => {
+		it('lists each leech with tags stripped, FSRS difficulty even when ease is non-zero, and lapses flagged', async () => {
+			plugin.settings.stats_algorithm = 'fsrs';
 			plugin.leechService.getLeeches.mockReturnValue([
-				leech({ ease: 2100, lapses: 11 }),
-				leech({ cardId: 12, ease: 0, difficulty: 0.73, lapses: 10 }),
-				leech({ cardId: 13, ease: 0, difficulty: undefined, lapses: 2 }),
+				leech({ ease: 2500, difficulty: 0.92, lapses: 11 }),
+				leech({ cardId: 12, ease: 2100, difficulty: 0.73, lapses: 10 }),
+				leech({ cardId: 13, ease: 2500, difficulty: undefined, lapses: 2 }),
 			]);
 			const root = el('div');
 
@@ -125,13 +126,39 @@ describe('DashboardView actions', () => {
 			const cells = rows.map((r) =>
 				r.children.map((c) => c.children[0]?.textContent ?? c.textContent),
 			);
-			expect(cells[0].slice(0, 3)).toEqual(['Front text', '210% ease', '11']);
+			expect(cells[0].slice(0, 3)).toEqual(['Front text', '9.2 diff', '11']);
 			expect(cells[1].slice(1, 3)).toEqual(['7.3 diff', '10']);
 			expect(cells[2].slice(1, 3)).toEqual(['-', '2']);
+			const diffFlag = (i: number) => rows[i].children[1].addClass.mock.calls[0]?.[0];
+			expect([diffFlag(0), diffFlag(1), diffFlag(2)]).toEqual([
+				'mod-error',
+				'mod-warning',
+				undefined,
+			]);
 			const flag = (i: number) => rows[i].children[2].addClass.mock.calls[0]?.[0];
 			expect([flag(0), flag(1), flag(2)]).toEqual(['mod-error', 'mod-error', 'mod-warning']);
 			// the full front stays available on hover
 			expect(rec.tooltips.map((t) => t.text)).toContain('<b>Front</b> text');
+		});
+
+		it('shows SM-2 ease when algorithm is sm2 and treats ease 0 as missing', async () => {
+			plugin.settings.stats_algorithm = 'sm2';
+			plugin.leechService.getLeeches.mockReturnValue([
+				leech({ cardId: 11, ease: 1900, difficulty: 0.9, lapses: 4 }),
+				leech({ cardId: 12, ease: 0, difficulty: 0.9, lapses: 4 }),
+			]);
+			const root = el('div');
+
+			await view.renderLeeches(root);
+
+			const rows = all(root, (n) => n.tag === 'tr').slice(1);
+			const cells = rows.map((r) =>
+				r.children.map((c) => c.children[0]?.textContent ?? c.textContent),
+			);
+			expect(cells[0][1]).toBe('190% ease');
+			expect(rows[0].children[1].addClass).toHaveBeenCalledWith('mod-warning');
+			expect(cells[1][1]).toBe('-');
+			expect(rows[1].children[1].addClass).not.toHaveBeenCalled();
 		});
 
 		it('flags the difficulty cell with the shared cut-offs, as every other view does', async () => {

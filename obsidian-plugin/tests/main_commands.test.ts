@@ -206,6 +206,21 @@ describe('AretePlugin commands, views and status bar', () => {
 			expect(plugin.graphService.updateGraphTags).not.toHaveBeenCalled();
 		});
 
+		test('reports stats refresh failure with an actionable notice', async () => {
+			const errSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+			(plugin.statsService.refreshStats as jest.Mock).mockRejectedValue(
+				new Error('Anki offline'),
+			);
+
+			await commands['arete-sync-stats'].callback!();
+
+			expect(notices()).toEqual([
+				'Refreshing stats...',
+				'Failed to refresh stats, check that Anki is running.',
+			]);
+			errSpy.mockRestore();
+		});
+
 		test('Reload Note Types clears the template model cache', () => {
 			plugin.templateRenderer.clearModelCache = jest.fn();
 			commands['arete-reload-note-types'].callback!();
