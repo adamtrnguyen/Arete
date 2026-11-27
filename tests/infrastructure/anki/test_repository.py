@@ -51,6 +51,11 @@ def test_resolve_collection_path_profile_set(repo, tmp_path):
     assert path == tmp_path / "User1" / "collection.anki2"
 
 
+def test_resolve_collection_path_explicit_profile_without_prefs21(tmp_path):
+    repo = AnkiRepository(base_path=tmp_path, profile_name="ExplicitProfile")
+    assert repo._resolve_collection_path() == tmp_path / "ExplicitProfile" / "collection.anki2"
+
+
 def test_resolve_collection_path_auto(repo, tmp_path):
     prefs = tmp_path / "prefs21.db"
     prefs.touch()

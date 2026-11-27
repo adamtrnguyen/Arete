@@ -155,6 +155,12 @@ def test_report_json_prints_the_stored_reports(reports_file):
     assert "café" in result.stdout  # not \u-escaped
 
 
+def test_report_json_empty_prints_empty_json_list(reports_file):
+    result = runner.invoke(app, ["report", "--json"])
+    assert result.exit_code == 0
+    assert json.loads(result.stdout) == []
+
+
 # --- clearing ---
 
 
@@ -197,6 +203,6 @@ def test_report_clear_unsuspend_failure_exits_1_and_names_the_cards(reports_file
     result = runner.invoke(app, ["report", "--clear", "0"])
     assert result.exit_code == 1
     assert "unsuspending 2 card(s) FAILED: anki is closed" in result.output
-    assert "arete anki unsuspend 11 22" in result.output
+    assert "arete anki unsuspend --cids 11,22" in result.output
     assert _read(reports_file) == []  # the reports are cleared even though the unsuspend failed
     assert bridge.closed

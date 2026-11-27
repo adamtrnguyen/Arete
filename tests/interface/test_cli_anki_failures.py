@@ -16,12 +16,14 @@ from tests.interface.test_cli_anki_args import BACKEND, _bridge, runner
 def test_stats_that_fail_to_load_say_why_on_stderr_and_exit_1():
     repo = MagicMock()
     repo.get_card_stats = AsyncMock(side_effect=RuntimeError("AnkiConnect error: busy"))
+    repo.close = AsyncMock()
     with patch("arete.composition.factory.get_stats_repo", return_value=repo):
         result = runner.invoke(app, ["anki", "stats", "--nids", "[1]", *BACKEND])
 
     assert result.exit_code == 1
     assert "AnkiConnect error: busy" in result.stderr
     assert result.stdout.strip() == "", "no empty JSON list"
+    repo.close.assert_awaited_once()
 
 
 def test_a_queue_deck_whose_card_lookup_fails_says_why_and_exits_1():

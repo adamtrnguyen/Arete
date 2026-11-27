@@ -414,3 +414,22 @@ def test_max_cards_keeps_the_nearest_prereqs_and_reports_what_it_dropped(mock_bu
     res = build_simple_queue(Path("."), due_card_ids=["Due"], depth=5, max_cards=3)
     assert set(res.prereq_queue) == {"Z", "B"}  # 1 and 2 hops away, not "A" and "B"
     assert res.dropped_prereqs == ["A"]
+
+
+@patch("arete.application.queue.builder.build_graph")
+def test_dynamic_queue_preserves_dropped_prereqs_and_case_insensitive_due_ids(mock_build_graph):
+    """Dynamic queue preserves dropped_prereqs and deduplicates case-folded due IDs for room."""
+    graph = DependencyGraph()
+    for cid in ("arete_Due", "arete_Z", "arete_B", "arete_A"):
+        graph.add_node(CardNode(id=cid, file_path=f"{cid}.md", title=cid, line_number=1))
+    graph.add_requires("arete_Due", "arete_Z")
+    graph.add_requires("arete_Z", "arete_B")
+    graph.add_requires("arete_B", "arete_A")
+    mock_build_graph.return_value = graph
+
+    res = build_dynamic_queue(
+        Path("."), due_card_ids=["arete_due", "arete_DUE"], depth=5, max_cards=3
+    )
+    assert res.main_queue == ["arete_Due"]
+    assert set(res.prereq_queue) == {"arete_Z", "arete_B"}
+    assert res.dropped_prereqs == ["arete_A"]

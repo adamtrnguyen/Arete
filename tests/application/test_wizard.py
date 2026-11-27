@@ -172,3 +172,21 @@ def test_wizard_write_error(tmp_path):
             with patch("builtins.input", side_effect=[str(v), str(m), "1", "y"]):
                 with patch("builtins.open", side_effect=OSError("Permission denied")):
                     run_init_wizard()
+
+
+def test_wizard_escapes_windows_backslashes_as_valid_toml(mock_home):
+    import tomllib
+
+    with (
+        patch(
+            "arete.application.wizard._ask_path",
+            side_effect=[r"C:\Users\adam\Vault", r"C:\Users\adam\Anki\media"],
+        ),
+        patch("builtins.input", return_value="1"),
+    ):
+        run_init_wizard()
+
+    raw = (mock_home / ".config/arete/config.toml").read_text(encoding="utf-8")
+    parsed = tomllib.loads(raw)
+    assert parsed["vault_root"] == r"C:\Users\adam\Vault"
+    assert parsed["anki_media_dir"] == r"C:\Users\adam\Anki\media"

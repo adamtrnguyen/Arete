@@ -39,6 +39,7 @@ import unicodedata
 from collections.abc import Collection, Sequence
 from contextlib import AsyncExitStack
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from arete.domain.identity import ANKI_OWNED_TAGS, anki_tags, first_field_key
 from arete.domain.interfaces import NoteStorePort, NoteStoreSession
@@ -70,6 +71,12 @@ class VaultClaims:
 
     nid_owners: dict[int, frozenset[str | None]] = field(default_factory=dict)
     arete_ids: frozenset[str] = frozenset()
+    # (model casefolded, deck casefolded, first-field key) -> ((card label, nid, path, index), ...)
+    # Pre-reserved from existing nid-holding vault cards so an earlier batch creating a new
+    # card cannot collide with a later/concurrent batch updating an existing card's front.
+    nid_fronts: dict[tuple[str, str, str], tuple[tuple[str, int, Path, int], ...]] = field(
+        default_factory=dict
+    )
 
 
 @dataclass
@@ -84,7 +91,7 @@ class _Card:
     error: str | None = None
     changed: bool = False  # Anki was written for this card (a dry run: would be)
     # refused as a duplicate: what holds the first field, the deck, the note type
-    duplicate: tuple[_Card | int | Exception, str, str] | None = None
+    duplicate: tuple[_Card | int | str | Exception, str, str] | None = None
 
     @property
     def label(self) -> str:
@@ -640,7 +647,7 @@ class NoteSync:
             except Exception as e:
                 held = dict.fromkeys(nids, e)
         for card, new, key in keyed:
-            holder = self._front_holder(new, key, held)
+            holder = self._front_holder(card, new, key, held)
             if holder is None:
                 self._fronts.setdefault((new.model.casefold(), new.deck.casefold(), key), card)
             else:
@@ -654,8 +661,8 @@ class NoteSync:
         return first_field_key(new.fields.get(info.fields[0], ""))
 
     def _front_holder(
-        self, new: NewNote, key: str, held: dict[int, HeldNote | None | Exception]
-    ) -> _Card | int | Exception | None:
+        self, card: _Card, new: NewNote, key: str, held: dict[int, HeldNote | None | Exception]
+    ) -> _Card | int | str | Exception | None:
         """What already holds the first field in the deck: a card of this run or a note.
 
         A note whose decks could not be read counts as holding it: refusing is the safe
@@ -666,6 +673,12 @@ class NoteSync:
         earlier = self._fronts.get((model_key, deck, key))
         if earlier is not None:
             return earlier
+        self_loc = (card.work.source_file, card.work.source_index)
+        for label, planned_nid, planned_path, planned_idx in self._claims.nid_fronts.get(
+            (model_key, deck, key), ()
+        ):
+            if (planned_path, planned_idx) != self_loc:
+                return f"note {planned_nid} of {label}"
         for nid, _ in self._index.get(model_key, {}).get(key, []):
             note = held.get(nid)
             if isinstance(note, Exception):
@@ -697,7 +710,7 @@ class NoteSync:
                 what = f"{holder.label}, which was not created either ({holder.error})"
             else:
                 what = f"{holder.label}, which this run creates"
-        elif isinstance(holder, Exception):
+        elif isinstance(holder, (Exception, str)):
             what = str(holder)
         else:
             what = f"note {holder}"

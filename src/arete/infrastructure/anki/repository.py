@@ -36,13 +36,13 @@ class AnkiRepository:
         if self._collection_path:
             return self._collection_path
 
+        # If profile explicitly set, use it without requiring prefs21.db
+        if self.profile_name:
+            return self.base_path / self.profile_name / "collection.anki2"
+
         prefs_db = self.base_path / "prefs21.db"
         if not prefs_db.exists():
             raise FileNotFoundError(f"Anki prefs not found at {prefs_db}")
-
-        # If profile explicitly set, use it
-        if self.profile_name:
-            return self.base_path / self.profile_name / "collection.anki2"
 
         # Otherwise read last loaded profile
         conn = sqlite3.connect(prefs_db)

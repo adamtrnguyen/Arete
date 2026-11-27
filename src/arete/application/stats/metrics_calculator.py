@@ -85,7 +85,9 @@ class MetricsCalculator:
             reps=card.reps,
             front=card.front,
             stability=card.fsrs.stability if card.fsrs else None,
-            difficulty=card.fsrs.difficulty if card.fsrs and card.fsrs.difficulty else None,
+            difficulty=(
+                card.fsrs.difficulty if card.fsrs and card.fsrs.difficulty is not None else None
+            ),
             current_retrievability=retrievability,
             lapse_rate=lapse_rate,
             volatility=volatility,
@@ -228,23 +230,31 @@ class MetricsCalculator:
         return reviews[-1].retrievability
 
     def _detect_overlearning(self, card: CardStatsAggregate) -> bool:
-        """Flag cards that are being reviewed too often for their stability.
+        """Flag mature cards (`stability >= 90`) that were reviewed far earlier than due.
 
-        Criteria: Stability > 90 days AND Retrievability > 98% AND days_overdue < -30.
+        Checks the latest review's recorded retrievability (`> 0.98`), or — when review
+        timestamps exist without FSRS revlog data — whether the gap between the last two
+        reviews was `< 10%` of stability (producing `R > 0.98`). Never uses `now - last_review`,
+        which would falsely flag every normal mature card right after an on-schedule review.
         """
         if not card.fsrs or card.fsrs.stability < 90:
             return False
 
-        now_epoch = int(time.time())
-        if not card.last_review:
+        reviews = card.reviews or []
+        if not reviews:
             return False
 
-        days_elapsed = (now_epoch - card.last_review) / 86400.0
-        # retrievability formula
-        retrievability = 0.9 ** (days_elapsed / card.fsrs.stability)
+        latest = reviews[-1]
+        if latest.retrievability is not None:
+            return latest.retrievability > 0.98
 
-        # If we are reviewing with very high retrievability and long stability
-        if retrievability > 0.98 and days_elapsed < (card.fsrs.stability * 0.1):
-            return True
+        if len(reviews) < 2:
+            return False
 
-        return False
+        prev = reviews[-2]
+        gap_days = (latest.review_time - prev.review_time) / 86400.0
+        if gap_days < 0:
+            return False
+
+        retrievability = 0.9 ** (gap_days / card.fsrs.stability)
+        return retrievability > 0.98 and gap_days < (card.fsrs.stability * 0.1)

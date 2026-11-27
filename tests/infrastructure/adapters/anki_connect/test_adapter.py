@@ -346,21 +346,23 @@ async def test_get_due_cards_error_propagates(adapter):
 @pytest.mark.asyncio
 @respx.mock
 async def test_map_nids_to_arete_ids(adapter):
+    aid1 = "arete_01J9Z8Y7X6W5V4T3S2R1Q0P9N1"
+    aid2 = "arete_01J9Z8Y7X6W5V4T3S2R1Q0P9N2"
     respx.post("http://mock-anki:8765").mock(
         return_value=Response(
             200,
             json={
                 "result": [
-                    {"tags": ["arete_123", "other"]},
-                    {"tags": ["other"]},
-                    {"tags": ["arete_456"]},
+                    {"tags": ["arete_review", aid1, "other"]},
+                    {"tags": ["other", "arete_custom"]},
+                    {"tags": [aid2]},
                 ],
                 "error": None,
             },
         )
     )
     arete_ids = await adapter.map_nids_to_arete_ids([1, 2, 3])
-    assert arete_ids == ["arete_123", "arete_456"]
+    assert arete_ids == [aid1, aid2]
 
 
 @pytest.mark.asyncio
@@ -620,3 +622,38 @@ async def test_addon_outdated_propagates_for_change_note_type_and_create_filtere
         mock_invoke.side_effect = Exception("unsupported action")
         with pytest.raises(AddonOutdated, match="createFilteredDeck"):
             await adapter.create_topo_deck("Arete::Queue", [1])
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_get_card_ids_sends_version_6_in_multi_subactions(adapter_localhost):
+    route = respx.post("http://localhost:8765").mock(
+        return_value=httpx.Response(
+            200,
+            json={"result": [{"result": [101], "error": None}], "error": None},
+        )
+    )
+    cids = await adapter_localhost.get_card_ids_for_arete_ids(["arete_01J9Z8Y7X6W5V4T3S2R1Q0P9N1"])
+    assert cids == [101]
+    body = json.loads(route.calls[0].request.content)
+    assert body["params"]["actions"][0]["version"] == 6
+
+
+@pytest.mark.asyncio
+async def test_curl_bridge_uses_fsS_flags():
+    adapter = AnkiConnectAdapter(url="http://127.0.0.1:8765")
+    adapter.use_windows_curl = True
+    proc = MagicMock(returncode=0, communicate=AsyncMock(return_value=(b'{"result": 6}', b"")))
+    with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=proc)) as mock_exec:
+        out = await adapter._http_request({"action": "version", "version": 6})
+    assert out == {"result": 6}
+    assert "-fsS" in mock_exec.await_args.args
+
+
+@pytest.mark.asyncio
+async def test_invoke_guards_non_dict_reply():
+    adapter = AnkiConnectAdapter(url="http://mock:8765")
+    for bad in (None, "not-a-dict", [1, 2]):
+        with patch.object(adapter, "_http_request", AsyncMock(return_value=bad)):
+            with pytest.raises(ValueError, match="unexpected number of fields"):
+                await adapter._invoke("version")

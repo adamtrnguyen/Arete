@@ -172,18 +172,8 @@ class VaultService:
         if not isinstance(cards, list) or not cards:
             return (False, 0, "no_cards", None, True)
 
-        deck = meta.get("deck")
-        # basic check
-        has_any_card_deck = any(isinstance(c, dict) and c.get("deck") for c in cards)
-        if not deck and not has_any_card_deck:
-            # If force-syncing, we accept it for normalization even if it won't sync to Anki
-            if not self.ignore_cache:
-                return (False, 0, "no_deck", None, True)
-            else:
-                self.logger.debug(
-                    f"[vault] {md_file.name}: no deck, but accepted for normalization (--force)"
-                )
-
+        # Deckless `arete: true` notes fall back consistently to `default_deck` in MarkdownParser
+        # across normal, `--force`, and warm-cache runs.
         # An Arete file enters the stat cache in record_synced, after its cards reached
         # Anki. Writing it here let a dry run, or a run where a card failed, hide the edit
         # from every later sync. Only plain notes are remembered by the scan itself.

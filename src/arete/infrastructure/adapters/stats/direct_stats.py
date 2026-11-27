@@ -129,42 +129,60 @@ class DirectStatsRepository(StatsRepository):
             if has_data:
                 col_subset += ", data"
 
-            placeholders = ",".join("?" * len(cids))
-            query = f"SELECT {col_subset} FROM revlog WHERE cid IN ({placeholders}) ORDER BY id ASC"
-
             import json
 
-            for row in repo.col.db.execute(query, *cids):
-                # Indices:
-                # 0: id, 1: cid, 2: ease, 3: ivl, 4: lastIvl, 5: data (if the column exists)
-                data_idx = 5
-                s_at_review = None
-                d_at_review = None
-                r_at_review = None
+            unique_cids = list(dict.fromkeys(cids))
+            ordered_entries: list[tuple[int, ReviewEntry]] = []
 
-                if has_data and len(row) > data_idx and row[data_idx]:
-                    try:
-                        data = json.loads(row[data_idx])
-                        s_at_review = data.get("s")
-                        d_at_review = data.get("d")
-                        r_at_review = data.get("r")
-                    except Exception as e:
-                        logger.debug(f"[stats] unreadable revlog data: {e}")
-
-                entries.append(
-                    ReviewEntry(
-                        card_id=row[1],
-                        review_time=row[0] // 1000,
-                        rating=row[2],
-                        interval=revlog_interval_days(row[3]),
-                        last_interval=revlog_interval_days(row[4]),
-                        stability=s_at_review,
-                        difficulty=d_at_review,
-                        retrievability=r_at_review,
-                    )
+            for i in range(0, len(unique_cids), _SQL_CHUNK):
+                chunk = unique_cids[i : i + _SQL_CHUNK]
+                placeholders = ",".join("?" * len(chunk))
+                query = (
+                    f"SELECT {col_subset} FROM revlog WHERE cid IN ({placeholders}) ORDER BY id ASC"
                 )
 
+                for row in repo.col.db.execute(query, *chunk):
+                    # Indices:
+                    # 0: id, 1: cid, 2: ease, 3: ivl, 4: lastIvl, 5: data (if the column exists)
+                    data_idx = 5
+                    s_at_review = None
+                    d_at_review = None
+                    r_at_review = None
+
+                    if has_data and len(row) > data_idx and row[data_idx]:
+                        try:
+                            data = json.loads(row[data_idx])
+                            s_at_review = data.get("s")
+                            d_at_review = data.get("d")
+                            r_at_review = data.get("r")
+                        except Exception as e:
+                            logger.debug(f"[stats] unreadable revlog data: {e}")
+
+                    ordered_entries.append(
+                        (
+                            row[0],
+                            ReviewEntry(
+                                card_id=row[1],
+                                review_time=row[0] // 1000,
+                                rating=row[2],
+                                interval=revlog_interval_days(row[3]),
+                                last_interval=revlog_interval_days(row[4]),
+                                stability=s_at_review,
+                                difficulty=d_at_review,
+                                retrievability=r_at_review,
+                            ),
+                        )
+                    )
+
+            if len(unique_cids) > _SQL_CHUNK:
+                ordered_entries.sort(key=lambda item: item[0])
+            entries.extend(entry for _, entry in ordered_entries)
+
         return entries
+
+    async def close(self) -> None:
+        """Close repository resources (no persistent connection for direct SQLite access)."""
+        return None
 
     async def get_deck_params(self, deck_names: list[str]) -> dict[str, dict]:
         """Fetch FSRS parameters (desired retention, weights) for the given decks.

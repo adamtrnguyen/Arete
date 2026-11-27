@@ -92,6 +92,7 @@ def test_anki_stats_command():
         mock_instance.get_card_stats = AsyncMock(return_value=stats)
         mock_instance.get_review_history = AsyncMock(return_value=[])
         mock_instance.get_deck_params = AsyncMock(return_value={})
+        mock_instance.close = AsyncMock()
         mock_get_repo.return_value = mock_instance
 
         result = runner.invoke(
@@ -134,6 +135,7 @@ def test_anki_stats_table():
         mock_instance.get_card_stats = AsyncMock(return_value=stats)
         mock_instance.get_review_history = AsyncMock(return_value=[])
         mock_instance.get_deck_params = AsyncMock(return_value={})
+        mock_instance.close = AsyncMock()
         mock_get_repo.return_value = mock_instance
 
         result = runner.invoke(

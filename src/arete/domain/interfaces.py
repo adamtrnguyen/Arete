@@ -71,6 +71,11 @@ class SyncPort(Protocol):
         pass
 
     @abstractmethod
+    async def get_filtered_deck_names(self) -> set[str]:
+        """Return names of filtered (dynamic) decks present in Anki."""
+        pass
+
+    @abstractmethod
     async def get_notes_in_deck(self, deck_name: str) -> dict[str, int]:
         """Every note in the deck, keyed by its note id as a string.
 

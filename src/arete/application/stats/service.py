@@ -54,3 +54,7 @@ class FsrsStatsService:
             results.append(enriched)
 
         return results
+
+    async def close(self) -> None:
+        """Release underlying stats repository resources."""
+        await self.repo.close()

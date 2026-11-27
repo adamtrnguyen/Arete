@@ -83,6 +83,9 @@ class FakeAnki:
     async def get_deck_names(self):
         return sorted(set(self.notes.values()) | {"Default"})
 
+    async def get_filtered_deck_names(self):
+        return set()
+
     async def get_notes_in_deck(self, deck):
         return {str(nid): nid for nid, d in self.notes.items() if d == deck}
 
@@ -287,3 +290,44 @@ def test_an_empty_card_deck_falls_back_to_the_file_deck(tmp_path):
     parser = MarkdownParser(tmp_path, tmp_path / "media", ignore_cache=True, logger=LOG)
     notes, _, _ = parser.parse_file(md, meta, ContentCache(tmp_path / "c.db"))
     assert notes[0].deck == "Physics"
+
+
+@pytest.mark.asyncio
+async def test_cross_batch_duplicate_front_pre_reserved_by_existing_nid(tmp_path):
+    """A new card in batch 1 is refused if an existing nid card in batch 2 owns the same front."""
+    from arete.application.sync.note_sync import NoteSync
+    from arete.application.sync.pipeline import vault_claims
+    from arete.application.utils.text import parse_frontmatter
+    from tests.fakes.note_store import FakeNoteStore
+
+    store = FakeNoteStore()
+    existing_nid = store.add(
+        model="Basic",
+        deck="Math",
+        fields={"Front": "OldQ", "Back": "OldA"},
+        tags=[ID_A2],
+    )
+    new_md = tmp_path / "a_new.md"
+    existing_md = tmp_path / "b_existing.md"
+    new_md.write_text(
+        f"---\narete: true\ndeck: Math\ncards:\n  - id: {ID_A1}\n    Front: SameQ\n    Back: A1\n---\n"
+    )
+    existing_md.write_text(
+        f"---\narete: true\ndeck: Math\ncards:\n  - id: {ID_A2}\n"
+        f"    Front: SameQ\n    Back: A2\n    anki:\n      nid: {existing_nid}\n---\n"
+    )
+    parser = MarkdownParser(tmp_path, tmp_path / "media", ignore_cache=True, logger=LOG)
+    cache = ContentCache(tmp_path / "c.db")
+    meta_new, _ = parse_frontmatter(new_md.read_text())
+    meta_existing, _ = parse_frontmatter(existing_md.read_text())
+    compatible = [(new_md, meta_new, True), (existing_md, meta_existing, True)]
+    claims = vault_claims(compatible, parser)
+
+    notes_new, _, _ = parser.parse_file(new_md, meta_new, cache)
+    ns = NoteSync(store, claims=claims)
+    from arete.domain.models import WorkItem
+
+    [res] = await ns.sync_notes([WorkItem(note=notes_new[0], source_file=new_md, source_index=1)])
+    assert not res.ok
+    assert "duplicate first field" in (res.error or "")
+    assert "b_existing.md #1" in (res.error or "")

@@ -30,6 +30,9 @@ class _FakeStatsRepo(StatsRepository):
     async def get_deck_params(self, deck_names: list[str]) -> dict[str, dict]:
         return dict(self._deck_params)
 
+    async def close(self) -> None:
+        return None
+
 
 @pytest.mark.asyncio
 async def test_backfills_last_review_answer_dist_and_avg_time_from_reviews():

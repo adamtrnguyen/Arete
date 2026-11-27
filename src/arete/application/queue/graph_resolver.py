@@ -113,7 +113,13 @@ def build_graph(vault_root: Path) -> DependencyGraph:
                 continue
             meta, _ = parse_frontmatter(text)
 
-            if not meta or "__yaml_error__" in meta:
+            if "__yaml_error__" in meta:
+                err = str(meta["__yaml_error__"])
+                logger.warning(f"Failed to parse {md_path}: {err}")
+                graph.skipped_files.append((str(md_path), err))
+                continue
+
+            if not meta:
                 continue
 
             if meta.get("arete") is not True:
@@ -189,7 +195,8 @@ def build_graph(vault_root: Path) -> DependencyGraph:
                     # A note-level ref never points at the card's own file. Compared by
                     # FILE, not basename: bio/Intro requiring math/Intro is a real edge.
                     if target_id == card_id or (
-                        not ref.startswith("arete_") and card_file.get(target_id) == own_file
+                        not ref.casefold().startswith("arete_")
+                        and card_file.get(target_id) == own_file
                     ):
                         continue
                     add_edge(card_id, target_id)
@@ -277,9 +284,10 @@ def _resolve_reference(
 
     Tracks unresolved references in the graph.
     """
-    if ref.startswith("arete_"):
-        if ref in graph.nodes:
-            return [ref]
+    if ref.casefold().startswith("arete_"):
+        canon = graph.canonical_id(ref)
+        if canon is not None:
+            return [canon]
         logger.warning(f"Dependency reference '{ref}' not found in graph")
         graph.add_unresolved(card_id, ref)
         return []
@@ -356,9 +364,11 @@ def topological_sort(
     """
     import networkx as nx
 
-    # Filter to only requested cards that exist, keeping input order: iterating a set
-    # would make the result depend on the hash seed.
-    valid_ids = list(dict.fromkeys(cid for cid in card_ids if cid in graph.nodes))
+    # Filter to only requested cards that exist (case-insensitively), keeping input order:
+    # iterating a set would make the result depend on the hash seed.
+    valid_ids = list(
+        dict.fromkeys(canon for cid in card_ids if (canon := graph.canonical_id(cid)) is not None)
+    )
     valid_set = set(valid_ids)
 
     # Build a fresh subgraph with only the requested nodes and their edges
@@ -461,16 +471,21 @@ def filter_graph_by_deck(graph: DependencyGraph, deck: str) -> DependencyGraph:
 
 def _card_decks(meta: Any, cards: Any) -> list[tuple[Any, str]]:
     """(card id, effective deck) for each card mapping: the card's deck, else the file's."""
-    file_deck = str((meta or {}).get("deck") or "")
+    file_deck = sanitize((meta or {}).get("deck") or "")
     return [
-        (card.get("id"), str(card.get("deck") or file_deck))
+        (
+            sanitize(card.get("id", "")).strip() or None,
+            sanitize(card.get("deck") or file_deck),
+        )
         for card in cards
         if isinstance(card, dict)
     ]
 
 
 def _in_deck(card_deck: str, deck: str) -> bool:
-    return card_deck == deck or card_deck.startswith(deck + "::")
+    c_folded = card_deck.casefold()
+    d_folded = deck.casefold()
+    return c_folded == d_folded or c_folded.startswith(d_folded + "::")
 
 
 def vault_relative(path: str, vault_root: PurePath) -> str:

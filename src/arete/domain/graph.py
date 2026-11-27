@@ -62,6 +62,7 @@ class DependencyGraph:
     # file -> (card id, effective deck) for every card mapping in the file, in file order.
     # Recorded by the vault build so a deck filter need not re-read the files.
     card_decks: dict[str, list[tuple[Any, str]]] = field(default_factory=dict, repr=False)
+    _by_key: dict[str, str] = field(default_factory=dict, repr=False)
     _graph: nx.DiGraph = field(default_factory=_new_digraph, repr=False)
 
     @property
@@ -69,9 +70,25 @@ class DependencyGraph:
         """Total number of requires edges."""
         return self._graph.number_of_edges()
 
+    def canonical_id(self, card_id: str) -> str | None:
+        """Return the graph's canonical node id matching `card_id` (case-insensitive), or None."""
+        if card_id in self.nodes:
+            return card_id
+        folded = card_id.casefold()
+        found = self._by_key.get(folded)
+        if found is not None and found in self.nodes:
+            return found
+        # Fallback if a caller mutated `nodes` directly without calling `add_node`.
+        for nid in self.nodes:
+            if nid.casefold() == folded:
+                self._by_key[folded] = nid
+                return nid
+        return None
+
     def add_node(self, node: CardNode) -> None:
         """Add a card node to the graph."""
         self.nodes[node.id] = node
+        self._by_key[node.id.casefold()] = node.id
         self._graph.add_node(node.id)
         if node.id not in self.related:
             self.related[node.id] = []

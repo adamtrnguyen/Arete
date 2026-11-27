@@ -204,3 +204,25 @@ def test_transform_markdown_img_preserves_alt_text_when_uniquified(tmp_path, log
     )
     assert out.startswith("![diagram.png](diagram_")
     assert out.endswith(".png)")
+
+
+def test_transform_wikilinks_skips_inline_and_fenced_code():
+    from arete.application.utils.media import transform_wikilinks_to_uri
+
+    src = (
+        "See [[RealNote]] and `arr[[0]]` and ``x[[1]]``.\n"
+        "```python\n"
+        "matrix = [[1, 2], [3, 4]]\n"
+        "```\n"
+        "~~~\n"
+        "[[NotALink]]\n"
+        "~~~\n"
+        "And [[Second|Alias]].\n"
+    )
+    out = transform_wikilinks_to_uri(src, "MyVault")
+    assert "[RealNote](obsidian://open?vault=MyVault&file=RealNote)" in out
+    assert "[Alias](obsidian://open?vault=MyVault&file=Second)" in out
+    assert "`arr[[0]]`" in out
+    assert "``x[[1]]``" in out
+    assert "matrix = [[1, 2], [3, 4]]" in out
+    assert "[[NotALink]]" in out

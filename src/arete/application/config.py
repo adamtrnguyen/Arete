@@ -121,23 +121,23 @@ class AppConfig(BaseSettings):
     @field_validator("vault_root", mode="before")
     @classmethod
     def resolve_vault_root(cls, v: Any) -> Path | None:
-        if v is None:
+        if v is None or (isinstance(v, str) and not v.strip()):
             return None
         return Path(v).resolve()
 
     @field_validator("anki_media_dir", mode="before")
     @classmethod
     def resolve_anki_media(cls, v: Any) -> Path | None:
-        if v is None:
+        if v is None or (isinstance(v, str) and not v.strip()):
             return None
         return Path(v).resolve()
 
     @field_validator("anki_base", mode="before")
     @classmethod
     def resolve_anki_base(cls, v: Any) -> Path | None:
-        if v:
-            return Path(v).resolve()
-        return None
+        if v is None or (isinstance(v, str) and not v.strip()):
+            return None
+        return Path(v).resolve()
 
 
 def resolve_config(

@@ -34,12 +34,20 @@ def aid(n: int) -> str:
 class FakeAnki(SyncPort):
     """An in-memory Anki for prune."""
 
-    def __init__(self, notes: dict[int, tuple[str, list[str]]], extra_decks=()):
+    def __init__(
+        self,
+        notes: dict[int, tuple[str, list[str]]],
+        extra_decks=(),
+        filtered_decks=(),
+    ):
         """Notes are {nid: (deck, tags)}. `extra_decks` are decks that hold no note."""
         self.notes = dict(notes)
-        self.decks = {"Default"} | set(extra_decks)
+        self.filtered_decks = set(filtered_decks)
+        self.decks = {"Default"} | set(extra_decks) | self.filtered_decks
         for deck, _ in notes.values():
             self.decks.add(deck)
+            self.decks.update(AnkiDeck(name=deck).parents)
+        for deck in self.filtered_decks:
             self.decks.update(AnkiDeck(name=deck).parents)
         self.deleted_notes: list[int] = []
         self.deleted_decks: list[str] = []
@@ -48,6 +56,9 @@ class FakeAnki(SyncPort):
 
     async def get_deck_names(self):
         return sorted(self.decks)
+
+    async def get_filtered_deck_names(self):
+        return set(self.filtered_decks)
 
     async def get_notes_in_deck(self, deck):
         return {
@@ -378,3 +389,32 @@ async def test_over_ankiconnect_only_the_arete_orphan_deck_is_deleted():
     note_deletes = [c["params"]["notes"] for c in calls if c["action"] == "deleteNotes"]
     assert deck_deletes == [["OrphanDeck"]]
     assert note_deletes == [[2]]
+
+
+@pytest.mark.asyncio
+async def test_filtered_decks_and_their_parents_are_never_deleted():
+    anki = FakeAnki(
+        {1: ("Arete::Queue", [aid(1)]), 2: ("Orphan", [aid(2)])},
+        filtered_decks=["Arete::Queue"],
+    )
+    report = await prune(anki)
+    assert anki.deleted_decks == ["Orphan"]
+    assert "Arete::Queue" in anki.decks
+    assert "Arete" in anki.decks
+    assert "Arete::Queue" not in report.decks
+    assert "Arete" not in report.decks
+
+
+@pytest.mark.asyncio
+async def test_case_insensitive_vault_deck_and_default_protection():
+    anki = FakeAnki(
+        {
+            1: ("default", [aid(1)]),
+            2: ("math::algebra", [aid(2)]),
+            3: ("Orphan", [aid(3)]),
+        }
+    )
+    report = await prune(anki, recorder(nids=["2"], decks=["Math::Algebra"]))
+    assert anki.deleted_notes == [3]
+    assert anki.deleted_decks == ["Orphan"]
+    assert report.decks == ["Orphan"]

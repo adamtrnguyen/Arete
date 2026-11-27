@@ -6,8 +6,8 @@ Arete marks every note it creates with the card's Arete id as a tag: `arete_` pl
 made by hand or by another tool, and nothing destructive may touch it.
 
 The test is the documented format (`skills/arete/references/SCHEMA.md`: "`arete_` prefix +
-26-char ULID"), not the looser `startswith("arete_")` the read paths use: a hand-made tag
-such as `arete_review` must never make a note deletable.
+26-char ULID"), not a loose `startswith("arete_")` prefix match: a hand-made tag
+such as `arete_review` must never hijack a card's identity or make a note deletable.
 """
 
 import re

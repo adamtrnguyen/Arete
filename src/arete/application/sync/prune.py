@@ -95,7 +95,8 @@ class PruneReport:
 
 
 def _is_default(deck: str) -> bool:
-    return deck == "Default" or deck.startswith("Default::")
+    folded = deck.casefold()
+    return folded == "default" or folded.startswith("default::")
 
 
 def _claimed(
@@ -132,10 +133,13 @@ def _decide_decks(
 ) -> None:
     """Fill report.decks, .empty_decks_not_deleted and .decks_kept."""
     candidates = list(notes_by_deck)
+    protected_folded = {d.casefold() for d in protected}
     deletable: set[str] = set()
+    deletable_folded: set[str] = set()
     # Deepest first, so a deck is decided after all of its subdecks.
     for d in sorted(candidates, key=lambda name: name.count("::"), reverse=True):
-        if d in protected:
+        d_folded = d.casefold()
+        if d_folded in protected_folded:
             continue
         notes = notes_by_deck[d]
         if not notes:
@@ -147,15 +151,19 @@ def _decide_decks(
                 f"[prune] keeping deck {d!r}: it holds {len(claimed)} note(s) the vault "
                 "still claims. Run 'arete sync --force' to move them back."
             )
-        subdecks = [c for c in candidates if c.startswith(d + "::")]
-        if notes <= orphans and all(c in deletable for c in subdecks):
+        prefix = d_folded + "::"
+        subdecks = [c for c in candidates if c.casefold().startswith(prefix)]
+        if notes <= orphans and all(c.casefold() in deletable_folded for c in subdecks):
             deletable.add(d)
+            deletable_folded.add(d_folded)
         else:
             report.decks_kept.append(d)
 
     # Delete the top of each deletable subtree; Anki removes the subdecks with it.
     report.decks = sorted(
-        d for d in deletable if not any(p in deletable for p in AnkiDeck(name=d).parents)
+        d
+        for d in deletable
+        if not any(p.casefold() in deletable_folded for p in AnkiDeck(name=d).parents)
     )
     report.empty_decks_not_deleted.sort()
     report.decks_kept.sort()
@@ -171,15 +179,22 @@ async def plan_prune(
     """Work out what prune would delete. Reads Anki; changes nothing.
 
     `valid_nids` are the note ids the vault holds, `declared_ids` the Arete ids its cards
-    declare: a note claimed by either is not an orphan.
+    declare: a note claimed by either is not an orphan. Filtered decks (such as
+    `Arete::Queue`) are views, never regular home decks, and are never deleted.
     """
     anki_decks = await bridge.get_deck_names()
-    candidates = [d for d in anki_decks if not _is_default(d)]
+    filtered_decks = await bridge.get_filtered_deck_names()
+    filtered_folded = {d.casefold() for d in filtered_decks}
+    candidates = [
+        d for d in anki_decks if not _is_default(d) and d.casefold() not in filtered_folded
+    ]
     if not candidates:
         return PruneReport("clean", "No non-default decks found.")
 
     protected = set(valid_decks)
     for d in valid_decks:
+        protected.update(AnkiDeck(name=d).parents)
+    for d in filtered_decks:
         protected.update(AnkiDeck(name=d).parents)
 
     default_nids: set[int] = set()

@@ -136,7 +136,10 @@ async def test_run_pipeline_refreshes_hot_cache_with_nid(mock_components, tmp_pa
 
     cache.set_notes.assert_called_once()
     [(path, idx, content_hash, note_json)] = cache.set_notes.call_args.args[0]
-    assert (path, idx, content_hash) == (Path("/vault/test.md"), 1, "abc123")
+    from arete.application.utils.text import card_content_hash
+
+    expected_hash = card_content_hash(note.model, note.deck, note.tags, note.fields, "123", "456")
+    assert (path, idx, content_hash) == (Path("/vault/test.md"), 1, expected_hash)
     assert json.loads(note_json)["nid"] == "123"
 
 

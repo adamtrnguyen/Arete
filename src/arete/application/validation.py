@@ -77,10 +77,19 @@ def _check_arete_flags(meta: dict, result: ValidationResult) -> None:
                 {"line": 1, "message": "Found 'card' property. Did you mean 'cards'?"}
             )
 
-    if "deck" not in meta:
+    cards = meta.get("cards")
+    has_card_decks = (
+        isinstance(cards, list)
+        and bool(cards)
+        and all(isinstance(c, dict) and bool(c.get("deck")) for c in cards)
+    )
+    if not meta.get("deck") and not has_card_decks:
         result.ok = False
         result.errors.append(
-            {"line": 1, "message": "File marked 'arete: true' but missing 'deck' field."}
+            {
+                "line": meta.get("__line__", 1),
+                "message": "File marked 'arete: true' but missing 'deck' field.",
+            }
         )
 
 
@@ -192,9 +201,12 @@ def _validate_cards_list(meta: dict, result: ValidationResult) -> None:
 
     if not cards:
         result.ok = False
-        result.errors.append(
-            {"line": 1, "message": "File marked 'arete: true' but 'cards' list is empty."}
+        msg = (
+            "File marked 'arete: true' but 'cards' list is empty."
+            if meta.get("arete") is True
+            else "'cards' list is empty."
         )
+        result.errors.append({"line": 1, "message": msg})
 
     # Stats collection
     result.stats["deck"] = meta.get("deck")
@@ -202,18 +214,6 @@ def _validate_cards_list(meta: dict, result: ValidationResult) -> None:
 
     if len(cards) > 1:
         _check_split_cards(cards, result)
-
-    # Check for missing deck if notes are present
-    if cards:
-        if not meta.get("deck"):
-            result.ok = False
-            result.errors.append(
-                {
-                    "line": meta.get("__line__", 1),
-                    "message": "Missing required field: 'deck'. "
-                    "Arete notes must specify a destination deck.",
-                }
-            )
 
     for i, card in enumerate(cards):
         _check_single_card(card, i, cards, result)
@@ -230,9 +230,9 @@ def _check_duplicate_ids(cards: list, result: ValidationResult) -> None:
     from arete.application.sync.parser import MarkdownParser
     from arete.domain.ownership import group_duplicate_ids
 
-    # `__line__` counts from the first line after the opening `---`.
+    # `__line__` is already the 1-based file line from `validate_frontmatter`.
     declared = (
-        ((i, card.get("__line__", i) + 1), card_id)
+        ((i, card.get("__line__", i + 1)), card_id)
         for i, card in enumerate(cards)
         if (card_id := MarkdownParser.declared_id(card))
     )

@@ -117,8 +117,8 @@ def test_queue_dry_run_creates_nothing(monkeypatch, vault):
 def test_queue_reports_a_failed_deck_creation(monkeypatch, vault):
     bridge = _use(monkeypatch, FakeBridge(1, ["arete_B"], deck_ok=False))
     result = runner.invoke(app, ["queue", str(vault)])
-    assert result.exit_code == 0
-    assert "Failed to create filtered deck." in result.stdout
+    assert result.exit_code == 1
+    assert "Failed to create filtered deck." in result.stderr
     assert "Created" not in result.stdout
     assert len(bridge.created) == 1
 
@@ -258,6 +258,18 @@ def test_queue_json_failed_deck_creation_exits_1_with_the_reason_on_stderr(monke
     assert result.exit_code == 1
     assert json.loads(result.stdout)["total_with_prereqs"] == 2
     assert "Failed to create filtered deck." in result.stderr
+
+
+def test_queue_runtime_error_exits_1_cleanly_in_json_and_plain_modes(monkeypatch, vault):
+    async def failing_bridge(_config):
+        raise RuntimeError("Anki unreachable")
+
+    monkeypatch.setattr("arete.composition.factory.get_anki_bridge", failing_bridge)
+    for args in (["queue", str(vault), "--json"], ["queue", str(vault)]):
+        result = runner.invoke(app, args)
+        assert result.exit_code == 1
+        assert "Anki unreachable" in result.stderr
+        assert result.stdout == ""
 
 
 def test_queue_backend_overrides_reach_the_config(monkeypatch, vault):

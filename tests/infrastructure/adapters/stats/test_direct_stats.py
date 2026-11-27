@@ -397,3 +397,21 @@ async def test_get_deck_params_config_not_found(mock_repo):
     result = await repo.get_deck_params(["X"])
 
     assert result == {"X": {"desired_retention": 0.9, "weights": [], "sm2_retention": 0.9}}
+
+
+@pytest.mark.asyncio
+async def test_get_review_history_chunks_over_sql_chunk_and_sorts(mock_repo):
+    """Large CID lists are chunked under SQLite's variable limit and merged in chronological order."""
+    from arete.infrastructure.adapters.stats.direct_stats import _SQL_CHUNK
+
+    cids = list(range(1, _SQL_CHUNK + 25))
+    mock_repo.col.db.execute.side_effect = [
+        [(0, "id", "", 0, None, 0), (1, "cid", "", 0, None, 0)],  # PRAGMA
+        [(2000000000000, 1, 3, 7, 1)],  # chunk 1
+        [(1000000000000, _SQL_CHUNK + 1, 2, 1, 0)],  # chunk 2 (older review)
+    ]
+    repo = DirectStatsRepository(anki_base=None)
+    result = await repo.get_review_history(cids)
+    assert [r.review_time for r in result] == [1000000000, 2000000000]
+    assert mock_repo.col.db.execute.call_count == 3
+    await repo.close()

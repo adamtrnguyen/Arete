@@ -157,14 +157,31 @@ def test_press_fatigue_uses_a_window_of_the_last_twenty_reviews():
 
 
 def test_overlearning_flags_a_long_stability_card_reviewed_too_soon():
-    assert enrich(card(stability=100.0, last_review=days_ago(1))).is_overlearning is True
+    r1 = ReviewEntry(card_id=1, review_time=days_ago(2), rating=3, interval=100, last_interval=90)
+    r2 = ReviewEntry(card_id=1, review_time=days_ago(1), rating=3, interval=101, last_interval=100)
+    assert enrich(card(stability=100.0, last_review=days_ago(1), reviews=[r1, r2])).is_overlearning
+
+
+def test_overlearning_flags_high_retrievability_at_latest_review():
+    r = review(retrievability=0.99)
+    assert enrich(card(stability=100.0, last_review=days_ago(1), reviews=[r])).is_overlearning
+
+
+def test_overlearning_not_triggered_solely_by_recent_last_review():
+    """A card reviewed yesterday on a normal 100-day schedule is not overlearning."""
+    r1 = ReviewEntry(card_id=1, review_time=days_ago(100), rating=3, interval=100, last_interval=90)
+    r2 = ReviewEntry(card_id=1, review_time=days_ago(1), rating=3, interval=200, last_interval=100)
+    assert (
+        enrich(card(stability=100.0, last_review=days_ago(1), reviews=[r1, r2])).is_overlearning
+        is False
+    )
 
 
 @pytest.mark.parametrize(
     "stability,last_review",
     [
         (50.0, 1),  # stability under 90 days
-        (100.0, 20),  # 20 days elapsed is past 10% of stability
+        (100.0, 20),  # no reviews showing premature review
         (100.0, None),  # never reviewed
     ],
 )
@@ -175,6 +192,22 @@ def test_overlearning_is_not_flagged_otherwise(stability, last_review):
 
 def test_overlearning_is_false_without_fsrs():
     assert enrich(card(last_review=days_ago(1))).is_overlearning is False
+
+
+def test_difficulty_zero_is_preserved_not_turned_into_none():
+    c = CardStatsAggregate(
+        card_id=1,
+        note_id=1,
+        deck_name="Default",
+        lapses=0,
+        ease=2500,
+        interval=10,
+        due=0,
+        reps=5,
+        fsrs=FsrsMemoryState(stability=10.0, difficulty=0.0),
+        last_review=days_ago(1),
+    )
+    assert enrich(c).difficulty == 0.0
 
 
 # --- history flags and deck parameters ---

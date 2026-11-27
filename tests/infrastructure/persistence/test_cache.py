@@ -147,3 +147,12 @@ def test_a_windows_path_is_keyed_with_forward_slashes(tmp_path):
     assert cache.get_note(PureWindowsPath("C:/Vault/sub/n.md"), 1) == ("h", "{}")  # type: ignore[arg-type]
     [(key,)] = cache._conn.execute("SELECT path FROM cards").fetchall()
     assert key == "C:/Vault/sub/n.md"
+
+
+def test_custom_db_path_creates_missing_parent_directories(tmp_path):
+    db_path = tmp_path / "nested" / "sub" / "cache.db"
+    cache = ContentCache(db_path=db_path)
+    try:
+        assert db_path.exists()
+    finally:
+        cache.close()

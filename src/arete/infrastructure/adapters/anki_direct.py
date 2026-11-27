@@ -13,6 +13,7 @@ from arete.domain.constants import (
     BROWSE_POLL_INTERVAL,
 )
 from arete.domain.interfaces import AnkiBridge
+from arete.domain.ownership import is_arete_id
 from arete.infrastructure.anki.note_session import DirectNoteSession
 from arete.infrastructure.anki.repository import AnkiRepository
 from arete.infrastructure.anki.search import search_term
@@ -24,9 +25,10 @@ if TYPE_CHECKING:  # importing these eagerly cycles inside the anki package
 class AnkiDirectAdapter(AnkiBridge):
     """Direct Python adapter for Anki using the 'anki' library."""
 
-    def __init__(self, anki_base: Path | None):
+    def __init__(self, anki_base: Path | None, anki_connect_url: str = "http://127.0.0.1:8765"):
         """Initialize with path to the Anki base directory."""
         self.anki_base = anki_base
+        self.anki_connect_url = anki_connect_url
         self.logger = logging.getLogger(__name__)
         self._sync_lock = asyncio.Lock()
 
@@ -49,6 +51,15 @@ class AnkiDirectAdapter(AnkiBridge):
                 # must keep clean.
                 return [d.name for d in repo.col.decks.all_names_and_ids()]
         return []
+
+    async def get_filtered_deck_names(self) -> set[str]:
+        """Filtered (dynamic) deck names present in Anki."""
+        with AnkiRepository(self.anki_base) as repo:
+            if repo.col:
+                all_decks = repo.col.decks.all_names_and_ids(include_filtered=True)
+                regular_decks = repo.col.decks.all_names_and_ids(include_filtered=False)
+                return {d.name for d in all_decks} - {d.name for d in regular_decks}
+        return set()
 
     async def get_due_cards(
         self, deck_name: str | None = None, include_new: bool = False
@@ -79,7 +90,7 @@ class AnkiDirectAdapter(AnkiBridge):
                 raise OSError("Anki collection did not open")
             for nid in nids:
                 note = repo.col.get_note(cast(Any, nid))
-                tag = next((t for t in note.tags if t.startswith("arete_")), None)
+                tag = next((t for t in note.tags if is_arete_id(t)), None)
                 if tag:
                     arete_ids.append(tag)
         return arete_ids
@@ -121,7 +132,7 @@ class AnkiDirectAdapter(AnkiBridge):
         with AnkiRepository(self.anki_base) as repo:
             if repo.col:
                 for name in names:
-                    did = repo.col.decks.id(name)
+                    did = repo.col.decks.id(name, create=False)
                     if did is not None:
                         repo.col.decks.remove([did])
                 return True
@@ -183,23 +194,18 @@ class AnkiDirectAdapter(AnkiBridge):
 
         Launch Anki first, wait for startup, then use AnkiConnect to apply the search query.
         """
-        import asyncio
         import os
-        import subprocess
         import sys
         import urllib.parse
 
         import httpx
-
-        # Suppress httpx logging for this operation
-        logging.getLogger("httpx").setLevel(logging.WARNING)
 
         async def _try_ankiconnect():
             try:
                 async with httpx.AsyncClient() as client:
                     payload = {"action": "guiBrowse", "version": 6, "params": {"query": query}}
                     # Very short timeout for polling
-                    resp = await client.post("http://localhost:8765", json=payload, timeout=0.5)
+                    resp = await client.post(self.anki_connect_url, json=payload, timeout=0.5)
                     if resp.status_code == 200:
                         data = resp.json()
                         return not data.get("error")
@@ -210,20 +216,26 @@ class AnkiDirectAdapter(AnkiBridge):
         # 1. ALWAYS launch/bring Anki to front first
         try:
             if sys.platform == "darwin":
-                # User requested simple launch
-                subprocess.run(
-                    ["open", "-a", "Anki"],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
+                proc = await asyncio.create_subprocess_exec(
+                    "open",
+                    "-a",
+                    "Anki",
+                    stdout=asyncio.subprocess.DEVNULL,
+                    stderr=asyncio.subprocess.DEVNULL,
                 )
+                await proc.wait()
             elif sys.platform == "win32":
                 uri = f"anki://x-callback-url/search?query={urllib.parse.quote(query)}"
                 os.startfile(uri)
             else:
                 uri = f"anki://x-callback-url/search?query={urllib.parse.quote(query)}"
-                subprocess.run(
-                    ["xdg-open", uri], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+                proc = await asyncio.create_subprocess_exec(
+                    "xdg-open",
+                    uri,
+                    stdout=asyncio.subprocess.DEVNULL,
+                    stderr=asyncio.subprocess.DEVNULL,
                 )
+                await proc.wait()
         except Exception as e:
             self.logger.warning(f"[browse] could not open the Anki browser: {e}")
 
@@ -302,11 +314,12 @@ class AnkiDirectAdapter(AnkiBridge):
             # 3. Rebuild (pull cards into filtered deck)
             repo.col.sched.rebuild_filtered_deck(did)
 
-            # 4. Enforce topological order via due values
+            # 4. Enforce topological order via due values (never overwrite learning cards'
+            # epoch-timestamp `due` when `queue == 1`).
             for i, cid in enumerate(cids):
                 try:
                     card = repo.col.get_card(cast(Any, cid))
-                    if card.did == did:
+                    if card.did == did and card.queue != 1:
                         card.due = i + 1000
                         repo.col.update_card(card)
                 except Exception as e:

@@ -516,18 +516,18 @@ async def test_a_deck_that_failed_is_retried_and_the_others_are_kept():
 @pytest.mark.asyncio
 async def test_due_notes_are_mapped_to_arete_ids_in_chunks_of_500():
     fake = FakeAnki()
-    nids = [fake.add({"Front": f"f{i}"}, tags=["x", f"arete_{i}"]) for i in range(1200)]
+    nids = [fake.add({"Front": f"f{i}"}, tags=["x", _id(i)]) for i in range(1200)]
 
     ids = await _adapter(fake).map_nids_to_arete_ids(nids)
 
-    assert ids == [f"arete_{i}" for i in range(1200)]
+    assert ids == [_id(i) for i in range(1200)]
     assert [len(p["notes"]) for a, p in fake.log if a == "notesInfo"] == [500, 500, 200]
 
 
 @pytest.mark.asyncio
 async def test_a_failed_chunk_fails_the_mapping_as_a_failed_request_does():
     fake = FakeAnki()
-    nids = [fake.add({"Front": f"f{i}"}, tags=[f"arete_{i}"]) for i in range(1200)]
+    nids = [fake.add({"Front": f"f{i}"}, tags=[_id(i)]) for i in range(1200)]
     fake.fail = lambda action, params: "busy" if params.get("notes", [0])[0] == nids[500] else None
 
     with pytest.raises(Exception, match="busy"):

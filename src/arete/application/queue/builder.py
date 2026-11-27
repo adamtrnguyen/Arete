@@ -36,6 +36,13 @@ def build_simple_queue(
     if graph is None:
         graph = build_graph(vault_root)
 
+    # Normalize due ids to canonical vault casing (Anki tags may differ in case).
+    canonical_due: list[str] = []
+    for raw_id in due_card_ids:
+        canon = graph.canonical_id(raw_id)
+        if canon is not None and canon not in canonical_due:
+            canonical_due.append(canon)
+
     # Collect all prerequisites for due cards, with each one's distance to the nearest
     # due card (the cap below keeps the nearest).
     distance: dict[str, int] = {}
@@ -46,7 +53,7 @@ def build_simple_queue(
             if ref not in missing_prereqs:
                 missing_prereqs.append(ref)
 
-    for card_id in due_card_ids:
+    for card_id in canonical_due:
         _note_missing(card_id)
         for prereq_id, hops in _collect_prereqs(graph, card_id, depth).items():
             if prereq_id in graph.nodes:
@@ -54,18 +61,18 @@ def build_simple_queue(
                 _note_missing(prereq_id)
 
     # Remove due cards from prereqs (they'll be in main queue)
-    for due_id in due_card_ids:
+    for due_id in canonical_due:
         distance.pop(due_id, None)
 
     # The cap keeps the nearest prerequisites (ties by id, for a stable result) and
     # reports the rest as dropped.
     by_nearness = sorted(distance, key=lambda cid: (distance[cid], cid))
-    room = max(0, max_cards - len(due_card_ids))
+    room = max(0, max_cards - len(canonical_due))
     prereq_list, dropped_prereqs = by_nearness[:room], by_nearness[room:]
 
     # Topological sort both queues
     prereq_queue = topological_sort(graph, prereq_list)
-    main_queue = topological_sort(graph, due_card_ids)
+    main_queue = topological_sort(graph, canonical_due)
 
     # Detect cycles
     cycles = detect_cycles(graph)
@@ -115,7 +122,7 @@ def build_dynamic_queue(
         graph=graph,
     )
 
-    due_set = {cid for cid in due_card_ids if cid in graph.nodes}
+    due_set = {canon for cid in due_card_ids if (canon := graph.canonical_id(cid)) is not None}
     candidates = [
         cid for cid in dict.fromkeys(base.prereq_queue + base.main_queue) if cid in graph.nodes
     ]
@@ -136,6 +143,7 @@ def build_dynamic_queue(
         missing_prereqs=base.missing_prereqs,
         cycles=base.cycles,
         ordered_queue=ordered,
+        dropped_prereqs=base.dropped_prereqs,
     )
 
 

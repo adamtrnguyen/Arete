@@ -8,6 +8,7 @@ from typing import Any
 from tqdm import tqdm
 
 from arete.application.config import AppConfig
+from arete.application.sync.converter import markdown_to_anki_html
 from arete.application.sync.note_sync import NoteSync, VaultClaims
 from arete.application.sync.parser import MarkdownParser
 from arete.application.sync.prune import PruneConfirm, PruneReport, prune_orphans
@@ -15,28 +16,64 @@ from arete.application.sync.vault_service import VaultService
 from arete.application.utils.common import sanitize
 from arete.application.utils.logging import RunRecorder
 from arete.application.utils.media import FilenameIndex
+from arete.application.utils.text import card_content_hash
 from arete.domain.constants import CONSUMER_BATCH_SIZE
+from arete.domain.identity import first_field_key
 from arete.domain.interfaces import ContentCache, SyncBackend
 from arete.domain.models import UpdateItem, WorkItem
 from arete.domain.ownership import group_duplicate_ids
 
 
+def _first_field_value(card: dict[str, Any], model: str) -> str:
+    """Best-effort raw first field of a vault card dict for upfront front reservation."""
+    mlow = model.lower()
+    if mlow == "basic":
+        return sanitize(card.get("Front") or "")
+    if mlow == "cloze":
+        return sanitize(card.get("Text") or "")
+    _exclude = {"model", "deck", "tags", "id", "deps", "anki", "__line__"}
+    for k, v in card.items():
+        if k not in _exclude:
+            return sanitize(v)
+    return ""
+
+
 def vault_claims(
-    compatible: list[tuple[Path, dict[str, Any], bool]], parser: MarkdownParser
+    compatible: list[tuple[Path, dict[str, Any], bool]],
+    parser: MarkdownParser,
+    default_deck: str = "Default",
 ) -> VaultClaims:
-    """Every nid and Arete id the scanned files declare, casefolded, for `NoteSync`."""
+    """Every nid, Arete id, and nid-bound front the scanned files declare, for `NoteSync`."""
     owners: dict[int, set[str | None]] = {}
     ids: set[str] = set()
-    for _path, meta, _fresh in compatible:
-        for card in meta.get("cards") or []:
+    nid_fronts: dict[tuple[str, str, str], list[tuple[str, int, Path, int]]] = {}
+    for path, meta, _fresh in compatible:
+        file_model = sanitize(meta.get("model", "Basic"))
+        file_deck = sanitize(meta.get("deck", "")) or default_deck
+        for idx, card in enumerate(meta.get("cards") or [], start=1):
             card_id = parser.declared_id(card)
             key = card_id.casefold() if card_id else None
             if key:
                 ids.add(key)
             raw = parser._extract_raw_nid(card) if isinstance(card, dict) else None
             if raw and raw.isdigit():
-                owners.setdefault(int(raw), set()).add(key)
-    return VaultClaims({nid: frozenset(o) for nid, o in owners.items()}, frozenset(ids))
+                nid = int(raw)
+                owners.setdefault(nid, set()).add(key)
+                if isinstance(card, dict):
+                    model = sanitize(card.get("model", file_model))
+                    deck = sanitize(card.get("deck") or file_deck) or default_deck
+                    raw_front = _first_field_value(card, model)
+                    if raw_front:
+                        fkey = first_field_key(markdown_to_anki_html(raw_front))
+                        if fkey:
+                            nid_fronts.setdefault(
+                                (model.casefold(), deck.casefold(), fkey), []
+                            ).append((f"{path.name} #{idx}", nid, path, idx))
+    return VaultClaims(
+        {nid: frozenset(o) for nid, o in owners.items()},
+        frozenset(ids),
+        {k: tuple(v) for k, v in nid_fronts.items()},
+    )
 
 
 def vault_models(compatible: list[tuple[Path, dict[str, Any], bool]]) -> set[str]:
@@ -100,6 +137,14 @@ async def true_source_lines(
         u.note.fields["_obsidian_source"] = new
         u.note.start_line = line
         if u.note.content_hash:
+            u.note.content_hash = card_content_hash(
+                u.note.model,
+                u.note.deck,
+                u.note.tags,
+                u.note.fields,
+                u.note.nid,
+                u.note.cid,
+            )
             rows.append(
                 (u.source_file, u.source_index, u.note.content_hash, json.dumps(u.note.to_dict()))
             )
@@ -249,7 +294,7 @@ async def run_pipeline(
                     f"#{i}",
                 )
         # A dry run decides through the same NoteSync, reading Anki and writing nothing.
-        scanned = vault_claims(compatible, parser)
+        scanned = vault_claims(compatible, parser, default_deck=config.default_deck)
         note_sync = NoteSync(anki_bridge, scanned, logger, dry_run=config.dry_run)
         # Every note the vault names, read once: every card is compared with Anki, and the
         # batches compare against this read instead of reading their own.
@@ -332,11 +377,21 @@ async def run_pipeline(
                                         ]
                                     )
                                 if u.note and u.note.content_hash and not config.dry_run:
-                                    # Refresh the hot-cache entry WITH the nid Anki assigned,
-                                    # otherwise the cached note keeps nid=None and every warm
-                                    # run re-sends the card as new.
+                                    # Refresh the hot-cache entry WITH the nid Anki assigned and
+                                    # recompute content_hash when nid/cid changed so warm hash
+                                    # checks stay valid after the file leaves the stat cache.
+                                    prev_nid, prev_cid = u.note.nid, u.note.cid
                                     u.note.nid = u.new_nid or u.note.nid
                                     u.note.cid = u.new_cid or u.note.cid
+                                    if (u.note.nid, u.note.cid) != (prev_nid, prev_cid):
+                                        u.note.content_hash = card_content_hash(
+                                            u.note.model,
+                                            u.note.deck,
+                                            u.note.tags,
+                                            u.note.fields,
+                                            u.note.nid,
+                                            u.note.cid,
+                                        )
                                     synced_rows.append(
                                         (
                                             u.source_file,

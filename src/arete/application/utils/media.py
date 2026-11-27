@@ -197,11 +197,92 @@ def transform_images_in_text(
     return out
 
 
-def transform_wikilinks_to_uri(text: str, vault_name: str) -> str:
-    """Convert ``[[Target]]`` and ``[[Target|display]]`` wikilinks to.
+def _fence_spec(line: str) -> tuple[str, int, str] | None:
+    stripped = line.lstrip(" ")
+    if len(line) - len(stripped) > 3 or not stripped or stripped[0] not in ("`", "~"):
+        return None
+    ch = stripped[0]
+    run = len(stripped) - len(stripped.lstrip(ch))
+    return (ch, run, stripped[run:]) if run >= 3 else None
 
-    clickable ``obsidian://open`` URIs.  The resulting markdown link is
-    later rendered to an ``<a>`` tag by the markdown→HTML converter.
+
+def _backtick_run_end(text: str, pos: int) -> int:
+    end = pos
+    while end < len(text) and text[end] == "`":
+        end += 1
+    return end
+
+
+def _find_closing_backticks(text: str, start: int, run_len: int) -> int:
+    """Index right after the matching backtick run before a blank line, or -1."""
+    para_end = text.find("\n\n", start)
+    limit = para_end if para_end != -1 else len(text)
+    k = start
+    while k < limit:
+        if text[k] != "`":
+            k += 1
+            continue
+        end = _backtick_run_end(text, k)
+        if end - k == run_len:
+            return end
+        k = end
+    return -1
+
+
+def _split_code_segments(text: str) -> list[tuple[bool, str]]:
+    """Split markdown text into `(is_code, segment)` runs preserving fences and inline code."""
+    segments: list[tuple[bool, str]] = []
+    plain: list[str] = []
+    i, n = 0, len(text)
+    fence: tuple[str, int] | None = None
+
+    def flush_plain() -> None:
+        if plain:
+            segments.append((False, "".join(plain)))
+            plain.clear()
+
+    while i < n:
+        if i == 0 or text[i - 1] == "\n":
+            line_end = text.find("\n", i)
+            line_end = n if line_end == -1 else line_end
+            next_i = line_end + (1 if line_end < n else 0)
+            spec = _fence_spec(text[i:line_end])
+            if fence is not None:
+                segments.append((True, text[i:next_i]))
+                if spec and spec[0] == fence[0] and spec[1] >= fence[1] and not spec[2].strip():
+                    fence = None
+                i = next_i
+                continue
+            if spec is not None:
+                flush_plain()
+                fence = (spec[0], spec[1])
+                segments.append((True, text[i:next_i]))
+                i = next_i
+                continue
+
+        if text[i] == "`":
+            end = _backtick_run_end(text, i)
+            close_end = _find_closing_backticks(text, end, end - i)
+            if close_end != -1:
+                flush_plain()
+                segments.append((True, text[i:close_end]))
+                i = close_end
+                continue
+            plain.append(text[i:end])
+            i = end
+            continue
+
+        plain.append(text[i])
+        i += 1
+
+    flush_plain()
+    return segments
+
+
+def transform_wikilinks_to_uri(text: str, vault_name: str) -> str:
+    """Convert ``[[Target]]`` and ``[[Target|display]]`` wikilinks to ``obsidian://open`` URIs.
+
+    Skips fenced code blocks and inline code spans so syntax like ``arr[[0]]`` stays intact.
     """
 
     def _repl(m: re.Match) -> str:
@@ -216,4 +297,7 @@ def transform_wikilinks_to_uri(text: str, vault_name: str) -> str:
         uri = f"obsidian://open?vault={quote(vault_name)}&file={quote(target)}"
         return f"[{display}]({uri})"
 
-    return WIKILINK_RE.sub(_repl, text)
+    return "".join(
+        seg if is_code else WIKILINK_RE.sub(_repl, seg)
+        for is_code, seg in _split_code_segments(text)
+    )

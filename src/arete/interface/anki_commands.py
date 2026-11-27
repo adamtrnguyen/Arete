@@ -18,14 +18,34 @@ anki_app = typer.Typer(name="anki", help="Anki card management and debugging.")
 def _parse_cids(cids: str) -> list[int]:
     """Parse comma-separated or JSON list of card IDs."""
     if cids.startswith("["):
-        return json.loads(cids)
+        try:
+            parsed = json.loads(cids)
+        except json.JSONDecodeError as e:
+            typer.secho("Invalid JSON for --cids", fg="red", err=True)
+            raise typer.Exit(1) from e
+        if not isinstance(parsed, list):
+            typer.secho("Invalid --cids: expected a JSON list of integers", fg="red", err=True)
+            raise typer.Exit(1)
+        try:
+            return [int(x) for x in parsed if not isinstance(x, bool)]
+        except (TypeError, ValueError) as e:
+            typer.secho("Invalid --cids: all items must be integers", fg="red", err=True)
+            raise typer.Exit(1) from e
     return [int(n.strip()) for n in cids.split(",") if n.strip().isdigit()]
 
 
 def _parse_ids(ids: str) -> list[str]:
     """Parse a JSON list or a comma-separated list of Arete ids."""
     if ids.startswith("["):
-        return [str(i) for i in json.loads(ids)]
+        try:
+            parsed = json.loads(ids)
+        except json.JSONDecodeError as e:
+            typer.secho("Invalid JSON for --ids", fg="red", err=True)
+            raise typer.Exit(1) from e
+        if not isinstance(parsed, list):
+            typer.secho("Invalid --ids: expected a JSON list", fg="red", err=True)
+            raise typer.Exit(1)
+        return [str(i) for i in parsed]
     return [i.strip() for i in ids.split(",") if i.strip()]
 
 
@@ -116,7 +136,10 @@ def anki_stats(
         from arete.composition.factory import get_stats_service
 
         service = await get_stats_service(config)
-        return await service.get_enriched_stats(nids_list)
+        try:
+            return await service.get_enriched_stats(nids_list)
+        finally:
+            await service.close()
 
     stats = _run_or_exit(run())
     result = [asdict(s) for s in stats]

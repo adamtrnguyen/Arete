@@ -46,7 +46,10 @@ async def get_anki_bridge(config: AppConfig) -> AnkiBridge:
     ac = await _ankiconnect_for(config)
     if config.backend == "auto":
         print(f"Backend: {'AnkiConnect' if ac else 'AnkiDirect'}", file=sys.stderr)
-    return ac or AnkiDirectAdapter(anki_base=config.anki_base)
+    return ac or AnkiDirectAdapter(
+        anki_base=config.anki_base,
+        anki_connect_url=config.anki_connect_url or "http://127.0.0.1:8765",
+    )
 
 
 def get_cache(db_path: Path | None = None) -> ContentCache:

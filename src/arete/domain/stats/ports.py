@@ -31,3 +31,8 @@ class StatsRepository(ABC):
     async def get_deck_params(self, deck_names: list[str]) -> dict[str, dict]:
         """FSRS parameters (desired retention, weights) per deck name."""
         pass
+
+    @abstractmethod
+    async def close(self) -> None:
+        """Release any held resources (e.g., HTTP clients)."""
+        pass

@@ -27,6 +27,7 @@ from arete.domain.models import (
     NoteTypeInfo,
     OutcomeUnknown,
 )
+from arete.domain.ownership import is_arete_id
 from arete.infrastructure.anki.search import search_term
 
 # Writes sent in one multi request. Every write resets Anki's UI on its main thread, so
@@ -41,6 +42,7 @@ _RESEND_SAFE: dict[str, bool] = {
     # reads
     "version": True,
     "deckNames": True,
+    "getDeckConfig": True,
     "findNotes": True,
     "findCards": True,
     "notesInfo": True,
@@ -566,7 +568,7 @@ class AnkiConnectAdapter(AnkiBridge):
     def _result_of(self, action: str, data: Any, resend_safe: bool) -> Any:
         """The result of a reply. An error reply raises; so does a malformed one."""
         problem = None
-        if len(data) != 2:
+        if not isinstance(data, dict) or len(data) != 2:
             problem = "response has an unexpected number of fields"
         elif "error" not in data:
             problem = "response is missing required error field"
@@ -584,7 +586,7 @@ class AnkiConnectAdapter(AnkiBridge):
 
     async def _http_request(self, payload: dict, *, timeout: float | None = None) -> dict:
         if self.use_windows_curl:
-            cmd = ["curl.exe", "-s", "-X", "POST", self.url, "-d", "@-"]
+            cmd = ["curl.exe", "-fsS", "-X", "POST", self.url, "-d", "@-"]
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdin=asyncio.subprocess.PIPE,
@@ -608,6 +610,20 @@ class AnkiConnectAdapter(AnkiBridge):
     async def get_deck_names(self) -> list[str]:
         return await self._invoke("deckNames")
 
+    async def get_filtered_deck_names(self) -> set[str]:
+        """Filtered (dynamic) deck names present in Anki."""
+        decks = [d for d in await self.get_deck_names() if d.casefold() != "default"]
+        if not decks:
+            return set()
+        replies = await self._send_writes(
+            [("getDeckConfig", {"deck": d}) for d in decks], results=True
+        )
+        return {
+            d
+            for d, cfg in zip(decks, replies, strict=True)
+            if isinstance(cfg, dict) and bool(cfg.get("dyn"))
+        }
+
     async def get_due_cards(
         self, deck_name: str | None = None, include_new: bool = False
     ) -> list[int]:
@@ -620,7 +636,7 @@ class AnkiConnectAdapter(AnkiBridge):
         return await self._invoke("findNotes", query=query)
 
     async def map_nids_to_arete_ids(self, nids: list[int]) -> list[str]:
-        """The first `arete_` tag of each note; a note without one is skipped.
+        """The first valid Arete ID tag of each note; a note without one is skipped.
 
         A failed read raises: an empty answer would build an empty queue and report
         nothing due.
@@ -628,7 +644,7 @@ class AnkiConnectAdapter(AnkiBridge):
         arete_ids = []
         for i in range(0, len(nids), CHUNK_SIZE):
             for note in await self._invoke("notesInfo", notes=nids[i : i + CHUNK_SIZE]):
-                tag = next((t for t in note.get("tags", []) if t.startswith("arete_")), None)
+                tag = next((t for t in note.get("tags", []) if is_arete_id(t)), None)
                 if tag:
                     arete_ids.append(tag)
         return arete_ids
@@ -709,15 +725,28 @@ class AnkiConnectAdapter(AnkiBridge):
         for start in range(0, len(arete_ids), CHUNK):
             chunk = arete_ids[start : start + CHUNK]
             actions = [
-                {"action": "findCards", "params": {"query": search_term("tag", aid)}}
+                {
+                    "action": "findCards",
+                    "version": 6,
+                    "params": {"query": search_term("tag", aid)},
+                }
                 for aid in chunk
             ]
             results = await self._invoke("multi", actions=actions)
-            for aid, result in zip(chunk, results, strict=True):
-                if not isinstance(result, list):
-                    error = result.get("error") if isinstance(result, dict) else result
+            for aid, reply in zip(chunk, results, strict=True):
+                if isinstance(reply, dict) and set(reply) == {"result", "error"}:
+                    if reply["error"] is not None:
+                        err = reply["error"]
+                        raise RuntimeError(f"looking up the cards of {aid} failed: {err}")
+                    cids = reply["result"]
+                elif isinstance(reply, list):
+                    cids = reply
+                else:
+                    error = reply.get("error") if isinstance(reply, dict) else reply
                     raise RuntimeError(f"looking up the cards of {aid} failed: {error}")
-                for cid in result:
+                if not isinstance(cids, list):
+                    raise RuntimeError(f"looking up the cards of {aid} failed: {cids}")
+                for cid in cids:
                     if cid not in seen:
                         seen.add(cid)
                         cids_ordered.append(cid)

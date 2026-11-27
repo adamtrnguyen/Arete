@@ -27,6 +27,7 @@ class ContentCache(ContentCachePort):
         """Open the cache database at `db_path`, or at the default `cache_path()`."""
         if db_path is None:
             db_path = cache_path()
+        if str(db_path) != ":memory:":
             db_path.parent.mkdir(parents=True, exist_ok=True)
 
         self.db_path = db_path

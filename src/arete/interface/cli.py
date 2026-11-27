@@ -347,15 +347,23 @@ def queue(
             await anki.close()
 
     if json_output:
-        with stdout_to_stderr():
-            result = asyncio.run(run())
+        try:
+            with stdout_to_stderr():
+                result = asyncio.run(run())
+        except Exception as e:
+            typer.secho(f"Error: {e}", fg="red", err=True)
+            raise typer.Exit(1) from e
         typer.echo(json.dumps(_queue_json(result, deck)))
         if not dry_run and result.total_queued > 0 and not result.deck_created:
             typer.secho("Failed to create filtered deck.", fg="red", err=True)
             raise typer.Exit(1)
         return
 
-    result = asyncio.run(run())
+    try:
+        result = asyncio.run(run())
+    except Exception as e:
+        typer.secho(f"Error: {e}", fg="red", err=True)
+        raise typer.Exit(1) from e
     if result.due_count == 0:
         typer.secho("No cards found.", fg="yellow")
         return
@@ -389,7 +397,8 @@ def queue(
             fg="green",
         )
     elif not dry_run and result.total_queued > 0 and not result.deck_created:
-        typer.secho("Failed to create filtered deck.", fg="red")
+        typer.secho("Failed to create filtered deck.", fg="red", err=True)
+        raise typer.Exit(1)
 
 
 def _queue_json(result, deck: str | None) -> dict:
@@ -465,7 +474,7 @@ def report(
                     f"Cleared {len(cleared)} report(s), but unsuspending "
                     f"{len(to_unsuspend)} card(s) FAILED: {e}\n"
                     f"Those cards are still suspended. With Anki open, run: "
-                    f"arete anki unsuspend {' '.join(str(c) for c in to_unsuspend)}",
+                    f"arete anki unsuspend --cids {','.join(str(c) for c in to_unsuspend)}",
                     fg="red",
                     err=True,
                 )
@@ -479,12 +488,12 @@ def report(
         return
 
     reports = load_reports()
-    if not reports:
-        typer.secho("No reported cards.", fg="green")
-        return
-
     if json_output:
         typer.echo(json.dumps(reports, indent=2, ensure_ascii=False))
+        return
+
+    if not reports:
+        typer.secho("No reported cards.", fg="green")
         return
 
     typer.echo(f"Reported cards: {len(reports)}\n")

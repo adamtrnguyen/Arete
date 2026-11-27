@@ -93,7 +93,17 @@ async def test_delete_decks(adapter, mock_repo):
     mock_repo.col.decks.id.return_value = 42
     result = await adapter.delete_decks(["OldDeck"])
     assert result is True
+    mock_repo.col.decks.id.assert_called_once_with("OldDeck", create=False)
     mock_repo.col.decks.remove.assert_called_once_with([42])
+
+
+@pytest.mark.asyncio
+async def test_delete_decks_skips_missing_deck_without_creating_it(adapter, mock_repo):
+    mock_repo.col.decks.id.return_value = None
+    result = await adapter.delete_decks(["MissingDeck"])
+    assert result is True
+    mock_repo.col.decks.id.assert_called_once_with("MissingDeck", create=False)
+    mock_repo.col.decks.remove.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -219,21 +229,23 @@ async def test_get_due_cards(adapter):
 
 @pytest.mark.asyncio
 async def test_map_nids_to_arete_ids(adapter):
+    aid1 = "arete_01J9Z8Y7X6W5V4T3S2R1Q0P9N1"
+    aid2 = "arete_01J9Z8Y7X6W5V4T3S2R1Q0P9N2"
     with patch("arete.infrastructure.adapters.anki_direct.AnkiRepository") as MockRepo:
         instance = MockRepo.return_value.__enter__.return_value
         instance.col = MagicMock()
 
         note1 = MagicMock()
-        note1.tags = ["arete_A", "hard"]
+        note1.tags = ["arete_review", aid1, "hard"]
         note2 = MagicMock()
-        note2.tags = ["other", "arete_B"]
+        note2.tags = ["other", aid2]
         note3 = MagicMock()
-        note3.tags = ["no_id"]
+        note3.tags = ["no_id", "arete_short"]
 
         instance.col.get_note.side_effect = [note1, note2, note3]
 
         res = await adapter.map_nids_to_arete_ids([1, 2, 3])
-        assert res == ["arete_A", "arete_B"]
+        assert res == [aid1, aid2]
         assert len(res) == 2
 
 
@@ -387,6 +399,25 @@ async def test_create_topo_deck_per_card_error_resilience(adapter, mock_repo):
     assert col.update_card.call_count == 2
 
 
+@pytest.mark.asyncio
+async def test_create_topo_deck_preserves_learning_card_timestamp_due(adapter, mock_repo):
+    """Learning cards (queue == 1) use epoch timestamps in due and must not be overwritten."""
+    col = mock_repo.col
+    col.decks.id.return_value = None
+    col.decks.new_filtered.return_value = 42
+    col.decks.get.return_value = {"dyn": 1, "terms": [], "resched": True}
+
+    learning_card = MagicMock(did=42, queue=1, due=1700000000)
+    review_card = MagicMock(did=42, queue=2, due=50)
+    col.get_card.side_effect = [learning_card, review_card]
+
+    result = await adapter.create_topo_deck("Queue", [100, 200])
+    assert result is True
+    assert learning_card.due == 1700000000
+    assert review_card.due == 1001
+    col.update_card.assert_called_once_with(review_card)
+
+
 # ---------------------------------------------------------------------------
 # gui_browse
 # ---------------------------------------------------------------------------
@@ -395,8 +426,9 @@ async def test_create_topo_deck_per_card_error_resilience(adapter, mock_repo):
 @pytest.mark.asyncio
 async def test_gui_browse_timeout(adapter):
     """When AnkiConnect never responds, gui_browse returns False."""
+    proc = MagicMock(wait=AsyncMock())
     with patch("sys.platform", "linux"):
-        with patch("subprocess.run") as mock_run:
+        with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=proc)) as mock_exec:
             with patch("httpx.AsyncClient") as mock_client:
                 mock_client.return_value.__aenter__.return_value.post.side_effect = Exception(
                     "No AnkiConnect"
@@ -404,13 +436,19 @@ async def test_gui_browse_timeout(adapter):
                 with patch("asyncio.sleep", AsyncMock()):
                     res = await adapter.gui_browse("query")
                     assert res is False
-                    mock_run.assert_called()
+                    mock_exec.assert_awaited_once_with(
+                        "xdg-open",
+                        "anki://x-callback-url/search?query=query",
+                        stdout=ANY,
+                        stderr=ANY,
+                    )
 
 
 @pytest.mark.asyncio
 async def test_gui_browse_macos(adapter):
+    proc = MagicMock(wait=AsyncMock())
     with patch("sys.platform", "darwin"):
-        with patch("subprocess.run") as mock_run:
+        with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=proc)) as mock_exec:
             with patch("httpx.AsyncClient") as mock_client_cls:
                 mock_client = AsyncMock()
                 mock_client_cls.return_value.__aenter__.return_value = mock_client
@@ -422,7 +460,7 @@ async def test_gui_browse_macos(adapter):
                 with patch("asyncio.sleep", AsyncMock()):
                     res = await adapter.gui_browse("query")
                     assert res is True
-                    mock_run.assert_called_with(["open", "-a", "Anki"], stdout=ANY, stderr=ANY)
+                    mock_exec.assert_awaited_once_with("open", "-a", "Anki", stdout=ANY, stderr=ANY)
 
 
 @pytest.mark.asyncio
@@ -452,9 +490,10 @@ async def test_gui_browse_polling(adapter):
 
     mock_client = MagicMock()
     mock_client.post = AsyncMock(return_value=mock_resp)
+    proc = MagicMock(wait=AsyncMock())
 
     with (
-        patch("subprocess.run") as mock_run,
+        patch("asyncio.create_subprocess_exec", AsyncMock(return_value=proc)) as mock_exec,
         patch(
             "httpx.AsyncClient",
             return_value=MagicMock(__aenter__=AsyncMock(return_value=mock_client)),
@@ -469,7 +508,7 @@ async def test_gui_browse_polling(adapter):
         if sys.platform == "win32":
             mock_startfile.assert_called()
         else:
-            mock_run.assert_called()
+            mock_exec.assert_awaited()
 
 
 # ---------------------------------------------------------------------------

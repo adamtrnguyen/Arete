@@ -103,3 +103,16 @@ def test_a_folder_in_no_vault_is_its_own_vault(tmp_path):
     cfg = resolve_config({"root_input": str(folder)})
 
     assert cfg.vault_root == folder.resolve()
+
+
+def test_empty_env_vars_for_paths_are_treated_as_none(monkeypatch):
+    from arete.application.config import AppConfig
+
+    monkeypatch.setenv("ARETE_VAULT_ROOT", "")
+    monkeypatch.setenv("ARETE_ANKI_MEDIA_DIR", "   ")
+    monkeypatch.setenv("ARETE_ANKI_BASE", "")
+
+    cfg = AppConfig()
+    assert cfg.vault_root is None
+    assert cfg.anki_media_dir is None
+    assert cfg.anki_base is None

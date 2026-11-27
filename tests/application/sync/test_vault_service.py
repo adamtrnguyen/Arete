@@ -258,8 +258,8 @@ class TestDeckRequirement:
 
         assert len(files) == 1
 
-    def test_no_deck_anywhere_rejected_by_default(self, temp_vault, mock_cache):
-        """No deck at file or card level -> rejected when ignore_cache=False."""
+    def test_no_deck_anywhere_accepted_with_default_deck_fallback(self, temp_vault, mock_cache):
+        """No deck at file or card level -> consistently accepted (falls back to default_deck)."""
         md = temp_vault / "no_deck.md"
         md.write_text(
             "---\narete: true\ncards:\n  - Front: Q\n    Back: A\n---\n",
@@ -270,7 +270,7 @@ class TestDeckRequirement:
         service = VaultService(temp_vault, mock_cache, ignore_cache=False)
         files = list(service.scan_for_compatible_files())
 
-        assert len(files) == 0
+        assert len(files) == 1
 
     def test_no_deck_accepted_when_ignore_cache(self, temp_vault, mock_cache):
         """No deck at all is accepted when ignore_cache=True (--force mode),.

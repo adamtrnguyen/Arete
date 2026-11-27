@@ -73,6 +73,18 @@ def _split_frontmatter(md_text: str) -> tuple[list[str], int | None] | None:
     return lines, None
 
 
+def _add_line_offset(meta: Any, offset: int = 1) -> None:
+    """Shift `__line__` annotations from frontmatter-relative to 1-based file lines."""
+    if isinstance(meta, dict):
+        if "__line__" in meta:
+            meta["__line__"] += offset
+        for v in meta.values():
+            _add_line_offset(v, offset)
+    elif isinstance(meta, list):
+        for v in meta:
+            _add_line_offset(v, offset)
+
+
 def parse_frontmatter(md_text: str) -> tuple[dict[str, Any], str]:
     """Parse YAML frontmatter from markdown text.
 
@@ -100,19 +112,7 @@ def parse_frontmatter(md_text: str) -> tuple[dict[str, Any], str]:
         meta = _load_yaml(raw) or {}
 
         # Add offset to __line__ to make it absolute (account for opening ---)
-        offset = 1  # Opening --- is line 0, YAML starts at line 1
-
-        def _add_offset(d):
-            if isinstance(d, dict):
-                if "__line__" in d:
-                    d["__line__"] += offset
-                for v in d.values():
-                    _add_offset(v)
-            elif isinstance(d, list):
-                for v in d:
-                    _add_offset(v)
-
-        _add_offset(meta)
+        _add_line_offset(meta, offset=1)
 
     except Exception as e:
         return {"__yaml_error__": str(e)}, md_text
@@ -229,16 +229,18 @@ def validate_frontmatter(md_text: str) -> dict[str, Any]:
     if "\t" in raw:
         tab_index = raw.find("\t")
         lines_before_tab = raw[:tab_index].count("\n")
-        line = lines_before_tab + 1
 
+        # Mark.line is 0-based: opening `---` is line 0, first YAML line is line 1.
         err = yaml.scanner.ScannerError(
             problem="found character '\\t' that cannot start any token",
-            problem_mark=yaml.error.Mark("name", 0, line + offset, -1, "", 0),
+            problem_mark=yaml.error.Mark("name", 0, lines_before_tab + offset, -1, "", 0),
         )
         raise err
 
     try:
-        return _load_yaml(raw) or {}
+        meta = _load_yaml(raw) or {}
+        _add_line_offset(meta, offset=offset)
+        return meta
     except yaml.YAMLError as e:
         # Adjust the line number in the exception to match the file
         if hasattr(e, "problem_mark"):

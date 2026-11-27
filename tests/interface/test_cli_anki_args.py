@@ -64,10 +64,12 @@ def test_stats_table_shows_a_dash_for_a_card_without_fsrs_difficulty():
     repo.get_card_stats = AsyncMock(return_value=[stat])
     repo.get_review_history = AsyncMock(return_value=[])
     repo.get_deck_params = AsyncMock(return_value={})
+    repo.close = AsyncMock()
     with patch("arete.composition.factory.get_stats_repo", return_value=repo):
         result = runner.invoke(app, ["anki", "stats", "--nids", "[1]", "--no-json", *BACKEND])
     assert result.exit_code == 0
     repo.get_card_stats.assert_awaited_once_with([1])
+    repo.close.assert_awaited_once()
     row = next(line for line in result.stdout.splitlines() if "Default" in line)
     assert re.search(r"Default\s*│\s*-\s*│", row), row
 
@@ -89,6 +91,16 @@ def test_suspend_accepts_comma_separated_card_ids_with_spaces():
         result = runner.invoke(app, ["anki", "suspend", "--cids", "11, 22 ,33", *BACKEND])
     assert result.exit_code == 0
     inst.suspend_cards.assert_awaited_once_with([11, 22, 33])
+
+
+def test_suspend_and_queue_deck_reject_malformed_json_with_exit_1():
+    res_cids = runner.invoke(app, ["anki", "suspend", "--cids", "[1, 2", *BACKEND])
+    assert res_cids.exit_code == 1
+    assert "Invalid JSON for --cids" in res_cids.stderr
+
+    res_ids = runner.invoke(app, ["anki", "queue-deck", "--ids", "[bad", *BACKEND])
+    assert res_ids.exit_code == 1
+    assert "Invalid JSON for --ids" in res_ids.stderr
 
 
 def test_unsuspend_prints_what_the_bridge_returned():

@@ -900,3 +900,45 @@ def test_graph_check_names_files_relative_to_the_vault(tmp_path: Path):
     assert [e.file for e in health.unresolved_refs] in (["sub/a.md"], ["sub/b.md"])
     assert sorted(health.duplicate_ids[0].files) == ["sub/a.md", "sub/b.md"]
     assert [s.split(":")[0] for s in health.skipped_files] == ["bad.md"]
+
+
+def test_build_graph_records_yaml_error_and_handles_case_insensitive_ids_and_decks(tmp_path: Path):
+    (tmp_path / "broken_yaml.md").write_text(
+        "---\narete: true\ncards:\n  - Front: [unclosed\n---\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "ok.md").write_text(
+        "---\narete: true\ndeck: Math::Algebra\ncards:\n"
+        "  - id: arete_01J9Z8Y7X6W5V4T3S2R1Q0P9N1\n"
+        "    Front: Prereq\n"
+        "    Back: A\n"
+        "  - id: arete_01J9Z8Y7X6W5V4T3S2R1Q0P9N2\n"
+        "    Front: Main\n"
+        "    Back: B\n"
+        "    deps:\n"
+        "      requires: [arete_01j9z8y7x6w5v4t3s2r1q0p9n1]\n"
+        "---\n",
+        encoding="utf-8",
+    )
+    graph = build_graph(tmp_path)
+    assert any("broken_yaml.md" in path for path, _err in graph.skipped_files)
+    assert "arete_01J9Z8Y7X6W5V4T3S2R1Q0P9N1" in graph.nodes
+    assert "arete_01J9Z8Y7X6W5V4T3S2R1Q0P9N2" in graph.nodes
+    assert graph.get_prerequisites("arete_01J9Z8Y7X6W5V4T3S2R1Q0P9N2") == [
+        "arete_01J9Z8Y7X6W5V4T3S2R1Q0P9N1"
+    ]
+    order = topological_sort(
+        graph,
+        ["arete_01j9z8y7x6w5v4t3s2r1q0p9n2", "arete_01j9z8y7x6w5v4t3s2r1q0p9n1"],
+    )
+    assert order == [
+        "arete_01J9Z8Y7X6W5V4T3S2R1Q0P9N1",
+        "arete_01J9Z8Y7X6W5V4T3S2R1Q0P9N2",
+    ]
+    from arete.application.queue.graph_resolver import filter_graph_by_deck
+
+    scoped = filter_graph_by_deck(graph, "math")
+    assert set(scoped.nodes) == {
+        "arete_01J9Z8Y7X6W5V4T3S2R1Q0P9N1",
+        "arete_01J9Z8Y7X6W5V4T3S2R1Q0P9N2",
+    }

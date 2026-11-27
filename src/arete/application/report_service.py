@@ -4,6 +4,8 @@ import json
 import logging
 from pathlib import Path
 
+from arete.application.utils.fs import replace_text
+
 logger = logging.getLogger(__name__)
 
 REPORTS_PATH = Path.home() / ".config" / "arete" / "reports.json"
@@ -31,7 +33,8 @@ def clear_reports(indices: list[int] | None = None) -> list[dict]:
         return []
 
     if indices is None:
-        REPORTS_PATH.write_text("[]", encoding="utf-8")
+        REPORTS_PATH.parent.mkdir(parents=True, exist_ok=True)
+        replace_text(REPORTS_PATH, "[]")
         return reports
 
     # Convert 1-based indices to 0-based, filter valid
@@ -41,5 +44,6 @@ def clear_reports(indices: list[int] | None = None) -> list[dict]:
 
     cleared = [r for idx, r in enumerate(reports) if idx in to_remove]
     remaining = [r for idx, r in enumerate(reports) if idx not in to_remove]
-    REPORTS_PATH.write_text(json.dumps(remaining, indent=2, ensure_ascii=False), encoding="utf-8")
+    REPORTS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    replace_text(REPORTS_PATH, json.dumps(remaining, indent=2, ensure_ascii=False))
     return cleared
