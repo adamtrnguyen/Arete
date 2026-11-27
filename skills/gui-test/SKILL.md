@@ -20,13 +20,13 @@ The Obsidian you test in is someone's working vault, and a sync writes to their 
 
 | Never run in a test | Why |
 |---|---|
-| `arete:arete-sync`, `arete:arete-sync-current-file`, `arete:arete-sync-prune`, `arete:arete-sync-force-all` | write to Anki |
-| `arete:arete-graph-clear` | edits note frontmatter |
+| `arete:sync`, `arete:sync-current-file`, `arete:sync-prune`, `arete:sync-force-all` | write to Anki |
+| `arete:graph-clear` | edits note frontmatter |
 | a click on the Arete status-bar item or the "Sync to Anki (Arete)" ribbon icon | runs a sync |
 
-Read-only commands: `arete:arete-sync-stats`, `arete:arete-check-integrity`,
-`arete:arete-reload-note-types`, and the three `arete-open-*` view commands plus
-`arete:open-yaml-editor`. `arete:arete-check-file` only reads, but the result window it
+Read-only commands: `arete:sync-stats`, `arete:check-integrity`,
+`arete:reload-note-types`, and the three `open-*` view commands plus
+`arete:open-yaml-editor`. `arete:check-file` only reads, but the result window it
 opens can run a fix that rewrites the note: close it without using the fix.
 
 - **Record state before you start:** the full workspace (leaf ids, active tab, sidebar
@@ -61,9 +61,9 @@ reload resets view-local state (editor mode, 2D/3D toggle).
 
 | View | How | Where it opens |
 |---|---|---|
-| Dashboard | `arete:arete-open-dashboard` | right sidebar; reuses the existing leaf |
-| Local graph | `arete:arete-open-local-graph` | right sidebar; first open builds the vault graph |
-| Global graph | `arete:arete-open-global-graph` | new main-area tab, becomes active |
+| Dashboard | `arete:open-dashboard` | right sidebar; reuses the existing leaf |
+| Local graph | `arete:open-local-graph` | right sidebar; first open builds the vault graph |
+| Global graph | `arete:open-global-graph` | new main-area tab, becomes active |
 | Card Editor | `arete:open-yaml-editor` | right sidebar; reuses the existing leaf |
 
 - **A view of your own:** eval `app.workspace.getRightLeaf(true).setViewState({type})`, and

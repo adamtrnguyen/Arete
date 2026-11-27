@@ -1,8 +1,9 @@
 """Write one version into every file that carries one.
 
 Arete ships three artifacts from one repository. `pyproject.toml` is the single
-source of truth for the version, and `obsidian-plugin/manifest.json` is the single
-source of truth for the plugin manifest metadata mirrored at the repository root.
+source of truth for the version, and `obsidian-plugin/manifest.json` (plus
+`obsidian-plugin/versions.json`) is the single source of truth for the plugin
+metadata mirrored at the repository root for Obsidian Community Plugins and BRAT.
 
     uv run --no-sync python scripts/sync_versions.py          # write
     uv run --no-sync python scripts/sync_versions.py --check  # fail on drift
@@ -18,6 +19,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 PLUGIN_MANIFEST = ROOT / "obsidian-plugin" / "manifest.json"
 ROOT_MANIFEST = ROOT / "manifest.json"
+PLUGIN_VERSIONS = ROOT / "obsidian-plugin" / "versions.json"
+ROOT_VERSIONS = ROOT / "versions.json"
 
 # Files whose version is a JSON "version" key.
 JSON_TARGETS = [
@@ -74,26 +77,51 @@ def sync_root_manifest(version: str, check: bool) -> str | None:
     return "manifest.json: sync with obsidian-plugin/manifest.json"
 
 
-def sync_versions_json(version: str, check: bool) -> str | None:
-    """The plugin's version -> minAppVersion map needs an entry for each release."""
-    path = ROOT / "obsidian-plugin" / "versions.json"
+def _expected_versions_data(version: str) -> tuple[dict[str, str], str]:
     manifest = json.loads(PLUGIN_MANIFEST.read_text(encoding="utf-8"))
     min_app = manifest.get("minAppVersion", "0.15.0")
-    data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    data = (
+        json.loads(PLUGIN_VERSIONS.read_text(encoding="utf-8")) if PLUGIN_VERSIONS.exists() else {}
+    )
     if data.get(version) == min_app:
+        return data, min_app
+    return {version: min_app, **data}, min_app
+
+
+def sync_versions_json(version: str, check: bool) -> str | None:
+    """The plugin's version -> minAppVersion map needs an entry for each release."""
+    expected, min_app = _expected_versions_data(version)
+    current = (
+        json.loads(PLUGIN_VERSIONS.read_text(encoding="utf-8")) if PLUGIN_VERSIONS.exists() else {}
+    )
+    if current == expected:
         return None
     if not check:
-        path.write_text(
-            json.dumps({version: min_app, **data}, indent="\t") + "\n", encoding="utf-8"
-        )
+        PLUGIN_VERSIONS.write_text(json.dumps(expected, indent="\t") + "\n", encoding="utf-8")
     return f"obsidian-plugin/versions.json: add {version} -> {min_app}"
+
+
+def sync_root_versions(version: str, check: bool) -> str | None:
+    """Keep the repository-root versions.json identical to obsidian-plugin/versions.json."""
+    expected, _min_app = _expected_versions_data(version)
+    if ROOT_VERSIONS.exists():
+        root_data = json.loads(ROOT_VERSIONS.read_text(encoding="utf-8"))
+        if root_data == expected:
+            return None
+    if not check:
+        ROOT_VERSIONS.write_text(json.dumps(expected, indent="\t") + "\n", encoding="utf-8")
+    return "versions.json: sync with obsidian-plugin/versions.json"
 
 
 def main() -> int:
     check = "--check" in sys.argv
     version = source_version()
     changes = [c for c in (sync_json(p, version, check) for p in JSON_TARGETS) if c]
-    for extra in (sync_root_manifest(version, check), sync_versions_json(version, check)):
+    for extra in (
+        sync_root_manifest(version, check),
+        sync_versions_json(version, check),
+        sync_root_versions(version, check),
+    ):
         if extra:
             changes.append(extra)
 
