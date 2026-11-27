@@ -102,7 +102,7 @@ obsidian-plugin/        # Obsidian GUI
 ├── src/                # TypeScript source files
 │   ├── domain/         # Types, settings, stats models
 │   ├── application/    # Frontend services (Stats, Graph, Leech, LinkChecker, card rendering)
-│   ├── infrastructure/ # Python process and API clients (AreteClient, SyncService, ServerManager)
+│   ├── infrastructure/ # Python process and API clients (AreteClient, CheckService, PythonProcess, SyncService)
 │   └── presentation/   # UI components and views (Gutter, Dashboard, Graphs)
 └── styles.css          # Built from src/styles/*.css
 ```

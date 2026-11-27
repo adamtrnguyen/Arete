@@ -28,7 +28,7 @@ While Arete can sync notes directly to the Anki database (using `AnkiDirectAdapt
 
 To have your changes reflect immediately in Anki (upon restart) without copying files manually, use a **Symbolic Link**.
 
-**Mac / Linux:**
+**macOS:**
 Run this from the project root:
 ```bash
 # Remove existing folder if present
@@ -36,6 +36,16 @@ rm -rf "$HOME/Library/Application Support/Anki2/addons21/arete_ankiconnect"
 
 # Create Symlink
 ln -s "$(pwd)/arete_ankiconnect" "$HOME/Library/Application Support/Anki2/addons21/arete_ankiconnect"
+```
+
+**Linux:**
+Run this from the project root:
+```bash
+# Remove existing folder if present
+rm -rf "$HOME/.local/share/Anki2/addons21/arete_ankiconnect"
+
+# Create Symlink
+ln -s "$(pwd)/arete_ankiconnect" "$HOME/.local/share/Anki2/addons21/arete_ankiconnect"
 ```
 
 **Windows (PowerShell):**

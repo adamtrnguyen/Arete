@@ -1,6 +1,6 @@
 // Summarise a CDP Profiler.stop result: self time by script, and inclusive time of
 // functions whose script URL matches a filter (default: the arete plugin).
-// usage: node prof.cjs <profile.json> [urlFilter]
+// usage: node profile_summary.cjs <profile.json> [urlFilter]
 const fs = require('fs');
 const raw = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
 const prof = raw.profile || raw.result?.profile || raw;

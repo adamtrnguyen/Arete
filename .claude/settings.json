@@ -9,7 +9,6 @@
       "Bash(uv run lint-imports *)",
       "Bash(uv run arete *)",
       "Bash(uv sync *)",
-      "Bash(uv run ty *)",
       "Bash(docker compose *)",
       "Bash(orb start)",
       "Bash(git *)",
@@ -18,8 +17,14 @@
       "Read"
     ],
     "deny": [
-      "Bash(uv run arete sync --force *)",
-      "Bash(uv run arete prune --force *)"
+      "Bash(uv run arete sync *--prune*--yes*)",
+      "Bash(uv run arete sync *--yes*--prune*)",
+      "Bash(uv run arete sync *--prune*-y*)",
+      "Bash(uv run arete sync *-y*--prune*)",
+      "Bash(arete sync *--prune*--yes*)",
+      "Bash(arete sync *--yes*--prune*)",
+      "Bash(arete sync *--prune*-y*)",
+      "Bash(arete sync *-y*--prune*)"
     ]
   },
   "env": {
@@ -32,18 +37,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -c 'INPUT=$(cat); FILE=$(echo \"$INPUT\" | jq -r \".tool_input.file_path // empty\" 2>/dev/null); case \"$FILE\" in */anki_data/*|*/arete_ankiconnect/*) echo \"Blocked: do not edit Anki data or ankiconnect plugin files\" >&2; exit 2;; esac; exit 0'"
-          }
-        ]
-      }
-    ],
-    "PostToolUse": [
-      {
-        "matcher": "Edit|Write",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash /Users/adam/.claude/hooks/ruff-format.sh"
+            "command": "bash -c 'INPUT=$(cat); FILE=$(echo \"$INPUT\" | jq -r \".tool_input.file_path // empty\" 2>/dev/null); case \"$FILE\" in */anki_data/*|*/addons21/arete_ankiconnect/*) echo \"Blocked: do not edit live Anki add-on install or Docker anki_data files\" >&2; exit 2;; esac; exit 0'"
           }
         ]
       }

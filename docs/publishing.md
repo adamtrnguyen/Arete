@@ -29,11 +29,11 @@ Once successful, `pip install arete` will work for everyone.
 The project uses GitHub Actions to automate testing and releases.
 
 -   **CI Workflow** (`ci.yml`): Runs on every PR and push to `main`. Unit tests with coverage on Linux, macOS and Windows; lint, types and import contracts; plugin lint, tests and build; integration tests against Dockerized Anki.
--   **Release Workflow**: Triggered when a new GitHub Tag is pushed (e.g., `v1.0.0`).
+-   **Release Workflow**: Triggered when a new GitHub Tag is pushed (e.g., `v4.0.0`).
+    -   Verifies the tag matches `pyproject.toml`.
     -   Automatically builds the Python `dist/` artifacts.
     -   Automatically builds the Obsidian Plugin (`main.js`, `manifest.json`, `styles.css`).
     -   Attaches all binaries to the GitHub Release.
-    -   (Optional) Pushes to PyPI if Trusted Publishing is configured.
 
 ---
 
@@ -54,7 +54,7 @@ To get your plugin into the official list inside Obsidian, you must submit a Pul
           "id": "arete",
           "name": "Arete",
           "author": "Adam Nguyen",
-          "description": "Sync Obsidian vault to Anki with topological queues and FSRS support.",
+          "description": "Professional one-way sync from Obsidian to Anki. Supports media, MathJax, and automatic card management.",
           "repo": "adamtrnguyen/Arete"
         }
         ```
@@ -70,7 +70,7 @@ We follow **Semantic Versioning (SemVer)**: `MAJOR.MINOR.PATCH`.
 -   **MINOR**: New features (e.g., support for a new Anki field type).
 -   **PATCH**: Bug fixes and documentation updates.
 
-Bump `version` in `pyproject.toml` only. `just sync-versions` writes it into every manifest (`just release` runs it), and `just qa` fails when they disagree.
+Bump `version` in `pyproject.toml` only, then run `just sync-versions` to write it into every manifest before tagging; `just qa` and `just release` fail when they disagree.
 
 ---
 

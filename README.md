@@ -3,7 +3,6 @@
 **One-way sync from an Obsidian vault to Anki.**
 
 [![CI](https://github.com/adamtrnguyen/Arete/actions/workflows/ci.yml/badge.svg)](https://github.com/adamtrnguyen/Arete/actions/workflows/ci.yml)
-[![Coverage](docs/coverage.svg)](https://github.com/adamtrnguyen/Arete/actions/workflows/ci.yml)
 
 You write cards in a note's frontmatter; `arete` pushes them to Anki. Obsidian is the
 source of truth: nothing comes back except the ids Arete assigns.

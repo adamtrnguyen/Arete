@@ -55,7 +55,7 @@ Arete syncs cards written in note frontmatter (Obsidian) to Anki. **Obsidian is 
 
 1. `arete sync "<note>.md" --dry-run` → read what it would send.
 2. `arete sync "<note>.md"` → Anki gets the cards; Arete writes `id` and `anki: {nid, cid}` back into the note.
-3. **Verify:** the note now carries ids; `arete anki browse` opens it in Anki.
+3. **Verify:** the note now carries ids; `arete anki browse --nid <nid>` (or `--query "<query>"`) opens it in Anki.
 
 Whole vault: `arete sync --dry-run`, then `arete sync`. Orphans: `arete sync --prune` (previews, asks).
 

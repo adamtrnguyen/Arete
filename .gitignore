@@ -45,14 +45,12 @@ obsidian-plugin/coverage/
 .env
 .env.*
 
-# O2A Application Data
+# Docker Anki data
 docker/anki_data/
-test_init.media/
 
 # Documentation Build
 site/
 
-# BMAD Framework
 # Claude Code — track shared config, ignore local/ephemeral
 .claude/settings.local.json
 .claude/commands/
@@ -63,7 +61,6 @@ site/
 *.txt
 !README.md
 !LICENSE
-!TODO.md
 !pyproject.toml
 !uv.lock
 !mkdocs.yml

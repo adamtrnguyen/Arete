@@ -22,9 +22,6 @@ this table are updated together.
 
 Arete is a one-way sync tool: Obsidian → Anki. Obsidian is the source of truth. It parses YAML frontmatter from markdown files, syncs cards to Anki, and builds dependency-aware study queues.
 
-**Source:** `/Users/adam/Research/ObsidianSuite/arete`
-**Vault:** `/Users/adam/Obsidian Vault`
-
 The live vault is `~/Obsidian Vault`, which is also `arete_ankiconnect`'s `vault_root`.
 
 ## Architecture
@@ -66,12 +63,13 @@ Location: `~/Library/Application Support/Anki2/addons21/arete_ankiconnect/`
 
 Fork of AnkiConnect with custom actions:
 - `createFilteredDeck(name, cids, reschedule)` — Creates a filtered (dynamic) deck with cards in specified CID order
-- `getFSRSStats(cards)` — Fetches FSRS difficulty scores for cards
+- `getFSRSStats(cards)` — Fetches FSRS memory state (difficulty and stability) for cards
 - `getModelInfo(models)` — Per note type: kind (cloze or not), field names, template count
 - `getHomeDecks(cards)` — Per card: the deck it belongs to and the filtered deck it sits in
 - `setHomeDeck(cards, deck)` — Files cards under a deck; a queued card stays queued
+- `changeNoteType(notes, modelName, newFields)` — Converts notes to another note type in place, keeping cards and scheduling
 
-The sync needs the last three. An add-on without one stops the sync with `AddonOutdated`,
+The sync needs `getModelInfo`, `getHomeDecks`, `setHomeDeck`, and `changeNoteType`. An add-on without one stops the sync with `AddonOutdated`,
 whose message says to update the add-on and restart Anki.
 
 Plugin must be reloaded (restart Anki) after code changes.
@@ -121,7 +119,7 @@ is given.
 
 ### CLI Safety Rules
 
-- **Never use `--force`**. Always let prune show what it will delete and prompt for confirmation.
+- **Never use `--yes` / `-y` with `--prune`**. Always let prune show what it will delete and prompt for confirmation.
 - **Never use `--backend direct` or `--backend ankiconnect`**. Always use `--backend auto` (the default). Manually selecting a backend risks database corruption.
 
 ## Dependency Graph & Queue Builder
@@ -170,19 +168,6 @@ the reload (they keep running the old code).
 - TypeScript 6, esbuild bundler
 - Jest for tests, ESLint 10 (flat config `eslint.config.mjs`) + Prettier for lint/format
 - Dependencies: CodeMirror 6 (YAML editor), D3 + 3d-force-graph (3D graph, on three.js), Mustache (templates)
-
-## Open work
-
-**Backend**
-
-- [ ] Five Anki admin verbs are called only from `interface/`, with no use-case between.
-
-**Release plumbing**
-
-- [ ] PyPI trusted publishing is unconfigured. `release.yml:64` runs the publish step
-      under `continue-on-error: true`, so it cannot block a release. Configure a
-      trusted publisher, or drop the step.
-- [ ] Bump the GitHub Actions versions.
 
 ## Key Conventions
 
