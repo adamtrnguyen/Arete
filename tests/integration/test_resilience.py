@@ -1,4 +1,4 @@
-import requests
+import httpx
 
 
 def test_invalid_model(tmp_path, anki_url, setup_anki, run_arete, test_deck):
@@ -26,7 +26,7 @@ cards:
     assert "Model name not found" in res.stderr or "not found" in res.stdout or res.returncode != 0
 
     # Verify not added
-    resp = requests.post(
+    resp = httpx.post(
         anki_url,
         json={
             "action": "findNotes",

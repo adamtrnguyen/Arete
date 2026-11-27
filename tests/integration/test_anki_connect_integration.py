@@ -49,7 +49,7 @@ async def test_suspend_unsuspend(adapter, vault_factory, sync_config, anki_url, 
     """suspend_cards and unsuspend_cards round-trip."""
     import re
 
-    import requests
+    import httpx
 
     from arete.composition.orchestrator import execute_sync
 
@@ -75,7 +75,7 @@ cards:
     nid = int(re.search(r"nid:\s*['\"]?(\d+)['\"]?", content).group(1))
 
     # Get CID
-    resp = requests.post(
+    resp = httpx.post(
         anki_url,
         json={"action": "findCards", "version": 6, "params": {"query": f"nid:{nid}"}},
     )
@@ -86,7 +86,7 @@ cards:
     await adapter.suspend_cards(cids)
 
     # Check suspended
-    resp = requests.post(
+    resp = httpx.post(
         anki_url,
         json={"action": "areSuspended", "version": 6, "params": {"cards": cids}},
     )
@@ -95,7 +95,7 @@ cards:
     # Unsuspend
     await adapter.unsuspend_cards(cids)
 
-    resp = requests.post(
+    resp = httpx.post(
         anki_url,
         json={"action": "areSuspended", "version": 6, "params": {"cards": cids}},
     )

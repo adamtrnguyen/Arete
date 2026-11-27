@@ -1,7 +1,8 @@
+from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any
 
-import requests
+import httpx
 
 from arete.application.sync.note_sync import NoteSync
 from arete.domain.models import UpdateItem, WorkItem
@@ -10,19 +11,25 @@ from arete.infrastructure.adapters.anki_direct import AnkiDirectAdapter
 from arete.infrastructure.anki.repository import AnkiRepository
 
 
-class BridgeRunner(Protocol):
+class BridgeRunner(ABC):
+    @abstractmethod
     async def sync_notes(self, work_items: list[WorkItem]) -> list[UpdateItem]: ...
 
+    @abstractmethod
+    async def get_note_fields(self, nid: str) -> dict[str, Any]: ...
+
+    @abstractmethod
     async def get_notes_in_deck(self, deck_name: str) -> dict[str, int]: ...
 
+    @abstractmethod
     async def delete_notes(self, nids: list[int]) -> bool: ...
 
+    @abstractmethod
     async def delete_deck(self, name: str) -> None:
         """Cleanup."""
-        ...
 
 
-class ConnectBridgeRunner:
+class ConnectBridgeRunner(BridgeRunner):
     def __init__(self, url: str):
         """Initialize ConnectBridgeRunner."""
         self.adapter = AnkiConnectAdapter(url=url)
@@ -32,7 +39,7 @@ class ConnectBridgeRunner:
         return await NoteSync(self.adapter).sync_notes(work_items)  # type: ignore[arg-type]
 
     async def get_note_fields(self, nid: str) -> dict[str, Any]:
-        resp = requests.post(
+        resp = httpx.post(
             self.url, json={"action": "notesInfo", "params": {"notes": [int(nid)]}, "version": 6}
         ).json()
         if not resp.get("result"):
@@ -46,7 +53,7 @@ class ConnectBridgeRunner:
         return await self.adapter.delete_notes(nids)
 
     async def delete_deck(self, name: str) -> None:
-        requests.post(
+        httpx.post(
             self.url,
             json={
                 "action": "deleteDecks",
@@ -56,7 +63,7 @@ class ConnectBridgeRunner:
         )
 
 
-class DirectBridgeRunner:
+class DirectBridgeRunner(BridgeRunner):
     def __init__(self, anki_base: Path):
         """Initialize DirectBridgeRunner."""
         self.adapter = AnkiDirectAdapter(anki_base=anki_base)

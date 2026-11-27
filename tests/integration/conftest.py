@@ -4,12 +4,16 @@ import json
 import os
 import shutil
 import socket
+import subprocess
+import sys
 import time
 import urllib.error
 import urllib.request
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
 
 from arete.application.config import AppConfig
@@ -99,7 +103,6 @@ def _anki_container(tmp_path_factory):
             "PUID": "1000",
             "PGID": "1000",
             "ANKI_LANG": "en",
-            "ANKI_VERSION": "24.11",
             "QT_QUICK_BACKEND": "software",
             "ANKI_NOHIGHDPI": "1",
             "ANKICONNECT_BIND_ADDRESS": "0.0.0.0",
@@ -109,7 +112,7 @@ def _anki_container(tmp_path_factory):
             str(anki_data.resolve()): {"bind": "/config", "mode": "rw"},
             str(arete_plugin): {
                 "bind": "/config/.local/share/Anki2/addons21/arete_ankiconnect",
-                "mode": "rw",
+                "mode": "ro",
             },
         },
         shm_size="1g",
@@ -151,6 +154,70 @@ def anki_media_dir(_anki_container):
     return anki_data / ".local/share/Anki2/User 1/collection.media"
 
 
+@pytest.fixture
+def test_deck(anki_url):
+    """Ensure a clean 'IntegrationTest' deck."""
+    deck_name = "IntegrationTest"
+
+    httpx.post(anki_url, json={"action": "createDeck", "version": 6, "params": {"deck": deck_name}})
+
+    resp = httpx.post(
+        anki_url,
+        json={"action": "findNotes", "version": 6, "params": {"query": f"deck:{deck_name}"}},
+    )
+    notes = resp.json().get("result", [])
+    if notes:
+        httpx.post(
+            anki_url, json={"action": "deleteNotes", "version": 6, "params": {"notes": notes}}
+        )
+
+    return deck_name
+
+
+@pytest.fixture
+def setup_anki(anki_url, test_deck):
+    """A clean test deck. The Basic and Cloze note types ship with Anki."""
+    return test_deck
+
+
+@pytest.fixture
+def run_arete(anki_url):
+    """Run the CLI sync command in a subprocess."""
+
+    def _run(vault_path, anki_url=anki_url, args=None, capture_output=True):
+        cmd = [
+            sys.executable,
+            "-m",
+            "arete",
+            "-v",
+            "sync",
+            str(vault_path),
+            "--anki-connect-url",
+            anki_url,
+        ]
+        if args:
+            cmd.extend(args)
+
+        return subprocess.run(
+            cmd,
+            capture_output=capture_output,
+            text=True,
+        )
+
+    return _run
+
+
+@pytest.fixture
+def integration_vault(tmp_path):
+    """Copy the basic scenario fixture vault into a temporary directory."""
+    src = Path(__file__).resolve().parents[1] / "fixtures" / "vault_scenarios" / "basic"
+    dest = tmp_path / "integration_vault"
+    if dest.exists():
+        shutil.rmtree(dest)
+    shutil.copytree(src, dest)
+    return dest
+
+
 # ---------------------------------------------------------------------------
 # Application-level fixtures
 # ---------------------------------------------------------------------------
@@ -163,7 +230,7 @@ def anki_bridge(anki_url) -> AnkiConnectAdapter:
 
 
 @pytest.fixture
-def sync_config(anki_url, anki_media_dir, tmp_path) -> callable:
+def sync_config(anki_url, anki_media_dir, tmp_path) -> Callable[..., AppConfig]:
     """Build an AppConfig via model_construct(), bypassing TOML/env resolution.
 
     Usage::
@@ -219,14 +286,17 @@ def vault_factory(tmp_path):
 
 @pytest.fixture(autouse=True)
 def isolate_config(tmp_path, monkeypatch):
-    """Prevent host config from leaking into tests.
+    """Prevent host config from leaking into integration tests.
 
-    - Sets HOME to tmp_path so AppConfig won't read ~/.config/arete/config.toml
-    - Clears ARETE_* env vars that pydantic-settings would pick up
+    Aligns HOME, APPDATA and Path.home() to the same temporary directory, clears
+    ARETE_* env vars, and creates an empty ~/.config/arete folder.
     """
-    monkeypatch.setenv("HOME", str(tmp_path))
+    home = tmp_path / "_isolated_home"
+    home.mkdir(exist_ok=True)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("APPDATA", str(home / "AppData" / "Roaming"))
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
     for key in list(os.environ):
         if key.startswith("ARETE_"):
             monkeypatch.delenv(key)
-    # Ensure no stray config file
-    (tmp_path / ".config" / "arete").mkdir(parents=True, exist_ok=True)
+    (home / ".config" / "arete").mkdir(parents=True, exist_ok=True)

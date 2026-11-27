@@ -1,6 +1,6 @@
 import re
 
-import requests
+import httpx
 
 
 def test_sync_update_flow(tmp_path, anki_url, setup_anki, test_deck, run_arete):
@@ -44,7 +44,7 @@ cards:
     assert res2.returncode == 0
 
     # Verify Anki Content
-    resp = requests.post(
+    resp = httpx.post(
         anki_url, json={"action": "notesInfo", "version": 6, "params": {"notes": [int(nid_v1)]}}
     )
     fields = resp.json()["result"][0]["fields"]
@@ -108,7 +108,7 @@ cards:
     assert healed_nid == original_nid, "Healed ID does not match original ID"
 
     # Verify only 1 note with "Front: Healing Candidate"
-    resp = requests.post(
+    resp = httpx.post(
         anki_url,
         json={
             "action": "findNotes",
@@ -160,7 +160,7 @@ cards:
     assert match
     nid = match.group(1)
 
-    resp = requests.post(
+    resp = httpx.post(
         anki_url, json={"action": "notesInfo", "version": 6, "params": {"notes": [int(nid)]}}
     )
     back_val = resp.json()["result"][0]["fields"]["Back"]["value"]
@@ -168,7 +168,7 @@ cards:
     assert 'src="test_img.png"' in back_val
 
     # Check if file exists in Anki media
-    resp_media = requests.post(
+    resp_media = httpx.post(
         anki_url,
         json={"action": "retrieveMediaFile", "version": 6, "params": {"filename": "test_img.png"}},
     )
@@ -188,7 +188,7 @@ def test_sync_prune_flow(tmp_path, anki_url, setup_anki, test_deck, run_arete):
 
     def find(front: str) -> list[int]:
         query = f'"deck:{test_deck}" "{front}"'
-        return requests.post(
+        return httpx.post(
             anki_url, json={"action": "findNotes", "version": 6, "params": {"query": query}}
         ).json()["result"]
 
@@ -204,7 +204,7 @@ def test_sync_prune_flow(tmp_path, anki_url, setup_anki, test_deck, run_arete):
     assert find("Prune Candidate") == [], "Orphan note was not pruned"
     assert find("Persistent Note"), "A note still in the vault was pruned"
 
-    resp3 = requests.post(
+    resp3 = httpx.post(
         anki_url,
         json={
             "action": "findNotes",

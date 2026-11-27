@@ -33,6 +33,16 @@ runner = CliRunner()
         ("# Just Markdown", 0, "Valid arete file"),
         # YAML syntax errors
         ("---\ndeck: D\n  bad_indent: v\n---\n", 1, "Indentation Error"),
+        (
+            "---\ntitle: Bad Indent\ncards:\n  - Front: Good\n   Back: Bad Indent\n---\nOneline",
+            1,
+            "expected <block end>, but found",
+        ),
+        (
+            "---\ntitle: Syntax in List\ncards: [Front: A, Back: B]\ncards_broken: [Front: A, Back: B\n---\nOneline",
+            1,
+            "expected ',' or ']'",
+        ),
         ("---\nkey: : value\n---\n", 1, "Validation Failed"),
         # Missing cards
         ("---\narete: true\ndeck: Default\n---\n", 1, "missing 'cards' list"),
@@ -44,6 +54,7 @@ runner = CliRunner()
         # Card validation
         ("---\ncards: not_a_list\n---\n", 1, "Expected a list"),
         ("---\ncards:\n  - not_a_dict\n---\n", 1, "Expected a dictionary"),
+        ("---\ntitle: Null Card\ncards:\n- null\n---\nOneline", 1, "got NoneType"),
         ("---\ncards:\n  - {}\n---\n", 1, "is empty"),
         ("---\ncards:\n  - Back: only back\n---\n", 1, "Missing 'Front'?"),
         ("---\ncards:\n  - Front: f1\n  - Back: b2\n---\n", 1, "missing 'Front' field"),
@@ -58,6 +69,8 @@ runner = CliRunner()
         "valid_minimal",
         "no_frontmatter",
         "yaml_indent_error",
+        "bad_indent_in_card_block",
+        "unclosed_flow_list",
         "yaml_scanner_error",
         "missing_cards_with_deck",
         "cards_without_arete",
@@ -65,6 +78,7 @@ runner = CliRunner()
         "duplicate_keys",
         "cards_not_list",
         "card_not_dict",
+        "null_card_entry",
         "card_empty",
         "card_missing_front",
         "inconsistent_front",

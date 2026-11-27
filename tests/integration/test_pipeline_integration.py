@@ -2,8 +2,8 @@
 
 import re
 
+import httpx
 import pytest
-import requests
 
 from arete.composition.orchestrator import execute_sync
 
@@ -104,7 +104,7 @@ async def test_sync_creates_card(single_card_vault, sync_config, anki_url, setup
 
     # Verify in Anki
     nid = int(match.group(1))
-    resp = requests.post(
+    resp = httpx.post(
         anki_url, json={"action": "notesInfo", "version": 6, "params": {"notes": [nid]}}
     )
     fields = resp.json()["result"][0]["fields"]
@@ -131,7 +131,7 @@ async def test_sync_updates_card(single_card_vault, sync_config, anki_url, setup
     assert stats2.total_errors == 0
 
     # Verify in Anki
-    resp = requests.post(
+    resp = httpx.post(
         anki_url, json={"action": "notesInfo", "version": 6, "params": {"notes": [nid]}}
     )
     assert "Updated Pipeline" in resp.json()["result"][0]["fields"]["Front"]["value"]
@@ -238,7 +238,7 @@ cards:
     content = (vault / "media_card.md").read_text()
     nid = int(re.search(r"nid:\s*['\"]?(\d+)['\"]?", content).group(1))
 
-    resp = requests.post(
+    resp = httpx.post(
         anki_url, json={"action": "notesInfo", "version": 6, "params": {"notes": [nid]}}
     )
     back = resp.json()["result"][0]["fields"]["Back"]["value"]

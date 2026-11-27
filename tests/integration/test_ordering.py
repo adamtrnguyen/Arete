@@ -1,4 +1,4 @@
-import requests
+import httpx
 
 
 def test_list_reordering(tmp_path, anki_url, setup_anki, run_arete, test_deck):
@@ -38,7 +38,7 @@ cards:
     # But arete writes them into the YAML list.
 
     # Let's just rely on Anki content.
-    resp_a = requests.post(
+    resp_a = httpx.post(
         anki_url,
         json={
             "action": "findNotes",
@@ -48,7 +48,7 @@ cards:
     ).json()["result"]
     nid_a = resp_a[0]
 
-    resp_b = requests.post(
+    resp_b = httpx.post(
         anki_url,
         json={
             "action": "findNotes",
@@ -90,14 +90,14 @@ cards:
 
     # 4. Verify Content
     # Card A (nid_a) should now have "Back A Modified"
-    info_a = requests.post(
+    info_a = httpx.post(
         anki_url, json={"action": "notesInfo", "version": 6, "params": {"notes": [nid_a]}}
     ).json()["result"][0]
     assert "Back A Modified" in info_a["fields"]["Back"]["value"]
     assert "Card A" in info_a["fields"]["Front"]["value"]
 
     # Card B (nid_b) should now have "Back B Modified"
-    info_b = requests.post(
+    info_b = httpx.post(
         anki_url, json={"action": "notesInfo", "version": 6, "params": {"notes": [nid_b]}}
     ).json()["result"][0]
     assert "Back B Modified" in info_b["fields"]["Back"]["value"]

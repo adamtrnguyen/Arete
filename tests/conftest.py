@@ -2,16 +2,12 @@ import contextlib
 import errno
 import functools
 import os
-import shutil
 import socket
-import subprocess
-import sys
 from pathlib import Path
 from unittest.mock import patch
 from urllib.parse import urlsplit
 
 import pytest
-import requests
 from hypothesis import settings as hypothesis_settings
 
 # --- Hypothesis: no wall-clock deadline ---
@@ -236,67 +232,11 @@ def pytest_collection_modifyitems(items):
 # --- Global Config ---
 
 
-# `anki_url` and `anki_media_dir` live in tests/integration/conftest.py, which is the
-# only place that needs them; it reads the port off a throwaway container on a random
-# free port. Do not define them here: a session-scoped default that points at a real
-# port is how a test run reaches a live collection.
-
-
-@pytest.fixture
-def test_deck(anki_url):
-    """Creates/Ensures a clean 'IntegrationTest' deck."""
-    deck_name = "IntegrationTest"
-
-    # Ensure deck exists and is empty
-    requests.post(
-        anki_url, json={"action": "createDeck", "version": 6, "params": {"deck": deck_name}}
-    )
-
-    # Find notes in deck
-    resp = requests.post(
-        anki_url,
-        json={"action": "findNotes", "version": 6, "params": {"query": f"deck:{deck_name}"}},
-    )
-    notes = resp.json().get("result", [])
-    if notes:
-        requests.post(
-            anki_url, json={"action": "deleteNotes", "version": 6, "params": {"notes": notes}}
-        )
-
-    return deck_name
-
-
-@pytest.fixture
-def setup_anki(anki_url, test_deck):
-    """A clean test deck. The Basic and Cloze note types ship with Anki."""
-    return test_deck
-
-
-@pytest.fixture
-def run_arete(anki_url):
-    """Run the CLI tool in subprocess."""
-
-    def _run(vault_path, anki_url=anki_url, args=None, capture_output=True):
-        cmd = [
-            sys.executable,
-            "-m",
-            "arete",
-            "-v",
-            "sync",
-            str(vault_path),
-            "--anki-connect-url",
-            anki_url,
-        ]
-        if args:
-            cmd.extend(args)
-
-        return subprocess.run(
-            cmd,
-            capture_output=capture_output,
-            text=True,
-        )
-
-    return _run
+# Integration fixtures (`anki_url`, `anki_media_dir`, `test_deck`, `setup_anki`,
+# `run_arete`, `integration_vault`) live in tests/integration/conftest.py, which is
+# the only place that needs them; it reads the port off a throwaway container on a
+# random free port. Do not define them here: a session-scoped default that points at
+# a real port is how a test run reaches a live collection.
 
 
 # --- Mocking Fixtures ---
@@ -316,17 +256,6 @@ def mock_vault(tmp_path):
     vault.mkdir()
     (vault / "test.md").write_text("# Test Note\n\n- card :: back", encoding="utf-8")
     return vault
-
-
-@pytest.fixture
-def integration_vault(tmp_path):
-    """Copy the static integration vault fixtures to a temp dir."""
-    src = Path(__file__).parent / "fixtures" / "integration_vault"
-    dest = tmp_path / "integration_vault"
-    if dest.exists():
-        shutil.rmtree(dest)
-    shutil.copytree(src, dest)
-    return dest
 
 
 @pytest.hookimpl(optionalhook=True)

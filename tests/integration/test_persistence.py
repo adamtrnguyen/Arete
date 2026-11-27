@@ -1,6 +1,6 @@
 import re
 
-import requests
+import httpx
 
 
 def test_nid_cid_writeback(tmp_path, anki_url, setup_anki, run_arete, test_deck):
@@ -42,7 +42,7 @@ cards:
     cid = cid_match.group(1)
 
     # 3. Verify in Anki
-    info = requests.post(
+    info = httpx.post(
         anki_url, json={"action": "notesInfo", "version": 6, "params": {"notes": [int(nid)]}}
     ).json()["result"][0]
 

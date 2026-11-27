@@ -36,7 +36,6 @@ def test_the_doc_names_no_module_that_is_missing():
         for name in named
         if not (ROOT / "src" / "arete" / name).exists()
         and not (ROOT / name).exists()
-        and not (ROOT / "scripts" / Path(name).name).exists()
         and "obsidian-plugin" not in name
     )
     assert not missing, f"the doc names modules that do not exist: {missing}"

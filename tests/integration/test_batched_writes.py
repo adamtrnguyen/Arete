@@ -7,8 +7,8 @@ real ``multi`` and ``getHomeDecks`` replies, not a fake's.
 from collections import Counter
 from pathlib import Path
 
+import httpx
 import pytest
-import requests
 
 from arete.application.sync.note_sync import NoteSync
 from arete.domain.models import AnkiNote, WorkItem
@@ -32,7 +32,7 @@ def _item(i: int, deck: str, nid: int | None = None, back: str = "b", extra_tag:
 
 
 def _call(url: str, action: str, **params):
-    reply = requests.post(url, json={"action": action, "version": 6, "params": params}).json()
+    reply = httpx.post(url, json={"action": action, "version": 6, "params": params}).json()
     assert reply["error"] is None, reply
     return reply["result"]
 

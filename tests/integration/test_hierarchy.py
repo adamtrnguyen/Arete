@@ -1,4 +1,4 @@
-import requests
+import httpx
 
 
 def test_nested_decks(tmp_path, anki_url, setup_anki, run_arete):
@@ -21,12 +21,12 @@ cards:
     assert res.returncode == 0
 
     # Verify Deck Created
-    resp = requests.post(anki_url, json={"action": "deckNames", "version": 6})
+    resp = httpx.post(anki_url, json={"action": "deckNames", "version": 6})
     decks = resp.json()["result"]
     assert "IntegrationTest::Child::GrandChild" in decks
 
     # Verify Note in that deck
-    resp = requests.post(
+    resp = httpx.post(
         anki_url,
         json={
             "action": "findNotes",
@@ -56,7 +56,7 @@ cards:
     run_arete(tmp_path, anki_url)
 
     # Verify in DeckA
-    resp = requests.post(
+    resp = httpx.post(
         anki_url,
         json={
             "action": "findNotes",
@@ -85,7 +85,7 @@ cards:
     run_arete(tmp_path, anki_url)
 
     # Verify GONE from DeckA
-    respA = requests.post(
+    respA = httpx.post(
         anki_url,
         json={
             "action": "findNotes",
@@ -96,7 +96,7 @@ cards:
     assert len(respA.json()["result"]) == 0
 
     # Verify PRESENT in DeckB
-    respB = requests.post(
+    respB = httpx.post(
         anki_url,
         json={
             "action": "findNotes",

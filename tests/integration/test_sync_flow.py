@@ -59,9 +59,9 @@ cards:
     nid = int(match.group(1))
 
     # 4. Verify Anki (via API)
-    import requests
+    import httpx
 
-    resp = requests.post(
+    resp = httpx.post(
         anki_url, json={"action": "notesInfo", "version": 6, "params": {"notes": [nid]}}
     )
     result = resp.json().get("result")

@@ -4,15 +4,15 @@ Two clients the repo does not own call these actions, so a reply that changes sh
 wording breaks them silently. Each test pins one reply exactly, against the container.
 """
 
+import httpx
 import pytest
-import requests
 
 DECK = "AddonContract"
 MISSING = 1234567890123
 
 
 def call(url, action, version=6, **params):
-    resp = requests.post(url, json={"action": action, "version": version, "params": params})
+    resp = httpx.post(url, json={"action": action, "version": version, "params": params})
     return resp.json()
 
 
@@ -162,8 +162,8 @@ def test_every_reply_says_the_connection_closes(anki_url):
     Without the header an HTTP client pools the connection and later sends a request
     into it, which fails with "Server disconnected without sending a response".
     """
-    ok = requests.post(anki_url, json={"action": "version", "version": 6})
-    empty = requests.post(anki_url, data=b"")
+    ok = httpx.post(anki_url, json={"action": "version", "version": 6})
+    empty = httpx.post(anki_url, content=b"")
     assert ok.headers.get("Connection") == "close"
     assert empty.headers.get("Connection") == "close"
 

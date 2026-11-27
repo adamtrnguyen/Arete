@@ -1,4 +1,4 @@
-import requests
+import httpx
 
 
 def test_complex_markdown(tmp_path, anki_url, setup_anki, run_arete, test_deck):
@@ -33,7 +33,7 @@ cards:
     run_arete(tmp_path, anki_url)
 
     # Verify Math
-    resp = requests.post(
+    resp = httpx.post(
         anki_url,
         json={
             "action": "findNotes",
@@ -42,7 +42,7 @@ cards:
         },
     )
     nid = resp.json()["result"][0]
-    info = requests.post(
+    info = httpx.post(
         anki_url, json={"action": "notesInfo", "version": 6, "params": {"notes": [nid]}}
     ).json()["result"][0]
     back = info["fields"]["Back"]["value"]
@@ -54,7 +54,7 @@ cards:
 
     # Verify Code
     # Markdown conversion usually wraps code in <pre> or <code>
-    resp_code = requests.post(
+    resp_code = httpx.post(
         anki_url,
         json={
             "action": "findNotes",
@@ -63,7 +63,7 @@ cards:
         },
     )
     nid = resp_code.json()["result"][0]
-    info = requests.post(
+    info = httpx.post(
         anki_url, json={"action": "notesInfo", "version": 6, "params": {"notes": [nid]}}
     ).json()["result"][0]
     back = info["fields"]["Back"]["value"]
@@ -71,7 +71,7 @@ cards:
     assert "return &quot;world&quot;" in back or 'return "world"' in back
 
     # Verify Table (Check for <table> tag)
-    resp_table = requests.post(
+    resp_table = httpx.post(
         anki_url,
         json={
             "action": "findNotes",
@@ -80,7 +80,7 @@ cards:
         },
     )
     nid = resp_table.json()["result"][0]
-    info = requests.post(
+    info = httpx.post(
         anki_url, json={"action": "notesInfo", "version": 6, "params": {"notes": [nid]}}
     ).json()["result"][0]
     back = info["fields"]["Back"]["value"]

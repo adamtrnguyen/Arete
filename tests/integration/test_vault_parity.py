@@ -2,7 +2,7 @@ import re
 import subprocess
 import sys
 
-import requests
+import httpx
 
 
 def test_integration_vault_parity(integration_vault, anki_url, setup_anki, test_deck):
@@ -45,7 +45,7 @@ def test_integration_vault_parity(integration_vault, anki_url, setup_anki, test_
     assert match
     nid = int(match.group(1))
 
-    resp = requests.post(
+    resp = httpx.post(
         anki_url, json={"action": "notesInfo", "version": 6, "params": {"notes": [nid]}}
     )
     result = resp.json().get("result")
@@ -55,5 +55,5 @@ def test_integration_vault_parity(integration_vault, anki_url, setup_anki, test_
 
     # Check Healing Note
     heal_file = tmp_path / "healing.md"
-    match_h = re.search(r"nid:\s*['\"]?(\d+)['\"]?", heal_file.read_text())
+    match_h = re.search(r"nid:\s*['\"]?(\d+)['\"]?", heal_file.read_text(encoding="utf-8"))
     assert match_h, "Healing note failed to sync?"

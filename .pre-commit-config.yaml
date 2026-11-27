@@ -11,9 +11,9 @@ repos:
       # docs/ARCHITECTURE.md is generated and drift-tested (`just check-docs`): fixing it here
       # makes it disagree with the generator.
       - id: trailing-whitespace
-        exclude: ^(tests/(fixtures|mock_vault)/|docs/ARCHITECTURE\.md$)
+        exclude: ^(tests/fixtures/|docs/ARCHITECTURE\.md$)
       - id: end-of-file-fixer
-        exclude: ^(tests/(fixtures|mock_vault)/|docs/ARCHITECTURE\.md$)
+        exclude: ^(tests/fixtures/|docs/ARCHITECTURE\.md$)
       - id: check-yaml
       - id: check-toml
       - id: check-added-large-files

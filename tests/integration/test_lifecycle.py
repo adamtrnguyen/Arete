@@ -1,6 +1,6 @@
 import re
 
-import requests
+import httpx
 
 
 def test_model_migration_basic_to_cloze(tmp_path, anki_url, setup_anki, run_arete, test_deck):
@@ -69,7 +69,7 @@ cards:
     # OR if arete supports it (via updateNoteModel?), it keeps NID.
 
     # Let's check if nid1 still exists
-    resp = requests.post(
+    resp = httpx.post(
         anki_url, json={"action": "notesInfo", "version": 6, "params": {"notes": [int(nid1)]}}
     )
     result = resp.json().get("result", [None])[0]
@@ -103,7 +103,7 @@ cards:
     run_arete(tmp_path, anki_url)
 
     # Check tags
-    resp = requests.post(
+    resp = httpx.post(
         anki_url,
         json={
             "action": "findNotes",
@@ -125,7 +125,7 @@ cards:
     run_arete(tmp_path, anki_url)
 
     # Check old tag gone
-    resp_old = requests.post(
+    resp_old = httpx.post(
         anki_url,
         json={
             "action": "findNotes",
@@ -136,7 +136,7 @@ cards:
     assert len(resp_old.json()["result"]) == 0
 
     # Check new tag
-    resp_new = requests.post(
+    resp_new = httpx.post(
         anki_url,
         json={
             "action": "findNotes",
