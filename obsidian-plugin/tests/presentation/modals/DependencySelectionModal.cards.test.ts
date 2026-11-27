@@ -243,4 +243,26 @@ describe('DependencySelectionModal: choosing a card', () => {
 		expect(app.vault.cachedRead).not.toHaveBeenCalled();
 		expect(unload).toHaveBeenCalled();
 	});
+
+	it('onOpen loads the modal component so preview cleanup callbacks actually run', async () => {
+		const cleaned: string[] = [];
+		(MarkdownRenderer.render as jest.Mock).mockImplementationOnce(
+			async (_app: any, _md: string, _el: any, path: string, comp: any) => {
+				expect(comp._loaded).toBe(true);
+				comp.register(() => cleaned.push(path));
+			},
+		);
+		const loadSpy = jest.spyOn(modal, 'loadFiles').mockImplementation(() => {});
+		modal.onOpen();
+		loadSpy.mockRestore();
+		modal.resultsContainer = createMockElement('div', { children: [] });
+		modal.loadFiles();
+		expect(modal._component._loaded).toBe(true);
+		await modal.renderPreview();
+		expect(cleaned).toEqual([]);
+
+		modal.onClose();
+		expect(cleaned).toEqual(['Deck.md']);
+		expect(modal._component._loaded).toBe(false);
+	});
 });

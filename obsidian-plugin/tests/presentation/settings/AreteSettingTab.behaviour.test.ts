@@ -26,6 +26,7 @@ describe('AreteSettingTab: what each control writes and triggers', () => {
 					clearedCache = { concepts: {}, lastFetched: 0 };
 				}),
 				getCache: jest.fn(() => clearedCache),
+				recomputeProblematicCards: jest.fn(),
 			},
 			saveSettings: jest.fn().mockResolvedValue(undefined),
 			testConfig: jest.fn().mockResolvedValue(undefined),
@@ -145,7 +146,7 @@ describe('AreteSettingTab: what each control writes and triggers', () => {
 			expect(slider.setLimits).toHaveBeenCalledWith(1, 16, 1);
 		});
 
-		it('ease threshold is shown in percent, states Default: 210%, and stores x10', async () => {
+		it('ease threshold is shown in percent, states Default: 210%, stores x10, and recomputes stats', async () => {
 			plugin.settings.stats_algorithm = 'sm2';
 			plugin.settings.stats_ease_threshold = 2100;
 			render();
@@ -157,9 +158,12 @@ describe('AreteSettingTab: what each control writes and triggers', () => {
 			expect(slider.setValue).toHaveBeenCalledWith(210);
 			await slider._onChange(250);
 			expect(plugin.settings.stats_ease_threshold).toBe(2500);
+			expect(plugin.statsService.recomputeProblematicCards).toHaveBeenCalledWith(
+				plugin.settings,
+			);
 		});
 
-		it('FSRS difficulty threshold is shown 0-100 and stored 0-1', async () => {
+		it('FSRS difficulty threshold is shown 0-100, stored 0-1, and recomputes stats', async () => {
 			plugin.settings.stats_algorithm = 'fsrs';
 			plugin.settings.stats_difficulty_threshold = 0.9;
 			render();
@@ -167,12 +171,18 @@ describe('AreteSettingTab: what each control writes and triggers', () => {
 			expect(slider.setValue).toHaveBeenCalledWith(90);
 			await slider._onChange(75);
 			expect(plugin.settings.stats_difficulty_threshold).toBe(0.75);
+			expect(plugin.statsService.recomputeProblematicCards).toHaveBeenCalledWith(
+				plugin.settings,
+			);
 		});
 
-		it('lapse threshold', async () => {
+		it('lapse threshold recomputes problematic stats and saves', async () => {
 			render();
 			await byName('Lapse threshold').mockSlider._onChange(7);
 			expect(plugin.settings.stats_lapse_threshold).toBe(7);
+			expect(plugin.statsService.recomputeProblematicCards).toHaveBeenCalledWith(
+				plugin.settings,
+			);
 		});
 
 		it('changing the algorithm discards the cached stats and re-renders', async () => {

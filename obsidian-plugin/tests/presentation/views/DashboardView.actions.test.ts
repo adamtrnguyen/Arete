@@ -162,6 +162,33 @@ describe('DashboardView actions', () => {
 			expect(rec.buttons[0].disabled).toBe(false);
 		});
 
+		it('Suspend disables while in flight and restores the button when suspendCard rejects', async () => {
+			const errSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+			let rejectSuspend!: (err: Error) => void;
+			plugin.leechService.getLeeches.mockReturnValue([leech()]);
+			plugin.leechService.suspendCard.mockReturnValue(
+				new Promise<boolean>((_resolve, reject) => (rejectSuspend = reject)),
+			);
+			const root = el('div');
+			await view.renderLeeches(root);
+
+			const pending = rec.buttons[0].onClick!();
+			expect(rec.buttons[0].text).toBe('...');
+			expect(rec.buttons[0].disabled).toBe(true);
+
+			rejectSuspend(new Error('Anki offline'));
+			await pending;
+
+			expect(errSpy).toHaveBeenCalledWith(
+				'[Arete] Failed to suspend card:',
+				expect.any(Error),
+			);
+			expect(notices()).toEqual(['Failed to suspend card.']);
+			expect(rec.buttons[0].text).toBe('Suspend');
+			expect(rec.buttons[0].disabled).toBe(false);
+			errSpy.mockRestore();
+		});
+
 		it('clicking a front opens its note at the card', async () => {
 			plugin.leechService.getLeeches.mockReturnValue([leech()]);
 			view.goToCard = jest.fn();

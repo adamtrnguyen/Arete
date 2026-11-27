@@ -43,4 +43,28 @@ describe('plugin load', () => {
 		expect(plugin.settings).not.toHaveProperty('server_reload');
 		expect(plugin.settings.backend).toBe('direct');
 	});
+
+	test('initializes statsCache on fresh install and persists it after stats refresh', async () => {
+		await load({});
+		expect(plugin.statsCache).toEqual({ concepts: {}, lastFetched: 0 });
+		expect(plugin.statsService.getCache()).toBe(plugin.statsCache);
+
+		const saveData = jest.fn().mockResolvedValue(undefined);
+		plugin.saveData = saveData;
+		const refreshedConcept = { filePath: 'A.md', totalCards: 1 } as any;
+		jest.spyOn(plugin.statsService, 'refreshStats').mockImplementation(async () => {
+			plugin.statsService.getCache().concepts['A.md'] = refreshedConcept;
+			plugin.statsService.getCache().lastFetched = 12345;
+			return [refreshedConcept];
+		});
+
+		layoutReady!();
+		await new Promise((r) => setImmediate(r));
+
+		expect(saveData).toHaveBeenCalledWith(
+			expect.objectContaining({
+				statsCache: { concepts: { 'A.md': refreshedConcept }, lastFetched: 12345 },
+			}),
+		);
+	});
 });

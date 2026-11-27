@@ -471,6 +471,8 @@ export default class AretePlugin extends Plugin {
 	 * Post-refresh hook: update graph tags and YAML toolbar after stats refresh.
 	 */
 	async onStatsRefreshed(results: ConceptStats[]): Promise<void> {
+		await this.saveStats();
+
 		if (this.settings.graph_coloring_enabled) {
 			for (const concept of results) {
 				const file = this.app.vault.getAbstractFileByPath(concept.filePath);
@@ -564,7 +566,7 @@ export default class AretePlugin extends Plugin {
 			Object.entries(data ?? {}).filter(([k]) => k in DEFAULT_SETTINGS),
 		);
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, known);
-		this.statsCache = data?.statsCache;
+		this.statsCache = data?.statsCache ?? { concepts: {}, lastFetched: 0 };
 		const home = os.homedir();
 		const root = this.settings.project_root;
 		if (root === '~' || root.startsWith('~/') || root.startsWith('~\\')) {

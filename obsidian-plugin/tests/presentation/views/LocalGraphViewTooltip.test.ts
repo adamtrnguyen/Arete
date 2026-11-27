@@ -119,14 +119,25 @@ describe('LocalGraphView rendered markdown', () => {
 		expect(MarkdownRenderer.render).toHaveBeenCalledTimes(2);
 	});
 
-	it('keeps only the current drawing’s tooltip components', async () => {
+	it('keeps only the current drawing’s tooltip components and runs their cleanup on redraw', async () => {
+		const cleaned: number[] = [];
+		let count = 0;
+		(MarkdownRenderer.render as jest.Mock).mockImplementation(
+			async (_app: any, _md: string, _el: any, _path: string, component: Component) => {
+				const child = component.addChild(new Component());
+				const id = ++count;
+				child.register(() => cleaned.push(id));
+			},
+		);
 		for (let i = 0; i < 3; i++) {
 			view.renderD3Graph(element('div'), [node], []);
+			expect((view.drawingComponent as any)._loaded).toBe(true);
 			for (let j = 0; j < 4; j++)
 				await d3.mockHandlers.mouseover({ pageX: 0, pageY: 0 }, node);
 		}
-		// one drawing component holding one rendered tooltip
-		expect(liveChildren(view.tooltipComponent)).toBe(2);
+		// one drawing component holding one rendered tooltip; prior two cleaned up
+		expect(liveChildren(view)).toBe(2);
+		expect(cleaned).toEqual([1, 2]);
 	});
 
 	it('keeps only the current drawing’s card-mode components', async () => {
@@ -136,7 +147,7 @@ describe('LocalGraphView rendered markdown', () => {
 			await flush();
 		}
 		// one drawing component holding the card's two rendered fields
-		expect(liveChildren(view.tooltipComponent)).toBe(3);
+		expect(liveChildren(view)).toBe(3);
 	});
 
 	it('renders afresh when the same node shows a different title', async () => {
@@ -150,18 +161,66 @@ describe('LocalGraphView rendered markdown', () => {
 	});
 
 	it('unloads the drawing’s components when the view closes', async () => {
+		const cleanup = jest.fn();
+		(MarkdownRenderer.render as jest.Mock).mockImplementation(
+			async (_app: any, _md: string, _el: any, _path: string, component: Component) => {
+				const child = component.addChild(new Component());
+				child.register(cleanup);
+			},
+		);
 		view.renderD3Graph(element('div'), [node], []);
 		for (let j = 0; j < 4; j++) await d3.mockHandlers.mouseover({ pageX: 0, pageY: 0 }, node);
-		expect(liveChildren(view.tooltipComponent)).toBe(2);
+		expect(liveChildren(view)).toBe(2);
 		await view.onClose();
-		expect(liveChildren(view.tooltipComponent)).toBe(0);
+		expect(liveChildren(view)).toBe(0);
+		expect(cleanup).toHaveBeenCalledTimes(1);
 	});
 
 	it('releases the drawing’s components when an empty message replaces it', async () => {
 		view.renderD3Graph(element('div'), [node], []);
 		await d3.mockHandlers.mouseover({ pageX: 0, pageY: 0 }, node);
 		view.renderEmpty(element('div'), 'No Arete cards found in this file.');
-		expect(liveChildren(view.tooltipComponent)).toBe(0);
+		expect(liveChildren(view)).toBe(0);
+	});
+
+	it('sets card context and opens target file on 2D and 3D cross-file clicks', async () => {
+		const otherNode = {
+			id: 'arete_B',
+			title: 'Other card',
+			group: 'prereq' as const,
+			filePath: 'Geometry.md',
+			lineNumber: 3,
+		};
+		view.app.workspace.getActiveFile.mockReturnValue(
+			Object.assign(new TFile(), { path: 'Algebra.md', extension: 'md' }),
+		);
+		view.openFile = jest.fn().mockResolvedValue(undefined);
+		view.refresh = jest.fn().mockResolvedValue(undefined);
+
+		view.renderD3Graph(element('div'), [node, otherNode], []);
+		d3.mockHandlers.click({ stopPropagation: jest.fn() }, otherNode);
+		await flush();
+
+		expect(view.centeredCardId).toBe('arete_B');
+		expect(view.currentFilePath).toBe('Geometry.md');
+		expect(view.plugin.setCardContext).toHaveBeenCalledWith('Geometry.md', 'arete_B');
+		expect(view.openFile).toHaveBeenCalledWith('Geometry.md');
+
+		// 3D cross-file click behaves identically
+		view.plugin.setCardContext.mockClear();
+		view.openFile.mockClear();
+		view.centeredCardId = null;
+		view.currentFilePath = 'Algebra.md';
+
+		view.render3DGraph(element('div'), [node, otherNode], []);
+		const onNodeClick = view.graph3D.onNodeClick.mock.calls[0][0];
+		onNodeClick(otherNode);
+		await flush();
+
+		expect(view.centeredCardId).toBe('arete_B');
+		expect(view.currentFilePath).toBe('Geometry.md');
+		expect(view.plugin.setCardContext).toHaveBeenCalledWith('Geometry.md', 'arete_B');
+		expect(view.openFile).toHaveBeenCalledWith('Geometry.md');
 	});
 });
 

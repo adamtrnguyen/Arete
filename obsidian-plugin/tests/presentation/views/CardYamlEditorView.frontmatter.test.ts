@@ -1,5 +1,9 @@
 import { MarkdownView, Notice } from 'obsidian';
 import { CardYamlEditorView } from '@/presentation/views/CardYamlEditorView';
+import {
+	extractCardFields,
+	parseCardYaml,
+} from '@/presentation/views/yamlEditor/cardEditorHelpers';
 import { CardParserService } from '@/application/services/CardParserService';
 import { cardRangesField } from '@/presentation/extensions/CardGutterExtension';
 import { createMockElement } from '../../test-setup';
@@ -61,7 +65,7 @@ describe('CardYamlEditorView: editing the card list in frontmatter', () => {
 			expect(view.currentCardIndex).toBe(2);
 			expect(view.cards).toEqual(fm.cards);
 			expect(view.cards).not.toBe(fm.cards);
-			expect(view.ownWriteMtime).toBe(note.stat.mtime);
+			expect(view.ownWrite).toEqual({ path: note.path, mtime: note.stat.mtime });
 		});
 
 		it('creates the cards list when the note has none', async () => {
@@ -338,19 +342,17 @@ describe('CardYamlEditorView: YAML back to a card', () => {
 
 	it('returns the parsed mapping', () => {
 		obsidian.parseYaml = jest.fn().mockReturnValue({ Front: 'q' });
-		const { view } = makeView([]);
-		expect(view.parseYamlToCard('Front: q')).toEqual({ Front: 'q' });
+		expect(parseCardYaml('Front: q')).toEqual({ Front: 'q' });
 		expect(obsidian.parseYaml).toHaveBeenCalledWith('Front: q');
 	});
 
 	it('returns null for empty, scalar, or list YAML', () => {
-		const { view } = makeView([]);
 		obsidian.parseYaml = jest.fn().mockReturnValue(null);
-		expect(view.parseYamlToCard('')).toBeNull();
+		expect(parseCardYaml('')).toBeNull();
 		obsidian.parseYaml = jest.fn().mockReturnValue('plain string');
-		expect(view.parseYamlToCard('plain string')).toBeNull();
+		expect(parseCardYaml('plain string')).toBeNull();
 		obsidian.parseYaml = jest.fn().mockReturnValue(['a', 'b']);
-		expect(view.parseYamlToCard('- a\n- b')).toBeNull();
+		expect(parseCardYaml('- a\n- b')).toBeNull();
 	});
 
 	it('returns null, and logs, when the YAML does not parse', () => {
@@ -358,8 +360,7 @@ describe('CardYamlEditorView: YAML back to a card', () => {
 			throw new Error('bad yaml');
 		});
 		const log = jest.spyOn(console, 'error').mockImplementation(() => {});
-		const { view } = makeView([]);
-		expect(view.parseYamlToCard('{')).toBeNull();
+		expect(parseCardYaml('{')).toBeNull();
 		expect(log).toHaveBeenCalled();
 	});
 });
@@ -507,12 +508,206 @@ describe('CardYamlEditorView: writing the edited card back', () => {
 		expect(noNote.app.fileManager.processFrontMatter).not.toHaveBeenCalled();
 	});
 
-	it('clears the in-flight flag even when the write fails', async () => {
+	it('clears the in-flight counter even when the write fails', async () => {
 		const { view, app } = withEditor('x', { Front: 'x' });
 		app.fileManager.processFrontMatter.mockRejectedValue(new Error('disk full'));
 		view.viewMode = 'source';
 		await expect(view.syncToMain()).rejects.toThrow('disk full');
-		expect(view.isUpdatingFromMain).toBe(false);
+		expect(view.inFlightWrites).toBe(0);
+	});
+
+	it('tracks overlapping writes with an in-flight counter', async () => {
+		const resolvers: Array<() => void> = [];
+		const { view, app, note } = makeView(cards());
+		view.syncFromMain = jest.fn();
+		app.fileManager.processFrontMatter.mockImplementation(
+			() => new Promise<void>((resolve) => resolvers.push(resolve)),
+		);
+		await view.loadCards();
+		view.viewMode = 'fields';
+
+		const w1 = view.syncToMain();
+		const w2 = view.syncToMain();
+		expect(view.inFlightWrites).toBe(2);
+
+		resolvers[0]();
+		await w1;
+		expect(view.inFlightWrites).toBe(1);
+		view.onFileParsed(note);
+		expect(view.syncFromMain).not.toHaveBeenCalled();
+
+		resolvers[1]();
+		await w2;
+		expect(view.inFlightWrites).toBe(0);
+	});
+
+	it('preserves externally written id and anki metadata during debounced sync', async () => {
+		jest.useFakeTimers();
+		try {
+			const { view, fm } = makeView([{ model: 'Basic', Front: 'Q', Back: 'A' }]);
+			await view.loadCards();
+			view.viewMode = 'fields';
+			view.cards[0].Front = 'Q edited';
+			view.debouncedSyncToMain();
+
+			// Sync writes id and anki to frontmatter before the 300 ms timer fires.
+			fm.cards[0].id = 'arete_01SYNC';
+			fm.cards[0].anki = { nid: 111, cid: 222 };
+
+			await jest.advanceTimersByTimeAsync(300);
+
+			expect(fm.cards[0]).toEqual({
+				model: 'Basic',
+				Front: 'Q edited',
+				Back: 'A',
+				id: 'arete_01SYNC',
+				anki: { nid: 111, cid: 222 },
+			});
+			expect(view.cards[0].id).toBe('arete_01SYNC');
+			expect(view.cards[0].anki).toEqual({ nid: 111, cid: 222 });
+		} finally {
+			jest.useRealTimers();
+		}
+	});
+
+	it('cancels a pending debounced write when an external parse arrives first', async () => {
+		jest.useFakeTimers();
+		try {
+			const { view, fm, note, app } = makeView(cards());
+			await view.loadCards();
+			view.viewMode = 'fields';
+			view.cards[0].Front = 'stale local edit';
+			view.debouncedSyncToMain();
+
+			// External process updates frontmatter and Obsidian re-parses the note.
+			fm.cards[0] = { id: 'a', Front: 'external update', Back: 'a', anki: { nid: 77 } };
+			note.stat.mtime = 9999;
+			view.onFileParsed(note);
+			await Promise.resolve();
+
+			await jest.advanceTimersByTimeAsync(300);
+
+			expect(app.fileManager.processFrontMatter).not.toHaveBeenCalled();
+			expect(fm.cards[0].Front).toBe('external update');
+			expect(view.cards[0].Front).toBe('external update');
+		} finally {
+			jest.useRealTimers();
+		}
+	});
+
+	it('scopes ownWrite by path and clears it on echo or file switch', async () => {
+		const { view, app, note } = makeView(cards());
+		view.syncFromMain = jest.fn();
+		await view.loadCards();
+
+		await view.addCard();
+		const mtime = note.stat.mtime;
+
+		// Another file with the exact same mtime must not be ignored as an echo.
+		const other = { path: 'Other.md', stat: { mtime } };
+		app.workspace.getActiveFile.mockReturnValue(other);
+		view.onFileParsed(other);
+		expect(view.syncFromMain).toHaveBeenCalledTimes(1);
+
+		// Echo for the original file is ignored once, then cleared.
+		app.workspace.getActiveFile.mockReturnValue(note);
+		await view.addCard();
+		view.syncFromMain.mockClear();
+		view.onFileParsed(note);
+		expect(view.syncFromMain).not.toHaveBeenCalled();
+		expect(view.ownWrite).toBeNull();
+		view.onFileParsed(note);
+		expect(view.syncFromMain).toHaveBeenCalledTimes(1);
+
+		// Switching files via loadCards clears ownWrite.
+		await view.addCard();
+		expect(view.ownWrite).not.toBeNull();
+		app.workspace.getActiveFile.mockReturnValue(other);
+		await view.loadCards();
+		expect(view.ownWrite).toBeNull();
+	});
+
+	it('catches processFrontMatter failures in debouncedSyncToMain, addCard, deleteCard, and reorderCards', async () => {
+		jest.useFakeTimers();
+		const errSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+		(Notice as unknown as jest.Mock).mockClear();
+		try {
+			const { view, app } = makeView(cards());
+			await view.loadCards();
+			app.fileManager.processFrontMatter.mockRejectedValue(new Error('read-only'));
+
+			view.viewMode = 'fields';
+			view.cards[0].Front = 'changed';
+			view.debouncedSyncToMain();
+			await jest.advanceTimersByTimeAsync(300);
+
+			await view.addCard();
+			await view.deleteCard(0);
+			await view.reorderCards(0, 1);
+
+			expect(view.inFlightWrites).toBe(0);
+			expect(view.cards).toHaveLength(3);
+			expect(errSpy).toHaveBeenCalledWith(
+				expect.stringContaining('[Arete]'),
+				expect.any(Error),
+			);
+			const notices = (Notice as unknown as jest.Mock).mock.calls.map((c) => c[0]);
+			expect(notices).toEqual([
+				'Failed to save card changes.',
+				'Failed to add card.',
+				'Failed to delete card.',
+				'Failed to reorder cards.',
+			]);
+		} finally {
+			errSpy.mockRestore();
+			jest.useRealTimers();
+		}
+	});
+
+	it('blocks mode and card switches while Source YAML is invalid and keeps the error visible', async () => {
+		const errSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+		try {
+			const { view, app } = makeView(cards());
+			await view.loadCards();
+			view.parseErrorEl = createMockElement('div');
+			view.editorContainer = createMockElement('div');
+			view.fieldEditorContainer = createMockElement('div');
+			view.previewContainer = createMockElement('div');
+			view.renderToolbar = jest.fn();
+			view.viewMode = 'source';
+
+			let docText = 'Front: [unclosed';
+			view.editorView = { state: { doc: { toString: () => docText } }, dispatch: jest.fn() };
+			view.debouncedSyncToMain();
+
+			// Mode switch and card switch are blocked while pending Source YAML is invalid.
+			view.setViewMode('fields');
+			expect(view.viewMode).toBe('source');
+			expect(view.parseErrorEl.show).toHaveBeenCalled();
+
+			view.selectCard(1);
+			expect(view.currentCardIndex).toBe(0);
+			view.focusCard(2);
+			expect(view.currentCardIndex).toBe(0);
+			expect(await view.flushPendingSync()).toBe(false);
+
+			// Also stays blocked after the debounce has already failed and cleared pendingSync.
+			view.pendingSync = null;
+			view.setViewMode('preview');
+			expect(view.viewMode).toBe('source');
+			view.selectCard(1);
+			expect(view.currentCardIndex).toBe(0);
+			expect(app.fileManager.processFrontMatter).not.toHaveBeenCalled();
+
+			// Fixing the YAML restores flushing and switching.
+			docText = 'id: a\nFront: Fixed\nBack: a';
+			view.debouncedSyncToMain();
+			expect(await view.flushPendingSync()).toBe(true);
+			view.selectCard(1);
+			expect(view.currentCardIndex).toBe(1);
+		} finally {
+			errSpy.mockRestore();
+		}
 	});
 
 	it('debounces edits: one write, 300 ms after the last keystroke', () => {
@@ -535,7 +730,7 @@ describe('CardYamlEditorView: writing the edited card back', () => {
 	it('does not reload from the file while its own write is in flight', () => {
 		const { view, note } = makeView(cards());
 		view.syncFromMain = jest.fn();
-		view.isUpdatingFromMain = true;
+		view.inFlightWrites = 1;
 		view.onFileParsed(note);
 		expect(view.syncFromMain).not.toHaveBeenCalled();
 	});
@@ -674,9 +869,8 @@ describe('CardYamlEditorView: field editor', () => {
 	});
 
 	it('extractCardFields keeps only scalar content fields, as strings', () => {
-		const { view } = makeView([]);
 		expect(
-			view.extractCardFields({
+			extractCardFields({
 				id: 'a',
 				model: 'Basic',
 				deps: { requires: [] },

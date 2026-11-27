@@ -71,15 +71,25 @@ export async function renderLeechesTab(
 		const btnSuspend = new ButtonComponent(cellActions).setButtonText('Suspend');
 		btnSuspend.onClick(async () => {
 			btnSuspend.setButtonText('...');
-			const success = await ctx.leechService.suspendCard(leech.cardId);
-			if (success) {
-				new Notice('Card suspended.');
-				row.addClass('is-suspended');
-				btnSuspend.setButtonText('Suspended');
-				btnSuspend.setDisabled(true);
-			} else {
+			btnSuspend.setDisabled(true);
+			let suspended = false;
+			try {
+				suspended = await ctx.leechService.suspendCard(leech.cardId);
+				if (suspended) {
+					new Notice('Card suspended.');
+					row.addClass('is-suspended');
+					btnSuspend.setButtonText('Suspended');
+				} else {
+					new Notice('Failed to suspend card.');
+				}
+			} catch (e) {
+				console.error('[Arete] Failed to suspend card:', e);
 				new Notice('Failed to suspend card.');
-				btnSuspend.setButtonText('Suspend');
+			} finally {
+				if (!suspended) {
+					btnSuspend.setButtonText('Suspend');
+					btnSuspend.setDisabled(false);
+				}
 			}
 		});
 	});

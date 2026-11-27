@@ -122,6 +122,52 @@ describe('LocalGraphView.refresh', () => {
 		expect(view.renderD3Graph).toHaveBeenCalledTimes(1);
 		expect(resolver.getLocalGraph).toHaveBeenLastCalledWith('arete_A', 4);
 	});
+
+	it('does not cache drawnKey when the canvas collapses to 0x0 while loading', async () => {
+		const { resolver, view } = setup();
+		const canvas = withCanvas(view);
+		let finish: () => void = () => undefined;
+		resolver.buildGraph.mockImplementationOnce(
+			() => new Promise<void>((resolve) => (finish = resolve)),
+		);
+
+		const loading = view.refresh();
+		canvas.clientWidth = 0;
+		canvas.clientHeight = 0;
+		finish();
+		await loading;
+
+		expect(view.renderD3Graph).not.toHaveBeenCalled();
+		expect(view.drawnKey).toBeNull();
+
+		// Expanding the sidebar later renders the graph instead of leaving a blank canvas.
+		canvas.clientWidth = 400;
+		canvas.clientHeight = 300;
+		await view.refresh();
+		expect(view.renderD3Graph).toHaveBeenCalledTimes(1);
+		expect(view.drawnKey).not.toBeNull();
+	});
+
+	it('keeps explicit setContext target instead of reverting to the previously active file', async () => {
+		const { app, resolver, view } = setup();
+		const other = Object.assign(new TFile(), { path: 'Geometry.md', extension: 'md' });
+		const origFile = app.workspace.getActiveFile();
+		app.vault.getAbstractFileByPath = jest.fn((p: string) =>
+			p === 'Geometry.md' ? other : origFile,
+		);
+		app.metadataCache.getFileCache.mockImplementation((f: any) =>
+			f.path === 'Geometry.md'
+				? { frontmatter: { arete: true, cards: [{ id: 'arete_B' }] } }
+				: { frontmatter: { arete: true, cards: [{ id: 'arete_A' }] } },
+		);
+		withCanvas(view);
+
+		await view.setContext('Geometry.md', 'arete_B');
+
+		expect(view.currentFilePath).toBe('Geometry.md');
+		expect(resolver.getLocalGraph).toHaveBeenLastCalledWith('arete_B', 2);
+		expect(view.plugin.setCardContext).toHaveBeenCalledWith('Geometry.md', 'arete_B');
+	});
 });
 
 describe('LocalGraphView events', () => {
@@ -167,12 +213,14 @@ describe('LocalGraphView logging', () => {
 		expect(log).not.toHaveBeenCalled();
 	});
 
-	it('releaseDrawing stops and clears an active D3 simulation', () => {
+	it('releaseDrawing stops simulation and clears _svg', () => {
 		const { view } = setup();
 		const stop = jest.fn();
 		view.simulation = { stop };
+		view._svg = { attr: jest.fn() };
 		view.releaseDrawing();
 		expect(stop).toHaveBeenCalledTimes(1);
 		expect(view.simulation).toBeNull();
+		expect(view._svg).toBeNull();
 	});
 });

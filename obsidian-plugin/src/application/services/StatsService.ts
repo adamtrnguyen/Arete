@@ -5,6 +5,7 @@ import { CardStatsSource } from '@/domain/ports';
 import type {
 	AnkiCardStats,
 	ConceptStats,
+	ProblematicCard,
 	StatsNode,
 	StatsCache,
 	SyncedCardState,
@@ -42,6 +43,61 @@ export class StatsService {
 
 	clearCache(): void {
 		this.cache = { concepts: {}, lastFetched: 0 };
+	}
+
+	private classifyCardIssues(stat: AnkiCardStats): string[] {
+		const states = metricStates(stat, this.settings);
+		const issues: string[] = [];
+
+		if (states.lapses === 'error') {
+			issues.push(`Lapses: ${stat.lapses}`);
+		}
+
+		if (this.settings.stats_algorithm === 'fsrs') {
+			if (states.difficulty === 'error' && stat.difficulty != null) {
+				issues.push(`Diff: ${difficultyOutOfTen(stat.difficulty).toFixed(1)}/10`);
+			}
+		} else if (states.ease === 'warning') {
+			issues.push(`Ease: ${(stat.ease / 10).toFixed(0)}%`);
+		}
+
+		return issues;
+	}
+
+	/**
+	 * Re-evaluate each cached concept's problematic cards and score under the current
+	 * threshold settings without re-fetching from Anki.
+	 */
+	recomputeProblematicCards(settings: AretePluginSettings = this.settings): void {
+		this.settings = settings;
+		for (const concept of Object.values(this.cache.concepts)) {
+			const prevBack = new Map<number, string>();
+			for (const p of concept.problematicCards ?? []) {
+				if (p.back) prevBack.set(p.cardId, p.back);
+			}
+
+			const problematic: ProblematicCard[] = [];
+			for (const stat of uniqueCardStats(concept.cardStats ?? {})) {
+				const issues = this.classifyCardIssues(stat);
+				if (issues.length > 0) {
+					problematic.push({
+						front: stat.front ?? 'Unknown',
+						back: prevBack.get(stat.cardId) ?? '',
+						cardId: stat.cardId,
+						noteId: stat.noteId,
+						lapses: stat.lapses,
+						ease: stat.ease,
+						difficulty: stat.difficulty,
+						deckName: stat.deckName || 'Default',
+						issue: issues.join(', '),
+					});
+				}
+			}
+
+			concept.problematicCards = problematic;
+			concept.problematicCardsCount = problematic.length;
+			concept.score = concept.totalCards > 0 ? problematic.length / concept.totalCards : 0;
+		}
 	}
 
 	async refreshStats(): Promise<ConceptStats[]> {
@@ -198,20 +254,7 @@ export class StatsService {
 			conceptDeckCounts[meta.file.path][deck]++;
 
 			// Check if problematic using the shared domain thresholds
-			const states = metricStates(stat, this.settings);
-			const issues: string[] = [];
-
-			if (states.lapses === 'error') {
-				issues.push(`Lapses: ${stat.lapses}`);
-			}
-
-			if (this.settings.stats_algorithm === 'fsrs') {
-				if (states.difficulty === 'error' && stat.difficulty != null) {
-					issues.push(`Diff: ${difficultyOutOfTen(stat.difficulty).toFixed(1)}/10`);
-				}
-			} else if (states.ease === 'warning') {
-				issues.push(`Ease: ${(stat.ease / 10).toFixed(0)}%`);
-			}
+			const issues = this.classifyCardIssues(stat);
 
 			if (issues.length > 0) {
 				concept.problematicCardsCount++;

@@ -244,6 +244,13 @@ describe('DashboardView shell', () => {
 		errSpy.mockRestore();
 	});
 
+	it('persists stats via saveStats when onOpen auto-refreshes an empty cache', async () => {
+		const m = mount();
+		await m.view.onOpen();
+		expect(m.plugin.statsService.refreshStats).toHaveBeenCalledTimes(1);
+		expect(m.plugin.saveStats).toHaveBeenCalledTimes(1);
+	});
+
 	it('shows empty and success states with icons and classes', () => {
 		const m = mount();
 		const el = createMockElement('div');

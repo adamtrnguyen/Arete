@@ -12,7 +12,7 @@ export type SettingsHost = Plugin &
 	CheckResultHost & {
 		settings: AretePluginSettings;
 		statsCache: StatsCache;
-		statsService?: Pick<StatsService, 'clearCache' | 'getCache'>;
+		statsService?: Pick<StatsService, 'clearCache' | 'getCache' | 'recomputeProblematicCards'>;
 		templateRenderer: TemplateRenderer;
 		graphService: GraphService;
 		saveSettings(): Promise<void>;
@@ -48,6 +48,14 @@ export class AreteSettingTab extends PluginSettingTab {
 
 	hide(): void {
 		void this.flushSave();
+	}
+
+	private async saveThresholdChange(): Promise<void> {
+		if (this.plugin.statsService) {
+			this.plugin.statsService.recomputeProblematicCards(this.plugin.settings);
+			this.plugin.statsCache = this.plugin.statsService.getCache();
+		}
+		await this.plugin.saveSettings();
 	}
 
 	display(): void {
@@ -245,7 +253,7 @@ export class AreteSettingTab extends PluginSettingTab {
 					.setDynamicTooltip()
 					.onChange(async (value) => {
 						this.plugin.settings.stats_lapse_threshold = value;
-						await this.plugin.saveSettings();
+						await this.saveThresholdChange();
 					}),
 			);
 
@@ -260,7 +268,7 @@ export class AreteSettingTab extends PluginSettingTab {
 						.setDynamicTooltip()
 						.onChange(async (value) => {
 							this.plugin.settings.stats_ease_threshold = value * 10;
-							await this.plugin.saveSettings();
+							await this.saveThresholdChange();
 						}),
 				);
 		} else {
@@ -274,7 +282,7 @@ export class AreteSettingTab extends PluginSettingTab {
 						.setDynamicTooltip()
 						.onChange(async (value) => {
 							this.plugin.settings.stats_difficulty_threshold = value / 100;
-							await this.plugin.saveSettings();
+							await this.saveThresholdChange();
 						}),
 				);
 		}

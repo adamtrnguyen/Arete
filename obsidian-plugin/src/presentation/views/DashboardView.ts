@@ -76,6 +76,7 @@ export class DashboardView extends ItemView {
 			new Notice('Syncing Anki stats...');
 			try {
 				await this.plugin.statsService.refreshStats();
+				await this.plugin.saveStats();
 			} catch (e) {
 				console.error('[Arete] Failed to sync Anki stats:', e);
 				new Notice('Failed to refresh stats, check that Anki is running.');

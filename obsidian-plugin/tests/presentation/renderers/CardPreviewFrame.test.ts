@@ -97,6 +97,7 @@ describe('renderCardPreviewFrame', () => {
 			workspace: { openLinkText: jest.fn() },
 		};
 		component = new Component();
+		component.load();
 	});
 
 	const render = (dom: ReturnType<typeof makeDom>, html = '<p>hi</p>', css = '.card{x:1}') =>

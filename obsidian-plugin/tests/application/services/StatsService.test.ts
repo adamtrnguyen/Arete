@@ -381,4 +381,50 @@ describe('StatsService', () => {
 		const stats = await service.refreshStats();
 		expect(stats[0].cardStats[101].lapses).toBe(5);
 	});
+
+	test('recomputeProblematicCards updates problematicCards, counts, and scores after threshold changes', async () => {
+		service.settings.stats_algorithm = 'fsrs';
+		service.settings.stats_difficulty_threshold = 0.9;
+		service.settings.stats_lapse_threshold = 5;
+
+		const file = { path: 'test.md', name: 'test.md', basename: 'test' } as TFile;
+		(app.vault.getMarkdownFiles as jest.Mock).mockReturnValue([file]);
+		(app.metadataCache.getFileCache as jest.Mock).mockReturnValue({
+			frontmatter: {
+				arete: true,
+				cards: [
+					{ anki: { nid: '101' }, Front: 'Card 1', Back: 'Ans 1' },
+					{ anki: { nid: '102' }, Front: 'Card 2', Back: 'Ans 2' },
+				],
+			},
+		});
+		service.fetchAnkiCardStats = jest.fn().mockResolvedValue([
+			{ noteId: 101, cardId: 1, lapses: 3, ease: 2500, difficulty: 0.8, deckName: 'D1' },
+			{ noteId: 102, cardId: 2, lapses: 0, ease: 2500, difficulty: 0.4, deckName: 'D1' },
+		]);
+
+		await service.refreshStats();
+		expect(service.getCache().concepts['test.md'].problematicCardsCount).toBe(0);
+		expect(service.getCache().concepts['test.md'].score).toBe(0);
+
+		// Tightening difficulty & lapse thresholds immediately flags card 1.
+		service.settings.stats_difficulty_threshold = 0.75;
+		service.settings.stats_lapse_threshold = 3;
+		service.recomputeProblematicCards();
+
+		const concept = service.getCache().concepts['test.md'];
+		expect(concept.problematicCardsCount).toBe(1);
+		expect(concept.score).toBe(0.5);
+		expect(concept.problematicCards).toHaveLength(1);
+		expect(concept.problematicCards[0].cardId).toBe(1);
+		expect(concept.problematicCards[0].issue).toBe('Lapses: 3, Diff: 8.0/10');
+
+		// Loosening thresholds clears the issue again.
+		service.settings.stats_difficulty_threshold = 0.95;
+		service.settings.stats_lapse_threshold = 10;
+		service.recomputeProblematicCards();
+		expect(concept.problematicCardsCount).toBe(0);
+		expect(concept.problematicCards).toEqual([]);
+		expect(concept.score).toBe(0);
+	});
 });

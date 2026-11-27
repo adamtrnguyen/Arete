@@ -63,7 +63,6 @@ export class LocalGraphView extends ItemView {
 	private simulation: d3.Simulation<GraphNode, GraphLink> | null = null;
 	private _svg: d3.Selection<SVGSVGElement, unknown, null, undefined> | null = null;
 	private tooltipContainer: HTMLElement | null = null;
-	private tooltipComponent: Component = new Component();
 	private renderCardNodes = false;
 	private currentFilePath: string | null = null;
 	private centeredCardId: string | null = null;
@@ -90,7 +89,7 @@ export class LocalGraphView extends ItemView {
 	private layoutCenter = { x: 0, y: 0 };
 	/**
 	 * Parent of what MarkdownRenderer attaches for the current 2D drawing (card-mode nodes
-	 * and hover tooltips). A child of tooltipComponent, unloaded when the drawing goes.
+	 * and hover tooltips). A child of this view, unloaded when the drawing goes.
 	 */
 	private drawingComponent: Component | null = null;
 	/**
@@ -145,9 +144,13 @@ export class LocalGraphView extends ItemView {
 		this.register(() => observer.disconnect());
 
 		// Initial graph build
-		// Ensure we capture initial file
-		const activeFile = this.app.workspace.getActiveFile();
-		if (activeFile) this.currentFilePath = activeFile.path;
+		// Ensure we capture initial file if no explicit context was set first
+		if (!this.currentFilePath) {
+			const activeFile = this.app.workspace.getActiveFile();
+			if (activeFile && activeFile.extension === 'md') {
+				this.currentFilePath = activeFile.path;
+			}
+		}
 		await this.refresh();
 
 		// Register events
@@ -163,8 +166,11 @@ export class LocalGraphView extends ItemView {
 		this.registerEvent(
 			this.app.workspace.on('active-leaf-change', () => {
 				const af = this.app.workspace.getActiveFile();
-				if (af) {
-					this.currentFilePath = af.path;
+				if (af && af.extension === 'md') {
+					if (af.path !== this.currentFilePath) {
+						this.currentFilePath = af.path;
+						this.centeredCardId = null;
+					}
 				}
 				this.scheduleRefresh();
 			}),
@@ -280,6 +286,9 @@ export class LocalGraphView extends ItemView {
 		debugLog('[Arete] Explicit context set:', filePath, cardId);
 		this.currentFilePath = filePath;
 		this.centeredCardId = cardId || null;
+		if (cardId) {
+			this.plugin.setCardContext(filePath, cardId);
+		}
 		await this.refresh();
 	}
 
@@ -307,25 +316,23 @@ export class LocalGraphView extends ItemView {
 
 		// 1. Get Data Resolution Strategy
 		// Priority:
-		// 1. Explicit Active File (if markdown)
-		// 2. Persisted currentFilePath
+		// 1. Explicit / persisted currentFilePath (updated by setContext, clicks, and active-leaf-change)
+		// 2. Active File (if markdown)
 		// 3. Fallback to any open markdown file
 
-		let targetPath: string | null = null;
-
-		const activeFile = this.app.workspace.getActiveFile();
-		if (activeFile && activeFile.extension === 'md') {
-			targetPath = activeFile.path;
-			this.currentFilePath = targetPath; // Update persistence
-		} else if (this.currentFilePath) {
-			targetPath = this.currentFilePath;
-		} else {
-			// Fallback
-			const fallback = this.getFallbackFile();
-			if (fallback) {
-				targetPath = fallback.path;
+		let targetPath: string | null = this.currentFilePath;
+		if (!targetPath) {
+			const activeFile = this.app.workspace.getActiveFile();
+			if (activeFile && activeFile.extension === 'md') {
+				targetPath = activeFile.path;
 				this.currentFilePath = targetPath;
-				debugLog('[Arete] Using fallback file:', targetPath);
+			} else {
+				const fallback = this.getFallbackFile();
+				if (fallback) {
+					targetPath = fallback.path;
+					this.currentFilePath = targetPath;
+					debugLog('[Arete] Using fallback file:', targetPath);
+				}
 			}
 		}
 
@@ -447,12 +454,14 @@ export class LocalGraphView extends ItemView {
 			return;
 		}
 
-		// 3. Render based on view mode
-		if (this.viewMode === '3d') {
-			this.render3DGraph(canvas, nodes, links);
-		} else {
-			this.renderD3Graph(canvas, nodes, links);
-		}
+		// 3. Render based on view mode. If the sidebar collapsed while buildGraph() was
+		// awaiting, leave drawnKey unset so the next visible resize draws the graph.
+		if (canvas.clientWidth === 0 || canvas.clientHeight === 0) return;
+		const rendered =
+			this.viewMode === '3d'
+				? this.render3DGraph(canvas, nodes, links)
+				: this.renderD3Graph(canvas, nodes, links);
+		if (rendered === false || canvas.clientWidth === 0 || canvas.clientHeight === 0) return;
 		this.drawnKey = key;
 		this.drawnSize = { width: canvas.clientWidth, height: canvas.clientHeight };
 	}
@@ -481,7 +490,8 @@ export class LocalGraphView extends ItemView {
 			this.simulation.stop();
 			this.simulation = null;
 		}
-		if (this.drawingComponent) this.tooltipComponent.removeChild(this.drawingComponent);
+		this._svg = null;
+		if (this.drawingComponent) this.removeChild(this.drawingComponent);
 		this.drawingComponent = null;
 		this.tooltipCache.clear();
 		if (this.graph3D) {
@@ -579,19 +589,20 @@ export class LocalGraphView extends ItemView {
 		};
 	}
 
-	renderD3Graph(container: HTMLElement, nodes: GraphNode[], links: GraphLink[]) {
+	renderD3Graph(container: HTMLElement, nodes: GraphNode[], links: GraphLink[]): boolean {
 		this.releaseDrawing();
 		container.empty();
-		const drawingComponent = this.tooltipComponent.addChild(new Component());
-		this.drawingComponent = drawingComponent;
 
-		this.ensureTooltip();
 		const width = container.clientWidth;
 		const height = container.clientHeight;
 
 		if (width === 0 || height === 0) {
-			return; // hidden; the ResizeObserver in onOpen renders once it has a size
+			return false; // hidden; the ResizeObserver in onOpen renders once it has a size
 		}
+
+		const drawingComponent = this.addChild(new Component());
+		this.drawingComponent = drawingComponent;
+		this.ensureTooltip();
 
 		const svg = d3
 			.select(container)
@@ -768,17 +779,7 @@ export class LocalGraphView extends ItemView {
 		// Click Interaction
 		nodeGroup.on('click', (event, d) => {
 			event.stopPropagation(); // prevent zoom click
-
-			// If node is in same file, re-center graph
-			const activeFile = this.app.workspace.getActiveFile();
-			if (activeFile && d.filePath === activeFile.path) {
-				debugLog('[Arete] Switching graph center to:', d.id);
-				this.centeredCardId = d.id;
-				void this.refresh();
-			} else {
-				// Navigate to different file
-				void this.openFile(d.filePath);
-			}
+			this.handleNodeClick(d);
 		});
 
 		nodeGroup.append('title').text((d) => `${d.title}\n(${d.id})`);
@@ -792,6 +793,21 @@ export class LocalGraphView extends ItemView {
 			// Update group positions (handles both circles and cards)
 			nodeGroup.attr('transform', (d: any) => `translate(${d.x},${d.y})`);
 		});
+		return true;
+	}
+
+	private handleNodeClick(node: { id: string; filePath: string }): void {
+		debugLog('[Arete] Switching graph center to:', node.id);
+		this.centeredCardId = node.id;
+		this.currentFilePath = node.filePath;
+		this.plugin.setCardContext(node.filePath, node.id);
+
+		const activeFile = this.app.workspace.getActiveFile();
+		if (activeFile && node.filePath === activeFile.path) {
+			void this.refresh();
+		} else {
+			void this.openFile(node.filePath).then(() => this.refresh());
+		}
 	}
 
 	async openFile(filePath: string) {
@@ -805,7 +821,6 @@ export class LocalGraphView extends ItemView {
 	async onClose() {
 		if (this.refreshTimer) window.clearTimeout(this.refreshTimer);
 		this.releaseDrawing();
-		this.tooltipComponent.unload();
 	}
 
 	/** Colour a 3D drawing from the theme; also the whole of what a theme change redoes. */
@@ -825,7 +840,7 @@ export class LocalGraphView extends ItemView {
 	/**
 	 * Render the graph in 3D using 3d-force-graph.
 	 */
-	render3DGraph(container: HTMLElement, nodes: GraphNode[], links: GraphLink[]) {
+	render3DGraph(container: HTMLElement, nodes: GraphNode[], links: GraphLink[]): boolean {
 		this.releaseDrawing();
 		container.empty();
 
@@ -833,7 +848,7 @@ export class LocalGraphView extends ItemView {
 		const height = container.clientHeight;
 
 		if (width === 0 || height === 0) {
-			return; // hidden; the ResizeObserver in onOpen renders once it has a size
+			return false; // hidden; the ResizeObserver in onOpen renders once it has a size
 		}
 
 		// Transform links for 3d-force-graph (needs source/target as id strings)
@@ -865,10 +880,7 @@ export class LocalGraphView extends ItemView {
 			.linkDirectionalArrowLength((link: any) => (link.type === 'requires' ? 4 : 0))
 			.linkDirectionalArrowRelPos(1)
 			.onNodeClick((node: any) => {
-				debugLog('[Arete] Clicked:', node.id);
-				this.centeredCardId = node.id;
-				this.currentFilePath = node.filePath;
-				void this.refresh();
+				this.handleNodeClick(node);
 			});
 		// Theme colours are read once per drawing, and again when the theme changes.
 		this.repaint3D = () => this.paint3D(this.graph3D, resolveGraphColors(container));
@@ -906,5 +918,6 @@ export class LocalGraphView extends ItemView {
 				this.tooltipContainer.removeClass('is-visible');
 			}
 		});
+		return true;
 	}
 }

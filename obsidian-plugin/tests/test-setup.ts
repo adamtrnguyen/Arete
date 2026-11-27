@@ -239,10 +239,20 @@ export const createMockSetting = (): any => {
 
 jest.mock('obsidian', () => {
 	class Component {
+		_loaded = false;
 		private children: Component[] = [];
 		private callbacks: Array<() => void> = [];
+		load() {
+			if (this._loaded) return;
+			this._loaded = true;
+			this.onload();
+			for (const child of [...this.children]) child.load();
+		}
+		onload() {}
+		onunload() {}
 		addChild<T extends Component>(child: T): T {
 			this.children.push(child);
+			if (this._loaded) child.load();
 			return child;
 		}
 		removeChild<T extends Component>(child: T): T {
@@ -254,8 +264,11 @@ jest.mock('obsidian', () => {
 			this.callbacks.push(callback);
 		}
 		unload() {
+			if (!this._loaded) return;
+			this._loaded = false;
 			this.children.splice(0).forEach((c) => c.unload());
 			this.callbacks.splice(0).forEach((cb) => cb());
+			this.onunload();
 		}
 	}
 	const Platform = { isMacOS: false, isMobile: false };
@@ -422,6 +435,7 @@ jest.mock('obsidian', () => {
 			contentEl = (global as any).mockCreateMockElement('div');
 			constructor(_leaf: any) {
 				super();
+				this.load();
 			}
 		},
 		MarkdownRenderer: {

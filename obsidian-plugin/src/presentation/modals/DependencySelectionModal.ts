@@ -77,6 +77,8 @@ export class DependencySelectionModal extends Modal {
 	}
 
 	onOpen() {
+		this._component = new Component();
+		this._component.load();
 		const { contentEl } = this;
 		this.setTitle('Select dependency');
 		this.modalEl.addClass('arete-dependency-modal'); // Apply to parent to control size
@@ -127,7 +129,10 @@ export class DependencySelectionModal extends Modal {
 	onClose() {
 		const { contentEl } = this;
 		contentEl.empty();
-		if (this.previewTimer) window.clearTimeout(this.previewTimer);
+		if (this.previewTimer) {
+			window.clearTimeout(this.previewTimer);
+			this.previewTimer = null;
+		}
 		this.previewRevision++;
 		if (this.previewComponent) {
 			this._component.removeChild(this.previewComponent);

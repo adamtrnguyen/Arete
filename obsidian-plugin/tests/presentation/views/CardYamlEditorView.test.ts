@@ -121,7 +121,6 @@ describe('CardYamlEditorView live reload', () => {
 		});
 		view.editorView = { state: { doc: { toString: () => 'Front: q\nBack: a' } } };
 		view.viewMode = 'source';
-		view.parseYamlToCard = jest.fn().mockReturnValue({ Front: 'q', Back: 'a' });
 		await view.syncToMain();
 		view.onFileParsed(note); // re-parse of that write, arriving after any timer
 		expect(view.syncFromMain).not.toHaveBeenCalled();
