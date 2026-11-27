@@ -18,6 +18,42 @@ from arete.domain.graph import DependencyGraph
 logger = logging.getLogger(__name__)
 
 
+def _canonical_due_ids(graph: DependencyGraph, due_card_ids: list[str]) -> list[str]:
+    """Normalize due IDs to canonical vault casing, deduplicated in input order."""
+    canonical: list[str] = []
+    seen: set[str] = set()
+    for raw_id in due_card_ids:
+        canon = graph.canonical_id(raw_id)
+        if canon is not None and canon not in seen:
+            seen.add(canon)
+            canonical.append(canon)
+    return canonical
+
+
+def _collect_prereq_distances(
+    graph: DependencyGraph, canonical_due: list[str], depth: int
+) -> tuple[dict[str, int], list[str]]:
+    """Collect shortest hop distance for each prerequisite and any unresolved references."""
+    distance: dict[str, int] = {}
+    missing_prereqs: list[str] = []
+
+    def _note_missing(card_id: str) -> None:
+        for ref in graph.unresolved_refs.get(card_id, []):
+            if ref not in missing_prereqs:
+                missing_prereqs.append(ref)
+
+    for card_id in canonical_due:
+        _note_missing(card_id)
+        for prereq_id, hops in _collect_prereqs(graph, card_id, depth).items():
+            if prereq_id in graph.nodes:
+                distance[prereq_id] = min(hops, distance.get(prereq_id, hops))
+                _note_missing(prereq_id)
+
+    for due_id in canonical_due:
+        distance.pop(due_id, None)
+    return distance, missing_prereqs
+
+
 def build_simple_queue(
     vault_root: Path,
     due_card_ids: list[str],
@@ -36,33 +72,8 @@ def build_simple_queue(
     if graph is None:
         graph = build_graph(vault_root)
 
-    # Normalize due ids to canonical vault casing (Anki tags may differ in case).
-    canonical_due: list[str] = []
-    for raw_id in due_card_ids:
-        canon = graph.canonical_id(raw_id)
-        if canon is not None and canon not in canonical_due:
-            canonical_due.append(canon)
-
-    # Collect all prerequisites for due cards, with each one's distance to the nearest
-    # due card (the cap below keeps the nearest).
-    distance: dict[str, int] = {}
-    missing_prereqs: list[str] = []
-
-    def _note_missing(card_id: str) -> None:
-        for ref in graph.unresolved_refs.get(card_id, []):
-            if ref not in missing_prereqs:
-                missing_prereqs.append(ref)
-
-    for card_id in canonical_due:
-        _note_missing(card_id)
-        for prereq_id, hops in _collect_prereqs(graph, card_id, depth).items():
-            if prereq_id in graph.nodes:
-                distance[prereq_id] = min(hops, distance.get(prereq_id, hops))
-                _note_missing(prereq_id)
-
-    # Remove due cards from prereqs (they'll be in main queue)
-    for due_id in canonical_due:
-        distance.pop(due_id, None)
+    canonical_due = _canonical_due_ids(graph, due_card_ids)
+    distance, missing_prereqs = _collect_prereq_distances(graph, canonical_due, depth)
 
     # The cap keeps the nearest prerequisites (ties by id, for a stable result) and
     # reports the rest as dropped.
@@ -167,6 +178,57 @@ def _collect_prereqs(graph: DependencyGraph, card_id: str, depth: int) -> dict[s
     return distance
 
 
+def _build_candidate_subgraph(
+    graph: DependencyGraph, valid: list[str]
+) -> tuple[dict[str, int], dict[str, list[str]]]:
+    """Compute prerequisite in-degrees and dependent adjacency lists within `valid`."""
+    valid_set = set(valid)
+    in_degree: dict[str, int] = dict.fromkeys(valid, 0)
+    dependents: dict[str, list[str]] = {cid: [] for cid in valid}
+    for cid in valid:
+        for prereq_id in graph.get_prerequisites(cid):
+            if prereq_id in valid_set:
+                in_degree[cid] += 1
+                dependents[prereq_id].append(cid)
+    return in_degree, dependents
+
+
+def _kahn_topo_order(
+    valid: list[str],
+    in_degree: dict[str, int],
+    dependents: dict[str, list[str]],
+) -> list[str] | None:
+    """Single-pass lexical Kahn topological order, or None when the subgraph has a cycle."""
+    remaining = dict(in_degree)
+    ready = [cid for cid in valid if remaining[cid] == 0]
+    heapq.heapify(ready)
+    topo_order: list[str] = []
+    while ready:
+        node = heapq.heappop(ready)
+        topo_order.append(node)
+        for dep in dependents[node]:
+            remaining[dep] -= 1
+            if remaining[dep] == 0:
+                heapq.heappush(ready, dep)
+    return topo_order if len(topo_order) == len(valid) else None
+
+
+def _compute_due_reach(
+    valid: list[str],
+    topo_order: list[str],
+    dependents: dict[str, list[str]],
+    due_set: set[str],
+) -> dict[str, set[str]]:
+    """Map each node to the downstream due cards it can unlock (including itself if due)."""
+    due_reach: dict[str, set[str]] = {cid: set() for cid in valid}
+    for node in reversed(topo_order):
+        reach = {node} if node in due_set else set()
+        for dep in dependents[node]:
+            reach.update(due_reach[dep])
+        due_reach[node] = reach
+    return due_reach
+
+
 def _dynamic_frontier_order(
     graph: DependencyGraph,
     candidate_ids: list[str],
@@ -177,54 +239,16 @@ def _dynamic_frontier_order(
         return []
 
     valid = [cid for cid in candidate_ids if cid in graph.nodes]
-    valid_set = set(valid)
+    in_degree, dependents = _build_candidate_subgraph(graph, valid)
 
-    in_degree: dict[str, int] = dict.fromkeys(valid, 0)
-    dependents: dict[str, list[str]] = {cid: [] for cid in valid}
-
-    for cid in valid:
-        for prereq_id in graph.get_prerequisites(cid):
-            if prereq_id in valid_set:
-                in_degree[cid] += 1
-                dependents[prereq_id].append(cid)
-
-    # Probe for cycles in the candidate subgraph; fallback keeps behavior safe.
-    probe_degree = dict(in_degree)
-    probe_ready = [cid for cid in valid if probe_degree[cid] == 0]
-    seen = 0
-    while probe_ready:
-        node = probe_ready.pop()
-        seen += 1
-        for dep in dependents[node]:
-            probe_degree[dep] -= 1
-            if probe_degree[dep] == 0:
-                probe_ready.append(dep)
-    if seen != len(valid):
+    topo_order = _kahn_topo_order(valid, in_degree, dependents)
+    if topo_order is None:
         logger.warning(
             "Dynamic queue candidate subgraph has cycles; falling back to topological_sort."
         )
         return topological_sort(graph, valid)
 
-    # Build a deterministic topological order (lexical ties) for reachability DP.
-    topo_order: list[str] = []
-    topo_degree = dict(in_degree)
-    topo_ready = [cid for cid in valid if topo_degree[cid] == 0]
-    heapq.heapify(topo_ready)
-    while topo_ready:
-        node = heapq.heappop(topo_ready)
-        topo_order.append(node)
-        for dep in dependents[node]:
-            topo_degree[dep] -= 1
-            if topo_degree[dep] == 0:
-                heapq.heappush(topo_ready, dep)
-
-    # due_reach[node] = due cards that this node can unlock downstream (including itself if due)
-    due_reach: dict[str, set[str]] = {cid: set() for cid in valid}
-    for node in reversed(topo_order):
-        reach = {node} if node in due_set else set()
-        for dep in dependents[node]:
-            reach.update(due_reach[dep])
-        due_reach[node] = reach
+    due_reach = _compute_due_reach(valid, topo_order, dependents, due_set)
 
     def score(card_id: str) -> float:
         unlock_score = float(len(due_reach[card_id]))

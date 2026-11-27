@@ -119,47 +119,59 @@ class VaultService:
         i = u.source_index - 1  # a card without an id: position is all there is
         return i if 0 <= i < len(cards) else None
 
+    def _lookup_stat_cache(
+        self, md_file: Path, mtime: float, size: int
+    ) -> tuple[bool, int, str | None, dict[str, Any] | None, bool] | None:
+        """Return a cached quick-check result for unchanged `(mtime, size)`, or None on miss."""
+        if not self.cache or self.ignore_cache:
+            return None
+        try:
+            cached_meta = self.cache.get_file_meta_by_stat(md_file, mtime, size)
+            if cached_meta == NOT_ARETE_META:
+                return (False, 0, "not_arete_file", None, False)
+            if cached_meta and cached_meta.get("arete") is True:
+                cards = cached_meta.get("cards", [])
+                return (True, len(cards), None, cached_meta, False)
+        except Exception as e:
+            self.logger.warning(f"[vault] cache miss (error) for {md_file.name}: {e}")
+        return None
+
+    @staticmethod
+    def _frontmatter_skip_reason(text: str) -> str | None:
+        """Screen frontmatter text before full YAML parsing; return reason or None to parse."""
+        # Inspect frontmatter only (never prose body) so a plain note mentioning `arete:`
+        # in body text is never misclassified as broken YAML.
+        fm = frontmatter_slice(text)
+        if fm == "":
+            return "not_arete_file"
+        if fm is None:
+            return "no_or_bad_yaml" if ("arete" in text or "\\" in text) else "not_arete_file"
+        if "arete" not in fm and "\\" not in fm:
+            return "not_arete_file"
+        return None
+
     def _quick_check_file(
         self, md_file: Path
     ) -> tuple[bool, int, str | None, dict[str, Any] | None, bool]:
         # Returns: (ok, num_cards, reason, meta, is_fresh)
         try:
             st = md_file.stat()
-            mtime = st.st_mtime
-            size = st.st_size
+            mtime, size = st.st_mtime, st.st_size
         except Exception as e:
             return (False, 0, f"stat_error:{e}", None, True)
 
-        if self.cache and not self.ignore_cache:
-            try:
-                cached_meta = self.cache.get_file_meta_by_stat(md_file, mtime, size)
-                if cached_meta == NOT_ARETE_META:
-                    return (False, 0, "not_arete_file", None, False)
-                if cached_meta and cached_meta.get("arete") is True:
-                    cards = cached_meta.get("cards", [])
-                    return (True, len(cards), None, cached_meta, False)
-            except Exception as e:
-                self.logger.warning(f"[vault] cache miss (error) for {md_file.name}: {e}")
+        if (cached := self._lookup_stat_cache(md_file, mtime, size)) is not None:
+            return cached
 
         try:
             text = md_file.read_text(encoding="utf-8", errors="strict")
         except Exception as e:
             return (False, 0, f"read_error:{e}", None, True)
 
-        # Inspect frontmatter only (never prose body) so a plain note mentioning `arete:`
-        # in body text is never misclassified as broken YAML.
-        fm = frontmatter_slice(text)
-        if fm == "":
-            self._not_arete.append((md_file, mtime, size))
-            return (False, 0, "not_arete_file", None, True)
-        if fm is None:
-            if "arete" in text or "\\" in text:
-                return (False, 0, "no_or_bad_yaml", None, True)
-            self._not_arete.append((md_file, mtime, size))
-            return (False, 0, "not_arete_file", None, True)
-        if "arete" not in fm and "\\" not in fm:
-            self._not_arete.append((md_file, mtime, size))
-            return (False, 0, "not_arete_file", None, True)
+        if reason := self._frontmatter_skip_reason(text):
+            if reason == "not_arete_file":
+                self._not_arete.append((md_file, mtime, size))
+            return (False, 0, reason, None, True)
 
         meta, _body = self.parse(md_file, text)
         if "__yaml_error__" in meta:
@@ -268,6 +280,38 @@ class VaultService:
         new_meta, _ = self.parse(md_path, result.text)
         return len(edits), new_meta, {}
 
+    def _apply_file_updates(self, md_path: Path, ups: list[UpdateItem], *, dry_run: bool) -> bool:
+        """Apply nid/cid write-back to a single file; return True when written to disk."""
+        text = read_exact(md_path)
+        meta, _ = self.parse(md_path, text)
+        if not meta or "__yaml_error__" in meta:
+            return False
+        cards = meta.get("cards", [])
+        edits = [
+            (u, CardIds(i, nid=u.new_nid, cid=u.new_cid))
+            for u in ups
+            if (i := self._card_position(cards, u)) is not None
+        ]
+        result = write_card_ids(text, [e for _, e in edits])
+        if result.refused:
+            for u, e in edits:
+                if e.index in result.refused:
+                    why = result.refused[e.index]
+                    self.write_refused.append((md_path, u.source_index, why))
+                    self.logger.error(
+                        f"[write] {md_path.name} #{u.source_index}: not writing its "
+                        f"Anki ids, {why}; the file is unchanged"
+                    )
+            return False
+        if result.text == text:
+            return False
+        if dry_run:
+            self.logger.info(f"[dry-run] Would write nid/cid into {md_path}")
+            return False
+        write_exact(md_path, result.text)
+        self.logger.debug(f"[write] {md_path}: persisted nid/cid into frontmatter")
+        return True
+
     def apply_updates(self, updates: list[UpdateItem], dry_run: bool = False) -> set[Path]:
         """Write new nids/cids into the cards' frontmatter; the files written.
 
@@ -284,34 +328,8 @@ class VaultService:
 
         for md_path, ups in by_file.items():
             try:
-                text = read_exact(md_path)
-                meta, _ = self.parse(md_path, text)
-                if not meta or "__yaml_error__" in meta:
-                    continue
-                cards = meta.get("cards", [])
-                edits: list[tuple[UpdateItem, CardIds]] = []
-                for u in ups:
-                    i = self._card_position(cards, u)
-                    if i is not None:
-                        edits.append((u, CardIds(i, nid=u.new_nid, cid=u.new_cid)))
-                result = write_card_ids(text, [e for _, e in edits])
-                if result.refused:
-                    for u, e in edits:
-                        if e.index in result.refused:
-                            why = result.refused[e.index]
-                            self.write_refused.append((md_path, u.source_index, why))
-                            self.logger.error(
-                                f"[write] {md_path.name} #{u.source_index}: not writing its "
-                                f"Anki ids, {why}; the file is unchanged"
-                            )
-                    continue
-                if result.text != text:
-                    if dry_run:
-                        self.logger.info(f"[dry-run] Would write nid/cid into {md_path}")
-                    else:
-                        write_exact(md_path, result.text)
-                        written.add(md_path)
-                        self.logger.debug(f"[write] {md_path}: persisted nid/cid into frontmatter")
+                if self._apply_file_updates(md_path, ups, dry_run=dry_run):
+                    written.add(md_path)
             except Exception as e:
                 self.logger.error(f"[error] write-updates {md_path.as_posix()}: {e}")
                 self.write_refused += [

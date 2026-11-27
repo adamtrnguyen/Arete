@@ -388,6 +388,11 @@ def queue(
     except Exception as e:
         typer.secho(f"Error: {e}", fg="red", err=True)
         raise typer.Exit(1) from e
+    _print_queue_summary(result, algo, dry_run=dry_run)
+
+
+def _print_queue_summary(result, algo: QueueAlgo, *, dry_run: bool) -> None:
+    """Render human-readable queue output and exit 1 if deck creation failed."""
     if result.due_count == 0:
         typer.secho("No cards found.", fg="yellow")
         return
@@ -566,6 +571,66 @@ def config_open():
 # ---------------------------------------------------------------------------
 
 
+def _print_graph_section(
+    header: str, lines: list[str], *, color: str, empty_label: str | None = None
+) -> None:
+    """Print one section of the dependency graph health report."""
+    if lines:
+        typer.secho(f"\n{header}", fg=color)
+        for line in lines:
+            typer.echo(f"  {line}")
+    elif empty_label:
+        typer.secho(empty_label, fg="green")
+
+
+def _print_graph_health(result) -> None:
+    """Render the human-readable dependency graph health report."""
+    typer.echo(
+        f"Nodes: {result.total_nodes}  Edges: {result.total_edges}"
+        f"  Components: {result.components}  Roots: {result.roots}"
+    )
+    _print_graph_section(
+        f"Cycles: {len(result.cycles)}",
+        [" -> ".join(entry.title for entry in cycle) for cycle in result.cycles],
+        color="red",
+        empty_label="Cycles: 0",
+    )
+    _print_graph_section(
+        f"Isolated cards (no deps in or out): {len(result.isolated_nodes)}",
+        [f"{entry.title}  ({Path(entry.file).name})" for entry in result.isolated_nodes],
+        color="yellow",
+        empty_label="Isolated: 0",
+    )
+    unresolved = [
+        f"{entry.title} -> {ref}  (missing)"
+        for entry in result.unresolved_refs
+        for ref in entry.missing_refs
+    ]
+    _print_graph_section(
+        f"Unresolved references: {len(unresolved)}",
+        unresolved,
+        color="red",
+        empty_label="Unresolved: 0",
+    )
+    if result.components > 1:
+        typer.secho(f"\nConnected components: {result.components}", fg="yellow")
+    _print_graph_section(
+        f"Files that could not be parsed (their cards are missing from the graph): "
+        f"{len(result.skipped_files)}",
+        list(result.skipped_files),
+        color="red",
+    )
+    _print_graph_section(
+        f"Arete ids used by more than one card (only the first is synced/queued): "
+        f"{len(result.duplicate_ids)}",
+        [
+            f"{dup.card_id}: {', '.join(Path(f).name for f in dup.files)}"
+            for dup in result.duplicate_ids
+        ],
+        color="red",
+    )
+
+
 @graph_app.command("check")
 def graph_check(
     path: Annotated[Path | None, typer.Argument(help="Vault path override.")] = None,
@@ -583,62 +648,11 @@ def graph_check(
 
     if json_output:
         typer.echo(json.dumps(asdict(result), indent=2))
-    else:
-        typer.echo(
-            f"Nodes: {result.total_nodes}  Edges: {result.total_edges}"
-            f"  Components: {result.components}  Roots: {result.roots}"
-        )
+        return
 
-        if result.cycles:
-            typer.secho(f"\nCycles: {len(result.cycles)}", fg="red")
-            for cycle in result.cycles:
-                titles = [entry.title for entry in cycle]
-                typer.echo(f"  {' -> '.join(titles)}")
-        else:
-            typer.secho("Cycles: 0", fg="green")
-
-        if result.isolated_nodes:
-            typer.secho(
-                f"\nIsolated cards (no deps in or out): {len(result.isolated_nodes)}",
-                fg="yellow",
-            )
-            for entry in result.isolated_nodes:
-                typer.echo(f"  {entry.title}  ({Path(entry.file).name})")
-        else:
-            typer.secho("Isolated: 0", fg="green")
-
-        if result.unresolved_refs:
-            total_refs = sum(len(e.missing_refs) for e in result.unresolved_refs)
-            typer.secho(f"\nUnresolved references: {total_refs}", fg="red")
-            for entry in result.unresolved_refs:
-                for ref in entry.missing_refs:
-                    typer.echo(f"  {entry.title} -> {ref}  (missing)")
-        else:
-            typer.secho("Unresolved: 0", fg="green")
-
-        if result.components > 1:
-            typer.secho(f"\nConnected components: {result.components}", fg="yellow")
-
-        if result.skipped_files:
-            typer.secho(
-                f"\nFiles that could not be parsed (their cards are missing from the graph): "
-                f"{len(result.skipped_files)}",
-                fg="red",
-            )
-            for entry in result.skipped_files:
-                typer.echo(f"  {entry}")
-
-        if result.duplicate_ids:
-            typer.secho(
-                f"\nArete ids used by more than one card (only the first is synced/queued): "
-                f"{len(result.duplicate_ids)}",
-                fg="red",
-            )
-            for dup in result.duplicate_ids:
-                typer.echo(f"  {dup.card_id}: {', '.join(Path(f).name for f in dup.files)}")
-
-        if not result.ok:
-            raise typer.Exit(1)
+    _print_graph_health(result)
+    if not result.ok:
+        raise typer.Exit(1)
 
 
 @graph_app.command("export")

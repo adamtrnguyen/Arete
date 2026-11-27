@@ -1,448 +1,495 @@
-"""Tests for DirectStatsRepository — SQLite-based stats fetching."""
+"""Tests for DirectStatsRepository against real tmp_path Anki collections.
 
-from unittest.mock import MagicMock, patch
+Exercises card stats, FSRS-6 memory state, revlog aggregates, review history
+(including ``time_ms`` and chunked merging), deck FSRS params, and filtered-deck
+home-deck resolution against real Anki 26 SQLite collections. Minimal typed fakes
+are used only for unopenable-collection and mid-query DB error propagation.
+"""
+
+from __future__ import annotations
+
+import json
+from collections.abc import Iterator
+from contextlib import contextmanager
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
+from anki.collection import Collection
 
+from arete.application.stats.metrics_calculator import MetricsCalculator
+from arete.application.stats.service import FsrsStatsService
 from arete.infrastructure.adapters.stats import DirectStatsRepository
+from arete.infrastructure.adapters.stats.direct_stats import _SQL_CHUNK
+from tests.e2e.conftest import PROFILE, make_anki_base
+
+# ---------------------------------------------------------------------------
+# Helpers & minimal typed fakes
+# ---------------------------------------------------------------------------
+
+
+@contextmanager
+def _open_col(base: Path) -> Iterator[Collection]:
+    col = Collection(str(base / PROFILE / "collection.anki2"))
+    try:
+        yield col
+    finally:
+        col.close()
+
+
+def _add_note(
+    col: Collection,
+    *,
+    deck: str = "Default",
+    front: str = "Q",
+    back: str = "A",
+    model: str = "Basic",
+) -> tuple[int, list[int]]:
+    did = col.decks.id(deck)
+    assert did is not None
+    notetype = col.models.by_name(model)
+    assert notetype is not None
+    note = col.new_note(notetype)
+    if model == "Cloze":
+        note["Text"] = front
+    else:
+        note["Front"] = front
+        note["Back"] = back
+    col.add_note(note, did)
+    return int(note.id), [int(c) for c in note.card_ids()]
+
+
+class _NullCollectionRepo:
+    """Typed fake simulating an AnkiRepository whose collection did not open."""
+
+    def __init__(self, _base: Path | None = None):
+        """Initialize with `col = None`."""
+        self.col = None
+
+    def __enter__(self) -> _NullCollectionRepo:
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        return None
+
+
+class _FailingRevlogRepo:
+    """Typed fake whose cards query succeeds and whose revlog query raises."""
+
+    def __init__(self, _base: Path | None = None):
+        """Initialize with a db stub that fails on the revlog query."""
+
+        class _Db:
+            def all(self, query: str, *_args):
+                if query.startswith("SELECT nid, id FROM cards"):
+                    return [(3, 301)]
+                raise RuntimeError("locked")
+
+        self.col = SimpleNamespace(db=_Db())
+
+    def __enter__(self) -> _FailingRevlogRepo:
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        return None
+
+
+class _FailingGetCardRepo:
+    """Typed fake whose `get_card` raises for the first card."""
+
+    def __init__(self, _base: Path | None = None):
+        """Initialize with a collection whose `get_card` raises."""
+
+        class _Db:
+            def all(self, query: str, *_args):
+                if query.startswith("SELECT nid, id FROM cards"):
+                    return [(1, 101), (2, 201)]
+                return []
+
+        def _get_card(_cid):
+            raise RuntimeError("bad card")
+
+        self.col = SimpleNamespace(db=_Db(), get_card=_get_card)
+
+    def __enter__(self) -> _FailingGetCardRepo:
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        return None
 
 
 @pytest.fixture
-def mock_repo():
-    """Patch AnkiRepository so no real Anki collection is needed."""
-    with patch("arete.infrastructure.adapters.stats.direct_stats.AnkiRepository") as MockRepo:
-        mock_instance = MockRepo.return_value
-        mock_instance.__enter__ = MagicMock(return_value=mock_instance)
-        mock_instance.__exit__ = MagicMock(return_value=False)
-        mock_instance.col = MagicMock()
-        mock_instance.col.db = MagicMock()
-        yield mock_instance
+def anki_base(tmp_path: Path) -> Path:
+    return make_anki_base(tmp_path / "anki")
 
 
-def _make_card(cid=101, nid=1, lapses=0, factor=2500, ivl=10, due=0, reps=5, did=1):
-    """Create a mock card object."""
-    card = MagicMock()
-    card.id = cid
-    card.nid = nid
-    card.lapses = lapses
-    card.factor = factor
-    card.ivl = ivl
-    card.due = due
-    card.reps = reps
-    card.did = did
-    card.memory_state = None  # No FSRS by default
-    return card
-
-
-# ---------- get_card_stats ----------
+# ---------------------------------------------------------------------------
+# get_card_stats
+# ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_get_card_stats_empty_nids(mock_repo):
+async def test_get_card_stats_empty_nids(anki_base: Path):
     """Empty NID list returns empty list immediately."""
-    repo = DirectStatsRepository(anki_base=None)
-    result = await repo.get_card_stats([])
-    assert result == []
+    repo = DirectStatsRepository(anki_base=anki_base)
+    assert await repo.get_card_stats([]) == []
 
 
 @pytest.mark.asyncio
-async def test_get_card_stats_no_collection(mock_repo):
+async def test_get_card_stats_no_collection():
     """A collection that did not open raises: no stats would read as no cards."""
-    mock_repo.col = None
-    repo = DirectStatsRepository(anki_base=None)
-    with pytest.raises(OSError, match="did not open"):
-        await repo.get_card_stats([1])
-
-
-def _db(mock_repo, cards: dict[int, list[int]], revlog: list[tuple] = ()):
-    """Answer the two grouped queries: cards per note, revlog aggregates per card.
-
-    ``revlog`` rows are (cid, ease, count, max_id, time_sum).
-    """
-
-    def all_(query, *args):
-        if query.startswith("SELECT nid, id FROM cards"):
-            return [(nid, cid) for nid in args for cid in cards.get(nid, [])]
-        if query.startswith("SELECT cid, ease"):
-            return [row for row in revlog if row[0] in args]
-        raise AssertionError(query)
-
-    mock_repo.col.db.all.side_effect = all_
+    with patch(
+        "arete.infrastructure.adapters.stats.direct_stats.AnkiRepository",
+        _NullCollectionRepo,
+    ):
+        with pytest.raises(OSError, match="did not open"):
+            await DirectStatsRepository(anki_base=None).get_card_stats([1])
 
 
 @pytest.mark.asyncio
-async def test_get_card_stats_basic(mock_repo):
-    """Basic stats fetching with a single NID."""
-    card = _make_card(cid=101, nid=1, lapses=3, factor=2500, ivl=14, due=1700000000, reps=20)
-    _db(mock_repo, {1: [101]})
-    mock_repo.col.get_card.return_value = card
-    mock_repo.col.decks.get.return_value = {"name": "Science"}
+async def test_get_card_stats_basic(anki_base: Path):
+    """Basic stats fetching from a real Anki collection."""
+    with _open_col(anki_base) as col:
+        nid, [cid] = _add_note(
+            col, deck="Science", front="What is DNA?", back="Deoxyribonucleic acid"
+        )
+        card = col.get_card(cid)
+        card.lapses = 3
+        card.factor = 2500
+        card.ivl = 14
+        card.due = 42
+        card.reps = 20
+        col.update_card(card)
 
-    note = MagicMock()
-    note.fields = ["What is DNA?", "Deoxyribonucleic acid"]
-    mock_repo.col.get_note.return_value = note
-
-    repo = DirectStatsRepository(anki_base=None)
-    result = await repo.get_card_stats([1])
+    result = await DirectStatsRepository(anki_base=anki_base).get_card_stats([nid])
 
     assert len(result) == 1
     s = result[0]
-    assert s.card_id == 101
-    assert s.note_id == 1
+    assert s.card_id == cid
+    assert s.note_id == nid
     assert s.lapses == 3
     assert s.ease == 2500
     assert s.deck_name == "Science"
     assert s.interval == 14
-    assert s.due == 1700000000
+    assert s.due == 42
     assert s.reps == 20
     assert s.front == "What is DNA?"
-    assert s.fsrs is None  # No memory_state set
+    assert s.fsrs is None
     assert (s.last_review, s.average_time_ms, s.answer_distribution) == (None, 0, {})
 
 
 @pytest.mark.asyncio
-async def test_get_card_stats_with_fsrs_memory_state(mock_repo):
-    """FSRS memory state is extracted when card.memory_state is present."""
-    card = _make_card(cid=201, nid=2)
-    ms = MagicMock()
-    ms.difficulty = 7.5
-    ms.stability = 30.0
-    card.memory_state = ms
+async def test_get_card_stats_fsrs6_memory_state_and_last_review_fallback(anki_base: Path):
+    """Real Anki 26 Card memory_state, decay, desired_retention, and last_review_time fallback."""
+    with _open_col(anki_base) as col:
+        from anki.cards import FSRSMemoryState  # after anki.collection to avoid import cycle
 
-    _db(mock_repo, {2: [201]})
-    mock_repo.col.get_card.return_value = card
-    mock_repo.col.decks.get.return_value = {"name": "Default"}
-    mock_repo.col.get_note.return_value = MagicMock(fields=["Q"])
+        nid, [cid] = _add_note(col, front="Q")
+        card = col.get_card(cid)
+        card.memory_state = FSRSMemoryState(stability=30.0, difficulty=7.5)
+        card.decay = 0.22
+        card.desired_retention = 0.85
+        card.last_review_time = 1_700_005_678
+        col.update_card(card)
 
-    repo = DirectStatsRepository(anki_base=None)
-    result = await repo.get_card_stats([2])
+    [s] = await DirectStatsRepository(anki_base=anki_base).get_card_stats([nid])
 
-    assert len(result) == 1
-    s = result[0]
     assert s.fsrs is not None
-    assert s.fsrs.difficulty == 0.75  # normalised 0-1, same units as the AnkiConnect path
-    assert s.fsrs.stability == 30.0
-    assert s.fsrs.retrievability is None  # Computed by application layer
+    assert s.fsrs.difficulty == pytest.approx(0.75)  # normalised 0-1, matching AnkiConnect
+    assert s.fsrs.stability == pytest.approx(30.0)
+    assert s.fsrs.retrievability is None  # computed by application layer
+    assert s.fsrs.decay == pytest.approx(0.22)
+    assert s.fsrs.desired_retention == pytest.approx(0.85)
+    assert s.last_review == 1_700_005_678
 
 
 @pytest.mark.asyncio
-async def test_get_card_stats_deck_missing(mock_repo):
-    """When deck lookup returns None, deck_name is 'Unknown'."""
-    card = _make_card(cid=501, nid=5, did=9999)
-    _db(mock_repo, {5: [501]})
-    mock_repo.col.get_card.return_value = card
-    mock_repo.col.decks.get.return_value = None
-    mock_repo.col.get_note.return_value = MagicMock(fields=["Q"])
+async def test_get_card_stats_deck_missing_and_orphaned_note(anki_base: Path):
+    """Deleted deck falls back via Anki's decks.get without crashing; deleted note gives front=None."""
+    with _open_col(anki_base) as col:
+        gone_did = col.decks.id("Gone")
+        assert gone_did is not None
+        nid_gone_deck, [cid_gone_deck] = _add_note(col, front="Has note")
+        col.decks.remove([gone_did])
+        col.db.execute("UPDATE cards SET did = ? WHERE id = ?", gone_did, cid_gone_deck)
 
-    repo = DirectStatsRepository(anki_base=None)
-    result = await repo.get_card_stats([5])
+        nid_orphan, _ = _add_note(col, front="Will be deleted")
+        col.db.execute("DELETE FROM notes WHERE id = ?", nid_orphan)
 
-    assert result[0].deck_name == "Unknown"
-
-
-@pytest.mark.asyncio
-async def test_get_card_stats_note_fields_empty(mock_repo):
-    """When note has empty fields list, front is None."""
-    card = _make_card(cid=601, nid=6)
-    _db(mock_repo, {6: [601]})
-    mock_repo.col.get_card.return_value = card
-    mock_repo.col.decks.get.return_value = {"name": "Default"}
-    mock_repo.col.get_note.return_value = MagicMock(fields=[])
-
-    repo = DirectStatsRepository(anki_base=None)
-    result = await repo.get_card_stats([6])
-
-    assert result[0].front is None
+    stats = await DirectStatsRepository(anki_base=anki_base).get_card_stats(
+        [nid_gone_deck, nid_orphan]
+    )
+    by_nid = {s.note_id: s for s in stats}
+    assert by_nid[nid_gone_deck].deck_name == "Default"
+    assert by_nid[nid_gone_deck].front == "Has note"
+    assert by_nid[nid_orphan].front is None
 
 
 @pytest.mark.asyncio
-async def test_get_card_stats_note_error_handled(mock_repo):
-    """Exception when fetching note doesn't crash; front is None."""
-    card = _make_card(cid=701, nid=7)
-    _db(mock_repo, {7: [701]})
-    mock_repo.col.get_card.return_value = card
-    mock_repo.col.decks.get.return_value = {"name": "Default"}
-    mock_repo.col.get_note.side_effect = Exception("Note not found")
+async def test_get_card_stats_revlog_aggregates_and_answer_distribution(anki_base: Path):
+    """Last review, truncated mean review time, and answer distribution come from real revlog."""
+    with _open_col(anki_base) as col:
+        nid, [cid] = _add_note(col, front="Q")
+        rows = [
+            # rating 1 (Again) x2, rating 3 (Good) x2, rating 4 (Easy) x1
+            # total time = 5000 + 2000 + 1000 + 1001 + 1000 = 10001 -> int(10001 / 5) = 2000
+            (1_700_000_000_000, cid, -1, 1, 1, 0, 2500, 5000, 1),
+            (1_695_000_000_000, cid, -1, 1, 1, 0, 2500, 2000, 1),
+            (1_690_000_000_000, cid, -1, 3, 5, 1, 2500, 1000, 1),
+            (1_685_000_000_000, cid, -1, 3, 10, 5, 2500, 1001, 1),
+            (1_680_000_000_000, cid, -1, 4, 15, 10, 2500, 1000, 1),
+        ]
+        col.db.executemany(
+            "INSERT INTO revlog (id, cid, usn, ease, ivl, lastIvl, factor, time, type) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            rows,
+        )
 
-    repo = DirectStatsRepository(anki_base=None)
-    result = await repo.get_card_stats([7])
-
-    assert result[0].front is None
-
-
-@pytest.mark.asyncio
-async def test_get_card_stats_last_review_and_average_from_revlog(mock_repo):
-    """Last review is the newest revlog id over all ratings; the average spans them all."""
-    card = _make_card(cid=801, nid=8)
-    _db(mock_repo, {8: [801]}, [(801, 1, 1, 1700000000000, 5000), (801, 3, 2, 1690000000000, 4001)])
-    mock_repo.col.get_card.return_value = card
-    mock_repo.col.decks.get.return_value = {"name": "Default"}
-    mock_repo.col.get_note.return_value = MagicMock(fields=["Q"])
-
-    repo = DirectStatsRepository(anki_base=None)
-    result = await repo.get_card_stats([8])
-
-    assert result[0].last_review == 1700000000  # ms -> seconds
-    assert result[0].average_time_ms == 3000  # int(9001 / 3)
+    [s] = await DirectStatsRepository(anki_base=anki_base).get_card_stats([nid])
+    assert s.last_review == 1_700_000_000
+    assert s.average_time_ms == 2000
+    assert s.answer_distribution == {1: 2, 3: 2, 4: 1}
 
 
 @pytest.mark.asyncio
-async def test_get_card_stats_answer_distribution(mock_repo):
-    """Answer distribution is correctly built from revlog grouping."""
-    card = _make_card(cid=901, nid=9)
-    _db(mock_repo, {9: [901]}, [(901, 1, 2, 1, 0), (901, 3, 10, 2, 0), (901, 4, 5, 3, 0)])
-    mock_repo.col.get_card.return_value = card
-    mock_repo.col.decks.get.return_value = {"name": "Default"}
-    mock_repo.col.get_note.return_value = MagicMock(fields=["Q"])
+async def test_get_card_stats_multiple_cards_per_note(anki_base: Path):
+    """A Cloze note with multiple cards returns stats for each card."""
+    with _open_col(anki_base) as col:
+        nid, cids = _add_note(col, model="Cloze", front="{{c1::alpha}} and {{c2::beta}}")
+        assert len(cids) == 2
+        card_b = col.get_card(cids[1])
+        card_b.lapses = 2
+        col.update_card(card_b)
 
-    repo = DirectStatsRepository(anki_base=None)
-    result = await repo.get_card_stats([9])
-
-    dist = result[0].answer_distribution
-    assert dist[1] == 2  # Again x2
-    assert dist[3] == 10  # Good x10
-    assert dist[4] == 5  # Easy x5
+    result = await DirectStatsRepository(anki_base=anki_base).get_card_stats([nid])
+    assert [s.card_id for s in result] == sorted(cids)
+    by_cid = {s.card_id: s for s in result}
+    assert by_cid[cids[0]].lapses == 0
+    assert by_cid[cids[1]].lapses == 2
 
 
 @pytest.mark.asyncio
-async def test_get_card_stats_multiple_cards_per_note(mock_repo):
-    """A note with multiple cards returns stats for each card; the note is read once."""
-    card_a = _make_card(cid=1001, nid=10)
-    card_b = _make_card(cid=1002, nid=10, lapses=1)
+async def test_filtered_deck_queued_card_resolves_home_deck_and_safe_deck_params(anki_base: Path):
+    """Real Anki 26 filtered deck: card.odid resolves home deck and filtered deck lacks `conf`."""
+    with _open_col(anki_base) as col:
+        from anki.cards import FSRSMemoryState  # after anki.collection to avoid import cycle
 
-    _db(mock_repo, {10: [1001, 1002]})
-    mock_repo.col.get_card.side_effect = [card_a, card_b]
-    mock_repo.col.decks.get.return_value = {"name": "Default"}
-    mock_repo.col.get_note.return_value = MagicMock(fields=["Q"])
+        math_did = col.decks.id("Math")
+        assert math_did is not None
+        base_cfg = col.decks.get_config(1)
+        assert base_cfg is not None
+        cfg_id = col.decks.add_config_returning_id("MathCfg", base_cfg)
+        cfg = col.decks.get_config(cfg_id)
+        assert cfg is not None
+        cfg["desiredRetention"] = 0.85
+        cfg["fsrsParams6"] = [0.2] * 20 + [0.35]
+        col.decks.update_config(cfg)
+        math_deck = col.decks.get(math_did)
+        assert math_deck is not None
+        col.decks.set_config_id_for_deck_dict(math_deck, cfg_id)
 
-    repo = DirectStatsRepository(anki_base=None)
-    result = await repo.get_card_stats([10])
+        nid, [cid] = _add_note(col, deck="Math", front="Home Deck Q", back="A")
+        card = col.get_card(cid)
+        card.memory_state = FSRSMemoryState(stability=10.0, difficulty=5.5)
+        card.decay = 0.18
+        card.desired_retention = 0.85
+        col.update_card(card)
 
+        fdid = col.decks.new_filtered("Arete::Queue")
+        fdeck = col.decks.get(fdid)
+        assert fdeck is not None
+        assert "conf" not in fdeck  # Real Anki 26 filtered decks have no 'conf' key
+        fdeck["terms"] = [[f"cid:{cid}", 1, 0]]
+        col.decks.save(fdeck)
+        col.sched.rebuild_filtered_deck(fdid)
+
+        queued_card = col.get_card(cid)
+        assert queued_card.did == fdid
+        assert queued_card.odid == math_did
+
+    repo = DirectStatsRepository(anki_base=anki_base)
+
+    # Direct deck-param lookup on a filtered deck degrades safely to defaults (no KeyError).
+    fparams = await repo.get_deck_params(["Arete::Queue"])
+    assert fparams["Arete::Queue"] == {
+        "desired_retention": 0.9,
+        "weights": [],
+        "sm2_retention": 0.9,
+    }
+
+    # Card stats resolve the card's home deck via `card.odid`.
+    [stat] = await repo.get_card_stats([nid])
+    assert stat.deck_name == "Math"
+
+    # Full FsrsStatsService enrichment uses the home deck's FSRS-6 config.
+    service = FsrsStatsService(repo=repo, calculator=MetricsCalculator())
+    [enriched] = await service.get_enriched_stats([nid])
+    assert enriched.deck_name == "Math"
+    assert enriched.desired_retention == pytest.approx(0.85)
+    assert len(enriched.weights) == 21
+    assert enriched.weights[20] == pytest.approx(0.35)
+
+
+@pytest.mark.asyncio
+async def test_get_card_stats_errors_propagate():
+    """Failed card reads or revlog queries raise rather than returning partial stats."""
+    with patch(
+        "arete.infrastructure.adapters.stats.direct_stats.AnkiRepository",
+        _FailingGetCardRepo,
+    ):
+        with pytest.raises(RuntimeError, match="bad card"):
+            await DirectStatsRepository(anki_base=None).get_card_stats([1, 2])
+
+    with patch(
+        "arete.infrastructure.adapters.stats.direct_stats.AnkiRepository",
+        _FailingRevlogRepo,
+    ):
+        with pytest.raises(RuntimeError, match="locked"):
+            await DirectStatsRepository(anki_base=None).get_card_stats([3])
+
+
+# ---------------------------------------------------------------------------
+# get_review_history
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_get_review_history_empty_and_no_collection(anki_base: Path):
+    assert await DirectStatsRepository(anki_base=anki_base).get_review_history([]) == []
+    with patch(
+        "arete.infrastructure.adapters.stats.direct_stats.AnkiRepository",
+        _NullCollectionRepo,
+    ):
+        with pytest.raises(OSError, match="did not open"):
+            await DirectStatsRepository(anki_base=None).get_review_history([101])
+
+
+@pytest.mark.asyncio
+async def test_get_review_history_basic_and_time_ms(anki_base: Path):
+    """Review history parses timestamps, intervals, ratings, and time_ms from real revlog."""
+    with _open_col(anki_base) as col:
+        _, [cid] = _add_note(col, front="Q")
+        col.db.executemany(
+            "INSERT INTO revlog (id, cid, usn, ease, ivl, lastIvl, factor, time, type) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                (1_690_000_000_000, cid, -1, 2, -600, 0, 2500, 1800, 0),
+                (1_700_000_000_000, cid, -1, 3, 7, 1, 2500, 4200, 1),
+            ],
+        )
+
+    result = await DirectStatsRepository(anki_base=anki_base).get_review_history([cid])
     assert len(result) == 2
-    assert result[0].card_id == 1001
-    assert result[1].card_id == 1002
-    assert result[1].lapses == 1
-    assert mock_repo.col.get_note.call_count == 1
-    assert mock_repo.col.decks.get.call_count == 1
+    assert result[0].card_id == cid
+    assert result[0].review_time == 1_690_000_000
+    assert result[0].rating == 2
+    assert result[0].time_ms == 1800
+    assert result[1].review_time == 1_700_000_000
+    assert result[1].rating == 3
+    assert result[1].interval == 7
+    assert result[1].last_interval == 1
+    assert result[1].time_ms == 4200
 
 
 @pytest.mark.asyncio
-async def test_get_card_stats_a_card_that_cannot_be_read_raises(mock_repo):
-    """Stats with a card missing would look complete."""
-    _db(mock_repo, {1: [101], 2: [201]})
-    card = _make_card(cid=201, nid=2)
-    mock_repo.col.get_card.side_effect = [Exception("bad card"), card]
-    mock_repo.col.decks.get.return_value = {"name": "Default"}
-    mock_repo.col.get_note.return_value = MagicMock(fields=["Q2"])
-
-    repo = DirectStatsRepository(anki_base=None)
-    with pytest.raises(Exception, match="bad card"):
-        await repo.get_card_stats([1, 2])
-
-
-@pytest.mark.asyncio
-async def test_get_card_stats_a_failed_revlog_query_raises(mock_repo):
-    """Its cards would read as never reviewed."""
-
-    def all_(query, *args):
-        if query.startswith("SELECT nid, id FROM cards"):
-            return [(3, 301)]
-        raise RuntimeError("locked")
-
-    mock_repo.col.db.all.side_effect = all_
-    mock_repo.col.get_card.return_value = _make_card(cid=301, nid=3)
-    mock_repo.col.decks.get.return_value = {"name": "Default"}
-    mock_repo.col.get_note.return_value = MagicMock(fields=["Q"])
-
-    with pytest.raises(RuntimeError, match="locked"):
-        await DirectStatsRepository(anki_base=None).get_card_stats([3])
-
-
-# ---------- get_review_history ----------
-
-
-@pytest.mark.asyncio
-async def test_get_review_history_empty_cids(mock_repo):
-    """Empty CID list returns empty list immediately."""
-    repo = DirectStatsRepository(anki_base=None)
-    result = await repo.get_review_history([])
-    assert result == []
-
-
-@pytest.mark.asyncio
-async def test_get_review_history_no_collection(mock_repo):
-    """A collection that did not open raises: no history would read as never reviewed."""
-    mock_repo.col = None
-    repo = DirectStatsRepository(anki_base=None)
-    with pytest.raises(OSError, match="did not open"):
-        await repo.get_review_history([101])
-
-
-@pytest.mark.asyncio
-async def test_get_review_history_basic(mock_repo):
-    """Review history entries are parsed correctly from revlog rows."""
-    # Simulate PRAGMA returning columns without 'data'
-    mock_repo.col.db.execute.side_effect = [
-        [
-            (0, "id", "", 0, None, 0),
-            (1, "cid", "", 0, None, 0),
-            (2, "ease", "", 0, None, 0),
-            (3, "ivl", "", 0, None, 0),
-            (4, "lastIvl", "", 0, None, 0),
-            (5, "time", "", 0, None, 0),
-            (6, "type", "", 0, None, 0),
-        ],  # PRAGMA table_info
-        [  # SELECT query results (id, cid, ease, ivl, lastIvl, time)
-            (1700000000000, 101, 3, 7, 1, 4200),
-            (1690000000000, 101, 2, 1, 0, 1800),
-        ],
-    ]
-
-    repo = DirectStatsRepository(anki_base=None)
-    result = await repo.get_review_history([101])
-
-    assert len(result) == 2
-    assert result[0].card_id == 101
-    assert result[0].rating == 3
-    assert result[0].interval == 7
-    assert result[0].review_time == 1700000000  # ms to seconds
-    assert result[0].time_ms == 4200
-    assert result[1].time_ms == 1800
-
-
-@pytest.mark.asyncio
-async def test_get_review_history_with_fsrs_data(mock_repo):
-    """When revlog has 'data' column with FSRS JSON, it is extracted."""
-    import json
-
+async def test_get_review_history_with_fsrs_data_column(anki_base: Path):
+    """When revlog has a `data` column with FSRS JSON, s/d/r and time_ms are all extracted."""
     fsrs_data = json.dumps({"s": 15.0, "d": 5.0, "r": 0.92})
+    with _open_col(anki_base) as col:
+        _, [cid] = _add_note(col, front="Q")
+        cols = [c[1] for c in col.db.execute("PRAGMA table_info(revlog)")]
+        if "data" not in cols:
+            col.db.execute("ALTER TABLE revlog ADD COLUMN data TEXT NOT NULL DEFAULT ''")
+        col.db.execute(
+            "INSERT INTO revlog (id, cid, usn, ease, ivl, lastIvl, factor, time, type, data) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            1_700_000_000_000,
+            cid,
+            -1,
+            3,
+            7,
+            1,
+            2500,
+            3500,
+            1,
+            fsrs_data,
+        )
 
-    mock_repo.col.db.execute.side_effect = [
-        [
-            (0, "id", "", 0, None, 0),
-            (1, "cid", "", 0, None, 0),
-            (2, "ease", "", 0, None, 0),
-            (3, "ivl", "", 0, None, 0),
-            (4, "lastIvl", "", 0, None, 0),
-            (5, "time", "", 0, None, 0),
-            (6, "type", "", 0, None, 0),
-            (7, "data", "", 0, None, 0),
-        ],  # has 'data' column
-        [  # SELECT results with time + data column
-            (1700000000000, 101, 3, 7, 1, 3500, fsrs_data),
-        ],
-    ]
-
-    repo = DirectStatsRepository(anki_base=None)
-    result = await repo.get_review_history([101])
-
-    assert len(result) == 1
-    assert result[0].stability == 15.0
-    assert result[0].difficulty == 5.0
-    assert result[0].retrievability == 0.92
-    assert result[0].time_ms == 3500
-
-
-# ---------- get_deck_params ----------
+    [entry] = await DirectStatsRepository(anki_base=anki_base).get_review_history([cid])
+    assert entry.stability == 15.0
+    assert entry.difficulty == 5.0
+    assert entry.retrievability == 0.92
+    assert entry.time_ms == 3500
 
 
 @pytest.mark.asyncio
-async def test_get_deck_params_no_collection(mock_repo):
-    """A collection that did not open raises."""
-    mock_repo.col = None
-    repo = DirectStatsRepository(anki_base=None)
-    with pytest.raises(OSError, match="did not open"):
-        await repo.get_deck_params(["MyDeck"])
-
-
-@pytest.mark.asyncio
-async def test_get_deck_params_success(mock_repo):
-    """Deck FSRS params are correctly extracted from config."""
-    deck = {"name": "MyDeck", "conf": 1}
-    mock_repo.col.decks.by_name.return_value = deck
-    config = {
-        "desiredRetention": 0.85,
-        "sm2Retention": 0.88,
-        "fsrsWeights": [],
-        "fsrsParams5": [],
-        "fsrsParams6": [0.4, 0.6, 2.4, 5.8],
-    }
-    mock_repo.col.decks.get_config.return_value = config
-
-    repo = DirectStatsRepository(anki_base=None)
-    result = await repo.get_deck_params(["MyDeck"])
-
-    assert "MyDeck" in result
-    assert result["MyDeck"]["desired_retention"] == 0.85
-    assert result["MyDeck"]["weights"] == [0.4, 0.6, 2.4, 5.8]
-
-
-@pytest.mark.asyncio
-async def test_get_deck_params_deck_not_found(mock_repo):
-    """When deck doesn't exist, default params are returned (matching ConnectStatsRepository)."""
-    mock_repo.col.decks.by_name.return_value = None
-
-    repo = DirectStatsRepository(anki_base=None)
-    result = await repo.get_deck_params(["NonExistent"])
-
-    assert result == {
-        "NonExistent": {"desired_retention": 0.9, "weights": [], "sm2_retention": 0.9}
-    }
-
-
-@pytest.mark.asyncio
-async def test_get_deck_params_config_not_found(mock_repo):
-    """When config lookup returns None, default params are returned."""
-    mock_repo.col.decks.by_name.return_value = {"name": "X", "conf": 99}
-    mock_repo.col.decks.get_config.return_value = None
-
-    repo = DirectStatsRepository(anki_base=None)
-    result = await repo.get_deck_params(["X"])
-
-    assert result == {"X": {"desired_retention": 0.9, "weights": [], "sm2_retention": 0.9}}
-
-
-@pytest.mark.asyncio
-async def test_get_review_history_chunks_over_sql_chunk_and_sorts(mock_repo):
-    """Large CID lists are chunked under SQLite's variable limit and merged in chronological order."""
-    from arete.infrastructure.adapters.stats.direct_stats import _SQL_CHUNK
-
+async def test_get_review_history_chunks_over_sql_chunk_and_sorts(anki_base: Path):
+    """Large CID lists are chunked under SQLite's variable limit and merged chronologically."""
     cids = list(range(1, _SQL_CHUNK + 25))
-    mock_repo.col.db.execute.side_effect = [
-        [(0, "id", "", 0, None, 0), (1, "cid", "", 0, None, 0)],  # PRAGMA
-        [(2000000000000, 1, 3, 7, 1, 2500)],  # chunk 1
-        [(1000000000000, _SQL_CHUNK + 1, 2, 1, 0, 1500)],  # chunk 2 (older review)
-    ]
-    repo = DirectStatsRepository(anki_base=None)
+    with _open_col(anki_base) as col:
+        col.db.executemany(
+            "INSERT INTO revlog (id, cid, usn, ease, ivl, lastIvl, factor, time, type) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                (2_000_000_000_000, 1, -1, 3, 7, 1, 2500, 2500, 1),
+                (1_000_000_000_000, _SQL_CHUNK + 1, -1, 2, 1, 0, 2500, 1500, 1),
+            ],
+        )
+
+    repo = DirectStatsRepository(anki_base=anki_base)
     result = await repo.get_review_history(cids)
-    assert [r.review_time for r in result] == [1000000000, 2000000000]
-    assert mock_repo.col.db.execute.call_count == 3
+    assert [r.review_time for r in result] == [1_000_000_000, 2_000_000_000]
+    assert [r.time_ms for r in result] == [1500, 2500]
     await repo.close()
 
 
+# ---------------------------------------------------------------------------
+# get_deck_params
+# ---------------------------------------------------------------------------
+
+
 @pytest.mark.asyncio
-async def test_get_card_stats_extracts_fsrs6_fields_and_last_review_fallback(mock_repo):
-    """Anki 26 Card decay, desired_retention, and last_review_time fallback are extracted."""
-    card = _make_card(cid=202, nid=2)
-    ms = MagicMock()
-    ms.difficulty = 6.0
-    ms.stability = 15.0
-    card.memory_state = ms
-    card.decay = 0.22
-    card.desired_retention = 0.85
-    card.last_review_time = 1700005678
+async def test_get_deck_params_no_collection():
+    with patch(
+        "arete.infrastructure.adapters.stats.direct_stats.AnkiRepository",
+        _NullCollectionRepo,
+    ):
+        with pytest.raises(OSError, match="did not open"):
+            await DirectStatsRepository(anki_base=None).get_deck_params(["MyDeck"])
 
-    _db(mock_repo, {2: [202]})  # no revlog rows -> falls back to card.last_review_time
-    mock_repo.col.get_card.return_value = card
-    mock_repo.col.decks.get.return_value = {"name": "Default"}
-    mock_repo.col.get_note.return_value = MagicMock(fields=["Q"])
 
-    repo = DirectStatsRepository(anki_base=None)
-    [s] = await repo.get_card_stats([2])
+@pytest.mark.asyncio
+async def test_get_deck_params_custom_missing_and_filtered(anki_base: Path):
+    """Real deck configs extract FSRS params; missing decks and filtered decks get defaults."""
+    with _open_col(anki_base) as col:
+        my_did = col.decks.id("MyDeck")
+        assert my_did is not None
+        base_cfg = col.decks.get_config(1)
+        assert base_cfg is not None
+        cfg_id = col.decks.add_config_returning_id("CustomCfg", base_cfg)
+        cfg = col.decks.get_config(cfg_id)
+        assert cfg is not None
+        cfg["desiredRetention"] = 0.85
+        cfg["sm2Retention"] = 0.88
+        cfg["fsrsParams6"] = [0.4, 0.6, 2.4, 5.8] + [0.1] * 17
+        col.decks.update_config(cfg)
+        my_deck = col.decks.get(my_did)
+        assert my_deck is not None
+        col.decks.set_config_id_for_deck_dict(my_deck, cfg_id)
 
-    assert s.fsrs is not None
-    assert s.fsrs.stability == 15.0
-    assert s.fsrs.difficulty == 0.6
-    assert s.fsrs.decay == 0.22
-    assert s.fsrs.desired_retention == 0.85
-    assert s.last_review == 1700005678
+        col.decks.new_filtered("Arete::Queue")
+
+    result = await DirectStatsRepository(anki_base=anki_base).get_deck_params(
+        ["MyDeck", "NonExistent", "Arete::Queue"]
+    )
+    assert result["MyDeck"]["desired_retention"] == pytest.approx(0.85)
+    assert result["MyDeck"]["sm2_retention"] == pytest.approx(0.88)
+    assert result["MyDeck"]["weights"][:4] == [
+        pytest.approx(0.4),
+        pytest.approx(0.6),
+        pytest.approx(2.4),
+        pytest.approx(5.8),
+    ]
+    assert result["NonExistent"] == {"desired_retention": 0.9, "weights": [], "sm2_retention": 0.9}
+    assert result["Arete::Queue"] == {"desired_retention": 0.9, "weights": [], "sm2_retention": 0.9}

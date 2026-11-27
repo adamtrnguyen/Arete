@@ -20,6 +20,7 @@ from arete.application.queue.builder import (
     build_simple_queue,
 )
 from arete.application.queue.graph_resolver import build_graph, topological_sort, vault_relative
+from arete.domain.graph import DependencyGraph
 from arete.domain.interfaces import QueuePort
 
 # The one queue-algorithm vocabulary. The CLI exposes exactly this.
@@ -93,6 +94,31 @@ class QueueOrchestratorResult:
         return len(self.queue_items)
 
 
+def _build_queue_items(
+    combined: list[str],
+    prereq_queue: list[str],
+    graph: DependencyGraph,
+    vault_root: Path,
+    *,
+    enrich: bool,
+) -> list[QueueItem]:
+    """Build display items for the ordered queue, optionally enriched with graph metadata."""
+    prereq_set = set(prereq_queue)
+    items: list[QueueItem] = []
+    for idx, card_id in enumerate(combined, 1):
+        node = graph.nodes.get(card_id) if enrich else None
+        items.append(
+            QueueItem(
+                position=idx,
+                id=card_id,
+                title=node.title if node else card_id,
+                file=vault_relative(node.file_path, vault_root) if node else "",
+                is_prereq=card_id in prereq_set,
+            )
+        )
+    return items
+
+
 async def build_study_queue(
     anki: QueuePort,
     vault_root: Path,
@@ -139,23 +165,14 @@ async def build_study_queue(
     # -- Step 4: Build the queue --
     # One graph per request: the builder, the final sort and the enrich step share it.
     graph = build_graph(vault_root)
-    if algo == "dynamic":
-        build_result = build_dynamic_queue(
-            vault_root=vault_root,
-            due_card_ids=valid_ids,
-            depth=effective_depth,
-            max_cards=max_cards,
-            graph=graph,
-        )
-    else:
-        build_result = build_simple_queue(
-            vault_root=vault_root,
-            due_card_ids=valid_ids,
-            depth=effective_depth,
-            max_cards=max_cards,
-            graph=graph,
-        )
-
+    build_fn = build_dynamic_queue if algo == "dynamic" else build_simple_queue
+    build_result = build_fn(
+        vault_root=vault_root,
+        due_card_ids=valid_ids,
+        depth=effective_depth,
+        max_cards=max_cards,
+        graph=graph,
+    )
     result.build_result = build_result
 
     # -- Step 5: Determine final ordering --
@@ -166,32 +183,9 @@ async def build_study_queue(
         combined = topological_sort(graph, all_ids)
 
     # -- Step 6: Enrich with graph metadata --
-    if enrich and combined:
-        prereq_set = set(build_result.prereq_queue)
-        for idx, card_id in enumerate(combined, 1):
-            node = graph.nodes.get(card_id)
-            result.queue_items.append(
-                QueueItem(
-                    position=idx,
-                    id=card_id,
-                    title=node.title if node else card_id,
-                    file=vault_relative(node.file_path, vault_root) if node else "",
-                    is_prereq=card_id in prereq_set,
-                )
-            )
-    elif combined:
-        # Minimal items without graph lookup
-        prereq_set = set(build_result.prereq_queue)
-        for idx, card_id in enumerate(combined, 1):
-            result.queue_items.append(
-                QueueItem(
-                    position=idx,
-                    id=card_id,
-                    title=card_id,
-                    file="",
-                    is_prereq=card_id in prereq_set,
-                )
-            )
+    result.queue_items = _build_queue_items(
+        combined, build_result.prereq_queue, graph, vault_root, enrich=enrich
+    )
 
     # -- Step 7: Create filtered deck (unless dry run) --
     if not dry_run and combined:
