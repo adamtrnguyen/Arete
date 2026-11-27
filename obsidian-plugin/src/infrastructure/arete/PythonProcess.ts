@@ -19,7 +19,10 @@ export interface PythonCommand {
  */
 export function splitCommand(setting: string): string[] {
 	const trimmed = setting.trim();
-	if (!trimmed.includes('"') && trimmed.includes(' ') && existsSync(trimmed)) return [trimmed];
+	if (!trimmed.includes('"') && trimmed.includes(' ')) {
+		const expanded = expandHome(trimmed);
+		if (existsSync(expanded)) return [expanded];
+	}
 	const words: string[] = [];
 	for (const m of trimmed.matchAll(/"([^"]*)"|(\S+)/g)) words.push(m[1] ?? m[2]);
 	return words;
@@ -62,7 +65,8 @@ export function resolvePythonCommand(
 	const projectRoot = expandHome(settings.project_root || '');
 
 	const parts = splitCommand(pythonSetting);
-	const cmd = win && parts[0] === 'python3' ? 'python' : parts[0];
+	const rawCmd = expandHome(parts[0]);
+	const cmd = win && rawCmd === 'python3' ? 'python' : rawCmd;
 	const args = parts.slice(1);
 	const env: Record<string, string | undefined> = Object.assign({}, process.env);
 

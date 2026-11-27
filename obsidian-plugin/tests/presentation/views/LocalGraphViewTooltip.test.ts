@@ -310,6 +310,13 @@ describe('LocalGraphView tooltip position', () => {
 		expect(view.tooltipContainer.style.left).toBe('488px');
 	});
 
+	it('flips the 2D tooltip above the pointer near the container’s bottom edge', async () => {
+		view.renderD3Graph(element('div'), [node], []);
+		// box.top=100, box.height=1400 -> y=1300; y + 12 + 200 > 1400 -> 1300 - 12 - 200 = 1088
+		await d3.mockHandlers.mouseover({ clientX: 2300, clientY: 1400 }, node);
+		expect(view.tooltipContainer.style.top).toBe('1088px');
+	});
+
 	it('pins the 3D tooltip to the canvas corner', () => {
 		const canvas = element('div', { offsetLeft: 0, offsetTop: 40 });
 		view.render3DGraph(canvas, [], []);

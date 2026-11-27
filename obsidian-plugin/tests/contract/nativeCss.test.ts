@@ -12,7 +12,7 @@ type Row = { re: RegExp; max: number; use: string };
 const BASELINE: Record<string, Row> = {
 	pxValue: {
 		re: /\b\d+(\.\d+)?px\b/g,
-		max: 17,
+		max: 5,
 		use: 'var(--size-*) (spacing), var(--border-width) (borders)',
 	},
 	rgbVariable: {
@@ -25,9 +25,9 @@ const BASELINE: Record<string, Row> = {
 		max: 0,
 		use: 'var(--cursor) for controls, var(--cursor-link) for links',
 	},
-	zIndexLiteral: { re: /z-index:\s*-?\d+/g, max: 2, use: 'var(--layer-*)' },
+	zIndexLiteral: { re: /z-index:\s*-?\d+/g, max: 1, use: 'var(--layer-*)' },
 	transitionAll: { re: /transition:\s*all\b/g, max: 0, use: 'a list of named properties' },
-	important: { re: /!important/g, max: 7, use: 'raise specificity instead' },
+	important: { re: /!important/g, max: 1, use: 'raise specificity instead' },
 };
 
 /** Source of a stylesheet without its comments, so prose in a comment is not counted. */

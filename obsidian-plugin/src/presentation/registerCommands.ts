@@ -43,7 +43,7 @@ export function registerPluginCommands(plugin: CommandHost): void {
 	});
 
 	plugin.addCommand({
-		id: 'arete-sync',
+		id: 'sync',
 		name: 'Sync',
 		callback: () => {
 			void plugin.runSync();
@@ -51,7 +51,7 @@ export function registerPluginCommands(plugin: CommandHost): void {
 	});
 
 	plugin.addCommand({
-		id: 'arete-check-file',
+		id: 'check-file',
 		name: 'Check current file',
 		editorCallback: (_editor: Editor, view: MarkdownView | MarkdownFileInfo) => {
 			if (view.file) {
@@ -68,7 +68,7 @@ export function registerPluginCommands(plugin: CommandHost): void {
 	});
 
 	plugin.addCommand({
-		id: 'arete-check-integrity',
+		id: 'check-integrity',
 		name: 'Debug: vault integrity check',
 		callback: () => {
 			void plugin.checkVaultIntegrity();
@@ -76,7 +76,7 @@ export function registerPluginCommands(plugin: CommandHost): void {
 	});
 
 	plugin.addCommand({
-		id: 'arete-sync-current-file',
+		id: 'sync-current-file',
 		name: 'Sync current file',
 		callback: () => {
 			const activeFile = plugin.app.workspace.getActiveFile();
@@ -96,7 +96,7 @@ export function registerPluginCommands(plugin: CommandHost): void {
 	});
 
 	plugin.addCommand({
-		id: 'arete-sync-prune',
+		id: 'sync-prune',
 		name: 'Sync (prune deleted cards)',
 		callback: () => {
 			void plugin.runSync(true);
@@ -104,7 +104,7 @@ export function registerPluginCommands(plugin: CommandHost): void {
 	});
 
 	plugin.addCommand({
-		id: 'arete-sync-force-all',
+		id: 'sync-force-all',
 		name: 'Sync (force re-upload all)',
 		callback: () => {
 			void plugin.runSync(false, null, true);
@@ -112,7 +112,7 @@ export function registerPluginCommands(plugin: CommandHost): void {
 	});
 
 	plugin.addCommand({
-		id: 'arete-open-dashboard',
+		id: 'open-dashboard',
 		name: 'Open dashboard',
 		callback: () => {
 			void plugin.activateDashboardView();
@@ -120,7 +120,7 @@ export function registerPluginCommands(plugin: CommandHost): void {
 	});
 
 	plugin.addCommand({
-		id: 'arete-graph-clear',
+		id: 'graph-clear',
 		name: 'Graph: clear retention tags',
 		callback: async () => {
 			await plugin.graphService.clearAllTags();
@@ -128,7 +128,7 @@ export function registerPluginCommands(plugin: CommandHost): void {
 	});
 
 	plugin.addCommand({
-		id: 'arete-open-local-graph',
+		id: 'open-local-graph',
 		name: 'Open local graph',
 		callback: () => {
 			void plugin.activateLocalGraphView();
@@ -136,7 +136,7 @@ export function registerPluginCommands(plugin: CommandHost): void {
 	});
 
 	plugin.addCommand({
-		id: 'arete-open-global-graph',
+		id: 'open-global-graph',
 		name: 'Open global graph',
 		callback: () => {
 			void plugin.activateGlobalGraphView();
@@ -144,7 +144,7 @@ export function registerPluginCommands(plugin: CommandHost): void {
 	});
 
 	plugin.addCommand({
-		id: 'arete-sync-stats',
+		id: 'sync-stats',
 		name: 'Sync stats (refresh Anki data)',
 		callback: async () => {
 			new Notice('Refreshing stats...');
@@ -160,7 +160,7 @@ export function registerPluginCommands(plugin: CommandHost): void {
 	});
 
 	plugin.addCommand({
-		id: 'arete-reload-note-types',
+		id: 'reload-note-types',
 		name: 'Reload note types (card preview)',
 		callback: () => {
 			plugin.templateRenderer.clearModelCache();

@@ -143,10 +143,54 @@ describe('renderCardPreviewFrame', () => {
 			dom.frameListeners['load']();
 
 			const styles = dom.head.children
-				.filter((c) => c.tag === 'style')
+				.filter((c) => c.tag === 'style' && c.attrs['data-arete-base'] !== 'true')
 				.map((c) => c.textContent);
 			expect(styles).toEqual(['.a{x:1}\n.b{y:2}', '.plain{z:3}', '.css{}']);
+			const baseStyle = dom.head.children.find((c) => c.attrs['data-arete-base'] === 'true');
+			expect(baseStyle.textContent).toContain('html { height: auto; min-height: 0; }');
+			expect(baseStyle.textContent).toContain(':where(body.card.nightMode)');
 			expect(dom.hostDocument.querySelectorAll).toHaveBeenCalledWith('style[id^="MJX-"]');
+		});
+
+		it('syncs Anki dark mode classes from Obsidian theme-dark and updates on css-change', () => {
+			const dom = makeDom();
+			let dark = true;
+			const bodyClasses = new Set<string>();
+			dom.hostDocument.body = {
+				classList: { contains: (c: string) => c === 'theme-dark' && dark },
+			};
+			dom.body.classList = {
+				toggle: (c: string, on: boolean) =>
+					on ? bodyClasses.add(c) : bodyClasses.delete(c),
+			};
+			let onCssChange: (() => void) | undefined;
+			app.workspace.on = jest.fn((evt: string, cb: () => void) => {
+				if (evt === 'css-change') onCssChange = cb;
+				return { evt, cb };
+			});
+			render(dom);
+
+			dom.frameListeners['load']();
+			expect([...bodyClasses].sort()).toEqual(['nightMode', 'night_mode']);
+
+			dark = false;
+			onCssChange?.();
+			expect([...bodyClasses]).toEqual([]);
+		});
+
+		it('breaks runaway 100vh observer growth loops and caps height', () => {
+			const dom = makeDom();
+			const frame: any = render(dom);
+			dom.frameListeners['load']();
+
+			// Simulate a 100vh template growing on every observer tick.
+			for (let i = 1; i <= 12; i++) {
+				dom.root.getBoundingClientRect.mockReturnValue({ height: 121 + i * 50 });
+				dom.observers[0].cb();
+			}
+			expect(dom.observers[0].disconnect).toHaveBeenCalledTimes(1);
+			// Stopped growing after MAX_CONSECUTIVE_GROWTHS (8) ticks: 121 + 8 * 50 = 521px.
+			expect(frame.style.height).toBe('521px');
 		});
 
 		it('resolves relative image links to vault resources, decoding the name', () => {

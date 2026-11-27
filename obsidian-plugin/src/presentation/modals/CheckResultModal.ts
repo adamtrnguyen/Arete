@@ -92,7 +92,7 @@ export class CheckResultModal extends Modal {
 
 			contentEl.createDiv({
 				text: 'Please check the console for more details.',
-				cls: 'arete-footer-note',
+				cls: 'setting-item-description',
 			});
 		}
 	}

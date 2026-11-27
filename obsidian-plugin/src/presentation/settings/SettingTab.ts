@@ -30,6 +30,11 @@ export class AreteSettingTab extends PluginSettingTab {
 	constructor(app: App, plugin: SettingsHost) {
 		super(app, plugin);
 		this.plugin = plugin;
+		if (typeof plugin.register === 'function') {
+			plugin.register(() => {
+				void this.flushSave();
+			});
+		}
 	}
 
 	/** Save once typing in a text field has paused; a burst of keystrokes writes once. */
@@ -56,6 +61,7 @@ export class AreteSettingTab extends PluginSettingTab {
 			this.plugin.statsCache = this.plugin.statsService.getCache();
 		}
 		await this.plugin.saveSettings();
+		(this.app.workspace as any).trigger?.('arete:stats-updated');
 	}
 
 	display(): void {
@@ -239,6 +245,7 @@ export class AreteSettingTab extends PluginSettingTab {
 							this.plugin.statsCache = { concepts: {}, lastFetched: 0 };
 						}
 						await this.plugin.saveSettings();
+						(this.app.workspace as any).trigger?.('arete:stats-updated');
 						this.display(); // Re-render to show algorithm-specific options
 					}),
 			);

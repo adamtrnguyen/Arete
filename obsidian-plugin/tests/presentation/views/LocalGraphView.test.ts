@@ -254,4 +254,44 @@ describe('LocalGraphView logging', () => {
 		expect(view.simulation).toBeNull();
 		expect(view._svg).toBeNull();
 	});
+
+	it('onClose invalidates an in-flight refresh so it does not draw after close', async () => {
+		let finishBuild!: () => void;
+		const resolver = {
+			version: 1,
+			buildGraph: jest.fn(() => new Promise<void>((r) => (finishBuild = r))),
+			getLocalGraph: jest.fn(() => ({
+				center: { id: 'c1', title: 'T', filePath: 'A.md', lineNumber: 1 },
+				prerequisites: [],
+				dependents: [],
+				related: [],
+				links: [],
+			})),
+		};
+		const app: any = new (jest.requireMock('obsidian').App)();
+		app.vault.getAbstractFileByPath = jest.fn(() =>
+			Object.assign(new (jest.requireMock('obsidian').TFile)(), { path: 'A.md' }),
+		);
+		app.metadataCache.getFileCache.mockReturnValue({
+			frontmatter: { arete: true, cards: [{ id: 'c1' }] },
+		});
+		const view: any = new LocalGraphView({} as any, {
+			dependencyResolver: resolver as any,
+			getCardContext: jest.fn(),
+			setCardContext: jest.fn(),
+		});
+		view.app = app;
+		const canvas = element('div', { cls: 'arete-graph-canvas' });
+		view.container = element('div');
+		view.container.querySelector = jest.fn(() => canvas);
+		view.currentFilePath = 'A.md';
+		const drawSpy = jest.spyOn(view, 'renderD3Graph').mockReturnValue(true);
+
+		const refreshing = view.refresh();
+		await view.onClose();
+		finishBuild();
+		await refreshing;
+
+		expect(drawSpy).not.toHaveBeenCalled();
+	});
 });

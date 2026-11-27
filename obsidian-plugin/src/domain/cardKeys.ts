@@ -2,7 +2,7 @@
  * Structural metadata keys on a card entry in frontmatter.
  * Every other scalar key is a card content field (e.g. Front, Back, Text).
  */
-export const RESERVED_CARD_KEYS: ReadonlySet<string> = new Set([
+const RESERVED_CARD_KEYS: ReadonlySet<string> = new Set([
 	'id',
 	'ID',
 	'model',

@@ -5,11 +5,13 @@
  * scale with the zoom, so they stay in px.
  */
 
-.arete-global-graph {
+/* `.view-content` is part of the selector so this outranks Obsidian's view padding. */
+.view-content.arete-global-graph {
+	container-type: inline-size;
 	display: flex;
 	flex-direction: column;
 	height: 100%;
-	padding: 0 !important;
+	padding: 0;
 	overflow: hidden;
 }
 
@@ -24,7 +26,7 @@
 }
 
 .arete-global-graph-search {
-	width: 180px;
+	width: min(11.25rem, 100%);
 	font-size: var(--font-ui-smaller);
 }
 
@@ -43,6 +45,7 @@
 	position: relative;
 	flex: 1 1 auto;
 	min-width: 0;
+	min-height: 0;
 	overflow: hidden;
 }
 
@@ -57,11 +60,24 @@
 }
 
 .arete-global-graph-detail {
-	flex: 0 0 280px;
+	flex: 0 0 17.5rem;
 	overflow-y: auto;
 	padding: var(--size-4-3);
 	border-left: var(--border-width) solid var(--background-modifier-border);
 	font-size: var(--font-ui-smaller);
+}
+
+@container (max-width: 35rem) {
+	.arete-global-graph-body {
+		flex-direction: column;
+	}
+
+	.arete-global-graph-detail {
+		flex: 0 1 auto;
+		max-height: 40%;
+		border-left: none;
+		border-top: var(--border-width) solid var(--background-modifier-border);
+	}
 }
 
 .arete-global-graph-detail-empty {
@@ -78,6 +94,7 @@
 	gap: var(--size-2-2) var(--size-4-3);
 	color: var(--text-muted);
 	margin: var(--size-2-2) 0 var(--size-4-2);
+	overflow-wrap: anywhere;
 }
 
 .arete-global-graph-detail-list {
@@ -85,6 +102,7 @@
 	flex-direction: column;
 	gap: var(--size-2-1);
 	margin: var(--size-2-2) 0;
+	overflow-wrap: anywhere;
 }
 
 .arete-global-graph-detail-list a,
@@ -116,11 +134,11 @@
 }
 
 .arete-global-graph-node.mod-file circle {
-	stroke-width: 2px;
+	stroke-width: 2;
 }
 
 .arete-global-graph-node.mod-card circle {
-	stroke-width: 1.5px;
+	stroke-width: 1.5;
 }
 
 .arete-global-graph-node-label {
@@ -189,6 +207,7 @@
 
 .arete-graph-toolbar {
 	display: flex;
+	flex-wrap: wrap;
 	align-items: center;
 	gap: var(--size-4-2);
 	padding: var(--size-4-2);
@@ -216,11 +235,11 @@
 .arete-graph-link {
 	stroke: var(--graph-line);
 	stroke-opacity: 0.6;
-	stroke-width: 1px;
+	stroke-width: 1;
 }
 
 .arete-graph-link.mod-requires {
-	stroke-width: 2px;
+	stroke-width: 2;
 }
 
 .arete-graph-link.mod-related {
@@ -234,7 +253,7 @@
 .arete-graph-dot {
 	fill: var(--graph-node-unresolved);
 	stroke: var(--background-primary);
-	stroke-width: 2px;
+	stroke-width: 2;
 	cursor: var(--cursor);
 }
 
@@ -274,6 +293,7 @@
 .arete-graph-tooltip {
 	position: absolute;
 	display: none;
+	max-width: calc(100% - var(--size-4-6));
 	z-index: var(--layer-popover);
 	pointer-events: none;
 }
@@ -283,16 +303,16 @@
 }
 
 .arete-graph-tooltip-card {
-	max-height: 300px;
+	width: min(18.75rem, 100%);
+	max-width: 100%;
+	max-height: 18.75rem;
 	overflow: auto;
 }
 
 .arete-graph-tooltip-card.mod-3d {
-	width: 250px;
-	max-height: 200px;
+	width: min(15.625rem, 100%);
+	max-height: 12.5rem;
 	background: var(--background-primary);
-	border: var(--border-width) solid var(--background-modifier-border);
-	border-radius: var(--radius-m);
 	padding: var(--size-4-2);
 	box-shadow: var(--shadow-l);
 }
@@ -301,10 +321,7 @@
 	font-weight: var(--font-bold);
 }
 
-.arete-graph-tooltip .arete-card-id {
-	font-size: var(--font-smallest);
-}
-
+.arete-graph-tooltip .arete-card-id,
 .arete-graph-tooltip .arete-card-file {
 	font-size: var(--font-smallest);
 }

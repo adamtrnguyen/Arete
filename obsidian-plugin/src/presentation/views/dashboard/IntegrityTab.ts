@@ -14,6 +14,7 @@ export interface IntegrityTabContext {
 	setBrokenRefs: (refs: BrokenReference[] | null) => void;
 	isScanning: () => boolean;
 	setScanning: (scanning: boolean) => void;
+	isClosed?: () => boolean;
 	rerender: () => void;
 	renderSuccess: (container: HTMLElement, message: string) => void;
 	goToIssue: (file: TFile, searchText: string, line?: number) => void;
@@ -60,14 +61,15 @@ export function renderIntegrityTab(ctx: IntegrityTabContext, container: HTMLElem
 		try {
 			const targetFiles = ctx.app.vault.getMarkdownFiles();
 			const refs = await ctx.linkCheckerService.checkIntegrity(targetFiles);
+			if (ctx.isClosed?.()) return;
 			ctx.setBrokenRefs(refs);
 			new Notice(`Integrity check complete. Found ${refs.length} issues.`);
 		} catch (e) {
 			console.error('[Arete] Integrity check failed:', e);
-			new Notice('Integrity check failed.');
+			if (!ctx.isClosed?.()) new Notice('Integrity check failed.');
 		} finally {
 			ctx.setScanning(false);
-			ctx.rerender();
+			if (!ctx.isClosed?.()) ctx.rerender();
 		}
 	});
 

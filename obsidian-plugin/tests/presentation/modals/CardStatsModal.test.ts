@@ -191,6 +191,7 @@ describe('CardStatsModal', () => {
 		it('draws a 51-point curve that falls from 100% as R(t) = 1 / (1 + t / 9S)', () => {
 			open({ ...fullCard, stability: 10 });
 			expect(svgs).toHaveLength(1);
+			expect(svgs[0].attrs.viewBox).toBe('0 0 320 220');
 
 			const curve = svgs[0].children.find((c: any) => c.tag === 'polyline');
 			const points = curve.attrs.points

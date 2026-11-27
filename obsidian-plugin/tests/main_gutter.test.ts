@@ -1,7 +1,10 @@
 import './test-setup';
-import { App } from 'obsidian';
+import { App, MarkdownView } from 'obsidian';
 import AretePlugin from '@/main';
-import { createCardGutter } from '@presentation/extensions/CardGutterExtension';
+import {
+	createCardGutter,
+	highlightCardEffect,
+} from '@presentation/extensions/CardGutterExtension';
 
 jest.mock('@infrastructure/arete/SyncService');
 jest.mock('@infrastructure/arete/CheckService');
@@ -120,6 +123,38 @@ describe('AretePlugin: what a click in the card gutter does', () => {
 
 		it('returns nothing when the editor has no file', () => {
 			expect(statsFor(1, 500, viewFor(undefined))).toBeNull();
+		});
+	});
+
+	describe('highlightCardLines targeting', () => {
+		it('dispatches directly onto a supplied EditorView', () => {
+			const dispatch = jest.fn();
+			(highlightCardEffect.of as jest.Mock).mockReturnValue({ eff: 2 });
+
+			plugin.highlightCardLines(2, { dispatch } as any);
+
+			expect(dispatch).toHaveBeenCalledWith({ effects: { eff: 2 } });
+		});
+
+		it('matches the MarkdownView leaf for a filePath over an unrelated recent leaf', () => {
+			const dispatchTarget = jest.fn();
+			const dispatchOther = jest.fn();
+			const targetView: any = new MarkdownView({} as any);
+			targetView.file = { path: 'Target.md' };
+			targetView.editor = { cm: { dispatch: dispatchTarget } };
+			const otherView: any = new MarkdownView({} as any);
+			otherView.file = { path: 'Other.md' };
+			otherView.editor = { cm: { dispatch: dispatchOther } };
+			app.workspace.getLeavesOfType = jest
+				.fn()
+				.mockReturnValue([{ view: otherView }, { view: targetView }]);
+			app.workspace.getMostRecentLeaf = jest.fn().mockReturnValue({ view: otherView });
+			(highlightCardEffect.of as jest.Mock).mockReturnValue({ eff: 1 });
+
+			plugin.highlightCardLines(1, 'Target.md');
+
+			expect(dispatchTarget).toHaveBeenCalledWith({ effects: { eff: 1 } });
+			expect(dispatchOther).not.toHaveBeenCalled();
 		});
 	});
 });

@@ -280,6 +280,20 @@ describe('DashboardView actions', () => {
 			expect(plugin.areteClient.buildStudyQueue).toHaveBeenCalledWith(null, 2, 50);
 		});
 
+		it('clamps out-of-range depth and maxCards values in JS before calling the backend', async () => {
+			plugin.areteClient.buildStudyQueue.mockResolvedValue(result);
+			const ui = await build(el('div'));
+			ui.depth._onChange('99');
+			ui.max._onChange('500');
+			await ui.btn.onClick!();
+			expect(plugin.areteClient.buildStudyQueue).toHaveBeenLastCalledWith(null, 5, 200);
+
+			ui.depth._onChange('0');
+			ui.max._onChange('3');
+			await ui.btn.onClick!();
+			expect(plugin.areteClient.buildStudyQueue).toHaveBeenLastCalledWith(null, 1, 10);
+		});
+
 		it('shows the button as busy while the queue is being built', async () => {
 			let finish!: (r: typeof result) => void;
 			plugin.areteClient.buildStudyQueue.mockReturnValue(new Promise((r) => (finish = r)));

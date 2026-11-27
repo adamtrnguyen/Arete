@@ -83,11 +83,11 @@ export function renderQueueBuilderTab(ctx: QueueBuilderTabContext, container: HT
 		buildBtn.setButtonText('Building...').setDisabled(true);
 
 		try {
-			const result = await ctx.client.buildStudyQueue(
-				selectedDeck || null,
-				parseInt(depthValue, 10) || 2,
-				parseInt(maxCardsValue, 10) || 50,
-			);
+			const parsedDepth = parseInt(depthValue, 10);
+			const depth = Number.isNaN(parsedDepth) ? 2 : Math.min(5, Math.max(1, parsedDepth));
+			const parsedMax = parseInt(maxCardsValue, 10);
+			const maxCards = Number.isNaN(parsedMax) ? 50 : Math.min(200, Math.max(10, parsedMax));
+			const result = await ctx.client.buildStudyQueue(selectedDeck || null, depth, maxCards);
 			if (!ctx.isCurrentRevision()) return;
 
 			resultsArea.empty();

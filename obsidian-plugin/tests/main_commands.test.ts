@@ -53,7 +53,7 @@ describe('AretePlugin commands, views and status bar', () => {
 			app.workspace.getActiveFile.mockReturnValue({ path: 'notes/A.md' });
 			const spy = jest.spyOn(plugin, 'runSync').mockResolvedValue(undefined);
 
-			commands['arete-sync-current-file'].callback!();
+			commands['sync-current-file'].callback!();
 
 			expect(spy).toHaveBeenCalledWith(false, path.join('/vault', 'notes/A.md'), true);
 		});
@@ -62,7 +62,7 @@ describe('AretePlugin commands, views and status bar', () => {
 			app.workspace.getActiveFile.mockReturnValue(null);
 			const spy = jest.spyOn(plugin, 'runSync').mockResolvedValue(undefined);
 
-			commands['arete-sync-current-file'].callback!();
+			commands['sync-current-file'].callback!();
 
 			expect(spy).not.toHaveBeenCalled();
 			expect(notices()).toContain('No active file to sync.');
@@ -73,7 +73,7 @@ describe('AretePlugin commands, views and status bar', () => {
 			app.workspace.getActiveFile.mockReturnValue({ path: 'A.md' });
 			const spy = jest.spyOn(plugin, 'runSync').mockResolvedValue(undefined);
 
-			commands['arete-sync-current-file'].callback!();
+			commands['sync-current-file'].callback!();
 
 			expect(spy).not.toHaveBeenCalled();
 			expect(notices()).toContain('Cannot resolve the file path.');
@@ -81,7 +81,7 @@ describe('AretePlugin commands, views and status bar', () => {
 
 		test('Force Re-upload All syncs the whole vault with force set', () => {
 			const spy = jest.spyOn(plugin, 'runSync').mockResolvedValue(undefined);
-			commands['arete-sync-force-all'].callback!();
+			commands['sync-force-all'].callback!();
 			expect(spy).toHaveBeenCalledWith(false, null, true);
 		});
 
@@ -89,7 +89,7 @@ describe('AretePlugin commands, views and status bar', () => {
 			app.vault.adapter.getBasePath.mockReturnValue('/vault');
 			const spy = jest.spyOn(plugin, 'runCheck').mockResolvedValue(undefined);
 
-			commands['arete-check-file'].editorCallback!({}, { file: { path: 'B.md' } });
+			commands['check-file'].editorCallback!({}, { file: { path: 'B.md' } });
 
 			expect(spy).toHaveBeenCalledWith(path.join('/vault', 'B.md'));
 		});
@@ -98,7 +98,7 @@ describe('AretePlugin commands, views and status bar', () => {
 			app.vault.adapter.getBasePath.mockReturnValue(null);
 			const spy = jest.spyOn(plugin, 'runCheck').mockResolvedValue(undefined);
 
-			commands['arete-check-file'].editorCallback!({}, { file: { path: 'B.md' } });
+			commands['check-file'].editorCallback!({}, { file: { path: 'B.md' } });
 
 			expect(spy).not.toHaveBeenCalled();
 			expect(notices()).toContain('Cannot determine the vault path.');
@@ -170,7 +170,7 @@ describe('AretePlugin commands, views and status bar', () => {
 	});
 
 	describe('Sync Stats command', () => {
-		test('tags each concept note in the graph and refreshes an open YAML toolbar', async () => {
+		test('tags each concept note in the graph and broadcasts arete:stats-updated', async () => {
 			plugin.settings.graph_coloring_enabled = true;
 			const file = Object.assign(new TFile(), { path: 'Concept.md' });
 			app.vault.getAbstractFileByPath = jest
@@ -180,14 +180,13 @@ describe('AretePlugin commands, views and status bar', () => {
 			const missing = { filePath: 'Gone.md' } as any;
 			(plugin.statsService.refreshStats as jest.Mock).mockResolvedValue([concept, missing]);
 			plugin.graphService.updateGraphTags = jest.fn().mockResolvedValue(true);
-			const renderToolbar = jest.fn();
-			app.workspace.getLeavesOfType.mockReturnValue([{ view: { renderToolbar } }]);
+			app.workspace.trigger = jest.fn();
 
-			await commands['arete-sync-stats'].callback!();
+			await commands['sync-stats'].callback!();
 
 			expect(plugin.graphService.updateGraphTags).toHaveBeenCalledTimes(1);
 			expect(plugin.graphService.updateGraphTags).toHaveBeenCalledWith(file, concept);
-			expect(renderToolbar).toHaveBeenCalled();
+			expect(app.workspace.trigger).toHaveBeenCalledWith('arete:stats-updated');
 			expect(notices()).toEqual([
 				'Refreshing stats...',
 				'Graph tags updated.',
@@ -204,7 +203,7 @@ describe('AretePlugin commands, views and status bar', () => {
 			]);
 			plugin.graphService.updateGraphTags = jest.fn().mockResolvedValue(false);
 
-			await commands['arete-sync-stats'].callback!();
+			await commands['sync-stats'].callback!();
 
 			expect(plugin.graphService.updateGraphTags).toHaveBeenCalledTimes(1);
 			expect(notices()).toEqual(['Refreshing stats...', 'Stats refreshed.']);
@@ -217,7 +216,7 @@ describe('AretePlugin commands, views and status bar', () => {
 			]);
 			plugin.graphService.updateGraphTags = jest.fn();
 
-			await commands['arete-sync-stats'].callback!();
+			await commands['sync-stats'].callback!();
 
 			expect(plugin.graphService.updateGraphTags).not.toHaveBeenCalled();
 		});
@@ -228,7 +227,7 @@ describe('AretePlugin commands, views and status bar', () => {
 				new Error('Anki offline'),
 			);
 
-			await commands['arete-sync-stats'].callback!();
+			await commands['sync-stats'].callback!();
 
 			expect(notices()).toEqual([
 				'Refreshing stats...',
@@ -239,14 +238,14 @@ describe('AretePlugin commands, views and status bar', () => {
 
 		test('Reload Note Types clears the template model cache', () => {
 			plugin.templateRenderer.clearModelCache = jest.fn();
-			commands['arete-reload-note-types'].callback!();
+			commands['reload-note-types'].callback!();
 			expect(plugin.templateRenderer.clearModelCache).toHaveBeenCalled();
 			expect(notices().join(' ')).toContain('Note types will be fetched');
 		});
 
 		test('Clear Retention Tags delegates to GraphService', async () => {
 			plugin.graphService.clearAllTags = jest.fn().mockResolvedValue(undefined);
-			await commands['arete-graph-clear'].callback!();
+			await commands['graph-clear'].callback!();
 			expect(plugin.graphService.clearAllTags).toHaveBeenCalled();
 		});
 	});
@@ -598,13 +597,23 @@ describe('AretePlugin commands, views and status bar', () => {
 			expect(saved.project_root).toBe(`${home}2/arete`);
 		});
 
-		test('saveStats stores the stats cache beside the settings', async () => {
-			const cache = { concepts: { 'A.md': {} } };
+		test('saveStats stores the deduplicated stats cache beside the settings', async () => {
+			const stat = { cardId: 10, noteId: 99, lapses: 1, ease: 2500 };
+			const cache = {
+				lastFetched: 123,
+				concepts: { 'A.md': { cardStats: { 10: stat, 99: stat } } },
+			};
 			(plugin.statsService.getCache as jest.Mock).mockReturnValue(cache);
 
 			await plugin.saveStats();
 
-			expect((plugin.saveData as jest.Mock).mock.calls.pop()![0].statsCache).toBe(cache);
+			const savedCache = (plugin.saveData as jest.Mock).mock.calls.pop()![0].statsCache;
+			expect(savedCache).toEqual({
+				lastFetched: 123,
+				concepts: { 'A.md': { cardStats: { 10: stat } } },
+			});
+			// In-memory noteId alias stays intact for gutter lookup.
+			expect(cache.concepts['A.md'].cardStats[99]).toBe(stat);
 		});
 	});
 });

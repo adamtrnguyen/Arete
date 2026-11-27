@@ -151,17 +151,31 @@ describe('CheckService', () => {
 		errSpy.mockRestore();
 	});
 
-	test('runFix resolves cleanly on spawn error instead of hanging', async () => {
+	test('runFix resolves cleanly on spawn error instead of hanging and ignores trailing close', async () => {
 		const errSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
 		const mockChild = createMockChildProcess();
 		(spawn as jest.Mock).mockReturnValue(mockChild);
 
 		const promise = service.runFix('test.md');
 		mockChild.emit('error', new Error('ENOENT'));
+		mockChild.emit('close', 1, null);
 		await promise;
 
+		expect(Notice).toHaveBeenCalledTimes(1);
 		expect(Notice).toHaveBeenCalledWith('Fix failed, check the developer console.');
 		errSpy.mockRestore();
+	});
+
+	test('runFix reports when CLI finds no fixable issues', async () => {
+		const mockChild = createMockChildProcess();
+		(spawn as jest.Mock).mockReturnValue(mockChild);
+
+		const promise = service.runFix('test.md');
+		mockChild.stdout.emit('data', 'No fixable issues found.\n');
+		mockChild.emit('close', 0, null);
+		await promise;
+
+		expect(Notice).toHaveBeenCalledWith('No fixable issues found.');
 	});
 
 	test('testConfig runs the resolved command with --help, without a shell', async () => {
@@ -201,15 +215,20 @@ describe('CheckService', () => {
 		expect(Notice).toHaveBeenCalledWith('Command failed: No module named arete');
 	});
 
-	test('testConfig names a command that is not installed', async () => {
+	test('testConfig names a command that is not installed and suppresses duplicate close notice', async () => {
+		const errSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
 		const child = createMockChildProcess();
 		(spawn as jest.Mock).mockReturnValue(child);
 
 		const done = service.testConfig();
 		child.emit('error', Object.assign(new Error('spawn python3 ENOENT'), { code: 'ENOENT' }));
+		child.emit('close', -2, null);
 		await done;
 
+		// 1: "Testing configuration...", 2: "Command failed: python3 was not found." (no 3rd close notice)
+		expect(Notice).toHaveBeenCalledTimes(2);
 		expect(Notice).toHaveBeenCalledWith('Command failed: python3 was not found.');
+		errSpy.mockRestore();
 	});
 
 	test('testConfig with empty python path', async () => {

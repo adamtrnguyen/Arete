@@ -3,10 +3,12 @@ import {
 	dueEpochSeconds,
 	formatGutterStats,
 	metricStates,
+	normalizeStatsCache,
+	serializeStatsCache,
 	uniqueCardStats,
 } from '@/domain/stats';
 import type { CardStateSettings } from '@/domain/stats';
-import { DEFAULT_SETTINGS } from '@/domain/settings';
+import { DEFAULT_SETTINGS, normalizeSettings } from '@/domain/settings';
 import { ankiCardStats } from '../factories';
 
 describe('dueEpochSeconds', () => {
@@ -286,5 +288,117 @@ describe('formatGutterStats', () => {
 			lapseText: null,
 			tooltip: '',
 		});
+	});
+});
+
+describe('normalizeSettings', () => {
+	it('falls back to defaults for corrupt primitives, invalid enums, out-of-range numbers, and unknown keys', () => {
+		expect(normalizeSettings(null)).toEqual(DEFAULT_SETTINGS);
+		expect(normalizeSettings(['not', 'an', 'object'])).toEqual(DEFAULT_SETTINGS);
+
+		const normalized = normalizeSettings({
+			python_path: 42,
+			debug_mode: 'yes',
+			backend: 'invalid-backend',
+			workers: -5,
+			renderer_mode: 'legacy',
+			stats_algorithm: 'sm3',
+			stats_lapse_threshold: NaN,
+			stats_ease_threshold: 0,
+			stats_difficulty_threshold: 5,
+			sync_on_save_delay: Infinity,
+			ui_expanded_decks: ['Math', 123, null],
+			ui_expanded_concepts: 'not-an-array',
+			last_sync_time: -10,
+			removed_legacy_key: true,
+		});
+
+		expect(normalized).toEqual({
+			...DEFAULT_SETTINGS,
+			ui_expanded_decks: ['Math'],
+			ui_expanded_concepts: [],
+		});
+		expect(normalized).not.toHaveProperty('removed_legacy_key');
+	});
+
+	it('preserves valid settings', () => {
+		const normalized = normalizeSettings({
+			backend: 'direct',
+			workers: 8,
+			stats_algorithm: 'sm2',
+			stats_difficulty_threshold: 0.75,
+			last_sync_time: 1_700_000_000,
+			ui_expanded_concepts: ['A.md'],
+		});
+		expect(normalized.backend).toBe('direct');
+		expect(normalized.workers).toBe(8);
+		expect(normalized.stats_algorithm).toBe('sm2');
+		expect(normalized.stats_difficulty_threshold).toBe(0.75);
+		expect(normalized.last_sync_time).toBe(1_700_000_000);
+		expect(normalized.ui_expanded_concepts).toEqual(['A.md']);
+	});
+});
+
+describe('normalizeStatsCache and serializeStatsCache', () => {
+	it('handles corrupt or missing statsCache shapes without throwing', () => {
+		expect(normalizeStatsCache(null)).toEqual({ concepts: {}, lastFetched: 0 });
+		expect(normalizeStatsCache({ concepts: 'bad', lastFetched: NaN })).toEqual({
+			concepts: {},
+			lastFetched: 0,
+		});
+		const partial = normalizeStatsCache({
+			lastFetched: 100,
+			concepts: {
+				'Bad.md': 'not-an-object',
+				'Good.md': { totalCards: 'oops', cardStats: null, problematicCards: 'bad' },
+			},
+		});
+		expect(Object.keys(partial.concepts)).toEqual(['Good.md']);
+		expect(partial.concepts['Good.md'].totalCards).toBe(0);
+		expect(partial.concepts['Good.md'].cardStats).toEqual({});
+		expect(partial.concepts['Good.md'].problematicCards).toEqual([]);
+	});
+
+	it('deduplicates noteId aliases on save, strips dropped FSRS fields, and rebuilds noteId lookup on load', () => {
+		const c1 = ankiCardStats({ cardId: 101, noteId: 900, difficulty: 0.4, lapses: 1 });
+		const c2 = ankiCardStats({ cardId: 102, noteId: 900, difficulty: 0.85, lapses: 3 });
+		const rawCache: any = {
+			lastFetched: 500,
+			concepts: {
+				'Multi.md': {
+					filePath: 'Multi.md',
+					fileName: 'Multi.md',
+					primaryDeck: 'Math',
+					totalCards: 2,
+					problematicCardsCount: 1,
+					problematicCards: [],
+					cardStats: {
+						101: { ...c1, weights: [1, 2], volatility: 0.1, retAtReview: 0.9 },
+						102: { ...c2, fsrsHistoryMissing: true },
+						900: c2,
+					},
+					averageEase: 2500,
+					averageDifficulty: 0.63,
+					totalLapses: 4,
+					score: 0.5,
+					lastUpdated: 500,
+				},
+			},
+		};
+
+		const serialized = serializeStatsCache(rawCache);
+		const savedStats = serialized.concepts['Multi.md'].cardStats;
+		// Only cardId keys are serialized (no duplicate noteId key 900) and dropped fields are gone.
+		expect(Object.keys(savedStats).map(Number).sort()).toEqual([101, 102]);
+		expect(savedStats[101]).not.toHaveProperty('weights');
+		expect(savedStats[101]).not.toHaveProperty('volatility');
+		expect(savedStats[101]).not.toHaveProperty('retAtReview');
+		expect(savedStats[102]).not.toHaveProperty('fsrsHistoryMissing');
+
+		// Loading rebuilds the noteId fallback entry using the worst card (c2, difficulty 0.85).
+		const hydrated = normalizeStatsCache(serialized, 'fsrs');
+		expect(hydrated.concepts['Multi.md'].cardStats[101].cardId).toBe(101);
+		expect(hydrated.concepts['Multi.md'].cardStats[102].cardId).toBe(102);
+		expect(hydrated.concepts['Multi.md'].cardStats[900].cardId).toBe(102);
 	});
 });

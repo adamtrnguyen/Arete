@@ -38,6 +38,8 @@ export const LOCAL_GRAPH_VIEW_TYPE = 'arete-local-graph';
 const TOOLTIP_OFFSET_PX = 12;
 /** Width of the 2D hover tooltip's card, used before the tooltip has been laid out. */
 const TOOLTIP_WIDTH_PX = 300;
+/** Fallback height of the 2D hover tooltip before layout, for vertical clamping. */
+const TOOLTIP_HEIGHT_PX = 200;
 
 interface GraphNode extends d3.SimulationNodeDatum {
 	id: string;
@@ -264,7 +266,7 @@ export class LocalGraphView extends ItemView {
 
 		// Depth Select
 		toolbar.createSpan({ text: 'Depth:', cls: 'arete-graph-toolbar-label' });
-		const depthSelect = toolbar.createEl('select');
+		const depthSelect = toolbar.createEl('select', { cls: 'dropdown' });
 		[1, 2, 3, 4].forEach((d) => {
 			const opt = depthSelect.createEl('option', { value: String(d), text: String(d) });
 			if (d === this.depth) opt.selected = true;
@@ -543,10 +545,13 @@ export class LocalGraphView extends ItemView {
 		const x = event.clientX - box.left;
 		const y = event.clientY - box.top;
 		const width = tip.offsetWidth || TOOLTIP_WIDTH_PX;
+		const height = tip.offsetHeight || TOOLTIP_HEIGHT_PX;
 		const right = x + TOOLTIP_OFFSET_PX + width > box.width;
 		const left = right ? Math.max(0, x - TOOLTIP_OFFSET_PX - width) : x + TOOLTIP_OFFSET_PX;
+		const below = y + TOOLTIP_OFFSET_PX + height > box.height;
+		const top = below ? Math.max(0, y - TOOLTIP_OFFSET_PX - height) : y + TOOLTIP_OFFSET_PX;
 		tip.style.left = `${left}px`;
-		tip.style.top = `${y + TOOLTIP_OFFSET_PX}px`;
+		tip.style.top = `${top}px`;
 	}
 
 	renderEmpty(container: HTMLElement, msg: string) {
@@ -706,10 +711,7 @@ export class LocalGraphView extends ItemView {
 					.attr('x', -100)
 					.attr('y', -75);
 
-				const div = fo
-					.append('xhtml:div')
-					.classed('arete-graph-card', true)
-					.classed('arete-card-preview', true);
+				const div = fo.append('xhtml:div').classed('arete-graph-card', true);
 
 				// Fetch Real Card Data
 				// We have d.filePath and d.id
@@ -777,7 +779,6 @@ export class LocalGraphView extends ItemView {
 							cls: 'arete-card-preview arete-graph-tooltip-card',
 						});
 						this.tooltipCache.set(cacheKey, cardDiv);
-						cardDiv.style.width = `${TOOLTIP_WIDTH_PX}px`;
 
 						// The preview shows the id and title only, not the full card.
 						const cardMock = {
@@ -841,6 +842,7 @@ export class LocalGraphView extends ItemView {
 	}
 
 	async onClose() {
+		this.refreshSeq++;
 		if (this.refreshTimer) window.clearTimeout(this.refreshTimer);
 		this.releaseDrawing();
 	}

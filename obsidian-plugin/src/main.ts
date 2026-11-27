@@ -13,7 +13,7 @@ import { EditorView } from '@codemirror/view';
 import * as path from 'path';
 import * as os from 'os';
 
-import { AretePluginSettings, DEFAULT_SETTINGS } from '@domain/settings';
+import { AretePluginSettings, normalizeSettings } from '@domain/settings';
 import { resolveCardIndex } from '@domain/cardRef';
 
 import { CardYamlEditorView, YAML_EDITOR_VIEW_TYPE } from '@presentation/views/CardYamlEditorView';
@@ -33,7 +33,7 @@ import { SyncRequest, SyncScheduler } from '@application/services/SyncScheduler'
 import { CheckService } from '@infrastructure/arete/CheckService';
 import { TemplateRenderer } from '@application/services/TemplateRenderer';
 import { StatsService } from '@application/services/StatsService';
-import { StatsCache, ConceptStats } from '@/domain/stats';
+import { StatsCache, ConceptStats, normalizeStatsCache, serializeStatsCache } from '@/domain/stats';
 import { GraphService } from '@application/services/GraphService';
 import { LinkCheckerService } from '@application/services/LinkCheckerService';
 import { LeechService } from '@application/services/LeechService';
@@ -178,13 +178,19 @@ export default class AretePlugin extends Plugin {
 		this.registerEditorExtension(cardYamlHighlight);
 		this.registerEditorExtension(
 			createCardGutter(
-				(cardIndex) => {
-					this.highlightCardLines(cardIndex);
+				(cardIndex, view) => {
+					if (view) {
+						this.highlightCardLines(cardIndex, view);
+					} else {
+						this.highlightCardLines(cardIndex);
+					}
 					// Move the Card Editor to this card only if it is open; do not force focus.
 					this.syncYamlEditorToCard(cardIndex);
 
-					// Sync with Graph View
-					const activeFile = this.app.workspace.getActiveFile();
+					// Sync with Graph View using the clicked editor's file when available.
+					const activeFile =
+						view?.state?.field?.(editorInfoField, false)?.file ??
+						this.app.workspace.getActiveFile();
 					if (activeFile) {
 						const cache = this.app.metadataCache.getFileCache(activeFile);
 						if (cache?.frontmatter?.cards && cache.frontmatter.cards[cardIndex]) {
@@ -342,13 +348,36 @@ export default class AretePlugin extends Plugin {
 	}
 
 	// Highlight card lines in editor (permanent until different card is clicked)
-	highlightCardLines(cardIndex: number) {
-		// Use getMostRecentLeaf to find the editor (works when called from sidebar)
-		const leaf = this.app.workspace.getMostRecentLeaf();
-		if (!leaf || !(leaf.view instanceof MarkdownView)) return;
+	highlightCardLines(cardIndex: number, target?: EditorView | string | null) {
+		if (target && typeof target !== 'string' && typeof target.dispatch === 'function') {
+			target.dispatch({
+				effects: highlightCardEffect.of({ cardIndex }),
+			});
+			return;
+		}
+
+		let mdView: MarkdownView | null = null;
+		if (
+			typeof target === 'string' &&
+			typeof this.app.workspace.getLeavesOfType === 'function'
+		) {
+			for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
+				if (leaf.view instanceof MarkdownView && leaf.view.file?.path === target) {
+					mdView = leaf.view;
+					break;
+				}
+			}
+		}
+		if (!mdView) {
+			const leaf = this.app.workspace.getMostRecentLeaf();
+			if (leaf && leaf.view instanceof MarkdownView) {
+				mdView = leaf.view;
+			}
+		}
+		if (!mdView) return;
 
 		// @ts-expect-error - accessing internal editor
-		const cm = leaf.view.editor.cm as EditorView;
+		const cm = mdView.editor.cm as EditorView;
 		if (cm) {
 			cm.dispatch({
 				effects: highlightCardEffect.of({ cardIndex }),
@@ -522,13 +551,7 @@ export default class AretePlugin extends Plugin {
 			}
 		}
 
-		const yamlLeaf = this.app.workspace.getLeavesOfType(YAML_EDITOR_VIEW_TYPE)[0];
-		if (yamlLeaf) {
-			const view = yamlLeaf.view as CardYamlEditorView;
-			if (view.renderToolbar) {
-				view.renderToolbar();
-			}
-		}
+		(this.app.workspace as any).trigger?.('arete:stats-updated');
 	}
 
 	/** A sync the user asked for. While another runs, it says so and starts nothing. */
@@ -600,12 +623,8 @@ export default class AretePlugin extends Plugin {
 
 	async loadSettings() {
 		const data = await this.loadData();
-		// Keep only current settings, so keys from removed features are not saved back.
-		const known = Object.fromEntries(
-			Object.entries(data ?? {}).filter(([k]) => k in DEFAULT_SETTINGS),
-		);
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, known);
-		this.statsCache = data?.statsCache ?? { concepts: {}, lastFetched: 0 };
+		this.settings = normalizeSettings(data);
+		this.statsCache = normalizeStatsCache(data?.statsCache, this.settings.stats_algorithm);
 		const home = os.homedir();
 		const root = this.settings.project_root;
 		if (root === '~' || root.startsWith('~/') || root.startsWith('~\\')) {
@@ -616,7 +635,7 @@ export default class AretePlugin extends Plugin {
 
 	/** What `data.json` holds: the settings, `project_root` relative to home, and the stats cache. */
 	private dataToSave() {
-		const toSave = { ...this.settings, statsCache: this.statsCache };
+		const toSave = { ...this.settings, statsCache: serializeStatsCache(this.statsCache) };
 		const home = os.homedir();
 		const root = toSave.project_root;
 		if (root === home || root.startsWith(`${home}/`) || root.startsWith(`${home}\\`)) {

@@ -1,6 +1,8 @@
 import '../../test-setup';
 import { createMockElement } from '../../test-setup';
 import { DashboardView } from '@/presentation/views/DashboardView';
+import { renderCardListView, renderDeckNodeView } from '@/presentation/views/dashboard/OverviewTab';
+import { renderIntegrityTab } from '@/presentation/views/dashboard/IntegrityTab';
 import { StatsNode } from '@/domain/stats';
 import { DEFAULT_SETTINGS } from '@/domain/settings';
 import { inlineStyled, installNativeObsidian, texts, walk } from '../../mocks/nativeObsidian';
@@ -251,6 +253,79 @@ describe('DashboardView shell', () => {
 		expect(m.plugin.saveStats).toHaveBeenCalledTimes(1);
 	});
 
+	it('skips rendering when closed mid-onOpen refresh and re-renders on arete:stats-updated', async () => {
+		let finish!: (v: any[]) => void;
+		const listeners: Record<string, () => void> = {};
+		const m = mount();
+		m.plugin.onStatsRefreshed = jest.fn().mockResolvedValue(undefined);
+		m.plugin.statsService.refreshStats.mockReturnValue(new Promise((r) => (finish = r)));
+		m.view.app = {
+			workspace: {
+				on: jest.fn((evt: string, cb: () => void) => {
+					listeners[evt] = cb;
+					return { evt, cb };
+				}),
+			},
+		};
+		m.view.registerEvent = jest.fn();
+		const renderSpy = jest.spyOn(m.view, 'render').mockResolvedValue(undefined);
+
+		const opening = m.view.onOpen();
+		await m.view.onClose();
+		finish([]);
+		await opening;
+
+		expect(m.plugin.onStatsRefreshed).toHaveBeenCalledWith([]);
+		expect(renderSpy).not.toHaveBeenCalled();
+
+		// Reopen with populated cache and verify stats-updated triggers a re-render.
+		m.cache.concepts['A.md'] = { totalCards: 1, problematicCardsCount: 0, cardStats: {} };
+		await m.view.onOpen();
+		renderSpy.mockClear();
+		listeners['arete:stats-updated']();
+		expect(renderSpy).toHaveBeenCalledTimes(1);
+	});
+
+	it('IntegrityTab ignores stale results when view closes mid-scan', async () => {
+		const { Notice } = jest.requireMock('obsidian');
+		(Notice as jest.Mock).mockClear();
+		const m = mount();
+		let finishScan!: (refs: any[]) => void;
+		let closed = false;
+		const setBrokenRefs = jest.fn();
+		const rerender = jest.fn();
+		const setScanning = jest.fn();
+
+		renderIntegrityTab(
+			{
+				app: { vault: { getMarkdownFiles: () => [] } } as any,
+				linkCheckerService: {
+					checkIntegrity: jest.fn(() => new Promise((r) => (finishScan = r))),
+				} as any,
+				getBrokenRefs: () => null,
+				setBrokenRefs,
+				isScanning: () => false,
+				setScanning,
+				isClosed: () => closed,
+				rerender,
+				renderSuccess: jest.fn(),
+				goToIssue: jest.fn(),
+			},
+			createMockElement('div'),
+		);
+
+		const scanPromise = m.rec.buttons[0].onClick!();
+		rerender.mockClear();
+		closed = true;
+		finishScan([{ type: 'link' }]);
+		await scanPromise;
+
+		expect(setBrokenRefs).not.toHaveBeenCalled();
+		expect(Notice).not.toHaveBeenCalled();
+		expect(rerender).not.toHaveBeenCalled();
+		expect(setScanning).toHaveBeenLastCalledWith(false);
+	});
+
 	it('shows empty and success states with icons and classes', () => {
 		const m = mount();
 		const el = createMockElement('div');
@@ -276,7 +351,12 @@ describe('DashboardView overview', () => {
 	function renderNode(over: Partial<StatsNode>, depth = 0) {
 		const m = mount();
 		const el = createMockElement('div');
-		m.view.renderDeckNode(el, node({ title: 'Math', deckName: 'Math', ...over }), depth);
+		renderDeckNodeView(
+			m.view.overviewContext(),
+			el,
+			node({ title: 'Math', deckName: 'Math', ...over }),
+			depth,
+		);
 		return { ...m, el };
 	}
 
@@ -384,7 +464,10 @@ describe('DashboardView overview', () => {
 		function renderList(card: any) {
 			const m = mount({ concepts: { 'Note.md': {} } });
 			const el = createMockElement('div');
-			m.view.renderCardList(el, { filePath: 'Note.md', cardStats: { 7: card } } as any);
+			renderCardListView(m.view.overviewContext(), el, {
+				filePath: 'Note.md',
+				cardStats: { 7: card },
+			} as any);
 			return { ...m, el };
 		}
 
@@ -442,7 +525,7 @@ describe('DashboardView overview', () => {
 				},
 			});
 			const el = createMockElement('div');
-			lenient.view.renderCardList(el, {
+			renderCardListView(lenient.view.overviewContext(), el, {
 				filePath: 'Note.md',
 				cardStats: { 7: stat() },
 			} as any);

@@ -80,6 +80,8 @@ export class GlobalGraphView extends ItemView {
 	private readonly arrowId = `arete-global-arrow-${GlobalGraphView.nextMarkerId++}`;
 	private searchTimer: number | null = null;
 	private resizeTimer: number | null = null;
+	private closed = false;
+	private loadSeq = 0;
 	/** The current 2D drawing's elements the search restyles; null when none is drawn. */
 	private searchTargets: {
 		nodeGroup: d3.Selection<any, GlobalNode, any, any>;
@@ -116,6 +118,7 @@ export class GlobalGraphView extends ItemView {
 	}
 
 	async onOpen(): Promise<void> {
+		this.closed = false;
 		this.container = this.contentEl;
 		this.container.empty();
 		this.container.addClass('arete-global-graph');
@@ -129,22 +132,30 @@ export class GlobalGraphView extends ItemView {
 		this.detailPanel = body.createDiv({ cls: 'arete-global-graph-detail' });
 		this.renderDetailEmpty();
 
+		const seq = ++this.loadSeq;
 		try {
 			await this.loadData();
+			if (this.closed || seq !== this.loadSeq) return;
 			this.render();
 		} catch (e) {
+			if (this.closed || seq !== this.loadSeq) return;
 			console.error('[Arete] Failed to load global graph:', e);
 			this.renderEmpty(`Could not load the graph: ${(e as Error).message}`);
 		}
 
+		if (this.closed) return;
+
 		// Follow the canvas size. A render while hidden measures 0x0 and draws nothing, so
-		// the first non-zero size renders; later sizes only resize the drawing (debounced),
-		// keeping the layout.
+		// a zero size resets lastSize so re-showing at the same size still refreshes.
 		let lastSize = '';
 		const observer = new ResizeObserver(([entry]) => {
 			const { width, height } = entry.contentRect;
+			if (width === 0 || height === 0) {
+				lastSize = '';
+				return;
+			}
 			const size = `${Math.round(width)}x${Math.round(height)}`;
-			if (width === 0 || height === 0 || size === lastSize) return;
+			if (size === lastSize) return;
 			lastSize = size;
 			this.onCanvasResize();
 		});
@@ -168,11 +179,14 @@ export class GlobalGraphView extends ItemView {
 		setIcon(refreshBtn, 'refresh-cw');
 		setTooltip(refreshBtn, 'Rebuild graph');
 		refreshBtn.addEventListener('click', () => {
+			const seq = ++this.loadSeq;
 			void (async () => {
 				try {
 					await this.loadData(true);
+					if (this.closed || seq !== this.loadSeq) return;
 					this.render();
 				} catch (e) {
+					if (this.closed || seq !== this.loadSeq) return;
 					console.error('[Arete] Failed to rebuild global graph:', e);
 					this.renderEmpty(`Could not load the graph: ${(e as Error).message}`);
 				}
@@ -993,6 +1007,8 @@ export class GlobalGraphView extends ItemView {
 	}
 
 	async onClose(): Promise<void> {
+		this.closed = true;
+		this.loadSeq++;
 		if (this.searchTimer) window.clearTimeout(this.searchTimer);
 		if (this.resizeTimer) window.clearTimeout(this.resizeTimer);
 		this.stopSimulation();

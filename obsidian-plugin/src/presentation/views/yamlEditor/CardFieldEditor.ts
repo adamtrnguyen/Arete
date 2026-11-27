@@ -12,11 +12,14 @@ export interface CardFieldEditorContext {
 	) => void;
 }
 
-export function renderCardFieldEditor(container: HTMLElement, ctx: CardFieldEditorContext): void {
+export function renderCardFieldEditor(
+	container: HTMLElement,
+	ctx: CardFieldEditorContext,
+): number | null {
 	container.empty();
 
 	const { card } = ctx;
-	if (!card || typeof card !== 'object') return;
+	if (!card || typeof card !== 'object') return null;
 
 	container.createDiv({
 		cls: 'arete-field-model-badge',
@@ -52,7 +55,15 @@ export function renderCardFieldEditor(container: HTMLElement, ctx: CardFieldEdit
 			ctx.onFieldChanged();
 		});
 	});
-	window.setTimeout(() => fitTextareas(inputs), 0);
+	const fitTimer =
+		inputs.length > 0
+			? window.setTimeout(() => {
+					const connected = inputs.filter(
+						(el) => (el as { isConnected?: boolean }).isConnected !== false,
+					);
+					if (connected.length > 0) fitTextareas(connected);
+				}, 0)
+			: null;
 
 	const updateDeps = (depKey: 'requires' | 'related', newDeps: string[]) => {
 		const current =
@@ -70,4 +81,6 @@ export function renderCardFieldEditor(container: HTMLElement, ctx: CardFieldEdit
 	ctx.renderDependencySection('related', related, (newDeps) => {
 		updateDeps('related', newDeps);
 	});
+
+	return fitTimer;
 }

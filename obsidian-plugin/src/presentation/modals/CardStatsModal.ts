@@ -247,7 +247,11 @@ export class CardStatsModal extends Modal {
 
 		// Create SVG
 		const doc = container.ownerDocument ?? activeDocument;
-		const svg = svgEl(doc, 'svg', 'arete-curve-svg', { width, height });
+		const svg = svgEl(doc, 'svg', 'arete-curve-svg', {
+			width,
+			height,
+			viewBox: `0 0 ${width} ${height}`,
+		});
 
 		// Background
 		svg.appendChild(

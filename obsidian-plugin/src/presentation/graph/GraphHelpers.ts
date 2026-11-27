@@ -1,6 +1,6 @@
 import * as d3 from 'd3';
 
-export interface ClusterCentroid {
+interface ClusterCentroid {
 	x: number;
 	y: number;
 	z: number;
@@ -17,7 +17,7 @@ export function hashToHue(str: string): number {
 /**
  * Distribute distinct file clusters around a ring (with alternating z depth for 3D).
  */
-export function computeFileClusterCentroids(
+function computeFileClusterCentroids(
 	filePaths: Iterable<string>,
 	radius?: number,
 ): Map<string, ClusterCentroid> {

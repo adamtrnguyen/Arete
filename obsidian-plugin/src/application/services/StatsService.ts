@@ -15,6 +15,7 @@ import {
 	difficultyOutOfTen,
 	emptyCardStateCounts,
 	metricStates,
+	shouldReplaceNoteFallback,
 	uniqueCardStats,
 } from '@/domain/stats';
 import { debugLog } from '@/domain/debugLog';
@@ -188,36 +189,10 @@ export class StatsService {
 
 			// Store by Note ID (Fallback/Merged) - handle multiple cards per Note ID
 			const existing = concept.cardStats[stat.noteId];
-			if (existing) {
-				let replace = false;
-
-				// 1. FSRS Difficulty: Prefer defined, then higher
-				if (this.settings.stats_algorithm === 'fsrs') {
-					if (stat.difficulty !== undefined) {
-						if (existing.difficulty === undefined) replace = true;
-						else if (stat.difficulty > existing.difficulty) replace = true;
-					}
-				}
-				// 2. SM-2 Ease: Prefer Lower (harder)
-				else {
-					if (stat.ease < existing.ease) replace = true;
-				}
-
-				// 3. Lapses: If stats are equal/comparable, prefer higher lapses
-				if (!replace && stat.lapses > existing.lapses) {
-					if (this.settings.stats_algorithm === 'fsrs') {
-						// Only override if difficulty logic didn't already decide (e.g. both undefined or equal)
-						if (stat.difficulty === existing.difficulty) replace = true;
-					} else {
-						// Only override if ease is equal
-						if (stat.ease === existing.ease) replace = true;
-					}
-				}
-
-				if (replace) {
-					concept.cardStats[stat.noteId] = stat;
-				}
-			} else {
+			if (
+				!existing ||
+				shouldReplaceNoteFallback(existing, stat, this.settings.stats_algorithm)
+			) {
 				concept.cardStats[stat.noteId] = stat;
 			}
 
@@ -512,17 +487,13 @@ export class StatsService {
 			stability: d.stability,
 			retrievability: d.current_retrievability,
 			daysOverdue: d.days_overdue,
-			volatility: d.volatility,
 			lapseRate: d.lapse_rate,
 			intervalGrowth: d.interval_growth,
 			pressFatigue: d.press_fatigue,
-			retAtReview: d.ret_at_review,
 			scheduleAdherence: d.schedule_adherence,
 			isOverlearning: d.is_overlearning,
 			answerDistribution: d.answer_distribution,
 			desiredRetention: d.desired_retention,
-			weights: d.weights,
-			fsrsHistoryMissing: d.fsrs_history_missing,
 		}));
 	}
 }

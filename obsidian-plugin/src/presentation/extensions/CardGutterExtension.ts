@@ -320,7 +320,7 @@ const cardHighlightField = StateField.define<DecorationSet>({
 
 // Create the gutter extension
 export function createCardGutter(
-	onCardClick: (cardIndex: number) => void,
+	onCardClick: (cardIndex: number, view: EditorView) => void,
 	getCardStats: (
 		nid: number | null,
 		cid: number | null,
@@ -412,7 +412,7 @@ export function createCardGutter(
 								thresholds.stats_algorithm,
 								isSynced,
 								state,
-								() => onCardClick(range.index),
+								() => onCardClick(range.index, view),
 							),
 						);
 					}

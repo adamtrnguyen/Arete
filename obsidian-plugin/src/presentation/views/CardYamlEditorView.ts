@@ -40,7 +40,7 @@ export interface YamlEditorHost {
 	templateRenderer: TemplateRenderer;
 	areteClient: AnkiBrowser;
 	activateLocalGraphView(cardId?: string): Promise<void>;
-	highlightCardLines(cardIndex: number): void;
+	highlightCardLines(cardIndex: number, filePath?: string | null): void;
 }
 
 export const YAML_EDITOR_VIEW_TYPE = 'arete-yaml-editor';
@@ -84,6 +84,7 @@ export class CardYamlEditorView extends ItemView {
 	private previewRevision = 0;
 	private previewComponent: Component | null = null;
 	private syncDebounceTimer: number | null = null;
+	private fieldFitTimer: number | null = null;
 	private pendingSync: PendingSync | null = null;
 
 	constructor(leaf: WorkspaceLeaf, plugin: YamlEditorHost) {
@@ -136,16 +137,30 @@ export class CardYamlEditorView extends ItemView {
 			}),
 		);
 		this.registerEvent(this.app.metadataCache.on('changed', (file) => this.onFileParsed(file)));
+		this.registerEvent(
+			(this.app.workspace as any).on('arete:stats-updated', () => {
+				this.renderIndex();
+				this.renderToolbar();
+			}),
+		);
 
 		this.indexContainer?.addEventListener('keydown', (e) => this.handleKeyNavigation(e));
 	}
 
 	async onClose() {
+		this.clearFieldFitTimer();
 		await this.flushPendingSync();
 		this.clearPreview();
 		if (this.editorView) {
 			this.editorView.destroy();
 			this.editorView = null;
+		}
+	}
+
+	private clearFieldFitTimer() {
+		if (this.fieldFitTimer !== null) {
+			window.clearTimeout(this.fieldFitTimer);
+			this.fieldFitTimer = null;
 		}
 	}
 
@@ -276,6 +291,7 @@ export class CardYamlEditorView extends ItemView {
 			item.addEventListener('contextmenu', (e) => this.showCardContextMenu(e, index));
 			item.addEventListener('dragstart', (e) => this.handleDragStart(e, index));
 			item.addEventListener('dragover', (e) => this.handleDragOver(e));
+			item.addEventListener('dragleave', (e) => this.handleDragLeave(e));
 			item.addEventListener('drop', (e) => {
 				void this.handleDrop(e, index);
 			});
@@ -314,7 +330,22 @@ export class CardYamlEditorView extends ItemView {
 			e.dataTransfer.dropEffect = 'move';
 		}
 		const el = (e.target as HTMLElement).closest('.arete-yaml-index-item');
+		this.indexContainer
+			?.querySelectorAll('.arete-yaml-index-item.is-drag-over')
+			.forEach((n) => {
+				if (n !== el) n.removeClass('is-drag-over');
+			});
 		if (el) el.addClass('is-drag-over');
+	}
+
+	private handleDragLeave(e: DragEvent) {
+		const el =
+			(e.currentTarget as HTMLElement | null) ??
+			(e.target as HTMLElement | null)?.closest('.arete-yaml-index-item');
+		if (!el) return;
+		const related = e.relatedTarget as Node | null;
+		if (related && typeof el.contains === 'function' && el.contains(related)) return;
+		el.removeClass('is-drag-over');
 	}
 
 	private handleDragEnd() {
@@ -372,6 +403,7 @@ export class CardYamlEditorView extends ItemView {
 		void this.flushPendingSync();
 		this.setParseError(null);
 		if (mode !== CardEditorViewMode.Preview) this.clearPreview();
+		if (mode !== CardEditorViewMode.Fields) this.clearFieldFitTimer();
 		this.viewMode = mode;
 		this.renderToolbar();
 
@@ -392,9 +424,10 @@ export class CardYamlEditorView extends ItemView {
 	}
 
 	private renderFieldEditor() {
+		this.clearFieldFitTimer();
 		if (!this.fieldEditorContainer) return;
 		const card = this.cards[this.currentCardIndex];
-		renderCardFieldEditor(this.fieldEditorContainer, {
+		this.fieldFitTimer = renderCardFieldEditor(this.fieldEditorContainer, {
 			card,
 			modelName: card && typeof card === 'object' ? this.getCardModel(card) : this.fileModel,
 			onFieldChanged: () => this.debouncedSyncToMain(),
@@ -798,10 +831,28 @@ export class CardYamlEditorView extends ItemView {
 		this.refreshActiveView();
 	}
 
-	private async scrollToCard(index: number) {
+	private findMarkdownViewForCurrentFile(): MarkdownView | null {
+		if (this.currentFilePath && typeof this.app.workspace.getLeavesOfType === 'function') {
+			for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
+				if (
+					leaf.view instanceof MarkdownView &&
+					leaf.view.file?.path === this.currentFilePath
+				) {
+					return leaf.view;
+				}
+			}
+		}
 		const leaf = this.app.workspace.getMostRecentLeaf();
 		if (leaf && leaf.view instanceof MarkdownView) {
-			const editor = leaf.view.editor;
+			return leaf.view;
+		}
+		return null;
+	}
+
+	private async scrollToCard(index: number) {
+		const mdView = this.findMarkdownViewForCurrentFile();
+		if (mdView) {
+			const editor = mdView.editor;
 			const cm = (editor as unknown as { cm?: EditorView }).cm;
 			const range = cm?.state
 				?.field(cardRangesField, false)
@@ -873,7 +924,11 @@ export class CardYamlEditorView extends ItemView {
 
 		this.currentCardIndex = index;
 		this.refreshActiveView();
-		this.plugin.highlightCardLines(index);
+		if (this.currentFilePath) {
+			this.plugin.highlightCardLines(index, this.currentFilePath);
+		} else {
+			this.plugin.highlightCardLines(index);
+		}
 	}
 
 	/** Jump to a card after loading the active file; a file switch resets the position. */
@@ -909,6 +964,7 @@ export class CardYamlEditorView extends ItemView {
 		this.inFlightWrites++;
 		try {
 			await this.app.fileManager.processFrontMatter(activeFile, (frontmatter) => {
+				if (frontmatter.arete !== true) frontmatter.arete = true;
 				if (!Array.isArray(frontmatter.cards)) frontmatter.cards = [];
 
 				const newCard = {

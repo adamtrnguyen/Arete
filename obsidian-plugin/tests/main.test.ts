@@ -37,13 +37,13 @@ describe('AretePlugin Composition', () => {
 		const commands = (global as any).registeredCommands;
 
 		// runSync delegation
-		await commands['arete-sync'].callback();
+		await commands['sync'].callback();
 		expect(plugin.syncService.runSync).toHaveBeenCalled();
 		// One sync at a time: let the first finish before the next command.
 		await new Promise((r) => setImmediate(r));
 
 		// prune delegation
-		await commands['arete-sync-prune'].callback();
+		await commands['sync-prune'].callback();
 		expect(plugin.syncService.runSync).toHaveBeenCalledWith(
 			true,
 			null,
@@ -71,14 +71,14 @@ describe('AretePlugin Composition', () => {
 
 		// check-file delegation
 		const mockView = { file: { path: 'test.md' } };
-		await commands['arete-check-file'].editorCallback(null, mockView);
+		await commands['check-file'].editorCallback(null, mockView);
 		expect(plugin.checkService.getCheckResult).toHaveBeenCalledWith(
 			path.join('/mock/vault/path', 'test.md'),
 		);
 
 		// integrity: the shared frontmatter check
 		const scan = jest.spyOn(plugin.linkCheckerService, 'findAllUnparsedFrontmatter');
-		await commands['arete-check-integrity'].callback();
+		await commands['check-integrity'].callback();
 		expect(scan).toHaveBeenCalled();
 	});
 });
@@ -90,7 +90,7 @@ describe('Reload Note Types command', () => {
 		await plugin.onload();
 		const clear = jest.spyOn(plugin.templateRenderer, 'clearModelCache');
 
-		(global as any).registeredCommands['arete-reload-note-types'].callback();
+		(global as any).registeredCommands['reload-note-types'].callback();
 		expect(clear).toHaveBeenCalledTimes(1);
 	});
 });
@@ -166,22 +166,22 @@ describe('AretePlugin native look', () => {
 		}
 	});
 
-	test('command ids are unchanged', () => {
+	test('command ids use clean unprefixed names (Obsidian namespaces them under arete:)', () => {
 		expect(Object.keys((global as any).registeredCommands).sort()).toEqual(
 			[
-				'arete-check-file',
-				'arete-check-integrity',
-				'arete-graph-clear',
-				'arete-open-dashboard',
-				'arete-open-global-graph',
-				'arete-open-local-graph',
-				'arete-reload-note-types',
-				'arete-sync',
-				'arete-sync-current-file',
-				'arete-sync-force-all',
-				'arete-sync-prune',
-				'arete-sync-stats',
+				'check-file',
+				'check-integrity',
+				'graph-clear',
+				'open-dashboard',
+				'open-global-graph',
+				'open-local-graph',
 				'open-yaml-editor',
+				'reload-note-types',
+				'sync',
+				'sync-current-file',
+				'sync-force-all',
+				'sync-prune',
+				'sync-stats',
 			].sort(),
 		);
 	});

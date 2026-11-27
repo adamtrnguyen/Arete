@@ -1,7 +1,12 @@
 /* Arete Plugin - Base & Utility Styles */
 
+/* Off-screen scratchpad so MathJax measures layout metrics without flashing. */
 .arete-hidden {
-	display: none;
+	position: fixed;
+	left: -9999rem;
+	top: 0;
+	visibility: hidden;
+	pointer-events: none;
 }
 
 /* Status-bar item: an icon and a label. Obsidian's own icon items carry no label, so

@@ -18,8 +18,8 @@
 	font-weight: var(--font-bold);
 	cursor: var(--cursor);
 	transition:
-		background-color 0.15s ease-out,
-		transform 0.15s ease-out;
+		background-color var(--anim-duration-fast) ease-out,
+		transform var(--anim-duration-fast) ease-out;
 	margin: var(--size-2-1);
 }
 
@@ -44,7 +44,7 @@
 	height: 100%;
 	margin-bottom: -1px;
 	cursor: var(--cursor);
-	transition: background-color 0.15s ease-out;
+	transition: background-color var(--anim-duration-fast) ease-out;
 	position: relative;
 	color: var(--interactive-accent);
 }
@@ -76,9 +76,8 @@
 	border-radius: 0;
 	background-color: currentColor;
 	transition:
-		width 0.15s ease-out,
-		box-shadow 0.15s ease-out;
-	z-index: 1;
+		width var(--anim-duration-fast) ease-out,
+		box-shadow var(--anim-duration-fast) ease-out;
 }
 
 .arete-gutter-marker.is-end .arete-gutter-bar {
@@ -115,7 +114,7 @@
 	flex-direction: column;
 	align-items: center;
 	gap: var(--size-2-2);
-	z-index: 2;
+	z-index: 1;
 	pointer-events: none;
 	white-space: nowrap;
 }

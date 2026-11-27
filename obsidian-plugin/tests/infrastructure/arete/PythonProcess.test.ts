@@ -75,6 +75,24 @@ describe('resolvePythonCommand', () => {
 		expect(nonBoundary.cwd).toBe('~other/arete');
 	});
 
+	test('python_path expands leading ~ for interpreters and arete console scripts', () => {
+		const home = os.homedir();
+		const py = resolvePythonCommand({ ...baseSettings, python_path: '~/venv/bin/python3' });
+		expect(py.cmd).toBe(`${home}/venv/bin/python3`);
+		expect(py.args).toEqual(['-m', 'arete']);
+
+		const cli = resolvePythonCommand({ ...baseSettings, python_path: '~/.local/bin/arete' });
+		expect(cli.cmd).toBe(`${home}/.local/bin/arete`);
+		expect(cli.args).toEqual([]);
+
+		const quoted = resolvePythonCommand({
+			...baseSettings,
+			python_path: '"~/My Venv/bin/python" -m arete',
+		});
+		expect(quoted.cmd).toBe(`${home}/My Venv/bin/python`);
+		expect(quoted.args).toEqual(['-m', 'arete']);
+	});
+
 	test('fallbackCwd is used when project_root is empty', () => {
 		const result = resolvePythonCommand(baseSettings, '/vault/path');
 		expect(result.cwd).toBe('/vault/path');

@@ -23,17 +23,13 @@ export interface AnkiCardStats {
 	stability?: number;
 	retrievability?: number;
 	daysOverdue?: number;
-	volatility?: number;
 	lapseRate?: number;
 	intervalGrowth?: number;
 	pressFatigue?: number;
-	retAtReview?: number;
 	scheduleAdherence?: number;
 	isOverlearning?: boolean;
 	answerDistribution?: Record<number, number>;
 	desiredRetention?: number;
-	weights?: number[];
-	fsrsHistoryMissing?: boolean;
 }
 
 export interface ProblematicCard {
@@ -131,6 +127,148 @@ export function uniqueCardStats(cardStats: Record<number, AnkiCardStats>): AnkiC
 		if (!byCard.has(stat.cardId)) byCard.set(stat.cardId, stat);
 	}
 	return [...byCard.values()];
+}
+
+/**
+ * Whether `candidate` should replace `existing` as the worst-card fallback stored under
+ * a shared `noteId` (e.g. a multi-cloze note whose gutter shows one marker per note).
+ */
+export function shouldReplaceNoteFallback(
+	existing: AnkiCardStats,
+	candidate: AnkiCardStats,
+	algorithm: 'fsrs' | 'sm2',
+): boolean {
+	if (algorithm === 'fsrs') {
+		if (candidate.difficulty !== undefined) {
+			if (existing.difficulty === undefined) return true;
+			if (candidate.difficulty > existing.difficulty) return true;
+		}
+		return candidate.lapses > existing.lapses && candidate.difficulty === existing.difficulty;
+	}
+	if (candidate.ease < existing.ease) return true;
+	return candidate.lapses > existing.lapses && candidate.ease === existing.ease;
+}
+
+const DROPPED_CARD_STAT_KEYS = new Set([
+	'weights',
+	'volatility',
+	'retAtReview',
+	'fsrsHistoryMissing',
+]);
+
+function stripLegacyCardStatFields(stat: AnkiCardStats): AnkiCardStats {
+	const entries = Object.entries(stat).filter(([k]) => !DROPPED_CARD_STAT_KEYS.has(k));
+	return Object.fromEntries(entries) as unknown as AnkiCardStats;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+	return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+/**
+ * Coerce raw `statsCache` data loaded from `data.json` into a safe in-memory cache and
+ * rebuild the `noteId` fallback entries that `serializeStatsCache` strips on save.
+ */
+export function normalizeStatsCache(raw: unknown, algorithm: 'fsrs' | 'sm2' = 'fsrs'): StatsCache {
+	if (!isPlainObject(raw)) return { concepts: {}, lastFetched: 0 };
+	const lastFetched =
+		typeof raw.lastFetched === 'number' &&
+		Number.isFinite(raw.lastFetched) &&
+		raw.lastFetched >= 0
+			? raw.lastFetched
+			: 0;
+	const concepts: Record<string, ConceptStats> = {};
+	if (isPlainObject(raw.concepts)) {
+		for (const [filePath, entry] of Object.entries(raw.concepts)) {
+			if (!isPlainObject(entry)) continue;
+			const rawStats = isPlainObject(entry.cardStats) ? entry.cardStats : {};
+			const rebuilt: Record<number, AnkiCardStats> = {};
+			const noteFallback: Record<number, AnkiCardStats> = {};
+			for (const [key, stat] of Object.entries(rawStats)) {
+				if (!isPlainObject(stat)) continue;
+				const clean = stripLegacyCardStatFields(stat as unknown as AnkiCardStats);
+				if (typeof clean.cardId === 'number' && Number.isFinite(clean.cardId)) {
+					rebuilt[clean.cardId] = clean;
+					if (typeof clean.noteId === 'number' && Number.isFinite(clean.noteId)) {
+						const prev = noteFallback[clean.noteId];
+						if (!prev || shouldReplaceNoteFallback(prev, clean, algorithm)) {
+							noteFallback[clean.noteId] = clean;
+						}
+					}
+				} else {
+					const numKey = Number(key);
+					if (Number.isFinite(numKey)) rebuilt[numKey] = clean;
+				}
+			}
+			for (const [nidStr, stat] of Object.entries(noteFallback)) {
+				const nid = Number(nidStr);
+				if (!(nid in rebuilt)) rebuilt[nid] = stat;
+			}
+			concepts[filePath] = {
+				...(entry as unknown as ConceptStats),
+				filePath: typeof entry.filePath === 'string' ? entry.filePath : filePath,
+				fileName: typeof entry.fileName === 'string' ? entry.fileName : filePath,
+				primaryDeck: typeof entry.primaryDeck === 'string' ? entry.primaryDeck : 'Unknown',
+				totalCards:
+					typeof entry.totalCards === 'number' && Number.isFinite(entry.totalCards)
+						? entry.totalCards
+						: 0,
+				problematicCardsCount:
+					typeof entry.problematicCardsCount === 'number' &&
+					Number.isFinite(entry.problematicCardsCount)
+						? entry.problematicCardsCount
+						: 0,
+				problematicCards: Array.isArray(entry.problematicCards)
+					? entry.problematicCards
+					: [],
+				cardStats: rebuilt,
+				averageEase:
+					typeof entry.averageEase === 'number' && Number.isFinite(entry.averageEase)
+						? entry.averageEase
+						: 0,
+				averageDifficulty:
+					typeof entry.averageDifficulty === 'number' &&
+					Number.isFinite(entry.averageDifficulty)
+						? entry.averageDifficulty
+						: null,
+				totalLapses:
+					typeof entry.totalLapses === 'number' && Number.isFinite(entry.totalLapses)
+						? entry.totalLapses
+						: 0,
+				score:
+					typeof entry.score === 'number' && Number.isFinite(entry.score)
+						? entry.score
+						: 0,
+				lastUpdated:
+					typeof entry.lastUpdated === 'number' && Number.isFinite(entry.lastUpdated)
+						? entry.lastUpdated
+						: 0,
+			};
+		}
+	}
+	return { concepts, lastFetched };
+}
+
+/**
+ * Prepare `statsCache` for `data.json`: store each card once under its `cardId` instead
+ * of duplicating every card object under both `cardId` and `noteId`.
+ */
+export function serializeStatsCache(cache: StatsCache): StatsCache {
+	const concepts: Record<string, ConceptStats> = {};
+	for (const [filePath, concept] of Object.entries(cache.concepts ?? {})) {
+		if (!concept || !isPlainObject(concept.cardStats)) {
+			concepts[filePath] = concept;
+			continue;
+		}
+		const deduped: Record<number, AnkiCardStats> = {};
+		for (const stat of uniqueCardStats(concept.cardStats)) {
+			if (stat && typeof stat.cardId === 'number' && Number.isFinite(stat.cardId)) {
+				deduped[stat.cardId] = stripLegacyCardStatFields(stat);
+			}
+		}
+		concepts[filePath] = { ...concept, cardStats: deduped };
+	}
+	return { ...cache, concepts };
 }
 
 /** A metric against its cut-offs. `none`: the stat is absent, so there is nothing to judge. */

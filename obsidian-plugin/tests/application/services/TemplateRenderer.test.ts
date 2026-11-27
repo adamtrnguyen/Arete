@@ -323,6 +323,17 @@ describe('TemplateRenderer', () => {
 			expect(back?.html).toBe('A b');
 		});
 
+		it('wraps {{hint:}} with blank lines in obsidian mode so Markdown/LaTeX inside renders', async () => {
+			renderer.setMode('obsidian');
+			mockRepo.modelTemplates.mockResolvedValue({
+				'Card 1': { Front: '{{hint:Hint}}', Back: '' },
+			});
+			await renderer.render('HintModel', 'Front', { Hint: '**bold** $x^2$' }, opts);
+			expect(renderedValues()).toEqual([
+				'<details class="arete-hint"><summary>Hint</summary>\n\n**bold** $x^2$\n\n</details>',
+			]);
+		});
+
 		it('ignores an in-flight model load that finishes after clearModelCache()', async () => {
 			let finishStyling!: (css: string) => void;
 			mockRepo.modelStyling

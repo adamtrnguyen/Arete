@@ -73,8 +73,8 @@
 	white-space: nowrap;
 	cursor: var(--cursor);
 	transition:
-		color 0.2s ease,
-		background-color 0.2s ease;
+		color var(--anim-duration-fast) ease,
+		background-color var(--anim-duration-fast) ease;
 }
 
 .arete-tab-btn:hover {
@@ -533,6 +533,7 @@
 /* Card stats modal. Widths are multiples of --size-4-1 (4px). */
 .arete-stats-layout {
 	display: flex;
+	flex-wrap: wrap;
 	gap: var(--size-4-4);
 	align-items: stretch;
 }
@@ -545,12 +546,13 @@
 }
 
 .arete-stats-panel {
-	flex: 1;
-	min-width: calc(var(--size-4-1) * 70);
+	flex: 1 1 17.5rem;
+	min-width: min(17.5rem, 100%);
 }
 
 .arete-curve-panel {
-	min-width: calc(var(--size-4-1) * 75);
+	flex: 1 1 18.75rem;
+	min-width: min(18.75rem, 100%);
 }
 
 .arete-modal-section {
@@ -650,6 +652,8 @@
 .arete-curve-svg {
 	display: block;
 	margin: 0 auto;
+	max-width: 100%;
+	height: auto;
 }
 
 .arete-curve-bg {

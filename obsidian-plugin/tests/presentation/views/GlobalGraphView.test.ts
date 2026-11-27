@@ -376,4 +376,66 @@ describe('GlobalGraphView search and resize', () => {
 		expect(view.fitToView).toBeNull();
 		expect(view.repaint3D).toBeNull();
 	});
+
+	it('resets lastSize when hidden to 0x0 so re-showing at the same size triggers resize', async () => {
+		let onResize: (entries: any[]) => void = () => undefined;
+		(global as any).ResizeObserver = class {
+			constructor(cb: any) {
+				onResize = cb;
+			}
+			observe() {}
+			disconnect() {}
+		};
+		const empty: GlobalGraphResult = {
+			files: [],
+			cards: [],
+			requiresEdges: [],
+			relatedEdges: [],
+		};
+		const view: any = await makeView(empty);
+		view.app = new (jest.requireMock('obsidian').App)();
+		view.registerEvent = jest.fn();
+		view.contentEl = createMockElement('div');
+		await view.onOpen();
+
+		const onCanvasResize = jest
+			.spyOn(view, 'onCanvasResize')
+			.mockImplementation(() => undefined);
+		onResize([{ contentRect: { width: 400, height: 300 } }]);
+		expect(onCanvasResize).toHaveBeenCalledTimes(1);
+		// Same size is ignored.
+		onResize([{ contentRect: { width: 400, height: 300 } }]);
+		expect(onCanvasResize).toHaveBeenCalledTimes(1);
+		// Hide to 0x0 then restore to the same 400x300 size -> must fire again.
+		onResize([{ contentRect: { width: 0, height: 0 } }]);
+		onResize([{ contentRect: { width: 400, height: 300 } }]);
+		expect(onCanvasResize).toHaveBeenCalledTimes(2);
+	});
+
+	it('skips rendering and observer registration when closed before initial loadData finishes', async () => {
+		let resolveBuild!: () => void;
+		const observe = jest.fn();
+		(global as any).ResizeObserver = class {
+			observe = observe;
+			disconnect() {}
+		};
+		const resolver = {
+			buildGraph: jest.fn(() => new Promise<void>((r) => (resolveBuild = r))),
+			getGlobalGraph: jest.fn(() => graph()),
+		};
+		const view: any = new GlobalGraphView({} as any, { dependencyResolver: resolver as any });
+		view.app = new (jest.requireMock('obsidian').App)();
+		view.registerEvent = jest.fn();
+		view.contentEl = createMockElement('div');
+		const renderSpy = jest.spyOn(view, 'render').mockImplementation(() => undefined);
+
+		const opening = view.onOpen();
+		await view.onClose();
+		resolveBuild();
+		await opening;
+
+		expect(renderSpy).not.toHaveBeenCalled();
+		expect(observe).not.toHaveBeenCalled();
+		expect(view.registerEvent).not.toHaveBeenCalled();
+	});
 });

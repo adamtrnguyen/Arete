@@ -71,6 +71,7 @@ export class TemplateRenderer {
 		fields: Record<string, string>,
 		side: 'Front' | 'Back',
 		derived: Record<string, string>,
+		mode: 'obsidian' | 'anki',
 	): string {
 		return tmpl.replace(
 			/\{\{\s*((?:(?:cloze|type|text|hint):\s*)+)([^}]+?)\s*\}\}/g,
@@ -92,8 +93,11 @@ export class TemplateRenderer {
 								? '<span class="arete-type-answer" style="display:inline-block;min-width:10em;padding:2px 8px;border:1px solid #999;border-radius:4px;color:#888">type answer</span>'
 								: value;
 					} else if (kind === 'hint') {
+						// Blank lines inside <details> let CommonMark/Obsidian parse inner Markdown and math.
 						value = value
-							? `<details class="arete-hint"><summary>${field}</summary>${value}</details>`
+							? mode === 'obsidian'
+								? `<details class="arete-hint"><summary>${field}</summary>\n\n${value}\n\n</details>`
+								: `<details class="arete-hint"><summary>${field}</summary>${value}</details>`
 							: '';
 					} else if (kind === 'text') {
 						value = value.replace(/<[^>]*>/g, '');
@@ -177,9 +181,21 @@ export class TemplateRenderer {
 		}
 
 		const derived: Record<string, string> = {};
-		const template = TemplateRenderer.expandFilters(rawTemplate, fields, templateType, derived);
+		const template = TemplateRenderer.expandFilters(
+			rawTemplate,
+			fields,
+			templateType,
+			derived,
+			this.mode,
+		);
 		const frontTemplate = cardTemplates['Front']
-			? TemplateRenderer.expandFilters(cardTemplates['Front'], fields, 'Front', derived)
+			? TemplateRenderer.expandFilters(
+					cardTemplates['Front'],
+					fields,
+					'Front',
+					derived,
+					this.mode,
+				)
 			: undefined;
 		fields = { ...fields, ...derived };
 

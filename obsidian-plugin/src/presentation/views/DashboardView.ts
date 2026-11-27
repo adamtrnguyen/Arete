@@ -14,11 +14,7 @@ import { AretePluginSettings } from '@/domain/settings';
 import { BrokenReference, LinkCheckerService } from '@application/services/LinkCheckerService';
 import { StatsService } from '@application/services/StatsService';
 import { LeechService } from '@application/services/LeechService';
-import {
-	OverviewTabContext,
-	renderCardListView,
-	renderDeckNodeView,
-} from '@/presentation/views/dashboard/OverviewTab';
+import { OverviewTabContext, renderDeckNodeView } from '@/presentation/views/dashboard/OverviewTab';
 import { renderLeechesTab } from '@/presentation/views/dashboard/LeechesTab';
 import { renderIntegrityTab } from '@/presentation/views/dashboard/IntegrityTab';
 import { renderQueueBuilderTab } from '@/presentation/views/dashboard/QueueBuilderTab';
@@ -32,6 +28,7 @@ export interface DashboardHost {
 	leechService: LeechService;
 	areteClient: StudyQueueClient;
 	saveStats(): Promise<void>;
+	onStatsRefreshed?(results: ConceptStats[]): Promise<void>;
 	/** Persist the `ui_expanded_*` settings soon; repeated calls coalesce into one write. */
 	requestSaveUiState(): void;
 }
@@ -48,6 +45,8 @@ export class DashboardView extends ItemView {
 	expandedDecks: Set<string>;
 	private aggregated: { concepts: object; thresholds: string; root: StatsNode } | null = null;
 	private queueBuilderRevision = 0;
+	private closed = false;
+	private suppressStatsEvent = false;
 
 	brokenRefs: BrokenReference[] | null = null;
 	isScanning = false;
@@ -72,33 +71,60 @@ export class DashboardView extends ItemView {
 	}
 
 	async onOpen() {
+		this.closed = false;
+		if (typeof (this.app?.workspace as any)?.on === 'function') {
+			this.registerEvent(
+				(this.app.workspace as any).on('arete:stats-updated', () => {
+					if (!this.closed && !this.suppressStatsEvent) {
+						void this.render();
+					}
+				}),
+			);
+		}
 		if (Object.keys(this.plugin.statsService.getCache().concepts).length === 0) {
 			new Notice('Syncing Anki stats...');
 			try {
-				await this.plugin.statsService.refreshStats();
-				await this.plugin.saveStats();
+				const results = await this.plugin.statsService.refreshStats();
+				await this.notifyStatsRefreshed(results);
 			} catch (e) {
 				console.error('[Arete] Failed to sync Anki stats:', e);
-				new Notice('Failed to refresh stats, check that Anki is running.');
+				if (!this.closed) {
+					new Notice('Failed to refresh stats, check that Anki is running.');
+				}
 			}
 		}
+		if (this.closed) return;
 		await this.render();
 	}
 
 	async onClose() {
+		this.closed = true;
 		this.queueBuilderRevision++;
+	}
+
+	private async notifyStatsRefreshed(results: ConceptStats[]): Promise<void> {
+		this.suppressStatsEvent = true;
+		try {
+			if (this.plugin.onStatsRefreshed) {
+				await this.plugin.onStatsRefreshed(results);
+			} else {
+				await this.plugin.saveStats();
+			}
+		} finally {
+			this.suppressStatsEvent = false;
+		}
 	}
 
 	syncRenamedFile(oldPath: string, newPath: string): void {
 		if (this.expandedConcepts.delete(oldPath)) {
 			this.expandedConcepts.add(newPath);
 		}
-		void this.render();
+		if (!this.closed) void this.render();
 	}
 
 	syncDeletedFile(filePath: string): void {
 		this.expandedConcepts.delete(filePath);
-		void this.render();
+		if (!this.closed) void this.render();
 	}
 
 	private thresholdSnapshot(): string {
@@ -167,14 +193,16 @@ export class DashboardView extends ItemView {
 		refreshBtn.onClick(async () => {
 			refreshBtn.setDisabled(true);
 			try {
-				await this.plugin.statsService.refreshStats();
-				await this.plugin.saveStats();
-				await this.render();
+				const results = await this.plugin.statsService.refreshStats();
+				await this.notifyStatsRefreshed(results);
+				if (!this.closed) await this.render();
 			} catch (e) {
 				console.error('[Arete] Failed to refresh stats:', e);
-				new Notice('Failed to refresh stats, check that Anki is running.');
+				if (!this.closed) {
+					new Notice('Failed to refresh stats, check that Anki is running.');
+				}
 			} finally {
-				refreshBtn.setDisabled(false);
+				if (!this.closed) refreshBtn.setDisabled(false);
 			}
 		});
 	}
@@ -263,14 +291,6 @@ export class DashboardView extends ItemView {
 		}
 	}
 
-	renderDeckNode(container: HTMLElement, node: StatsNode, depth: number) {
-		renderDeckNodeView(this.overviewContext(), container, node, depth);
-	}
-
-	renderCardList(container: HTMLElement, concept: ConceptStats) {
-		renderCardListView(this.overviewContext(), container, concept);
-	}
-
 	private persistExpansion() {
 		this.plugin.settings.ui_expanded_decks = [...this.expandedDecks];
 		this.plugin.settings.ui_expanded_concepts = [...this.expandedConcepts];
@@ -305,8 +325,9 @@ export class DashboardView extends ItemView {
 				setScanning: (scanning) => {
 					this.isScanning = scanning;
 				},
+				isClosed: () => this.closed,
 				rerender: () => {
-					void this.render();
+					if (!this.closed) void this.render();
 				},
 				renderSuccess: (el, msg) => this.renderSuccess(el, msg),
 				goToIssue: (file, searchText, line) => {

@@ -68,13 +68,14 @@ describe('CardYamlEditorView: editing the card list in frontmatter', () => {
 			expect(view.ownWrite).toEqual({ path: note.path, mtime: note.stat.mtime });
 		});
 
-		it('creates the cards list when the note has none', async () => {
+		it('creates the cards list and sets arete: true when the note has none', async () => {
 			const { view, fm } = makeView([]);
 			delete fm.cards;
 			await view.loadCards();
 
 			await view.addCard();
 
+			expect(fm.arete).toBe(true);
 			expect(fm.cards).toEqual([{ model: 'Basic', Front: '', Back: '' }]);
 		});
 
@@ -194,6 +195,19 @@ describe('CardYamlEditorView: editing the card list in frontmatter', () => {
 			expect(e.dataTransfer.dropEffect).toBe('move');
 			expect(e.target.closest).toHaveBeenCalledWith('.arete-yaml-index-item');
 			expect(item.addClass).toHaveBeenCalledWith('is-drag-over');
+		});
+
+		it('drag leave removes is-drag-over unless moving into a child element', () => {
+			const { view } = makeView(cards());
+			const child = {};
+			const item = createMockElement('div', {
+				contains: jest.fn((n: unknown) => n === child),
+			});
+			view.handleDragLeave({ currentTarget: item, relatedTarget: child } as any);
+			expect(item.removeClass).not.toHaveBeenCalled();
+
+			view.handleDragLeave({ currentTarget: item, relatedTarget: null } as any);
+			expect(item.removeClass).toHaveBeenCalledWith('is-drag-over');
 		});
 
 		it('drag end clears both markers from every item', () => {
@@ -1171,5 +1185,23 @@ describe('CardYamlEditorView: scrolling the note editor to a card', () => {
 		const { view, app } = makeView(cards());
 		app.workspace.getMostRecentLeaf = jest.fn().mockReturnValue({ view: {} });
 		await expect(view.scrollToCard(0)).resolves.toBeUndefined();
+	});
+
+	it('prefers the MarkdownView leaf matching currentFilePath over an unrelated recent leaf', async () => {
+		const { view, app } = makeView(cards());
+		await view.loadCards(); // sets currentFilePath = 'Note.md'
+		const target = editorWith('---\ncards:\n  - id: a\n  - id: b\n---');
+		target.mdView.file = { path: 'Note.md' };
+		const other = editorWith('---\ncards:\n  - id: x\n---');
+		other.mdView.file = { path: 'Other.md' };
+		app.workspace.getLeavesOfType = jest
+			.fn()
+			.mockReturnValue([{ view: other.mdView }, { view: target.mdView }]);
+		app.workspace.getMostRecentLeaf = jest.fn().mockReturnValue({ view: other.mdView });
+
+		await view.scrollToCard(1);
+
+		expect(target.editor.setCursor).toHaveBeenCalledWith({ line: 3, ch: 0 });
+		expect(other.editor.setCursor).not.toHaveBeenCalled();
 	});
 });

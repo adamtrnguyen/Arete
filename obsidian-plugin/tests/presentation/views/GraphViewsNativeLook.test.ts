@@ -66,6 +66,13 @@ describe('LocalGraphView native look', () => {
 		expect(view.tooltipContainer.style).toEqual({});
 	});
 
+	it('applies Obsidian native .dropdown class to the depth select', () => {
+		const view = make();
+		view.renderToolbar();
+		const toolbar = view.container.createDiv.mock.results[0].value;
+		expect(toolbar.createEl).toHaveBeenCalledWith('select', { cls: 'dropdown' });
+	});
+
 	it('paints 3D from the theme once per drawing and repaints in place on a theme change', () => {
 		const view = make();
 		const canvas = element('div');

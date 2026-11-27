@@ -1,5 +1,21 @@
 import { App, Component, Keymap } from 'obsidian';
 
+/** Hard upper bound on auto-sized iframe height so runaway 100vh templates cannot hang layout. */
+const MAX_FRAME_HEIGHT_PX = 8000;
+/** Stop observing after this many strictly increasing observer-driven resizes in a row. */
+const MAX_CONSECUTIVE_GROWTHS = 8;
+
+/**
+ * Low-specificity base rules prepended before Anki model CSS. Using `:where(...)` keeps
+ * specificity at 0 so any model `.card` rule wins while unstyled cards stay readable in
+ * Obsidian dark mode and `html { height: auto }` breaks `100vh` resize feedback loops.
+ */
+const FRAME_BASE_CSS = [
+	'html { height: auto; min-height: 0; }',
+	':where(body.card) { margin: 8px; }',
+	':where(body.card.nightMode) { color-scheme: dark; color: #f0f0f0; background-color: transparent; }',
+].join('\n');
+
 /** Give model CSS its own document; no selector rewriting or Obsidian theme CSS. */
 export function renderCardPreviewFrame(
 	app: App,
@@ -28,6 +44,22 @@ export function renderCardPreviewFrame(
 		base.href = hostDocument.baseURI;
 		doc.head.appendChild(base);
 
+		const syncTheme = () => {
+			if (disposed) return;
+			const isDark = hostDocument.body?.classList?.contains('theme-dark') ?? false;
+			doc.body.classList?.toggle('nightMode', isDark);
+			doc.body.classList?.toggle('night_mode', isDark);
+		};
+		syncTheme();
+		if (typeof app.workspace?.on === 'function') {
+			const themeRef = app.workspace.on('css-change', syncTheme);
+			if (typeof component.registerEvent === 'function') {
+				component.registerEvent(themeRef);
+			} else {
+				component.register(() => app.workspace.offref?.(themeRef));
+			}
+		}
+
 		// Obsidian's MathJax output uses shared font/glyph rules. Copy only those
 		// rules, not the theme styles that would override the Anki model.
 		for (const source of Array.from(hostDocument.querySelectorAll('style[id^="MJX-"]'))) {
@@ -41,6 +73,11 @@ export function renderCardPreviewFrame(
 				: source.textContent;
 			doc.head.appendChild(mathStyle);
 		}
+		const baseStyle = doc.createElement('style');
+		baseStyle.setAttribute('data-arete-base', 'true');
+		baseStyle.textContent = FRAME_BASE_CSS;
+		doc.head.appendChild(baseStyle);
+
 		const style = doc.createElement('style');
 		style.textContent = rendered.css;
 		doc.head.appendChild(style);
@@ -89,16 +126,31 @@ export function renderCardPreviewFrame(
 		doc.addEventListener('click', onClick);
 		component.register(() => doc.removeEventListener('click', onClick));
 
-		const resize = () => {
+		let lastHeight = 0;
+		let growthStreak = 0;
+		const applyHeight = (fromObserver: boolean) => {
 			if (disposed) return;
 			// The root box includes collapsed paragraph margins outside the body.
-			const height = doc.documentElement.getBoundingClientRect().height;
-			frame.style.height = `${Math.ceil(height)}px`;
+			const raw = Math.ceil(doc.documentElement.getBoundingClientRect().height);
+			const nextHeight = Math.min(raw, MAX_FRAME_HEIGHT_PX);
+			if (nextHeight === lastHeight) return;
+			if (fromObserver && lastHeight > 0 && nextHeight > lastHeight) {
+				growthStreak++;
+				if (growthStreak > MAX_CONSECUTIVE_GROWTHS) {
+					observer?.disconnect();
+					observer = undefined;
+					return;
+				}
+			} else {
+				growthStreak = 0;
+			}
+			lastHeight = nextHeight;
+			frame.style.height = `${nextHeight}px`;
 		};
-		observer = new ResizeObserver(resize);
+		observer = new ResizeObserver(() => applyHeight(true));
 		observer.observe(doc.documentElement);
-		void doc.fonts.ready.then(resize);
-		resize();
+		void doc.fonts.ready.then(() => applyHeight(false));
+		applyHeight(false);
 	};
 	frame.addEventListener('load', onLoad, { once: true });
 	component.register(() => {

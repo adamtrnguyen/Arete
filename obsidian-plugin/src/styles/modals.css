@@ -13,6 +13,7 @@
 }
 
 .arete-dependency-modal .modal-content.arete-dependency-modal-content {
+	container-type: inline-size;
 	flex: 1;
 	display: flex;
 	flex-direction: column;
@@ -32,13 +33,27 @@
 }
 
 .arete-dep-modal-sidebar {
-	width: 22rem;
-	min-width: 22rem;
+	flex: 0 1 22rem;
+	min-width: min(16rem, 45%);
 	max-width: 25rem;
 	display: flex;
 	flex-direction: column;
 	border-right: var(--border-width) solid var(--background-modifier-border);
 	background-color: var(--background-secondary);
+}
+
+@container (max-width: 38rem) {
+	.arete-dep-modal-layout {
+		flex-direction: column;
+	}
+
+	.arete-dep-modal-sidebar {
+		flex: 0 1 45%;
+		min-width: 0;
+		max-width: none;
+		border-right: none;
+		border-bottom: var(--border-width) solid var(--background-modifier-border);
+	}
 }
 
 .arete-dep-modal-search {
@@ -93,19 +108,20 @@
 	overflow: hidden;
 }
 
-.arete-result-label {
-	font-weight: var(--font-medium);
+.arete-result-label,
+.arete-result-desc {
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
 }
 
+.arete-result-label {
+	font-weight: var(--font-medium);
+}
+
 .arete-result-desc {
 	font-size: var(--font-ui-smaller);
 	color: var(--text-muted);
-	white-space: nowrap;
-	overflow: hidden;
-	text-overflow: ellipsis;
 }
 
 .arete-dep-modal-preview {
@@ -135,24 +151,25 @@
 }
 
 /* ─── Card Stats Modal ─── */
-.arete-stats-modal {
-	width: 60vw !important;
-	min-width: 650px !important;
-	max-width: 1200px !important;
-	height: auto !important;
-	max-height: 90vh !important;
+.modal.arete-stats-modal {
+	width: 60vw;
+	min-width: min(41rem, 95vw);
+	max-width: 75rem;
+	height: auto;
+	max-height: 90vh;
 }
 
 .arete-stats-modal-content {
 	display: flex;
 	flex-direction: column;
 	height: 100%;
+	overflow-y: auto;
 }
 
 /* ─── Check Result Modal ─── */
 .modal.arete-check-modal {
 	width: 50vw;
-	min-width: 31rem;
+	min-width: min(31rem, 92vw);
 	max-width: 50rem;
 	height: auto;
 }
@@ -160,5 +177,4 @@
 .arete-modal-content {
 	display: flex;
 	flex-direction: column;
-	padding: var(--size-4-4);
 }

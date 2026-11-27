@@ -176,16 +176,37 @@ describe('AreteSettingTab: what each control writes and triggers', () => {
 			);
 		});
 
-		it('lapse threshold recomputes problematic stats and saves', async () => {
+		it('lapse threshold recomputes problematic stats, saves, and notifies views', async () => {
+			app.workspace.trigger = jest.fn();
 			render();
 			await byName('Lapse threshold').mockSlider._onChange(7);
 			expect(plugin.settings.stats_lapse_threshold).toBe(7);
 			expect(plugin.statsService.recomputeProblematicCards).toHaveBeenCalledWith(
 				plugin.settings,
 			);
+			expect(app.workspace.trigger).toHaveBeenCalledWith('arete:stats-updated');
 		});
 
-		it('changing the algorithm discards the cached stats and re-renders', async () => {
+		it('flushes pending debounced text saves when plugin unloads', () => {
+			jest.useFakeTimers();
+			try {
+				let onUnload: (() => void) | undefined;
+				plugin.register = jest.fn((cb: () => void) => (onUnload = cb));
+				const registeredTab = new AreteSettingTab(app, plugin);
+				registeredTab.display();
+				byName('Python executable').mockText._onChange('/opt/python');
+				expect(plugin.saveSettings).not.toHaveBeenCalled();
+
+				onUnload?.();
+				expect(plugin.saveSettings).toHaveBeenCalledTimes(1);
+				expect(jest.getTimerCount()).toBe(0);
+			} finally {
+				jest.useRealTimers();
+			}
+		});
+
+		it('changing the algorithm discards the cached stats, notifies views, and re-renders', async () => {
+			app.workspace.trigger = jest.fn();
 			plugin.settings.stats_algorithm = 'sm2';
 			render();
 			const dropdown = byName('Algorithm').mockDropdown;
@@ -197,6 +218,7 @@ describe('AreteSettingTab: what each control writes and triggers', () => {
 			expect(plugin.statsService.clearCache).toHaveBeenCalledTimes(1);
 			expect(plugin.statsCache).toEqual({ concepts: {}, lastFetched: 0 });
 			expect(plugin.saveSettings).toHaveBeenCalled();
+			expect(app.workspace.trigger).toHaveBeenCalledWith('arete:stats-updated');
 			expect(names()).toContain('Difficulty threshold (FSRS)');
 		});
 

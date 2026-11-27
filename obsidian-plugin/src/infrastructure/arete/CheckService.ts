@@ -78,21 +78,32 @@ export class CheckService implements FileChecker {
 				return;
 			}
 
+			let stdout = '';
 			let stderr = '';
+			let settled = false;
+			child.stdout?.on('data', (d) => (stdout += d.toString()));
 			child.stderr?.on('data', (d) => (stderr += d.toString()));
 
 			child.once('error', (err) => {
+				if (settled) return;
+				settled = true;
 				console.error('[Arete] Fix failed:', err);
 				new Notice('Fix failed, check the developer console.');
 				resolve();
 			});
 
 			child.once('close', (code, signal) => {
+				if (settled) return;
+				settled = true;
 				if (this.processes.didTimeOut(child)) {
 					console.error('[Arete] Fix timed out:', stderr || signal || `exit ${code}`);
 					new Notice('Fix timed out, check the developer console.');
 				} else if (code === 0 && !signal) {
-					new Notice('File auto-fixed.');
+					if (/no fixable issues found/i.test(stdout)) {
+						new Notice('No fixable issues found.');
+					} else {
+						new Notice('File auto-fixed.');
+					}
 				} else {
 					console.error('[Arete] Fix failed:', stderr || signal || `exit ${code}`);
 					new Notice('Fix failed, check the developer console.');
@@ -126,8 +137,11 @@ export class CheckService implements FileChecker {
 				return;
 			}
 			let stderr = '';
+			let settled = false;
 			child.stderr?.on('data', (d) => (stderr += d.toString()));
 			child.once('error', (err: NodeJS.ErrnoException) => {
+				if (settled) return;
+				settled = true;
 				console.error('[Arete] Test configuration failed:', err);
 				new Notice(
 					err.code === 'ENOENT'
@@ -137,6 +151,8 @@ export class CheckService implements FileChecker {
 				resolve();
 			});
 			child.once('close', (code, signal) => {
+				if (settled) return;
+				settled = true;
 				if (this.processes.didTimeOut(child)) {
 					console.error(
 						'[Arete] Test configuration timed out:',
