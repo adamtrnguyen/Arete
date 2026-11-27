@@ -24,6 +24,7 @@ from . import util
 
 MAX_HEADER_SIZE = 64 * 1024  # 64 KiB
 MAX_REQUEST_SIZE = 64 * 1024 * 1024  # 64 MiB
+MAX_READ_PER_TICK = 1024 * 1024  # 1 MiB per event-loop tick
 CLIENT_IDLE_TIMEOUT_S = 10.0
 RECV_SIZE = 65536
 
@@ -74,7 +75,7 @@ class WebClient:
     def __init__(self, sock, handler):
         self.sock = sock
         self.handler = handler
-        self.readBuff = b""
+        self.readBuff = bytearray()
         self.writeBuff = b""
         self.lastActivity = time.monotonic()
 
@@ -95,35 +96,50 @@ class WebClient:
             return False
 
         if rlist and not self.writeBuff:
-            try:
-                msg = self.sock.recv(recvSize)
-            except BlockingIOError:
-                return True
-            except OSError:
-                self.close()
-                return False
-
-            if not msg:
-                self.close()
-                return False
-
-            self.lastActivity = now
-            self.readBuff += msg
-
-            try:
-                req, length = self.parseRequest(self.readBuff)
-            except _HttpParseError as e:
-                self.readBuff = b""
-                self.writeBuff = self._errorResponse(e.status, e.message)
-                return self._trySend()
-
-            if req is not None:
-                self.readBuff = self.readBuff[length:]
+            eof = False
+            bytes_read = 0
+            while bytes_read < MAX_READ_PER_TICK:
                 try:
-                    self.writeBuff += self.handler(req)
-                except Exception as e:
-                    self.writeBuff = self._errorResponse("500 Internal Server Error", str(e))
-                return self._trySend()
+                    msg = self.sock.recv(recvSize)
+                except BlockingIOError:
+                    break
+                except OSError:
+                    self.close()
+                    return False
+
+                if not msg:
+                    eof = True
+                    break
+
+                self.readBuff.extend(msg)
+                bytes_read += len(msg)
+                self.lastActivity = now
+                if len(self.readBuff) > MAX_REQUEST_SIZE:
+                    self.readBuff.clear()
+                    self.writeBuff = self._errorResponse(
+                        "413 Payload Too Large", "request body too large"
+                    )
+                    return self._trySend()
+
+            if bytes_read > 0:
+                try:
+                    req, length = self.parseRequest(self.readBuff)
+                except _HttpParseError as e:
+                    self.readBuff.clear()
+                    self.writeBuff = self._errorResponse(e.status, e.message)
+                    return self._trySend()
+
+                if req is not None:
+                    del self.readBuff[:length]
+                    try:
+                        self.writeBuff += self.handler(req)
+                    except Exception as e:
+                        self.writeBuff = self._errorResponse("500 Internal Server Error", str(e))
+                    return self._trySend()
+
+            if eof:
+                self.close()
+                return False
 
         if wlist and self.writeBuff:
             return self._trySend()
@@ -138,6 +154,10 @@ class WebClient:
         except BlockingIOError:
             return True
         except OSError:
+            self.close()
+            return False
+
+        if length == 0:
             self.close()
             return False
 
@@ -164,7 +184,7 @@ class WebClient:
                 self.sock.close()
             self.sock = None
 
-        self.readBuff = b""
+        self.readBuff.clear()
         self.writeBuff = b""
 
     def parseRequest(self, data):
@@ -182,14 +202,14 @@ class WebClient:
 
         if lines:
             request_line_parts = lines[0].split(b" ")
-            method = request_line_parts[0].upper() if request_line_parts else None
+            method = bytes(request_line_parts[0].upper()) if request_line_parts else None
 
         headers = {}
         for line in lines[1:]:
             if b":" not in line:
                 continue
             key, value = line.split(b":", 1)
-            headers[key.strip().lower()] = value.strip()
+            headers[bytes(key.strip().lower())] = bytes(value.strip())
 
         headerLength = len(parts[0]) + 4
         raw_cl = headers.get(b"content-length")
@@ -210,7 +230,7 @@ class WebClient:
         if totalLength > len(data):
             return None, 0
 
-        body = data[headerLength:totalLength]
+        body = bytes(data[headerLength:totalLength])
         return WebRequest(method, headers, body), totalLength
 
 

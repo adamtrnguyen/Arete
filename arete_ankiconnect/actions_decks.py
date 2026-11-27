@@ -164,8 +164,9 @@ class DeckActions:
 
     @util.api()
     def removeDeckConfigId(self, configId):
+        configId = int(configId)
         collection = self.collection()
-        if int(configId) not in [c["id"] for c in collection.decks.all_config()]:
+        if configId not in [c["id"] for c in collection.decks.all_config()]:
             return False
 
         collection.decks.remove_config(configId)

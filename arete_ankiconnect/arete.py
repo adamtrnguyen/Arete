@@ -111,6 +111,8 @@ def copy_obsidian_source():
     except Exception:
         vault_root = ""
 
+    if vault_root:
+        vault_root = os.path.expanduser(vault_root)
     full_path = os.path.join(vault_root, file_path) if vault_root else file_path
     copy_text = f"{full_path} (card: {arete_id})" if arete_id else full_path
 

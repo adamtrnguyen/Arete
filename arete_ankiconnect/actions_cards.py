@@ -124,12 +124,14 @@ class CardActions:
             )
 
         to_change = []
+        seen = set()
         for card in cards:
             if type(card) is int and card in queues:
                 isSuspended = queues[card] == -1
             else:
                 isSuspended = self.suspended(card)
-            if isSuspended != suspend:
+            if isSuspended != suspend and card not in seen:
+                seen.add(card)
                 to_change.append(card)
 
         if len(to_change) == 0:

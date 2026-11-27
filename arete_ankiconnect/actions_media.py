@@ -42,7 +42,7 @@ class MediaActions:
         except Exception:
             vault_root = None
         if vault_root:
-            allowed_roots.append(Path(vault_root).resolve())
+            allowed_roots.append(Path(vault_root).expanduser().resolve())
         if not any(resolved.is_relative_to(root) for root in allowed_roots):
             raise Exception("media path is outside allowed directories")
         if not resolved.is_file():
@@ -121,12 +121,16 @@ class MediaActions:
 
     @util.api()
     def retrieveMediaFile(self, filename):
+        if not isinstance(filename, str):
+            return False
         filename = os.path.basename(filename)
         filename = unicodedata.normalize("NFC", filename)
         filename = self.media().stripIllegal(filename)
+        if filename in {"", ".", ".."}:
+            return False
 
         path = os.path.join(self.media().dir(), filename)
-        if os.path.exists(path):
+        if os.path.isfile(path):
             with open(path, "rb") as file:
                 return base64.b64encode(file.read()).decode("ascii")
 
@@ -136,10 +140,10 @@ class MediaActions:
     def getMediaFilesNames(self, pattern="*"):
         if (
             not isinstance(pattern, str)
+            or pattern in {"", ".", ".."}
             or os.path.isabs(pattern)
             or "/" in pattern
             or "\\" in pattern
-            or ".." in pattern
         ):
             raise Exception(f"invalid media pattern: {pattern!r}")
         media_dir = Path(self.media().dir()).resolve()

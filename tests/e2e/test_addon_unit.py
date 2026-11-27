@@ -279,6 +279,59 @@ def test_web_client_error_isolation_and_nonblocking_reads():
             sock.close()
 
 
+def test_web_client_drains_multichunk_payload_and_closes_on_zero_send():
+    web = _load_web_module()
+    received_sizes: list[int] = []
+    server = web.WebServer(
+        lambda params: {
+            "result": len(params["params"]["blob"]),
+            "error": None,
+        }
+    )
+
+    # 160 KiB payload (> 2 * 64 KiB RECV_SIZE) drained in a single advance() tick,
+    # even when the peer immediately half-closes its write end.
+    blob = "x" * (160 * 1024)
+    body = json.dumps({"action": "echo", "version": 6, "params": {"blob": blob}}).encode("utf-8")
+    raw = b"POST / HTTP/1.1\r\nContent-Length: " + str(len(body)).encode() + b"\r\n\r\n" + body
+
+    s_a, s_b = socket.socketpair()
+    try:
+        s_a.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 512 * 1024)
+        s_b.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 512 * 1024)
+        s_a.setblocking(False)
+        client = web.WebClient(s_a, server.handlerWrapper)
+        s_b.sendall(raw)
+        s_b.shutdown(socket.SHUT_WR)
+        assert client.advance() is False
+        resp = b""
+        while chunk := s_b.recv(4096):
+            resp += chunk
+        assert b"HTTP/1.1 200 OK" in resp
+        assert f'"result": {len(blob)}'.encode() in resp
+        received_sizes.append(len(resp))
+    finally:
+        s_a.close()
+        s_b.close()
+    assert received_sizes
+
+    # Zero-byte send closes the client cleanly rather than spinning forever.
+    closed: list[bool] = []
+
+    class ZeroSendSock:
+        def send(self, _data: bytes) -> int:
+            return 0
+
+        def close(self) -> None:
+            closed.append(True)
+
+    c = web.WebClient(ZeroSendSock(), lambda _r: b"")
+    c.writeBuff = b"HTTP/1.1 200 OK\r\n\r\n"
+    assert c._trySend() is False
+    assert closed == [True]
+    assert c.sock is None
+
+
 def test_web_client_idle_timeout_closes_zombie_socket():
     web = _load_web_module()
     s_a, s_b = socket.socketpair()
@@ -452,10 +505,16 @@ def test_arete_report_current_card_suspends_captured_card_even_if_reviewer_chang
     saved = json.loads((tmp_path / "reports.json").read_text(encoding="utf-8"))
     assert len(saved) == 1 and saved[0]["cid"] == 101 and saved[0]["front"] == "Front question"
 
-    # copy_obsidian_source reads vault_root dynamically via util.setting
+    # copy_obsidian_source reads vault_root dynamically via util.setting and expands ~
     reviewer.card = card_a
     mod.copy_obsidian_source()
     assert mod._clipboard_state["text"] == "/my/vault/a.md (card: arete_A)"
+
+    mod_tilde = _load_arete_module(fake_mw, {"vault_root": "~/Vault"}, warnings, tooltips)
+    mod_tilde.copy_obsidian_source()
+    assert (
+        mod_tilde._clipboard_state["text"] == f"{Path('~/Vault').expanduser()}/a.md (card: arete_A)"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -510,14 +569,15 @@ def test_get_model_info_returns_canonical_name(host: AddonHost):
 
 def test_suspend_does_not_skip_elements_on_mutation(host: AddonHost):
     (_, cid_a), (_, cid_b) = _seed(host, count=2)
-    assert _ok(host, "suspend", cards=[cid_a, cid_b]) is True
+    # Duplicate CIDs must not crash Anki's scheduler with a UNIQUE constraint error
+    assert _ok(host, "suspend", cards=[cid_a, cid_a, cid_b]) is True
     # Both already suspended -> must return False (previously returned True due to list.remove!)
     assert _ok(host, "suspend", cards=[cid_a, cid_b]) is False
     # Missing card right after an already-suspended card must still raise NotFoundError!
     missing = _call(host, "suspend", cards=[cid_a, 9999999999])
     assert missing["error"] == "Card was not found: 9999999999"
-    # Wire contract preserved: unsuspend returns None while still unsuspending
-    assert _ok(host, "unsuspend", cards=[cid_a, cid_b]) is None
+    # Wire contract preserved: unsuspend returns None while still unsuspending (incl. duplicates)
+    assert _ok(host, "unsuspend", cards=[cid_a, cid_a, cid_b]) is None
     assert _ok(host, "areSuspended", cards=[cid_a, cid_b]) == [False, False]
 
 
@@ -595,13 +655,16 @@ def test_media_actions_block_path_traversal(host: AddonHost, tmp_path: Path):
         is not None
     )
 
-    # Valid path inside tmp_path (under tempfile.gettempdir()) succeeds
+    # Valid path inside tmp_path (under tempfile.gettempdir()) succeeds, incl. `..` inside filename
     sample = tmp_path / "sample.txt"
     sample.write_bytes(b"hello")
-    assert _ok(host, "storeMediaFile", filename="sample.txt", path=str(sample)) == "sample.txt"
-    assert _ok(host, "getMediaFilesNames", pattern="*.txt") == ["sample.txt"]
+    assert _ok(host, "storeMediaFile", filename="a..b.png", path=str(sample)) == "a..b.png"
+    assert _ok(host, "getMediaFilesNames", pattern="a..b.png") == ["a..b.png"]
+    assert _ok(host, "retrieveMediaFile", filename="..") is False
+    assert _ok(host, "retrieveMediaFile", filename=".") is False
 
     # Pattern traversal rejected
+    assert _call(host, "getMediaFilesNames", pattern="..")["error"] is not None
     assert _call(host, "getMediaFilesNames", pattern="../../etc/*")["error"] is not None
     assert _call(host, "getMediaFilesNames", pattern="/etc/*")["error"] is not None
 
@@ -675,13 +738,15 @@ def test_refresh_called_for_delete_retype_and_model_field_add(host: AddonHost):
 def test_fixed_upstream_actions_and_edge_cases(host: AddonHost):
     (_, cid_a), (_, cid_b) = _seed(host, count=2)
 
-    # saveDeckConfig and setDeckConfigId work on Anki 26.8.1
+    # saveDeckConfig, setDeckConfigId, and removeDeckConfigId (incl. string configId) work on 26.8.1
     cfg = _ok(host, "getDeckConfig", deck="Default")
     assert _ok(host, "saveDeckConfig", config=cfg) is True
     cloned_id = _ok(host, "cloneDeckConfigId", name="Custom")
     _ok(host, "createDeck", deck="DeckA")
     assert _ok(host, "setDeckConfigId", decks=["DeckA"], configId=cloned_id) is True
     assert _ok(host, "getDeckConfig", deck="DeckA")["id"] == cloned_id
+    removable_id = _ok(host, "cloneDeckConfigId", name="Removable")
+    assert _ok(host, "removeDeckConfigId", configId=str(removable_id)) is True
 
     # modelTemplateAdd saves updates when template already exists
     _ok(
