@@ -22,6 +22,7 @@ import glob
 import hashlib
 import inspect
 import json
+import logging
 import os
 import re
 import tempfile
@@ -92,6 +93,7 @@ def _addon_class() -> type:
         "hashlib": hashlib,
         "inspect": inspect,
         "json": json,
+        "logging": logging,
         "os": os,
         "Path": Path,
         "re": re,
@@ -165,6 +167,7 @@ class AddonHost:
         addon.refreshTimer = None
         addon.refreshPendingSince = 0.0
         addon.refreshing = False
+        addon._permissionPromptOpen = False
         addon.actions = addon.buildActionTable()
         addon.window = lambda: _Window(self.col)
         # The add-on defers one UI refresh per burst of writes on a Qt timer; there is no UI.

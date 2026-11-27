@@ -13,12 +13,23 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
-import sys
+import logging
+import re
 
-# print(">>> ARETE ANKI CONNECT PLUGIN LOADING <<<", file=sys.stderr)
 import aqt
 
-anki_version = tuple(int(segment) for segment in aqt.appVersion.split("."))
+
+def _parse_anki_version(version_str: str) -> tuple[int, ...]:
+    parts: list[int] = []
+    for segment in version_str.split("."):
+        match = re.match(r"^(\d+)", segment)
+        if match is None:
+            break
+        parts.append(int(match.group(1)))
+    return tuple(parts)
+
+
+anki_version = _parse_anki_version(aqt.appVersion)
 
 if anki_version < (26, 8, 1):
     raise Exception("Minimum Anki version supported: 26.8.1")
@@ -30,7 +41,6 @@ import inspect
 import json
 import os
 import os.path
-import re
 import tempfile
 import threading
 import time
@@ -78,6 +88,7 @@ class AnkiConnect:
         self.refreshTimer = None
         self.refreshPendingSince = 0.0
         self.refreshing = False
+        self._permissionPromptOpen = False
         self.actions = self.buildActionTable()
         self.server = web.WebServer(self.handler)
 
@@ -93,26 +104,49 @@ class AnkiConnect:
         return table
 
     def initLogging(self):
+        if self.log is not None:
+            return
         logPath = util.setting("apiLogPath")
         if logPath is not None:
             self.log = open(logPath, "w", encoding="utf-8")
 
     def startWebServer(self):
+        port = None
         try:
+            port = util.setting("webBindPort")
             self.server.listen()
 
-            # only keep reference to prevent garbage collection
-            self.timer = QTimer()
+            # parent to main window and keep reference to prevent garbage collection
+            self.timer = QTimer(self.window())
             self.timer.timeout.connect(self.advance)
             self.timer.start(util.setting("apiPollInterval"))
-        except:
+        except OSError as e:
             QMessageBox.critical(
                 self.window(),
                 "AnkiConnect",
-                "Failed to listen on port {}.\nMake sure it is available and is not in use.".format(
-                    util.setting("webBindPort")
-                ),
+                f"Failed to listen on port {port}.\n"
+                f"Make sure it is available and is not in use.\n\n{e}",
             )
+
+    def ensureRunning(self):
+        self.initLogging()
+        if self.server.sock is None:
+            self.startWebServer()
+
+    def shutdown(self):
+        if self.timer is not None:
+            self.timer.stop()
+            self.timer = None
+        if self.refreshTimer is not None:
+            self.refreshTimer.stop()
+            self.refreshTimer = None
+        self.server.close()
+        if self.log is not None:
+            try:
+                self.log.close()
+            except OSError:
+                pass
+            self.log = None
 
     def save_model(self, models, ankiModel):
         models.update_dict(ankiModel)
@@ -443,6 +477,7 @@ class AnkiConnect:
         results = {
             "permission": "denied",
         }
+        origin = origin.replace("\r", "").replace("\n", "") if isinstance(origin, str) else ""
 
         if allowed:
             results = {
@@ -451,45 +486,58 @@ class AnkiConnect:
                 "version": util.setting("apiVersion"),
             }
 
-        elif origin in util.setting("ignoreOriginList"):
+        elif not origin or origin in util.setting("ignoreOriginList") or self._permissionPromptOpen:
             pass  # defaults to denied
 
         else:  # prompt the user
-            msg = QMessageBox(None)
-            msg.setWindowTitle("A website wants to access to Anki")
-            msg.setText(
-                f'"{origin}" requests permission to use Anki through AnkiConnect. Do you want to give it access?'
-            )
-            msg.setInformativeText(
-                "By granting permission, you'll allow the website to modify your collection on your behalf, including the execution of destructive actions such as deck deletion."
-            )
-            msg.setWindowIcon(self.window().windowIcon())
-            msg.setIcon(QMessageBox.Question)
-            msg.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
-            msg.setDefaultButton(QMessageBox.No)
-            msg.setCheckBox(QCheckBox(text=f'Ignore further requests from "{origin}"', parent=msg))
-            msg.setWindowFlags(Qt.WindowStaysOnTopHint)
-            pressedButton = msg.exec_()
+            self._permissionPromptOpen = True
+            try:
+                msg = QMessageBox(None)
+                msg.setWindowTitle("A website wants to access to Anki")
+                msg.setText(
+                    f'"{origin}" requests permission to use Anki through AnkiConnect. Do you want to give it access?'
+                )
+                msg.setInformativeText(
+                    "By granting permission, you'll allow the website to modify your collection on your behalf, including the execution of destructive actions such as deck deletion."
+                )
+                msg.setWindowIcon(self.window().windowIcon())
+                msg.setIcon(QMessageBox.Icon.Question)
+                msg.setStandardButtons(
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                )
+                msg.setDefaultButton(QMessageBox.StandardButton.No)
+                msg.setCheckBox(
+                    QCheckBox(text=f'Ignore further requests from "{origin}"', parent=msg)
+                )
+                msg.setWindowFlags(Qt.WindowType.WindowStaysOnTopHint)
+                pressedButton = msg.exec()
 
-            if pressedButton == QMessageBox.Yes:
-                config = aqt.mw.addonManager.getConfig(__name__)
-                config["webCorsOriginList"] = util.setting("webCorsOriginList")
-                config["webCorsOriginList"].append(origin)
-                aqt.mw.addonManager.writeConfig(__name__, config)
-                results = {
-                    "permission": "granted",
-                    "requireApikey": bool(util.setting("apiKey")),
-                    "version": util.setting("apiVersion"),
-                }
+                if pressedButton == QMessageBox.StandardButton.Yes:
+                    config = aqt.mw.addonManager.getConfig(__name__) or {}
+                    cors_list = util.setting("webCorsOriginList")
+                    if origin not in cors_list:
+                        cors_list.append(origin)
+                    config["webCorsOriginList"] = cors_list
+                    aqt.mw.addonManager.writeConfig(__name__, config)
+                    results = {
+                        "permission": "granted",
+                        "requireApikey": bool(util.setting("apiKey")),
+                        "version": util.setting("apiVersion"),
+                    }
 
-            # if the origin isn't an empty string, the user clicks "No", and the ignore box is checked
-            elif origin and pressedButton == QMessageBox.No and msg.checkBox().isChecked():
-                config = aqt.mw.addonManager.getConfig(__name__)
-                config["ignoreOriginList"] = util.setting("ignoreOriginList")
-                config["ignoreOriginList"].append(origin)
-                aqt.mw.addonManager.writeConfig(__name__, config)
-
-            # else defaults to denied
+                elif (
+                    origin
+                    and pressedButton == QMessageBox.StandardButton.No
+                    and msg.checkBox().isChecked()
+                ):
+                    config = aqt.mw.addonManager.getConfig(__name__) or {}
+                    ignore_list = util.setting("ignoreOriginList")
+                    if origin not in ignore_list:
+                        ignore_list.append(origin)
+                    config["ignoreOriginList"] = ignore_list
+                    aqt.mw.addonManager.writeConfig(__name__, config)
+            finally:
+                self._permissionPromptOpen = False
 
         return results
 
@@ -574,7 +622,12 @@ class AnkiConnect:
         decks = {}
         for card in cards:
             did = self.database().scalar("select did from cards where id=?", card)
-            deck = self.decks().get(did)["name"]
+            if did is None:
+                continue
+            deck_obj = self.decks().get(did, default=False)
+            if deck_obj is None:
+                continue
+            deck = deck_obj["name"]
             if deck in decks:
                 decks[deck].append(card)
             else:
@@ -632,9 +685,13 @@ class AnkiConnect:
     @util.api()
     def createFilteredDeck(self, name, cids, reschedule=True):
         """Create/rebuild a filtered deck with cards in the specified CID order."""
-        if not cids:
+        if not isinstance(cids, list) or not cids:
             raise Exception("No card IDs provided")
+        for cid in cids:
+            if type(cid) is not int:
+                raise Exception(f"invalid card id: {cid!r}")
 
+        logger = logging.getLogger("arete_ankiconnect")
         self.startEditing()
         try:
             col = self.collection()
@@ -652,6 +709,8 @@ class AnkiConnect:
 
             # 2. Configure search terms
             deck = col.decks.get(did)
+            if deck is None:
+                raise Exception(f"Deck '{name}' could not be loaded")
             query = " OR ".join([f"cid:{cid}" for cid in cids])
             deck["terms"] = [[query, len(cids), 0]]  # [query, limit, order=oldest]
             deck["resched"] = reschedule
@@ -662,25 +721,32 @@ class AnkiConnect:
 
             # 4. Enforce topological order via due values
             # One update for all cards. A cid listed twice keeps its last position, as
-            # it does when each position is saved in turn.
+            # it does when each position is saved in turn. Intraday learning cards
+            # (queue == 1) store a Unix epoch timestamp in `due`, so leave them untouched.
             pulled = {}
             for i, cid in enumerate(cids):
                 try:
                     card = col.get_card(cid)
-                except Exception:
+                except NotFoundError:
                     continue  # Card may not exist
-                if card.did == did:  # Card may not have been pulled (suspended, etc.)
+                if card.did == did and card.queue != 1:
                     card.due = i + 1000
                     pulled[card.id] = card
-            try:
-                col.update_cards(list(pulled.values()))
-            except Exception:
-                # Save one at a time so one bad card cannot block the rest.
-                for card in pulled.values():
-                    try:
-                        col.update_card(card)
-                    except Exception:
-                        pass
+            if pulled:
+                try:
+                    col.update_cards(list(pulled.values()), skip_undo_entry=True)
+                except Exception as e:
+                    logger.warning("createFilteredDeck batch update_cards failed: %s", e)
+                    # Save one at a time so one bad card cannot block the rest.
+                    for card in pulled.values():
+                        try:
+                            col.update_card(card, skip_undo_entry=True)
+                        except Exception as item_err:
+                            logger.warning(
+                                "createFilteredDeck update_card(%s) failed: %s",
+                                card.id,
+                                item_err,
+                            )
 
             return did
         finally:
@@ -711,7 +777,7 @@ class AnkiConnect:
 
         result = []
         for cid in cards:
-            if cid not in rows:
+            if type(cid) is not int or cid not in rows:
                 result.append(None)
                 continue
             did, odid = rows[cid]
@@ -792,36 +858,43 @@ class AnkiConnect:
     def saveDeckConfig(self, config):
         collection = self.collection()
 
-        config["id"] = str(config["id"])
+        config["id"] = int(config["id"])
         config["mod"] = int_time()
         config["usn"] = collection.usn()
-        if int(config["id"]) not in [c["id"] for c in collection.decks.all_config()]:
+        if config["id"] not in [c["id"] for c in collection.decks.all_config()]:
             return False
         try:
-            collection.decks.save(config)
             collection.decks.update_config(config)
-        except:
+        except Exception:
             return False
+        self.scheduleRefresh()
         return True
 
     @util.api()
     def setDeckConfigId(self, decks, configId):
         configId = int(configId)
-        for deck in decks:
-            if deck not in self.deckNames():
-                return False
-
         collection = self.collection()
+        if configId not in [c["id"] for c in collection.decks.all_config()]:
+            return False
 
+        deck_dicts = []
         for deck in decks:
+            did = collection.decks.id(deck, create=False)
+            if not did:
+                return False
+            deck_dict = collection.decks.get(did, default=False)
+            if deck_dict is None or deck_dict.get("dyn"):
+                return False
+            deck_dicts.append(deck_dict)
+
+        for deck_dict in deck_dicts:
             try:
-                did = str(collection.decks.id(deck))
-                deck_dict = aqt.mw.col.decks.decks[did]
-                deck_dict["conf"] = configId
-                collection.decks.save(deck_dict)
-            except:
+                collection.decks.set_config_id_for_deck_dict(deck_dict, configId)
+            except Exception:
                 return False
 
+        if deck_dicts:
+            self.scheduleRefresh()
         return True
 
     @util.api()
@@ -1281,13 +1354,17 @@ class AnkiConnect:
             if self.findCards(f"cid:{card} is:new"):
                 due.append(True)
             else:
-                date, ivl = self.collection().db.all(
-                    "select id/1000.0, ivl from revlog where cid = ?", card
-                )[-1]
-                if ivl >= -1200:
+                rows = self.collection().db.all(
+                    "select id/1000.0, ivl from revlog where cid = ? order by id", card
+                )
+                if not rows:
                     due.append(bool(self.findCards(f"cid:{card} is:due")))
                 else:
-                    due.append(date - ivl <= time.time())
+                    date, ivl = rows[-1]
+                    if ivl >= -1200:
+                        due.append(bool(self.findCards(f"cid:{card} is:due")))
+                    else:
+                        due.append(date - ivl <= time.time())
 
         return due
 
@@ -1298,9 +1375,11 @@ class AnkiConnect:
             if self.findCards(f"cid:{card} is:new"):
                 intervals.append(0)
             else:
-                interval = self.collection().db.list("select ivl from revlog where cid = ?", card)
+                interval = self.collection().db.list(
+                    "select ivl from revlog where cid = ? order by id", card
+                )
                 if not complete:
-                    interval = interval[-1]
+                    interval = interval[-1] if interval else 0
                 intervals.append(interval)
 
         return intervals
@@ -1543,6 +1622,8 @@ class AnkiConnect:
             if ankiTemplate["name"] == name:
                 ankiTemplate["qfmt"] = qfmt
                 ankiTemplate["afmt"] = afmt
+                self.save_model(mm, model)
+                self.scheduleRefresh()
                 return
 
         ankiTemplate = mm.new_template(name)
@@ -1551,6 +1632,7 @@ class AnkiConnect:
         mm.add_template(model, ankiTemplate)
 
         self.save_model(mm, model)
+        self.scheduleRefresh()
 
     @util.api()
     def modelTemplateRemove(self, modelName, templateName):
@@ -1754,20 +1836,25 @@ class AnkiConnect:
 
     @util.api()
     def forgetCards(self, cards):
-        self.startEditing()
-        scids = anki.utils.ids2str(cards)
-        self.collection().db.execute(
-            "update cards set type=0, queue=0, left=0, ivl=0, due=0, odue=0, factor=0 where id in "
-            + scids
-        )
-        self.stopEditing()
+        if not cards:
+            return
+        self.scheduler().schedule_cards_as_new(cards)
+        self.scheduleRefresh()
 
     @util.api()
     def relearnCards(self, cards):
-        self.startEditing()
-        scids = anki.utils.ids2str(cards)
-        self.collection().db.execute("update cards set type=3, queue=1 where id in " + scids)
-        self.stopEditing()
+        if not cards:
+            return
+        col = self.collection()
+        col.sched.remFromDyn(list(cards))
+        updated = []
+        for cid in cards:
+            card = self.getCard(cid)
+            card.type = 3
+            card.queue = 1
+            updated.append(card)
+        col.update_cards(updated, skip_undo_entry=True)
+        self.scheduleRefresh()
 
     @util.api()
     def answerCards(self, answers):
@@ -2154,9 +2241,7 @@ class AnkiConnect:
 
     @util.api()
     def guiExitAnki(self):
-        timer = QTimer()
-        timer.timeout.connect(self.window().close)
-        timer.start(1000)  # 1s should be enough to allow the response to be sent.
+        QTimer.singleShot(1000, self.window().close)
 
     @util.api()
     def guiCheckDatabase(self):
@@ -2231,7 +2316,7 @@ class AnkiConnect:
             methodNames = []
             for methodName in actions:
                 if not isinstance(methodName, str):
-                    pass
+                    continue
                 method = getattr(cls, methodName, None)
                 if method is not None and getattr(method, "api", False):
                     methodNames.append(methodName)
@@ -2247,15 +2332,24 @@ class AnkiConnect:
 
         newFields: for each field of modelName, the index of the old field it takes, or -1.
         """
+        if not notes:
+            raise Exception("no notes provided")
         col = self.collection()
         new_type = col.models.by_name(modelName)
         if new_type is None:
             raise Exception(f"model was not found: {modelName}")
+        if not isinstance(newFields, list) or len(newFields) != len(new_type["flds"]):
+            raise Exception(
+                f"newFields length must match {modelName} field count ({len(new_type['flds'])})"
+            )
         old_ids = {col.get_note(int(nid)).mid for nid in notes}
         if len(old_ids) != 1:
             raise Exception("changeNoteType takes notes of one type at a time")
+        old_id = old_ids.pop()
+        if old_id == new_type["id"] and newFields == list(range(len(new_type["flds"]))):
+            return True
         info = col.models.change_notetype_info(
-            old_notetype_id=old_ids.pop(), new_notetype_id=new_type["id"]
+            old_notetype_id=old_id, new_notetype_id=new_type["id"]
         )
         request = info.input
         request.note_ids.extend(int(nid) for nid in notes)
@@ -2270,9 +2364,11 @@ class AnkiConnect:
         col = self.collection()
         result = []
         for cid in cards or []:
-            item = {"cardId": int(cid), "difficulty": None, "stability": None}
+            item = {"cardId": cid, "difficulty": None, "stability": None}
             try:
-                state = col.get_card(int(cid)).memory_state
+                int_cid = int(cid)
+                item["cardId"] = int_cid
+                state = col.get_card(int_cid).memory_state
             except Exception as e:
                 item["error"] = str(e)
                 state = None
@@ -2296,6 +2392,8 @@ if __name__ != "__main__":
         ac = AnkiConnect()
         ac.initLogging()
         ac.startWebServer()
+        gui_hooks.profile_will_close.append(ac.shutdown)
+        gui_hooks.profile_did_open.append(ac.ensureRunning)
 
         # Initialize Arete Hooks
         from . import arete
@@ -2305,9 +2403,8 @@ if __name__ != "__main__":
     except Exception as e:
         import traceback
 
-        with open(
-            os.path.join(os.path.dirname(__file__), "startup_error.log"), "w", encoding="utf-8"
-        ) as f:
+        log_path = os.path.join(tempfile.gettempdir(), "arete_ankiconnect_startup_error.log")
+        with open(log_path, "w", encoding="utf-8") as f:
             f.write(f"Add-on failed to start: {e}\n")
             f.write(traceback.format_exc())
         # Re-raise so Anki still knows something is wrong, but now we have a log.

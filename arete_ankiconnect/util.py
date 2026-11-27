@@ -58,7 +58,7 @@ DEFAULT_CONFIG = {
     "apiVersion": 6,
     # Higher backlog helps absorb bursty parallel clients during sync.
     "webBacklog": 128,
-    "webBindAddress": os.getenv("ANKICONNECT_BIND_ADDRESS", "127.0.0.1"),
+    "webBindAddress": "127.0.0.1",
     "webBindPort": 8765,
     "webCorsOriginList": ["http://localhost"],
     "ignoreOriginList": [],
@@ -76,18 +76,27 @@ def setting(key):
     if key == "webBindPort":
         env_val = os.getenv("ANKICONNECT_BIND_PORT")
         if env_val:
-            return int(env_val)
+            try:
+                return int(env_val)
+            except ValueError as e:
+                raise ValueError(f"invalid ANKICONNECT_BIND_PORT: {env_val!r}") from e
     if key == "apiKey":
         env_val = os.getenv("ANKICONNECT_API_KEY")
         if env_val:
             return env_val
 
-    try:
-        value = config().get(key, DEFAULT_CONFIG[key])
-    except:
+    cfg = config()
+    if key in cfg:
+        value = cfg[key]
+    elif key in DEFAULT_CONFIG:
+        value = DEFAULT_CONFIG[key]
+    else:
         raise Exception(f"setting {key} not found")
+
     # A caller may mutate what it gets (CORS list, permission prompts); keep the cache intact.
-    return copy.deepcopy(value)
+    if isinstance(value, (list, dict, set)):
+        return copy.deepcopy(value)
+    return value
 
 
 _configFiles = None
@@ -103,7 +112,7 @@ def _fileStamp(path):
 
 
 def config():
-    """The add-on config exactly as `addonManager.getConfig` returns it.
+    """The add-on config as a dict (`addonManager.getConfig`, or `{}` when missing/corrupt).
 
     getConfig opens and parses config.json and meta.json on every call. They are re-read
     here only when either file's stamp changes, so an edit in Anki's config dialog (which
@@ -116,5 +125,6 @@ def config():
         _configFiles = (os.path.join(folder, "config.json"), os.path.join(folder, "meta.json"))
     stamp = tuple(_fileStamp(path) for path in _configFiles)
     if _configCache is None or _configCache[0] != stamp:
-        _configCache = (stamp, manager.getConfig(__name__))
+        loaded = manager.getConfig(__name__)
+        _configCache = (stamp, loaded if isinstance(loaded, dict) else {})
     return _configCache[1]

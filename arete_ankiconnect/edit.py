@@ -303,17 +303,21 @@ class Edit(aqt.editcurrent.EditCurrent):
     def show_browser(self, *_):
         def search_input_select_all(hook_browser, *_):
             hook_browser.form.searchEdit.lineEdit().selectAll()
-            gui_hooks.browser_did_change_row.remove(search_input_select_all)
+            if search_input_select_all in gui_hooks.browser_did_change_row:
+                gui_hooks.browser_did_change_row.remove(search_input_select_all)
 
         gui_hooks.browser_did_change_row.append(search_input_select_all)
+        try:
+            browser = aqt.dialogs.open("Browser", aqt.mw)
+            browser.table._state.sort_column = self.dialog_search_tag  # noqa
+            browser.table._set_sort_indicator()  # noqa
 
-        browser = aqt.dialogs.open("Browser", aqt.mw)
-        browser.table._state.sort_column = self.dialog_search_tag  # noqa
-        browser.table._set_sort_indicator()  # noqa
-
-        browser.search_for(f"nid:{self.note.id}")
-        browser.table.select_all()
-        browser.search_for(self.dialog_search_tag)
+            browser.search_for(f"nid:{self.note.id}")
+            browser.table.select_all()
+            browser.search_for(self.dialog_search_tag)
+        finally:
+            if search_input_select_all in gui_hooks.browser_did_change_row:
+                gui_hooks.browser_did_change_row.remove(search_input_select_all)
 
     def show_preview(self, *_):
         if cards := self.note.cards():
