@@ -69,3 +69,46 @@ def test_main_module_invoke():
         # executing the module as "__main__"
         runpy.run_module("arete.__main__", run_name="__main__")
         mock_app.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_sigterm_cancels_disarms_after_first_signal_so_cleanup_completes():
+    """A second SIGTERM during teardown must not cancel cleanup awaits."""
+    import asyncio
+    import signal
+    import sys
+
+    from arete.composition.orchestrator import sigterm_cancels
+
+    if sys.platform == "win32":
+        pytest.skip("POSIX SIGTERM only")
+
+    loop = asyncio.get_running_loop()
+    handlers: dict[int, object] = {}
+
+    def fake_add(sig, cb):
+        handlers[sig] = cb
+
+    def fake_remove(sig):
+        handlers.pop(sig, None)
+
+    cleanup_finished = False
+    with (
+        patch.object(loop, "add_signal_handler", side_effect=fake_add),
+        patch.object(loop, "remove_signal_handler", side_effect=fake_remove),
+    ):
+        with pytest.raises(asyncio.CancelledError):
+            with sigterm_cancels():
+                cb = handlers[signal.SIGTERM]
+                assert callable(cb)
+                try:
+                    cb()
+                    await asyncio.sleep(0)
+                finally:
+                    # Second SIGTERM arrives during finally cleanup; must be ignored.
+                    cb()
+                    await asyncio.sleep(0)
+                    cleanup_finished = True
+
+    assert cleanup_finished is True
+    assert signal.SIGTERM not in handlers

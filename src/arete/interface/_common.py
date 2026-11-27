@@ -26,6 +26,14 @@ def get_verbose_override(ctx: typer.Context) -> int | None:
     return None
 
 
+class _DynamicStderrHandler(logging.StreamHandler):
+    """StreamHandler that always targets the current `sys.stderr`."""
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self.stream = sys.stderr
+        super().emit(record)
+
+
 def configure_cli_logging(verbose_count: int) -> None:
     """Attach a single stderr handler on the `arete` logger without duplicating sync logs.
 
@@ -38,10 +46,12 @@ def configure_cli_logging(verbose_count: int) -> None:
     arete_logger = logging.getLogger("arete")
     arete_logger.setLevel(level)
     if not arete_logger.handlers:
-        handler = logging.StreamHandler(sys.stderr)
+        handler = _DynamicStderrHandler(sys.stderr)
         handler.setFormatter(logging.Formatter("%(levelname)s:%(name)s:%(message)s"))
         arete_logger.addHandler(handler)
     for handler in arete_logger.handlers:
+        if isinstance(handler, _DynamicStderrHandler):
+            handler.stream = sys.stderr
         handler.setLevel(level)
 
 

@@ -303,34 +303,31 @@ async def test_an_addon_without_an_arete_read_stops_the_prefetch(missing):
 
 
 @pytest.mark.asyncio
-async def test_a_batch_against_an_addon_without_getmodelinfo_fails_every_card_and_writes_nothing():
+async def test_a_batch_against_an_addon_without_getmodelinfo_stops_with_addon_outdated():
     fake = FakeAnki()
     fake.missing_actions = {"getModelInfo"}
     items = [_item(i) for i in range(3)]
     for item in items:
         _held(fake, item, deck="Other")
 
-    results = await _sync_of(fake).sync_notes(items)
+    with pytest.raises(AddonOutdated, match=f"'getModelInfo'.*{OUTDATED}"):
+        await _sync_of(fake).sync_notes(items)
 
-    assert [r.ok for r in results] == [False] * 3
-    assert all(OUTDATED in (r.error or "") for r in results)
     assert _decks_of(fake) == {"Other"}
     assert not STOCK_STAND_INS & {a for a, _ in fake.log}
 
 
 @pytest.mark.asyncio
-async def test_a_filing_the_addon_lacks_fails_the_note_with_the_reason():
+async def test_a_filing_the_addon_lacks_stops_the_sync_with_addon_outdated():
     fake = FakeAnki()
     fake.missing_actions = {"setHomeDeck"}
     items = [_item(i) for i in range(3)]
     for item in items:
         _held(fake, item, deck="Other")
 
-    results = await _sync_of(fake).sync_notes(items)
+    with pytest.raises(AddonOutdated, match=f"'setHomeDeck'.*{OUTDATED}"):
+        await _sync_of(fake).sync_notes(items)
 
-    assert [r.ok for r in results] == [False] * 3
-    assert all("'setHomeDeck'" in (r.error or "") for r in results)
-    assert all(OUTDATED in (r.error or "") for r in results)
     assert _decks_of(fake) == {"Other"}
     assert not STOCK_STAND_INS & {a for a, _ in fake.log}
 

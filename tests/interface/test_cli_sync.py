@@ -301,6 +301,34 @@ def test_cli_and_sync_logging_do_not_duplicate_output(tmp_path, capsys):
     assert "single-line-check" not in captured.err
 
 
+def test_configure_cli_logging_survives_closed_stderr_stream():
+    """A closed temporary sys.stderr (e.g. CliRunner) must not break later logging calls."""
+    import io
+    import logging
+    import sys
+
+    from arete.application.utils.logging import close_run_log
+    from arete.interface._common import configure_cli_logging
+
+    arete_logger = logging.getLogger("arete")
+    close_run_log(arete_logger)
+    orig_stderr = sys.stderr
+    try:
+        temp_err = io.StringIO()
+        sys.stderr = temp_err
+        configure_cli_logging(0)
+        temp_err.close()
+
+        next_err = io.StringIO()
+        sys.stderr = next_err
+        # Even before configure_cli_logging is called again, emitting must not hit closed stream.
+        logging.getLogger("arete.test").info("after-close")
+        assert "after-close" in next_err.getvalue()
+    finally:
+        sys.stderr = orig_stderr
+        close_run_log(arete_logger)
+
+
 def test_json_a_locked_sync_exits_75_with_the_line():
     from arete.composition.orchestrator import SyncLocked
 

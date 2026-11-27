@@ -24,7 +24,7 @@ from arete.domain.interfaces import ContentCache
 from arete.domain.models import UpdateItem
 
 # _quick_check_file reasons for an Arete file whose cards (and nids) could not be read.
-UNREADABLE_REASONS = ("read_error", "no_or_bad_yaml")
+UNREADABLE_REASONS = ("stat_error", "read_error", "no_or_bad_yaml")
 
 # Stat-cache meta for a file whose text is not an Arete note. The entry matches only the
 # mtime and size it was read at, so any edit (one that adds `arete:` included) misses it
@@ -145,7 +145,7 @@ class VaultService:
         if fm == "":
             return "not_arete_file"
         if fm is None:
-            return "no_or_bad_yaml" if ("arete" in text or "\\" in text) else "not_arete_file"
+            return "no_or_bad_yaml" if "arete" in text else "not_arete_file"
         if "arete" not in fm and "\\" not in fm:
             return "not_arete_file"
         return None

@@ -156,3 +156,42 @@ def test_custom_db_path_creates_missing_parent_directories(tmp_path):
         assert db_path.exists()
     finally:
         cache.close()
+
+
+def test_corrupt_cache_db_is_auto_rebuilt_with_wal_mode(tmp_path):
+    """A corrupt cache file is unlinked and recreated cleanly in WAL mode."""
+    db_path = tmp_path / "corrupt.db"
+    db_path.write_bytes(b"NOT A VALID SQLITE DATABASE" * 50)
+
+    cache = ContentCache(db_path=db_path)
+    try:
+        (mode,) = cache._conn.execute("PRAGMA journal_mode").fetchone()
+        assert mode.lower() == "wal"
+        cache.set_notes([(Path("/v/a.md"), 1, "h1", "{}")])
+        assert cache.get_hash(Path("/v/a.md"), 1) == "h1"
+    finally:
+        cache.close()
+
+
+def test_file_meta_serializes_yaml_dates_and_datetimes(tmp_path):
+    """Obsidian YAML date/datetime frontmatter fields round-trip in the stat cache."""
+    import datetime
+
+    cache = ContentCache(db_path=tmp_path / "dates.db")
+    try:
+        meta = {
+            "arete": True,
+            "created": datetime.date(2026, 1, 15),
+            "updated": datetime.datetime(2026, 1, 15, 12, 30),
+            "cards": [],
+        }
+        p1, p2 = Path("/v/one.md"), Path("/v/two.md")
+        cache.set_file_meta(p1, "h1", meta, mtime=10.0, size=50)
+        cache.set_file_metas([(p2, "h2", meta, 20.0, 60)])
+
+        hit1 = cache.get_file_meta_by_stat(p1, 10.0, 50)
+        hit2 = cache.get_file_meta_by_stat(p2, 20.0, 60)
+        assert hit1 is not None and hit1["created"] == "2026-01-15"
+        assert hit2 is not None and hit2["updated"] == "2026-01-15 12:30:00"
+    finally:
+        cache.close()

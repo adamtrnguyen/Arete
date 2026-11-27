@@ -21,7 +21,7 @@ from arete.application.utils.text import card_content_hash
 from arete.domain.constants import CONSUMER_BATCH_SIZE
 from arete.domain.identity import first_field_key
 from arete.domain.interfaces import ContentCache, SyncBackend
-from arete.domain.models import UpdateItem, WorkItem
+from arete.domain.models import AddonOutdated, UpdateItem, WorkItem
 from arete.domain.ownership import group_duplicate_ids
 
 
@@ -350,6 +350,8 @@ async def _consume_batches(
                 _record_batch_updates(
                     batch_updates, updates, recorder, failed_files, cache, dry_run=dry_run
                 )
+        except AddonOutdated:
+            raise
         except Exception as e:
             logger.error(f"[consumer-error] {e}")
             for wi in batch:
@@ -360,6 +362,51 @@ async def _consume_batches(
         finally:
             for _ in range(len(batch)):
                 work_q.task_done()
+
+
+async def _cancel_and_drain(tasks: list[asyncio.Task[None]]) -> None:
+    """Cancel any unfinished tasks and await all of them before unwinding."""
+    for task in tasks:
+        if not task.done():
+            task.cancel()
+    if tasks:
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+
+def _attach_outdated_abort(
+    consumers: list[asyncio.Task[None]],
+    all_tasks: list[asyncio.Task[None]],
+    outdated_error: list[AddonOutdated],
+) -> None:
+    """Cancel sibling tasks immediately if a consumer aborts with `AddonOutdated`."""
+
+    def _on_done(task: asyncio.Task[None]) -> None:
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if isinstance(exc, AddonOutdated):
+            outdated_error.append(exc)
+            for other in all_tasks:
+                if other is not task and not other.done():
+                    other.cancel()
+
+    for consumer in consumers:
+        consumer.add_done_callback(_on_done)
+
+
+async def _await_producers(producer_tasks: list[asyncio.Task[None]], recorder: RunRecorder) -> None:
+    """Await all producer tasks while updating the progress bar."""
+    with tqdm(total=len(producer_tasks), desc="Processing", unit="file", disable=None) as pbar:
+        for coro in asyncio.as_completed(producer_tasks):
+            await coro
+            pbar.update(1)
+            pbar.set_postfix(
+                {
+                    "gen": recorder.cards_generated,
+                    "ok": recorder.cards_synced,
+                    "err": recorder.cards_failed,
+                }
+            )
 
 
 async def _run_sync_workers(
@@ -423,22 +470,21 @@ async def _run_sync_workers(
         for p, meta, is_fresh in compatible
         if p not in unwritten_ids
     ]
+    all_tasks = [*producer_tasks, *consumers]
+    outdated_error: list[AddonOutdated] = []
+    _attach_outdated_abort(consumers, all_tasks, outdated_error)
 
-    with tqdm(total=len(producer_tasks), desc="Processing", unit="file", disable=None) as pbar:
-        for coro in asyncio.as_completed(producer_tasks):
-            await coro
-            pbar.update(1)
-            pbar.set_postfix(
-                {
-                    "gen": recorder.cards_generated,
-                    "ok": recorder.cards_synced,
-                    "err": recorder.cards_failed,
-                }
-            )
-
-    for _ in range(max_sync_concurrency):
-        await work_q.put(None)
-    await asyncio.gather(*consumers)
+    try:
+        await _await_producers(producer_tasks, recorder)
+        for _ in range(max_sync_concurrency):
+            await work_q.put(None)
+        await asyncio.gather(*consumers)
+    except asyncio.CancelledError:
+        if outdated_error:
+            raise outdated_error[0] from None
+        raise
+    finally:
+        await _cancel_and_drain(all_tasks)
     return updates
 
 

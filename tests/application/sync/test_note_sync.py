@@ -847,3 +847,65 @@ async def test_case_mismatched_model_does_no_retype_and_deduplicates_fronts():
     assert r1.ok and r1.changed is False
     assert not r2.ok and "duplicate first field" in (r2.error or "")
     assert store.calls["apply_changes"] == 0
+
+
+@pytest.mark.asyncio
+async def test_claimed_tracks_full_path_so_same_basename_files_cannot_both_claim_one_note():
+    """bio/Notes.md #1 and phys/Notes.md #1 share card.label but must never both claim one nid."""
+    store = FakeNoteStore()
+    nid = store.add("Basic", "Default", {"Front": "<p>Same</p>", "Back": "<p>Old</p>"}, [])
+
+    bio = card(1, arete_id=ID, deck="Bio", Front="<p>Same</p>", Back="<p>BioA</p>")
+    bio.source_file = Path("/v/bio/Notes.md")
+    bio.note.source_file = bio.source_file
+    phys = card(1, arete_id=ID2, deck="Phys", Front="<p>Same</p>", Back="<p>PhysA</p>")
+    phys.source_file = Path("/v/phys/Notes.md")
+    phys.note.source_file = phys.source_file
+
+    [r1, r2] = await run(store, bio, phys)
+
+    assert r1.ok and r1.new_nid == str(nid)
+    assert r2.ok and r2.new_nid != str(nid)
+    assert store.held(nid).fields["Back"] == "<p>BioA</p>"
+    assert store.held(int(r2.new_nid)).fields["Back"] == "<p>PhysA</p>"
+
+
+@pytest.mark.asyncio
+async def test_addon_outdated_propagates_out_of_sync_notes():
+    """AddonOutdated from read_notes or apply_changes aborts sync_notes instead of failing per-card."""
+    from contextlib import asynccontextmanager
+
+    from arete.domain.models import AddonOutdated
+
+    def _raising_store(method_name: str, msg: str) -> FakeNoteStore:
+        class _RaisingStore(FakeNoteStore):
+            def session(self):
+                parent = super().session()
+
+                @asynccontextmanager
+                async def _ctx():
+                    async with parent as s:
+                        orig = getattr(s, method_name)
+
+                        async def boom(*_args, **_kwargs):
+                            raise AddonOutdated(msg)
+
+                        setattr(s, method_name, boom)
+                        try:
+                            yield s
+                        finally:
+                            setattr(s, method_name, orig)
+
+                return _ctx()
+
+        return _RaisingStore()
+
+    store1 = _raising_store("read_notes", "outdated getHomeDecks")
+    nid1 = store1.add("Basic", "S::Deck", {"Front": "<p>Q</p>", "Back": "<p>Old</p>"}, [ID])
+    with pytest.raises(AddonOutdated, match="outdated getHomeDecks"):
+        await run(store1, card(1, nid=nid1, Front="<p>Q</p>", Back="<p>New</p>"))
+
+    store2 = _raising_store("apply_changes", "missing setHomeDeck")
+    nid2 = store2.add("Basic", "S::Deck", {"Front": "<p>Q</p>", "Back": "<p>Old</p>"}, [ID])
+    with pytest.raises(AddonOutdated, match="missing setHomeDeck"):
+        await run(store2, card(1, nid=nid2, Front="<p>Q</p>", Back="<p>New</p>"))

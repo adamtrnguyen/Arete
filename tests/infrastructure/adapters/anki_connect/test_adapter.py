@@ -568,8 +568,8 @@ async def test_addon_outdated_propagates_for_change_note_type_and_create_filtere
     adapter = AnkiConnectAdapter(url="http://mock:8765")
     session = ConnectNoteSession(adapter)
     change = NoteChange(nid=1, retype=("Cloze", (0,)))
-    err = await session._settle(change, ("changeNoteType", {}), Exception("unsupported action"))
-    assert isinstance(err, AddonOutdated)
+    with pytest.raises(AddonOutdated, match="changeNoteType"):
+        await session._settle(change, ("changeNoteType", {}), Exception("unsupported action"))
 
     with patch.object(adapter, "_invoke", new_callable=AsyncMock) as mock_invoke:
         mock_invoke.side_effect = Exception("unsupported action")

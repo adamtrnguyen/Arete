@@ -126,7 +126,13 @@ def parse_frontmatter(md_text: str) -> tuple[dict[str, Any], str]:
 
     try:
         # Use our custom loader to get line numbers and handle duplicates
-        meta = _load_yaml(raw) or {}
+        meta = _load_yaml(raw)
+        if meta is None:
+            meta = {}
+        elif not isinstance(meta, dict):
+            return {
+                "__yaml_error__": f"Frontmatter must be a YAML mapping, got {type(meta).__name__}."
+            }, md_text
 
         # Add offset to __line__ to make it absolute (account for opening ---)
         _add_line_offset(meta, offset=1)
@@ -255,7 +261,16 @@ def validate_frontmatter(md_text: str) -> dict[str, Any]:
         raise err
 
     try:
-        meta = _load_yaml(raw) or {}
+        meta = _load_yaml(raw)
+        if meta is None:
+            meta = {}
+        elif not isinstance(meta, dict):
+            raise yaml.constructor.ConstructorError(
+                None,
+                None,
+                f"Frontmatter must be a YAML mapping, got {type(meta).__name__}.",
+                yaml.error.Mark("name", 0, 0, 0, "", 0),
+            )
         _add_line_offset(meta, offset=offset)
         return meta
     except yaml.YAMLError as e:

@@ -90,29 +90,20 @@ def replace_text(path: Path, text: str, newline: str = "\n") -> None:
 
 
 def iter_markdown_files(root: Path) -> Iterable[Path]:
-    """Recursively find markdown files in a vault, skipping common hidden.
-
-    and system directories.
-    """
-    if root.is_file() and root.suffix.lower() == ".md":
-        yield root
+    """Recursively find markdown files in a vault, skipping common hidden and system dirs."""
+    if root.is_file():
+        if root.suffix.lower() == ".md":
+            yield root
+        return
+    if not root.is_dir():
         return
     skip_dirs = {".git", ".obsidian", ".trash", ".venv", "node_modules"}
-    for p in root.rglob("*.md"):
-        try:
-            rel = p.relative_to(root)
-        except ValueError:
-            # p isn't under root (shouldn't happen for rglob results). Fail open:
-            # yield the markdown file rather than silently dropping it; we just
-            # can't apply the skip-dir filter to a path we can't make relative.
-            yield p
-            continue
-        rel_parts = set(rel.parts[:-1])
-        if rel_parts & skip_dirs:
-            continue
-        if any(part.startswith(".") for part in rel_parts):
-            continue
-        yield p
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = sorted(d for d in dirnames if d not in skip_dirs and not d.startswith("."))
+        base = Path(dirpath)
+        for name in sorted(filenames):
+            if name.lower().endswith(".md"):
+                yield base / name
 
 
 def file_md5(p: Path) -> str:

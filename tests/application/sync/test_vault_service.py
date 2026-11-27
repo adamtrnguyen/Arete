@@ -569,3 +569,37 @@ class TestCacheBehavior:
         files = list(service.scan_for_compatible_files())
         assert len(files) == 1
         mock_cache.set_file_meta.assert_not_called()
+
+    def test_broken_symlink_stat_error_is_recorded_as_unreadable(self, temp_vault, mock_cache):
+        """A file whose stat() fails must be flagged unreadable so --prune refuses to delete."""
+        broken = temp_vault / "broken.md"
+        broken.symlink_to(temp_vault / "missing.md")
+
+        service = VaultService(temp_vault, mock_cache)
+        files = list(service.scan_for_compatible_files())
+        assert files == []
+        assert len(service.unreadable) == 1
+        assert service.unreadable[0][0] == broken
+        assert service.unreadable[0][1].startswith("stat_error:")
+
+    def test_plain_note_with_leading_hr_and_backslash_is_not_unreadable(
+        self, temp_vault, mock_cache
+    ):
+        """A horizontal rule followed by prose LaTeX must not fail sync or block prune."""
+        plain = temp_vault / "latex_note.md"
+        plain.write_text("---\n# Heading\nHere is $\\alpha$ and C:\\path.\n", encoding="utf-8")
+
+        service = VaultService(temp_vault, mock_cache)
+        assert list(service.scan_for_compatible_files()) == []
+        assert service.unreadable == []
+
+    def test_non_dict_yaml_frontmatter_is_unreadable_not_a_crash(self, temp_vault, mock_cache):
+        """Scalar or list frontmatter containing 'arete' reports bad YAML instead of crashing."""
+        scalar = temp_vault / "scalar.md"
+        scalar.write_text("---\narete\n---\nbody\n", encoding="utf-8")
+        seq = temp_vault / "seq.md"
+        seq.write_text("---\n- arete\n---\nbody\n", encoding="utf-8")
+
+        service = VaultService(temp_vault, mock_cache)
+        assert list(service.scan_for_compatible_files()) == []
+        assert {p for p, _ in service.unreadable} == {scalar, seq}

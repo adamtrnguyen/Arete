@@ -131,3 +131,104 @@ async def test_pipeline_records_unreadable_files_as_errors_and_runs_prune_at_zer
     assert stats_clean.total_errors == 0
     assert stats_clean.prune is not None and stats_clean.prune.status == "clean"
     cache.close()
+
+
+@pytest.mark.asyncio
+async def test_pipeline_propagates_addon_outdated_from_consumer(config):
+    """AddonOutdated raised inside a consumer stops the whole pipeline immediately."""
+    from arete.domain.models import AddonOutdated
+
+    logger = MagicMock()
+    vault = MagicMock()
+    vault.unreadable = []
+    parser = MagicMock()
+    parser.declared_id.return_value = None
+    parser.extract_raw_nid.return_value = None
+    bridge = AsyncMock()
+    cache = MagicMock()
+
+    vault.scan_for_compatible_files.return_value = [(Path("/v/test.md"), {}, True)]
+    note = AnkiNote(
+        model="Basic",
+        deck="Default",
+        fields={"Front": "F", "Back": "B"},
+        tags=[],
+        start_line=1,
+        source_file=Path("/v/test.md"),
+        source_index=1,
+        content_hash="h1",
+    )
+    parser.parse_file.return_value = ([note], [], [])
+    bridge.sync_notes.side_effect = AddonOutdated("Update arete_ankiconnect")
+
+    with pytest.raises(AddonOutdated, match="Update arete_ankiconnect"):
+        await run_pipeline(
+            config,
+            logger,
+            "runid",
+            vault,
+            parser,
+            bridge,
+            cache,
+            note_sync_factory=note_sync_factory_for(bridge),
+        )
+
+
+@pytest.mark.asyncio
+async def test_pipeline_cancellation_drains_workers_before_unwinding(config):
+    """Cancelling run_pipeline cancels and awaits active consumer tasks before returning."""
+    import asyncio
+
+    logger = MagicMock()
+    vault = MagicMock()
+    vault.unreadable = []
+    parser = MagicMock()
+    parser.declared_id.return_value = None
+    parser.extract_raw_nid.return_value = None
+    bridge = AsyncMock()
+    cache = MagicMock()
+
+    vault.scan_for_compatible_files.return_value = [(Path("/v/test.md"), {}, True)]
+    note = AnkiNote(
+        model="Basic",
+        deck="Default",
+        fields={"Front": "F", "Back": "B"},
+        tags=[],
+        start_line=1,
+        source_file=Path("/v/test.md"),
+        source_index=1,
+        content_hash="h1",
+    )
+    parser.parse_file.return_value = ([note], [], [])
+
+    entered = asyncio.Event()
+    consumer_cleaned = False
+
+    async def slow_sync(_batch):
+        nonlocal consumer_cleaned
+        entered.set()
+        try:
+            await asyncio.sleep(60)
+        finally:
+            consumer_cleaned = True
+        return []
+
+    bridge.sync_notes.side_effect = slow_sync
+
+    task = asyncio.create_task(
+        run_pipeline(
+            config,
+            logger,
+            "runid",
+            vault,
+            parser,
+            bridge,
+            cache,
+            note_sync_factory=note_sync_factory_for(bridge),
+        )
+    )
+    await entered.wait()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert consumer_cleaned is True

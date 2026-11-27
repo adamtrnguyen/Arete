@@ -98,6 +98,18 @@ def test_iter_single_file(tmp_path):
     assert files == [f]
 
 
+def test_iter_markdown_files_skips_md_directories_and_matches_case_insensitively(tmp_path):
+    """Directories ending in .md are not yielded; uppercase .MD files are found."""
+    (tmp_path / "folder.md").mkdir()
+    (tmp_path / "folder.md" / "inside.md").touch()
+    (tmp_path / "UPPER.MD").touch()
+    (tmp_path / "node_modules").mkdir()
+    (tmp_path / "node_modules" / "skip.md").touch()
+
+    found = {p.relative_to(tmp_path).as_posix() for p in iter_markdown_files(tmp_path)}
+    assert found == {"folder.md/inside.md", "UPPER.MD"}
+
+
 def test_iter_value_error_fallback(tmp_path):
     """A ValueError from relative_to is handled gracefully, never crashing.
 

@@ -46,8 +46,8 @@ class ConnectNoteSession(NoteStoreSession):
     `getModelInfo`, home decks from `getHomeDecks`, and a card is filed with `setHomeDeck`,
     which leaves a queued card in its filtered deck.
 
-    An add-on that answers "unsupported action" to one of those three is too old for the
-    sync: the reads raise `AddonOutdated`, and a filing fails its note with it.
+    An add-on that answers "unsupported action" to one of those (or `changeNoteType`) is
+    too old for the sync and stops it with `AddonOutdated`.
     """
 
     def __init__(self, adapter: AnkiConnectAdapter):
@@ -204,7 +204,7 @@ class ConnectNoteSession(NoteStoreSession):
             return None
         action, _params = step
         if outdated := _outdated(action, error):
-            return outdated
+            raise outdated from error
         if action == "changeNoteType":
             return await self._confirm_retype(change, error)
         return error

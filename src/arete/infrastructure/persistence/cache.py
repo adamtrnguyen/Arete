@@ -34,8 +34,37 @@ class ContentCache(ContentCachePort):
         self._lock = threading.Lock()
         self.logger = logging.getLogger(__name__)
         self.logger.debug(f"[cache] Using database: {self.db_path}")
-        self._conn = sqlite3.connect(self.db_path, check_same_thread=False)
-        self._init_db()
+        self._conn = self._open_with_recovery()
+
+    def _open_conn(self) -> sqlite3.Connection:
+        conn = sqlite3.connect(self.db_path, check_same_thread=False)
+        if str(self.db_path) != ":memory:":
+            conn.execute("PRAGMA busy_timeout = 5000")
+            conn.execute("PRAGMA journal_mode = WAL")
+        return conn
+
+    def _unlink_corrupt_files(self) -> None:
+        for suffix in ("", "-wal", "-shm", "-journal"):
+            Path(f"{self.db_path}{suffix}").unlink(missing_ok=True)
+
+    def _open_with_recovery(self) -> sqlite3.Connection:
+        conn: sqlite3.Connection | None = None
+        try:
+            conn = self._open_conn()
+            self._conn = conn
+            self._init_db()
+            return conn
+        except sqlite3.DatabaseError as e:
+            if conn is not None:
+                conn.close()
+            if str(self.db_path) == ":memory:":
+                raise
+            self.logger.warning(f"[cache] corrupt database {self.db_path} ({e}); rebuilding")
+            self._unlink_corrupt_files()
+            conn = self._open_conn()
+            self._conn = conn
+            self._init_db()
+            return conn
 
     def _init_db(self):
         """Create the schema.
@@ -139,7 +168,7 @@ class ContentCache(ContentCachePort):
         mtime: float = 0,
         size: int = 0,
     ):
-        json_str = json.dumps(meta)
+        json_str = json.dumps(meta, default=str)
         with self._lock:
             self._conn.execute(
                 "INSERT OR REPLACE INTO files (path, hash, mtime, size, meta_json) "
@@ -150,7 +179,10 @@ class ContentCache(ContentCachePort):
 
     def set_file_metas(self, rows: Iterable[tuple[Path, str, dict[str, Any], float, int]]) -> None:
         """Write many (path, hash, meta, mtime, size) rows in one transaction, all or none."""
-        params = [(_key(p), h, mtime, size, json.dumps(meta)) for p, h, meta, mtime, size in rows]
+        params = [
+            (_key(p), h, mtime, size, json.dumps(meta, default=str))
+            for p, h, meta, mtime, size in rows
+        ]
         if not params:
             return
         with self._lock, self._conn:

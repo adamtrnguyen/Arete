@@ -179,13 +179,24 @@ def sigterm_cancels() -> Iterator[None]:
 
     The cancellation lands at the task's next await. No vault write awaits, so a file is
     never left half written by it, and `finally` blocks (the bridge, the cache, the lock)
-    run. Where the loop cannot take a signal handler (Windows, or off the main thread)
-    SIGTERM keeps its default.
+    run. A second SIGTERM while teardown is running is ignored so cleanup (e.g.
+    `anki_bridge.close()`) is not cancelled mid-flight. Where the loop cannot take a
+    signal handler (Windows, or off the main thread) SIGTERM keeps its default.
     """
     loop = asyncio.get_running_loop()
     task = asyncio.current_task()
+    fired = False
+
+    def _cancel_once() -> None:
+        nonlocal fired
+        if fired:
+            return
+        fired = True
+        if task is not None:
+            task.cancel()
+
     try:
-        loop.add_signal_handler(signal.SIGTERM, task.cancel if task else lambda: None)
+        loop.add_signal_handler(signal.SIGTERM, _cancel_once)
     except (NotImplementedError, RuntimeError, ValueError):
         yield
         return

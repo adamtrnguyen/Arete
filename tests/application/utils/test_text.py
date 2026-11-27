@@ -229,3 +229,15 @@ def test_apply_fixes_returns_original_unchanged_when_phase2_fails():
     """Unparseable YAML (even with tabs) is returned untouched rather than partially mutated."""
     broken = "---\n\tkey: : [unclosed\n---\nbody\n"
     assert apply_fixes(broken) == broken
+
+
+@pytest.mark.parametrize(
+    "sample", ["---\narete\n---\nbody\n", "---\n- arete\n---\nbody\n", "---\ndeck\n---\nbody\n"]
+)
+def test_non_dict_frontmatter_rejected_cleanly(sample):
+    """Non-mapping YAML roots produce structured errors and never crash or corrupt apply_fixes."""
+    meta, _ = parse_frontmatter(sample)
+    assert "__yaml_error__" in meta
+    with pytest.raises(yaml.YAMLError, match="YAML mapping"):
+        validate_frontmatter(sample)
+    assert apply_fixes(sample) == sample

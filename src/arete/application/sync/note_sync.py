@@ -94,6 +94,11 @@ class _Card:
     duplicate: tuple[_Card | int | str | Exception, str, str] | None = None
 
     @property
+    def loc(self) -> tuple[Path, int]:
+        """Unique card location in the vault (full path + 1-based card index)."""
+        return (self.work.source_file, self.work.source_index)
+
+    @property
     def label(self) -> str:
         return f"{self.work.source_file.name} #{self.work.source_index}"
 
@@ -225,7 +230,7 @@ class NoteSync:
         self._decks_lock = asyncio.Lock()
         self._index: dict[str, dict[str, list[tuple[int, frozenset[str]]]]] = {}
         self._index_lock = asyncio.Lock()
-        self._claimed: dict[int, str] = {}  # nid -> the card that resolved to it this run
+        self._claimed: dict[int, tuple[tuple[Path, int], str]] = {}  # nid -> (loc, label)
         # nid -> the note as `prefetch` read it (None: not in Anki); each entry used once.
         self._snapshot: dict[int, HeldNote | None] = {}
         # (type, deck casefolded, first-field key) -> the card of this run that holds it
@@ -243,6 +248,8 @@ class NoteSync:
         try:
             async with AsyncExitStack() as stack:
                 await self._run(_LazySession(self._store, stack), cards)
+        except AddonOutdated:
+            raise
         except Exception as e:  # the session itself failed: no card got a decision
             self._log.error(f"[sync] the Anki collection could not be used: {e}")
             for card in cards:
@@ -291,6 +298,8 @@ class NoteSync:
         try:
             async with self._store.session() as s:
                 errors = await s.apply_changes(changes)
+        except AddonOutdated:
+            raise
         except Exception as e:
             errors = [e] * len(changes)
         return {c.nid: error for c, error in zip(changes, errors, strict=True)}
@@ -409,10 +418,10 @@ class NoteSync:
     def _claim(self, card: _Card, nid: int, how: str) -> bool:
         """Resolve the card to the note, unless another card resolved to it this run."""
         holder = self._claimed.get(nid)
-        if holder is not None and holder != card.label:
-            card.fail(f"note {nid} is already synced by {holder} this run")
+        if holder is not None and holder[0] != card.loc:
+            card.fail(f"note {nid} is already synced by {holder[1]} this run")
             return False
-        self._claimed[nid] = card.label
+        self._claimed[nid] = (card.loc, card.label)
         card.nid, card.how = nid, how
         return True
 
@@ -427,7 +436,7 @@ class NoteSync:
 
     def _free(self, card: _Card, nid: int) -> bool:
         holder = self._claimed.get(nid)
-        taken = holder is not None and holder != card.label
+        taken = holder is not None and holder[0] != card.loc
         return not taken and not self._declared_by_another(card, nid)
 
     async def _resolve_by_nid(self, s: NoteStoreSession, cards: list[_Card]) -> None:
@@ -453,6 +462,8 @@ class NoteSync:
         if unread:
             try:
                 held.update(await s.read_notes(unread))
+            except AddonOutdated:
+                raise
             except Exception as e:
                 held.update(dict.fromkeys(unread, e))
         for card, nid in ordered:
@@ -512,6 +523,8 @@ class NoteSync:
             return
         try:
             found = await s.find_by_arete_ids(list(by_id))
+        except AddonOutdated:
+            raise
         except Exception as e:
             found = dict.fromkeys(by_id, e)
         for arete_id, group in by_id.items():
@@ -644,6 +657,8 @@ class NoteSync:
         if nids:
             try:
                 held = await s.read_notes(nids)
+            except AddonOutdated:
+                raise
             except Exception as e:
                 held = dict.fromkeys(nids, e)
         for card, new, key in keyed:
@@ -737,6 +752,8 @@ class NoteSync:
         ids = [c.lookup_id for c, _ in lost if c.lookup_id]
         try:
             found = await s.find_by_arete_ids(ids) if ids else {}
+        except AddonOutdated:
+            raise
         except Exception as e:
             found = dict.fromkeys(ids, e)
         for card, error in lost:
@@ -763,6 +780,8 @@ class NoteSync:
             return
         try:
             held = await s.read_notes(nids)
+        except AddonOutdated:
+            raise
         except Exception as e:
             held = dict.fromkeys(nids, e)
         for card in cards:
@@ -784,6 +803,8 @@ class NoteSync:
         if planned:
             try:
                 errors = await s.apply_changes([c for _, c in planned])
+            except AddonOutdated:
+                raise
             except Exception as e:
                 errors = [e] * len(planned)
             for (card, _), error in zip(planned, errors, strict=True):
@@ -857,6 +878,8 @@ class NoteSync:
             return
         try:
             held = await s.read_notes(nids)
+        except AddonOutdated:
+            raise
         except Exception as e:
             self._log.warning(f"Failed to fetch CIDs for {len(nids)} new notes: {e}")
             return
