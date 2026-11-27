@@ -10,8 +10,8 @@ updates:
          patterns:
            - "*"
 
-  # Maintain dependencies for python
-  - package-ecosystem: "pip"
+  # Maintain dependencies for python (uv)
+  - package-ecosystem: "uv"
     directory: "/"
     schedule:
       interval: "weekly"

@@ -25,7 +25,7 @@ BEGIN = "<!-- BEGIN GENERATED: package-tree (scripts/gen_architecture.py) -->"
 END = "<!-- END GENERATED -->"
 
 LAYERS = {
-    "interface": "How a person or a client reaches the system: CLI, HTTP.",
+    "interface": "How a person or a client reaches the system: CLI.",
     "composition": "The only place that picks an adapter for a port and wires a use-case.",
     "application": "Use-cases. Decides what happens next, over ports, never over adapters.",
     "infrastructure": "One technology each: AnkiConnect over HTTP, the Anki library, SQLite.",
@@ -35,10 +35,7 @@ LAYERS = {
 
 def summarize(path: Path) -> str:
     """First line of the module docstring, or the public names it defines."""
-    try:
-        tree = ast.parse(path.read_text(encoding="utf-8"))
-    except (SyntaxError, OSError):
-        return ""
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     doc = ast.get_docstring(tree)
     if doc:
         return doc.strip().splitlines()[0].rstrip(".")

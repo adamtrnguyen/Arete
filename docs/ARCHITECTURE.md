@@ -12,7 +12,7 @@ The tree below is generated from the package by `scripts/gen_architecture.py`, a
 ```text
 src/arete/
 │
-├── interface/                 How a person or a client reaches the system: CLI, HTTP.
+├── interface/                 How a person or a client reaches the system: CLI.
 │   ├── _common.py                 Shared utilities for all CLI submodules
 │   ├── anki_commands.py           Anki card management and debugging commands
 │   ├── cli.py                     Arete CLI — root commands and subgroup registration

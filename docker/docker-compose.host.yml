@@ -10,12 +10,12 @@ services:
       - ANKI_VERSION=26.8.1
       - QT_QUICK_BACKEND=software
       - ANKI_NOHIGHDPI=1
-      - ANKICONNECT_BIND_ADDRESS=0.0.0.0
+      - ANKICONNECT_BIND_ADDRESS=127.0.0.1
     # Host mode networking: Shares network namespace with host.
     # No port mapping needed. 127.0.0.1 in container is 127.0.0.1 on host.
-    network_mode: "host" 
+    network_mode: "host"
     volumes:
       - ./anki_data:/config
-      - ../arete_ankiconnect:/config/.local/share/Anki2/addons21/arete_ankiconnect
+      - ../arete_ankiconnect:/config/.local/share/Anki2/addons21/arete_ankiconnect:ro
     shm_size: "1gb"
     restart: unless-stopped

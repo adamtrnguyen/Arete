@@ -1,32 +1,33 @@
+"""Poll the Dockerized AnkiConnect endpoint until it responds."""
+
 import os
 import sys
 import time
 
-import requests
+import httpx
 
 ANKI_URL = os.getenv("ANKI_CONNECT_URL", "http://127.0.0.1:8766")
 MAX_RETRIES = 30  # 30 retries * 1 second = 30 seconds max wait
 DELAY = 1
 
 
-def check_anki():
-    # Try 127.0.0.1 first, then 0.0.0.0 as fallback for some Mac/OrbStack setups
+def check_anki() -> bool:
     urls = [ANKI_URL]
     if "127.0.0.1" in ANKI_URL:
         urls.append(ANKI_URL.replace("127.0.0.1", "0.0.0.0"))
 
     for url in urls:
         try:
-            response = requests.post(url, json={"action": "version", "version": 6}, timeout=1)
+            response = httpx.post(url, json={"action": "version", "version": 6}, timeout=1.0)
             if response.status_code == 200:
                 print(f"Anki is ready at {url}! Version: {response.json()}")
                 return True
-        except requests.exceptions.RequestException:
+        except (httpx.HTTPError, ValueError):
             continue
     return False
 
 
-def main():
+def main() -> None:
     print(f"Waiting for Anki (trying {ANKI_URL} and/or 0.0.0.0)...")
     sys.stdout.flush()
     for i in range(MAX_RETRIES):

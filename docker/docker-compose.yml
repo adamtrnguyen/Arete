@@ -12,10 +12,10 @@ services:
       - ANKI_NOHIGHDPI=1
       - ANKICONNECT_BIND_ADDRESS=0.0.0.0
     ports:
-      - "3000:3000"
-      - "8766:8765"
+      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:8766:8765"
     volumes:
       - ./anki_data:/config
-      - ../arete_ankiconnect:/config/.local/share/Anki2/addons21/arete_ankiconnect
+      - ../arete_ankiconnect:/config/.local/share/Anki2/addons21/arete_ankiconnect:ro
     shm_size: "1gb"
     restart: unless-stopped

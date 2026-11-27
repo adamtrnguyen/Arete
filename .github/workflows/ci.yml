@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [ main, master, develop ]
+    branches: [ main ]
   pull_request:
-    branches: [ main, master, develop ]
+    branches: [ main ]
 
 jobs:
   test:
@@ -17,10 +17,10 @@ jobs:
         python-version: ["3.12"]
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
 
     - name: Install uv
-      uses: astral-sh/setup-uv@v5
+      uses: astral-sh/setup-uv@v6
       with:
         enable-cache: true
 
@@ -34,22 +34,16 @@ jobs:
       # -rfEs: the failures and errors, and every skipped test with its reason, per OS.
       run: uv run just coverage -rfEs
 
-    - name: Upload coverage to Codecov
-      if: matrix.os == 'ubuntu-latest'
-      uses: codecov/codecov-action@v4
-      with:
-        file: ./htmlcov/index.html
-        fail_ci_if_error: false
-        token: ${{ secrets.CODECOV_TOKEN }}
-
   lint:
     name: Lint & Type Check
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
 
     - name: Install uv
-      uses: astral-sh/setup-uv@v5
+      uses: astral-sh/setup-uv@v6
+      with:
+        enable-cache: true
 
     - name: Set up Python
       run: uv python install 3.12
@@ -60,11 +54,23 @@ jobs:
     - name: Lint
       run: uv run just lint
 
+    - name: Format Check
+      run: uv run just fmt-check
+
     - name: Type Check
       run: uv run just check-types
 
     - name: Import contracts
       run: uv run just layers
+
+    - name: Dead code
+      run: uv run just dead
+
+    - name: Generated docs
+      run: uv run just check-docs
+
+    - name: Version agreement
+      run: uv run just check-versions
 
   plugin:
     name: Obsidian Plugin (Build & Test on ${{ matrix.os }})
@@ -75,11 +81,11 @@ jobs:
         # Windows too: the plugin starts Arete with Windows paths, separators and executables there.
         os: [ubuntu-latest, windows-latest]
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
 
-    - uses: actions/setup-node@v4
+    - uses: actions/setup-node@v5
       with:
-        node-version: '20'
+        node-version: '24'
 
     - name: Install Dependencies
       run: |
@@ -90,6 +96,11 @@ jobs:
       run: |
         cd obsidian-plugin
         npm run lint
+
+    - name: Lint Imports
+      run: |
+        cd obsidian-plugin
+        npm run lint:deps
 
     - name: Test
       run: |
@@ -109,10 +120,12 @@ jobs:
       matrix:
         network_mode: [bridge, host]
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
 
     - name: Install uv
-      uses: astral-sh/setup-uv@v5
+      uses: astral-sh/setup-uv@v6
+      with:
+        enable-cache: true
 
     - name: Set up Python
       run: uv python install 3.12
@@ -153,4 +166,9 @@ jobs:
 
     - name: Stop Docker
       if: always()
-      run: uv run just docker-down
+      run: |
+        if [ "${{ matrix.network_mode }}" == "host" ]; then
+          uv run just docker-down docker/docker-compose.host.yml
+        else
+          uv run just docker-down docker/docker-compose.yml
+        fi

@@ -17,7 +17,7 @@ WORKERS    := env("ARETE_TEST_WORKERS", "6")
 
 # Every suite that needs no container. `test` and `coverage` both read this, so the
 # two cannot drift apart.
-UNIT       := TESTS/"application " + TESTS/"interface " + TESTS/"infrastructure " + TESTS/"domain " + TESTS/"e2e " + TESTS/"test_docs_architecture.py " + TESTS/"test_factories.py " + TESTS/"test_source_prose.py " + TESTS/"test_source_io.py"
+UNIT       := TESTS + " --ignore=" + TESTS/"integration"
 
 # Default: List all available tasks
 default:
@@ -140,13 +140,14 @@ coverage-obsidian:
 
 # Build Python package (sdist + wheel)
 @build-python:
+    rm -rf dist/
     {{PY}} -m build
 
 # Zip Anki plugin for distribution
 @build-anki:
     rm -rf {{RELEASE}}
     mkdir -p {{RELEASE}}
-    cd arete_ankiconnect && zip -r ../{{RELEASE}}/arete_ankiconnect.zip . -x "__pycache__/*"
+    cd arete_ankiconnect && zip -r ../{{RELEASE}}/arete_ankiconnect.zip . -x "__pycache__/*" "*/__pycache__/*" "*.pyc" "*.DS_Store" "meta.json" "startup_error.log"
     cp {{RELEASE}}/arete_ankiconnect.zip {{RELEASE}}/arete_ankiconnect.ankiaddon
 
 # Everything a release must satisfy, without changing a single file: the qa gate
@@ -162,8 +163,8 @@ verify: qa
     uv run --no-project --with "$WHEEL" arete --help > /dev/null
     echo "  wheel ok: $(basename "$WHEEL") exposes a working arete command"
 
-# Full release build: verify, stamp every manifest, build all three artifacts, run the wheel
-@release: verify sync-versions build-python build-obsidian build-anki verify-wheel
+# Full release build: verify, build all three artifacts, run the wheel
+@release: verify build-python build-obsidian build-anki verify-wheel
     @echo "📦 Packaging release artifacts..."
     @cp dist/* {{RELEASE}}/
     @cp {{PLUGIN}}/main.js {{PLUGIN}}/manifest.json {{PLUGIN}}/styles.css {{RELEASE}}/
@@ -217,7 +218,7 @@ qa:
 
 # --- Infrastructure ---
 
-# Download and configure AnkiConnect for Docker
+# Seed Anki preferences and media directory for Docker
 @setup-anki-data:
     {{PY}} scripts/install_ankiconnect.py
 
@@ -226,8 +227,8 @@ qa:
     docker compose -f docker/docker-compose.yml up -d
 
 # Stop Dockerized Anki
-@docker-down:
-    docker compose -f docker/docker-compose.yml down
+@docker-down compose="docker/docker-compose.yml":
+    docker compose -f {{compose}} down
 
 # Wait for Anki to be ready
 @wait-for-anki:

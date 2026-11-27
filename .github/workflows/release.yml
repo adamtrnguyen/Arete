@@ -1,4 +1,4 @@
-name: Release to PyPI
+name: Release
 
 on:
   push:
@@ -7,48 +7,17 @@ on:
 
 permissions:
   contents: write
-  id-token: write  # Required for trusted publishing to PyPI
 
 jobs:
-  build-and-publish:
-    name: Build and publish to PyPI
+  build-and-release:
+    name: Build and create GitHub Release
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
 
-    - name: Install uv
-      uses: astral-sh/setup-uv@v5
-
-    - name: Set up Python
-      run: uv python install 3.12
-
-    - name: Install dependencies
-      run: uv sync --dev
-
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '20'
-
-    - name: Install plugin dependencies
-      run: npm ci --legacy-peer-deps
-      working-directory: obsidian-plugin
-
-    # One recipe builds every artifact, here and on a laptop, so the two cannot
-    # drift. It verifies (lint, types, import contracts, generated docs, version
-    # agreement, both test suites), stamps the pyproject version into every
-    # manifest, builds the wheel, the plugin and the Anki add-on, then runs the
-    # built wheel's console script. The plugin shells out to `arete`, so a wheel
-    # that builds without exposing that entry point is a broken release.
-    - name: Build and verify every artifact
-      run: uv run just release
-
-    - name: Fail if the tag disagrees with the built version
+    - name: Fail if the tag disagrees with the pyproject version
       run: |
-        # Read it with grep, not an inline `python -c`. That regex needs double
-        # quotes, and nesting them inside the shell string is what broke the
-        # first attempt: bash died on "syntax error near unexpected token `('".
         BUILT=$(grep -m1 -E '^version *= *"' pyproject.toml | cut -d'"' -f2)
         TAG="${GITHUB_REF_NAME#v}"
         if [ "$BUILT" != "$TAG" ]; then
@@ -57,14 +26,37 @@ jobs:
         fi
         echo "tag $GITHUB_REF_NAME matches version $BUILT"
 
-    - name: Publish to PyPI
-      uses: pypa/gh-action-pypi-publish@release/v1
-      # Best-effort: a PyPI hiccup (e.g. trusted-publishing/version) must never
-      # block the GitHub Release below, which is what BRAT installs from.
-      continue-on-error: true
+    - name: Install uv
+      uses: astral-sh/setup-uv@v6
+      with:
+        enable-cache: true
+
+    - name: Set up Python
+      run: uv python install 3.12
+
+    - name: Install dependencies
+      run: uv sync --dev
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v5
+      with:
+        node-version: '24'
+
+    - name: Install plugin dependencies
+      run: npm ci --legacy-peer-deps
+      working-directory: obsidian-plugin
+
+    # One recipe builds every artifact, here and on a laptop, so the two cannot
+    # drift. It verifies (lint, types, import contracts, generated docs, version
+    # agreement, both test suites), builds the wheel, the plugin and the Anki
+    # add-on, then runs the built wheel's console script. The plugin shells out
+    # to `arete`, so a wheel that builds without exposing that entry point is a
+    # broken release.
+    - name: Build and verify every artifact
+      run: uv run just release
 
     - name: Create GitHub Release
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v2
       with:
         generate_release_notes: true
         files: |
@@ -81,5 +73,3 @@ jobs:
       with:
         name: anki-addon
         path: release_artifacts/arete_ankiconnect.zip
-
-
