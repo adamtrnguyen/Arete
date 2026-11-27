@@ -11,15 +11,20 @@ a folder with a `SKILL.md` (loaded when its description matches the task) and op
 
 ## Install
 
-Link a skill rather than copying it, so it updates with Arete:
+Link a skill rather than copying it, so it updates with Arete. Most coding agents
+discover `.agents/skills/` (Codex, Gemini CLI / Antigravity, Cursor, and Claude Code);
+Claude Code also reads `.claude/skills/`:
 
 ```bash
-# for one vault (Claude Code opened in the vault)
-ln -s /path/to/arete/skills/arete "<vault>/.claude/skills/arete"
+# cross-client path for one vault or repository
+ln -s /path/to/arete/skills/arete "<vault>/.agents/skills/arete"
 
-# for every project
+# Claude Code (one vault or globally)
+ln -s /path/to/arete/skills/arete "<vault>/.claude/skills/arete"
 ln -s /path/to/arete/skills/arete ~/.claude/skills/arete
 ```
+
+This repository already links `gui-test` at `.agents/skills/gui-test` for plugin development.
 
 ## Curating
 

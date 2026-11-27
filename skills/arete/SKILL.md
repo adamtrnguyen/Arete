@@ -1,6 +1,7 @@
 ---
 name: arete
 description: "How a coding agent helps with Arete card work end to end: draft cards into a note, show them live in Obsidian's Card Editor while polishing, sync to Anki, keep the dependency graph healthy, fix cards flagged during review, build study queues, and run vault maintenance. ALWAYS use this skill when creating, editing, syncing, reviewing or repairing Arete cards, when running any `arete` command, or when asked to show a card in Obsidian. For WHAT makes a good card use `card-design`; for HOW to write the YAML read references/FORMAT.md."
+compatibility: "Requires the `arete` CLI (Python 3.12+, `uv`). Live card review uses Obsidian with the Arete plugin and optionally a vault MCP server or the Obsidian CLI."
 ---
 
 # Arete — working with the user on cards
@@ -27,7 +28,7 @@ Arete syncs cards written in note frontmatter (Obsidian) to Anki. **Obsidian is 
 | Surface | Use it for |
 |---|---|
 | **Edit/Write the note** | Drafting and polishing cards. The Card Editor re-renders when the file changes. |
-| `open -g "obsidian://arete?vault=<Vault%20Name>&file=<path>&card=<id or position>"` | Put a card in front of the user without stealing focus. `card` is an Arete id or a 1-based position (drafts have no id). |
+| `open -g "obsidian://arete?vault=<Vault%20Name>&file=<path>&card=<id or position>"` (macOS; `xdg-open` on Linux, `Start-Process` on Windows) | Put a card in front of the user without stealing focus on macOS (`open -g`). `card` is an Arete id or a 1-based position (drafts have no id). |
 | vault MCP `obsidian_screenshot`, `obsidian_dom` | See exactly what the user sees. |
 | `obsidian dev:console limit=<n> level=<level>` (Obsidian CLI) | Read render errors from the console. |
 | vault MCP `obsidian_click` on the toolbar button with the tooltip "Preview mode" (`.arete-toolbar-btn`) | Switch the Card Editor to the rendered Anki preview (`.arete-preview-side-btn` toggles Front/Back). |

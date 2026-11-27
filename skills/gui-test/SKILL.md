@@ -1,6 +1,7 @@
 ---
 name: gui-test
 description: Test and measure the Arete Obsidian plugin in a running Obsidian - build and deploy a worktree's plugin, reload it, open each view, check behaviour with DOM probes and screenshots, time editor and view work, and profile CPU, heap and listeners. ALWAYS use this skill when asked to GUI-test, screenshot-check, profile or optimise the Arete plugin in a live Obsidian, or to confirm a plugin change works in the real app rather than only in jest.
+compatibility: "Requires a running Obsidian desktop instance, Node.js, the Obsidian CLI (`eval`, `open`, `dev:errors`, `dev:cdp`), and optionally a vault MCP server."
 ---
 
 # GUI test: the Arete plugin in a live Obsidian

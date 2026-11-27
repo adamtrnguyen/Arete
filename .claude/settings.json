@@ -17,6 +17,9 @@
       "Read"
     ],
     "deny": [
+      "Bash(git push *)",
+      "Bash(git reset --hard *)",
+      "Bash(git stash *)",
       "Bash(uv run arete sync *--prune*--yes*)",
       "Bash(uv run arete sync *--yes*--prune*)",
       "Bash(uv run arete sync *--prune*-y*)",
@@ -26,9 +29,6 @@
       "Bash(arete sync *--prune*-y*)",
       "Bash(arete sync *-y*--prune*)"
     ]
-  },
-  "env": {
-    "ENABLE_LSP_TOOL": "1"
   },
   "hooks": {
     "PreToolUse": [
