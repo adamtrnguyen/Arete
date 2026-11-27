@@ -46,10 +46,37 @@ def test_stats_rejects_non_list_or_non_int_json_nids():
         assert res.stdout == ""
 
 
-def test_stats_with_no_valid_nids_prints_an_empty_json_list():
-    result = runner.invoke(app, ["anki", "stats", "--nids", "abc,,x", *BACKEND])
-    assert result.exit_code == 0
-    assert result.stdout.strip() == "[]"
+def test_stats_with_empty_nids_prints_an_empty_json_list():
+    for empty in ("", "[]"):
+        result = runner.invoke(app, ["anki", "stats", "--nids", empty, *BACKEND])
+        assert result.exit_code == 0
+        assert result.stdout.strip() == "[]"
+
+
+def test_stats_and_suspend_reject_invalid_comma_separated_ids():
+    bad_nids = runner.invoke(app, ["anki", "stats", "--nids", "abc,,x", *BACKEND])
+    assert bad_nids.exit_code == 1
+    assert "Invalid --nids: expected integers" in bad_nids.stderr
+    assert bad_nids.stdout == ""
+
+    bad_cids = runner.invoke(app, ["anki", "suspend", "--cids", "123,abc", *BACKEND])
+    assert bad_cids.exit_code == 1
+    assert "Invalid --cids: expected integers" in bad_cids.stderr
+    assert bad_cids.stdout == ""
+
+
+def test_queue_deck_ids_trims_json_and_rejects_non_string_json():
+    with patch("arete.composition.factory.AnkiConnectAdapter") as mock_cls:
+        inst = _bridge(mock_cls, get_card_ids_for_arete_ids=[7], create_topo_deck=True)
+        res = runner.invoke(app, ["anki", "queue-deck", "--ids", ' ["arete_A"] ', *BACKEND])
+    assert res.exit_code == 0
+    inst.get_card_ids_for_arete_ids.assert_awaited_once_with(["arete_A"])
+
+    for bad in ('{"a": 1}', "[true]", "[123]"):
+        res = runner.invoke(app, ["anki", "queue-deck", "--ids", bad, *BACKEND])
+        assert res.exit_code == 1, bad
+        assert "Invalid --ids" in res.stderr
+        assert res.stdout == ""
 
 
 def test_stats_with_no_valid_nids_in_table_mode_says_so():

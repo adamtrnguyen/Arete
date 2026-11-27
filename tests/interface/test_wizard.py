@@ -110,12 +110,39 @@ def test_wizard_write_error(tmp_path: Path):
     # A directory at config.toml makes opening it for writing fail with IsADirectoryError.
     (home / ".config/arete/config.toml").mkdir(parents=True)
 
-    run_init_wizard(
+    ok = run_init_wizard(
         input_fn=_feed([str(v), str(m), "1", "y"]),
         detect_paths=lambda: (None, None),
         home_dir=home,
     )
+    assert ok is False
     assert (home / ".config/arete/config.toml").is_dir()
+
+
+def test_wizard_reprompts_invalid_backend_and_handles_eof(tmp_path: Path):
+    home = tmp_path / "home"
+    home.mkdir()
+    v = tmp_path / "v"
+    v.mkdir()
+    m = tmp_path / "m"
+    m.mkdir()
+
+    ok = run_init_wizard(
+        input_fn=_feed([str(v), str(m), "9", "direct"]),
+        detect_paths=lambda: (None, None),
+        home_dir=home,
+    )
+    assert ok is True
+    parsed = tomllib.loads((home / ".config/arete/config.toml").read_text(encoding="utf-8"))
+    assert parsed["backend"] == "direct"
+
+    def raise_eof(_prompt: str = "") -> str:
+        raise EOFError
+
+    assert (
+        run_init_wizard(input_fn=raise_eof, detect_paths=lambda: (None, None), home_dir=home)
+        is True
+    )
 
 
 def test_wizard_escapes_windows_backslashes_as_valid_toml(tmp_path: Path):

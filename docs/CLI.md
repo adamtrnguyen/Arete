@@ -18,6 +18,8 @@ uv sync
 
 | Command | Description |
 | :--- | :--- |
+| `arete --version` / `-V` | Print the installed Arete version and exit. |
+| `arete -v <cmd>` | Enable `DEBUG` logging (`-v` sets verbosity 2, overriding `config.toml`). |
 | `arete sync` | Standard sync from Obsidian to Anki. |
 | `arete sync --prune` | Sync, then list the Arete notes whose card left the vault and ask before deleting them. |
 | `arete sync --prune --yes` | The same, without asking. |
@@ -25,7 +27,7 @@ uv sync
 | `arete queue` | Build `Arete::Queue` from due cards and resolved prerequisites. |
 | `arete init` | Initialize a new vault configuration. |
 | `arete logs` | Open the run logs directory. |
-| `arete report` | Show or clear card issues reported from Anki review sessions (`--json`, `--clear N`). Clearing a report unsuspends its card. |
+| `arete report` | Show or clear card issues reported from Anki review sessions (`--json`, `--clear N`, `--backend`, `--anki-connect-url`, `--anki-base`). Clearing a report unsuspends its card. |
 
 ### Vault Maintenance (`arete vault`)
 
@@ -71,6 +73,9 @@ uv sync
 - `--yes`, `-y`: Confirm the prune without the prompt.
 - `--force`: Re-send every card, ignoring the content cache. It does not confirm a prune.
 - `--backend`: Select backend (`auto`, `ankiconnect`, `direct`).
+- `--anki-connect-url`: Override the AnkiConnect HTTP endpoint.
+- `--anki-media-dir`: Override the Anki `collection.media` directory.
+- `--anki-base`: Override the Anki base directory (direct backend).
 - `--workers`: Override parallel sync worker count.
 - `--json`: Print one JSON object on stdout and nothing else; logs go to stderr. It never
   asks: without `--yes` a prune returns its preview and deletes nothing. Exit codes are
@@ -102,7 +107,8 @@ Arete supports dependency-aware study queues. By tagging notes with prerequisite
 
 - Queue output deck name is fixed: `Arete::Queue`.
 - With `--deck`, the queue is isolated to that deck unless `--cross-deck` is passed.
-- `--depth` sets how many prerequisite levels to walk (default 2). `--include-new` adds unreviewed cards.
+- `--depth` sets how many prerequisite levels to walk (default 2). `--max-cards` caps the queue size (default 50). `--include-new` adds unreviewed cards.
+- `--backend`, `--anki-connect-url`, and `--anki-base` override Anki connection settings.
 - `--algo` picks the ordering: `static` (default) collects due cards plus their
   prerequisites in prerequisite order, `dynamic` orders by a ready frontier.
 

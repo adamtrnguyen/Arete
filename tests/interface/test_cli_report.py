@@ -267,3 +267,32 @@ def test_report_clear_all_deduplicates_repeated_cids(reports_file, bridge):
     assert result.exit_code == 0
     assert "Cleared 3 report(s), unsuspended 2 card(s)." in result.stdout
     assert bridge.unsuspended == [[11, 22]]
+
+
+def test_report_clear_json_mode_and_backend_override(reports_file, monkeypatch):
+    seen_configs = []
+    b = FakeBridge()
+
+    async def fake_get_bridge(config):
+        seen_configs.append(config)
+        return b
+
+    monkeypatch.setattr("arete.composition.factory.get_anki_bridge", fake_get_bridge)
+    _write(reports_file, [_report(1, cid=42)])
+    result = runner.invoke(
+        app,
+        ["report", "--clear", "0", "--json", "--backend", "direct"],
+    )
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["unsuspended"] is True
+    assert payload["to_unsuspend"] == [42]
+    assert seen_configs[0].backend == "direct"
+
+    b.ok = False
+    _write(reports_file, [_report(1, cid=43)])
+    failed = runner.invoke(app, ["report", "--clear", "0", "--json"])
+    assert failed.exit_code == 1
+    fail_payload = json.loads(failed.stdout)
+    assert fail_payload["unsuspended"] is False
+    assert fail_payload["unsuspend_error"] is not None

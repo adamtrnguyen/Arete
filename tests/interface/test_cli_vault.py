@@ -22,7 +22,27 @@ CLEAN = TABBED_FIXED
 def test_fix_missing_file_exits_1(tmp_path):
     result = runner.invoke(app, ["vault", "fix", str(tmp_path / "nope.md")])
     assert result.exit_code == 1
-    assert "File not found." in result.stdout
+    assert "File not found." in result.stderr
+
+
+def test_fix_directory_exits_1_cleanly(tmp_path):
+    result = runner.invoke(app, ["vault", "fix", str(tmp_path)])
+    assert result.exit_code == 1
+    assert isinstance(result.exception, SystemExit)
+    assert "Path is a directory" in result.stderr
+
+
+def test_format_missing_path_and_unknown_vault_exit_1_cleanly(tmp_path):
+    missing = runner.invoke(app, ["vault", "format", str(tmp_path / "nope")])
+    assert missing.exit_code == 1
+    assert "path not found" in missing.stderr
+
+    stray = tmp_path / "stray.md"
+    stray.write_text(QUOTED, encoding="utf-8")
+    unknown = runner.invoke(app, ["vault", "format", str(stray)])
+    assert unknown.exit_code == 1
+    assert isinstance(unknown.exception, SystemExit)
+    assert "Cannot tell which vault" in unknown.stderr
 
 
 def test_fix_rewrites_the_file_and_says_so(tmp_path):

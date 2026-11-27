@@ -3,7 +3,9 @@
 import json
 import logging
 import os
+import subprocess
 import sys
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Annotated
 
@@ -11,7 +13,13 @@ import typer
 
 from arete.application.config import AppConfig, VaultRootUnknown, require_vault_root, resolve_config
 from arete.application.queue.service import QueueAlgo
-from arete.interface._common import _resolve_with_overrides, stdout_to_stderr, utf8_console
+from arete.interface._common import (
+    _resolve_with_overrides,
+    configure_cli_logging,
+    get_verbose_override,
+    stdout_to_stderr,
+    utf8_console,
+)
 from arete.interface.anki_commands import anki_app
 from arete.interface.vault_commands import vault_app
 
@@ -34,11 +42,23 @@ logger = logging.getLogger(__name__)
 app.add_typer(vault_app, name="vault")
 app.add_typer(anki_app, name="anki")
 
-config_app = typer.Typer(help="Manage arete configuration.")
+config_app = typer.Typer(help="Manage arete configuration.", no_args_is_help=True)
 app.add_typer(config_app, name="config")
 
 graph_app = typer.Typer(help="Dependency graph diagnostics.", no_args_is_help=True)
 app.add_typer(graph_app, name="graph")
+
+
+def _version_callback(show: bool) -> None:
+    """Print the installed arete version and exit."""
+    if not show:
+        return
+    try:
+        ver = version("arete")
+    except PackageNotFoundError:
+        ver = "unknown"
+    typer.echo(f"arete {ver}")
+    raise typer.Exit()
 
 
 # ---------------------------------------------------------------------------
@@ -52,19 +72,49 @@ def main_callback(
     verbose: Annotated[
         int,
         typer.Option(
-            "--verbose", "-v", count=True, help="Increase verbosity. Repeat for more detail."
+            "--verbose",
+            "-v",
+            count=True,
+            help="Increase verbosity (-v for DEBUG). Overrides config.toml verbose.",
         ),
-    ] = 1,
+    ] = 0,
+    show_version: Annotated[
+        bool,
+        typer.Option(
+            "--version",
+            "-V",
+            callback=_version_callback,
+            is_eager=True,
+            help="Show version and exit.",
+        ),
+    ] = False,
 ):
     """Global settings for arete."""
+    _ = show_version
     utf8_console()
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(levelname)s:%(name)s:%(message)s",
-        stream=sys.stderr,
-    )
+    configure_cli_logging(verbose)
     ctx.ensure_object(dict)
-    ctx.obj["verbose_bonus"] = verbose
+    # Default config verbosity is 1 (INFO); -v bumps to 2 (DEBUG), -vv to 3, etc.
+    # Leave None when omitted so config.toml and ARETE_VERBOSE are respected.
+    ctx.obj["verbose"] = (1 + verbose) if verbose > 0 else None
+
+
+def _open_in_os(target: Path) -> None:
+    """Open a file or directory using the platform's default handler."""
+    try:
+        if sys.platform == "darwin":
+            subprocess.run(["open", str(target)])
+        elif sys.platform == "win32":
+            os.startfile(str(target))
+        else:
+            subprocess.run(["xdg-open", str(target)])
+    except FileNotFoundError as e:
+        typer.secho(
+            f"Error: could not open '{target}' ({e.filename} not found).",
+            fg="red",
+            err=True,
+        )
+        raise typer.Exit(1) from e
 
 
 # ---------------------------------------------------------------------------
@@ -88,16 +138,17 @@ def sync(
         str | None, typer.Option(help="Anki backend: auto, ankiconnect, direct.")
     ] = None,
     prune: Annotated[
-        bool, typer.Option("--prune/--no-prune", help="Prune orphaned cards from Anki.")
-    ] = False,
+        bool | None,
+        typer.Option("--prune/--no-prune", help="Prune orphaned cards from Anki."),
+    ] = None,
     force: Annotated[
-        bool,
+        bool | None,
         typer.Option(
-            "--force",
+            "--force/--no-force",
             "-f",
             help="Re-send every card, ignoring the content cache. Does not confirm a prune.",
         ),
-    ] = False,
+    ] = None,
     yes: Annotated[
         bool,
         typer.Option(
@@ -107,16 +158,21 @@ def sync(
         ),
     ] = False,
     clear_cache: Annotated[
-        bool, typer.Option("--clear-cache", help="Force re-sync of all files.")
-    ] = False,
+        bool | None,
+        typer.Option("--clear-cache/--no-clear-cache", help="Force re-sync of all files."),
+    ] = None,
     dry_run: Annotated[
-        bool, typer.Option("--dry-run", help="Verify changes without applying.")
-    ] = False,
+        bool | None,
+        typer.Option("--dry-run/--no-dry-run", help="Verify changes without applying."),
+    ] = None,
     anki_connect_url: Annotated[
         str | None, typer.Option(help="Custom AnkiConnect endpoint.")
     ] = None,
     anki_media_dir: Annotated[
         Path | None, typer.Option(help="Custom Anki media directory.")
+    ] = None,
+    anki_base: Annotated[
+        Path | None, typer.Option(help="Custom Anki base directory (direct backend).")
     ] = None,
     workers: Annotated[int | None, typer.Option(help="Parallel sync workers.")] = None,
     json_output: Annotated[
@@ -140,8 +196,9 @@ def sync(
         dry_run=dry_run,
         anki_connect_url=anki_connect_url,
         anki_media_dir=anki_media_dir,
+        anki_base=anki_base,
         workers=workers,
-        verbose=ctx.obj.get("verbose_bonus", 1),
+        verbose=get_verbose_override(ctx),
     )
 
     import asyncio
@@ -234,7 +291,10 @@ def _sync_json(stats, message: str | None) -> dict:
 
 def _confirm_prune_at_prompt(_report) -> bool:
     """Ask before prune deletes. Prune calls this only when stdin is a terminal."""
-    val = input("\nAre you sure you want to proceed? Type 'yes' to confirm: ")
+    try:
+        val = input("\nAre you sure you want to proceed? Type 'yes' to confirm: ")
+    except EOFError:
+        return False
     return val.strip().lower() == "yes"
 
 
@@ -243,25 +303,17 @@ def init():
     """Launch the interactive setup wizard."""
     from arete.interface.wizard import run_init_wizard
 
-    run_init_wizard()
-    raise typer.Exit()
+    if not run_init_wizard():
+        raise typer.Exit(1)
 
 
 @app.command()
 def logs():
     """Open the log directory."""
-    import subprocess
-
     config = resolve_config()
     if not config.log_dir.exists():
         config.log_dir.mkdir(parents=True, exist_ok=True)
-
-    if sys.platform == "darwin":
-        subprocess.run(["open", str(config.log_dir)])
-    elif sys.platform == "win32":
-        os.startfile(str(config.log_dir))
-    else:
-        subprocess.run(["xdg-open", str(config.log_dir)])
+    _open_in_os(config.log_dir)
 
 
 def _resolve_graph_root(config: AppConfig) -> Path:
@@ -282,7 +334,6 @@ def _resolve_graph_root(config: AppConfig) -> Path:
 
 @app.command("queue")
 def queue(
-    ctx: typer.Context,
     path: Annotated[
         Path | None, typer.Argument(help="Path to Obsidian vault. Defaults to config.")
     ] = None,
@@ -449,6 +500,68 @@ def _queue_json(result, deck: str | None) -> dict:
     }
 
 
+def _clear_reports_cli(
+    clear: int,
+    *,
+    json_output: bool,
+    backend: str | None,
+    anki_connect_url: str | None,
+    anki_base: str | None,
+) -> None:
+    """Clear stored card reports and reconcile suspension state in Anki."""
+    import asyncio
+    from contextlib import asynccontextmanager
+    from dataclasses import asdict
+
+    from arete.application.report_service import clear_and_reconcile_reports
+    from arete.composition.factory import get_anki_bridge
+
+    @asynccontextmanager
+    async def open_anki():
+        config = _resolve_with_overrides(
+            backend=backend,
+            anki_connect_url=anki_connect_url,
+            anki_base=anki_base,
+        )
+        anki = await get_anki_bridge(config)
+        try:
+            yield anki
+        finally:
+            await anki.close()
+
+    indices = None if clear == 0 else [clear]
+    if json_output:
+        with stdout_to_stderr():
+            outcome = asyncio.run(clear_and_reconcile_reports(indices, open_anki))
+        typer.echo(json.dumps(asdict(outcome), indent=2, ensure_ascii=False))
+        if outcome.unsuspend_error is not None:
+            raise typer.Exit(code=1)
+        return
+
+    outcome = asyncio.run(clear_and_reconcile_reports(indices, open_anki))
+    if not outcome.cleared:
+        typer.secho("No reports to clear.", fg="yellow")
+        return
+    if outcome.unsuspend_error is not None:
+        typer.secho(
+            f"Cleared {len(outcome.cleared)} report(s), but unsuspending "
+            f"{len(outcome.to_unsuspend)} card(s) FAILED: {outcome.unsuspend_error}\n"
+            f"Those cards are still suspended. With Anki open, run: "
+            f"arete anki unsuspend --cids {','.join(str(c) for c in outcome.to_unsuspend)}",
+            fg="red",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+    if outcome.unsuspended:
+        typer.secho(
+            f"Cleared {len(outcome.cleared)} report(s), "
+            f"unsuspended {len(outcome.to_unsuspend)} card(s).",
+            fg="green",
+        )
+    else:
+        typer.secho(f"Cleared {len(outcome.cleared)} report(s).", fg="green")
+
+
 @app.command()
 def report(
     json_output: Annotated[
@@ -461,49 +574,23 @@ def report(
             help="Clear reports. Pass 0 to clear all, or a 1-based index to clear one.",
         ),
     ] = None,
+    backend: Annotated[
+        str | None, typer.Option(help="Anki backend when unsuspending cleared reports.")
+    ] = None,
+    anki_connect_url: Annotated[str | None, typer.Option(help="AnkiConnect URL Override")] = None,
+    anki_base: Annotated[str | None, typer.Option(help="Anki Base Directory Override")] = None,
 ):
     """Show or clear reported card issues from Anki review sessions."""
-    from contextlib import asynccontextmanager
-
-    from arete.application.report_service import clear_and_reconcile_reports, load_reports
+    from arete.application.report_service import load_reports
 
     if clear is not None:
-        import asyncio
-
-        from arete.composition.factory import get_anki_bridge
-
-        @asynccontextmanager
-        async def open_anki():
-            config = _resolve_with_overrides()
-            anki = await get_anki_bridge(config)
-            try:
-                yield anki
-            finally:
-                await anki.close()
-
-        indices = None if clear == 0 else [clear]
-        outcome = asyncio.run(clear_and_reconcile_reports(indices, open_anki))
-        if not outcome.cleared:
-            typer.secho("No reports to clear.", fg="yellow")
-            return
-        if outcome.unsuspend_error is not None:
-            typer.secho(
-                f"Cleared {len(outcome.cleared)} report(s), but unsuspending "
-                f"{len(outcome.to_unsuspend)} card(s) FAILED: {outcome.unsuspend_error}\n"
-                f"Those cards are still suspended. With Anki open, run: "
-                f"arete anki unsuspend --cids {','.join(str(c) for c in outcome.to_unsuspend)}",
-                fg="red",
-                err=True,
-            )
-            raise typer.Exit(code=1)
-        if outcome.unsuspended:
-            typer.secho(
-                f"Cleared {len(outcome.cleared)} report(s), "
-                f"unsuspended {len(outcome.to_unsuspend)} card(s).",
-                fg="green",
-            )
-        else:
-            typer.secho(f"Cleared {len(outcome.cleared)} report(s).", fg="green")
+        _clear_reports_cli(
+            clear,
+            json_output=json_output,
+            backend=backend,
+            anki_connect_url=anki_connect_url,
+            anki_base=anki_base,
+        )
         return
 
     reports = load_reports()
@@ -551,19 +638,11 @@ def config_show():
 @config_app.command("open")
 def config_open():
     """Open the config file in your default editor."""
-    import subprocess
-
     cfg_path = Path.home() / ".config/arete/config.toml"
     if not cfg_path.exists():
         cfg_path.parent.mkdir(parents=True, exist_ok=True)
         cfg_path.touch()
-
-    if sys.platform == "darwin":
-        subprocess.run(["open", str(cfg_path)])
-    elif sys.platform == "win32":
-        os.startfile(str(cfg_path))
-    else:
-        subprocess.run(["xdg-open", str(cfg_path)])
+    _open_in_os(cfg_path)
 
 
 # ---------------------------------------------------------------------------
@@ -644,12 +723,13 @@ def graph_check(
     config = _resolve_with_overrides(root_input=path)
     vault_root = _resolve_graph_root(config)
 
-    result = check_graph_health(vault_root)
-
     if json_output:
+        with stdout_to_stderr():
+            result = check_graph_health(vault_root)
         typer.echo(json.dumps(asdict(result), indent=2))
         return
 
+    result = check_graph_health(vault_root)
     _print_graph_health(result)
     if not result.ok:
         raise typer.Exit(1)

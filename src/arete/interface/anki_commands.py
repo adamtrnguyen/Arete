@@ -7,55 +7,92 @@ from typing import Annotated, Any
 
 import typer
 
-from arete.domain.interfaces import AnkiAdminPort, QueuePort
-from arete.interface._common import _resolve_with_overrides, stdout_to_stderr
+from arete.interface._common import (
+    _resolve_with_overrides,
+    get_verbose_override,
+    stdout_to_stderr,
+)
 
-anki_app = typer.Typer(name="anki", help="Anki card management and debugging.")
+anki_app = typer.Typer(
+    name="anki",
+    help="Anki card management and debugging.",
+    no_args_is_help=True,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 
+def _parse_json_int_list(raw: str, flag: str) -> list[int]:
+    """Parse a JSON array of integers, exiting 1 with a clear error otherwise."""
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as e:
+        typer.secho(f"Invalid JSON for {flag}", fg="red", err=True)
+        raise typer.Exit(1) from e
+    if not isinstance(parsed, list):
+        typer.secho(f"Invalid {flag}: expected a JSON list of integers", fg="red", err=True)
+        raise typer.Exit(1)
+    out: list[int] = []
+    for item in parsed:
+        if isinstance(item, bool) or not isinstance(item, (int, str)):
+            typer.secho(f"Invalid {flag}: all items must be integers", fg="red", err=True)
+            raise typer.Exit(1)
+        try:
+            out.append(int(item))
+        except ValueError as e:
+            typer.secho(f"Invalid {flag}: all items must be integers", fg="red", err=True)
+            raise typer.Exit(1) from e
+    return out
+
+
 def _parse_int_list(raw: str, flag: str) -> list[int]:
     """Parse comma-separated or JSON list of integer IDs."""
     stripped = raw.strip()
+    if not stripped:
+        return []
     if stripped.startswith(("[", "{")):
-        try:
-            parsed = json.loads(stripped)
-        except json.JSONDecodeError as e:
-            typer.secho(f"Invalid JSON for {flag}", fg="red", err=True)
-            raise typer.Exit(1) from e
-        if not isinstance(parsed, list):
-            typer.secho(f"Invalid {flag}: expected a JSON list of integers", fg="red", err=True)
+        return _parse_json_int_list(stripped, flag)
+
+    out: list[int] = []
+    for part in stripped.split(","):
+        token = part.strip()
+        if not token:
+            continue
+        if not token.isdigit():
+            typer.secho(
+                f"Invalid {flag}: expected integers (got {token!r})",
+                fg="red",
+                err=True,
+            )
             raise typer.Exit(1)
-        out: list[int] = []
-        for item in parsed:
-            if isinstance(item, bool) or not isinstance(item, (int, str)):
-                typer.secho(f"Invalid {flag}: all items must be integers", fg="red", err=True)
-                raise typer.Exit(1)
-            try:
-                out.append(int(item))
-            except ValueError as e:
-                typer.secho(f"Invalid {flag}: all items must be integers", fg="red", err=True)
-                raise typer.Exit(1) from e
-        return out
-    return [int(n.strip()) for n in raw.split(",") if n.strip().isdigit()]
+        out.append(int(token))
+    return out
 
 
 def _parse_ids(ids: str) -> list[str]:
     """Parse a JSON list or a comma-separated list of Arete ids."""
-    if ids.startswith("["):
+    stripped = ids.strip()
+    if not stripped:
+        return []
+    if stripped.startswith(("[", "{")):
         try:
-            parsed = json.loads(ids)
+            parsed = json.loads(stripped)
         except json.JSONDecodeError as e:
             typer.secho("Invalid JSON for --ids", fg="red", err=True)
             raise typer.Exit(1) from e
         if not isinstance(parsed, list):
-            typer.secho("Invalid --ids: expected a JSON list", fg="red", err=True)
+            typer.secho("Invalid --ids: expected a JSON list of strings", fg="red", err=True)
             raise typer.Exit(1)
-        return [str(i) for i in parsed]
-    return [i.strip() for i in ids.split(",") if i.strip()]
+        out: list[str] = []
+        for item in parsed:
+            if not isinstance(item, str):
+                typer.secho("Invalid --ids: all items must be strings", fg="red", err=True)
+                raise typer.Exit(1)
+            out.append(item)
+        return out
+    return [i.strip() for i in stripped.split(",") if i.strip()]
 
 
 def _run_or_exit(coro):
@@ -71,13 +108,13 @@ def _run_or_exit(coro):
         raise typer.Exit(1) from e
 
 
-def _run_admin_action(
-    action_fn: Callable[[AnkiAdminPort], Awaitable[Any]],
+def _run_anki_action(
+    action_fn: Callable[[Any], Awaitable[Any]],
     *,
     result_key: str | None = "ok",
     **config_kwargs,
 ) -> None:
-    """Run an async AnkiAdminPort action with standard config/bridge setup.
+    """Run an async bridge action with standard config/bridge setup and JSON output.
 
     If *result_key* is given, the output is ``{result_key: value}``; when
     ``None``, the raw value is printed as JSON.
@@ -93,26 +130,7 @@ def _run_admin_action(
             await anki.close()
 
     result = _run_or_exit(_run())
-    print(json.dumps(result if result_key is None else {result_key: result}))
-
-
-def _run_queue_action(
-    action_fn: Callable[[QueuePort], Awaitable[Any]],
-    **config_kwargs,
-) -> None:
-    """Run an async QueuePort action and print its JSON result."""
-    from arete.composition.factory import get_anki_bridge
-
-    async def _run():
-        config = _resolve_with_overrides(**config_kwargs)
-        anki = await get_anki_bridge(config)
-        try:
-            return await action_fn(anki)
-        finally:
-            await anki.close()
-
-    result = _run_or_exit(_run())
-    print(json.dumps(result))
+    typer.echo(json.dumps(result if result_key is None else {result_key: result}))
 
 
 # ---------------------------------------------------------------------------
@@ -136,7 +154,6 @@ def anki_stats(
     """Fetch card statistics for the given Note IDs."""
     from dataclasses import asdict
 
-    # Parse NIDs
     nids_list = _parse_int_list(nids, "--nids")
 
     if not nids_list:
@@ -147,12 +164,8 @@ def anki_stats(
         return
 
     async def run():
-        verbose = 1
-        if ctx.parent and ctx.parent.obj:
-            verbose = ctx.parent.obj.get("verbose_bonus", 1)
-
         config = _resolve_with_overrides(
-            verbose=verbose,
+            verbose=get_verbose_override(ctx),
             backend=backend,
             anki_connect_url=anki_connect_url,
             anki_base=anki_base,
@@ -194,7 +207,7 @@ def suspend_cards(
 ):
     """Suspend cards by CID."""
     cids_list = _parse_int_list(cids, "--cids")
-    _run_admin_action(
+    _run_anki_action(
         lambda anki: anki.suspend_cards(cids_list),
         backend=backend,
         anki_connect_url=anki_connect_url,
@@ -204,14 +217,14 @@ def suspend_cards(
 
 @anki_app.command("unsuspend")
 def unsuspend_cards(
-    cids: Annotated[str, typer.Option(help="Comma-separated list of Card IDs.")],
+    cids: Annotated[str, typer.Option(help="Comma-separated list of Card IDs (or JSON list).")],
     backend: Annotated[str | None, typer.Option(help="Force backend")] = None,
     anki_connect_url: Annotated[str | None, typer.Option(help="AnkiConnect URL Override")] = None,
     anki_base: Annotated[str | None, typer.Option(help="Anki Base Directory Override")] = None,
 ):
     """Unsuspend cards by CID."""
     cids_list = _parse_int_list(cids, "--cids")
-    _run_admin_action(
+    _run_anki_action(
         lambda anki: anki.unsuspend_cards(cids_list),
         backend=backend,
         anki_connect_url=anki_connect_url,
@@ -221,13 +234,13 @@ def unsuspend_cards(
 
 @anki_app.command("model-css")
 def model_css(
-    model: str = typer.Argument(..., help="Model Name"),
+    model: Annotated[str, typer.Argument(help="Model Name")],
     backend: Annotated[str | None, typer.Option(help="Force backend")] = None,
     anki_connect_url: Annotated[str | None, typer.Option(help="AnkiConnect URL Override")] = None,
     anki_base: Annotated[str | None, typer.Option(help="Anki Base Directory Override")] = None,
 ):
     """Get CSS styling for a model."""
-    _run_admin_action(
+    _run_anki_action(
         lambda anki: anki.get_model_styling(model),
         result_key="css",
         backend=backend,
@@ -238,13 +251,13 @@ def model_css(
 
 @anki_app.command("model-templates")
 def model_templates(
-    model: str = typer.Argument(..., help="Model Name"),
+    model: Annotated[str, typer.Argument(help="Model Name")],
     backend: Annotated[str | None, typer.Option(help="Force backend")] = None,
     anki_connect_url: Annotated[str | None, typer.Option(help="AnkiConnect URL Override")] = None,
     anki_base: Annotated[str | None, typer.Option(help="Anki Base Directory Override")] = None,
 ):
     """Get templates for a model."""
-    _run_admin_action(
+    _run_anki_action(
         lambda anki: anki.get_model_templates(model),
         result_key=None,
         backend=backend,
@@ -267,7 +280,7 @@ def anki_browse(
         raise typer.Exit(1)
 
     final_query = query or f"nid:{nid}"
-    _run_admin_action(
+    _run_anki_action(
         lambda anki: anki.gui_browse(final_query),
         backend=backend,
         anki_connect_url=anki_connect_url,
@@ -282,7 +295,7 @@ def anki_decks(
     anki_base: Annotated[str | None, typer.Option(help="Anki Base Directory Override")] = None,
 ):
     """Print every deck name as JSON: {"decks": [...]}."""
-    _run_admin_action(
+    _run_anki_action(
         lambda anki: anki.get_deck_names(),
         result_key="decks",
         backend=backend,
@@ -317,12 +330,13 @@ def anki_queue_deck(
 
     arete_ids = _parse_ids(ids)
 
-    async def make(anki: QueuePort):
+    async def make(anki):
         made = await create_queue_deck(anki, arete_ids, deck_name=deck_name, reschedule=reschedule)
         return {"ok": made.ok, "message": made.message}
 
-    _run_queue_action(
+    _run_anki_action(
         make,
+        result_key=None,
         backend=backend,
         anki_connect_url=anki_connect_url,
         anki_base=anki_base,

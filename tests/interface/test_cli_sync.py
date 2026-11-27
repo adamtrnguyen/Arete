@@ -82,20 +82,60 @@ def test_sync_command_with_flags(mock_resolve_config, mock_run_sync):
 @patch("arete.composition.orchestrator.run_sync_logic")
 @patch("arete.interface._common.resolve_config")
 def test_sync_command_verbose_flag(mock_resolve_config, mock_run_sync):
-    """Test verbose flag increments verbosity."""
+    """Test verbose flag increments verbosity above default 1 and omits when absent."""
     mock_config = MagicMock()
     mock_resolve_config.return_value = mock_config
     mock_run_sync.return_value = None
 
+    result = runner.invoke(app, ["sync", "."])
+    assert result.exit_code == 0
+    call_args = mock_resolve_config.call_args[0][0]
+    assert "verbose" not in call_args
+
     result = runner.invoke(app, ["-v", "sync", "."])
     assert result.exit_code == 0
     call_args = mock_resolve_config.call_args[0][0]
-    assert call_args["verbose"] == 1
+    assert call_args["verbose"] == 2
 
     result = runner.invoke(app, ["-v", "-v", "sync", "."])
     assert result.exit_code == 0
     call_args = mock_resolve_config.call_args[0][0]
-    assert call_args["verbose"] == 2
+    assert call_args["verbose"] == 3
+
+
+@patch("arete.composition.orchestrator.run_sync_logic")
+def test_sync_preserves_env_config_when_boolean_flags_omitted(mock_run_sync, monkeypatch, tmp_path):
+    """Omitting --prune/--dry-run/-v must not clobber ARETE_* env vars or config.toml."""
+    mock_run_sync.return_value = None
+    monkeypatch.setenv("ARETE_PRUNE", "true")
+    monkeypatch.setenv("ARETE_DRY_RUN", "true")
+    monkeypatch.setenv("ARETE_VERBOSE", "2")
+
+    result = runner.invoke(app, ["sync", str(tmp_path)])
+    assert result.exit_code == 0
+    cfg = mock_run_sync.call_args[0][0]
+    assert cfg.prune is True
+    assert cfg.dry_run is True
+    assert cfg.verbose == 2
+
+    result = runner.invoke(app, ["sync", str(tmp_path), "--no-prune", "--no-dry-run"])
+    assert result.exit_code == 0
+    cfg = mock_run_sync.call_args[0][0]
+    assert cfg.prune is False
+    assert cfg.dry_run is False
+
+
+@patch("arete.composition.orchestrator.run_sync_logic")
+@patch("arete.interface._common.resolve_config")
+def test_sync_command_anki_base(mock_resolve_config, mock_run_sync, tmp_path):
+    """Test custom Anki base directory option on sync."""
+    mock_resolve_config.return_value = MagicMock()
+    mock_run_sync.return_value = None
+
+    result = runner.invoke(app, ["sync", str(tmp_path), "--anki-base", str(tmp_path / "anki")])
+    assert result.exit_code == 0
+    call_args = mock_resolve_config.call_args[0][0]
+    assert call_args["anki_base"] == tmp_path / "anki"
 
 
 @patch("arete.composition.orchestrator.run_sync_logic")
@@ -240,6 +280,25 @@ def test_the_prompt_accepts_only_yes():
     for answer, expected in [("yes", True), (" YES ", True), ("y", False), ("", False)]:
         with patch("builtins.input", return_value=answer):
             assert _confirm_prune_at_prompt(None) is expected
+
+    with patch("builtins.input", side_effect=EOFError):
+        assert _confirm_prune_at_prompt(None) is False
+
+
+def test_cli_and_sync_logging_do_not_duplicate_output(tmp_path, capsys):
+    from arete.application.utils.logging import close_run_log, setup_logging
+    from arete.interface._common import configure_cli_logging
+
+    configure_cli_logging(0)
+    log, _, _ = setup_logging(tmp_path, verbose=1)
+    try:
+        log.info("single-line-check")
+    finally:
+        close_run_log(log)
+
+    captured = capsys.readouterr()
+    assert "single-line-check" in captured.out
+    assert "single-line-check" not in captured.err
 
 
 def test_json_a_locked_sync_exits_75_with_the_line():

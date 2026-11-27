@@ -86,3 +86,15 @@ def test_logs_linux():
             result = runner.invoke(app, ["logs"])
             assert result.exit_code == 0
             mock_run.assert_called()
+
+
+def test_logs_missing_opener_exits_1_cleanly():
+    with patch("arete.interface.cli.resolve_config") as mock_conf:
+        mock_conf.return_value.log_dir = Path("/tmp/logs")
+        with (
+            patch("sys.platform", "linux"),
+            patch("subprocess.run", side_effect=FileNotFoundError(2, "No such file", "xdg-open")),
+        ):
+            result = runner.invoke(app, ["logs"])
+            assert result.exit_code == 1
+            assert "xdg-open not found" in result.stderr

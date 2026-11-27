@@ -102,7 +102,20 @@ def test_check_file(tmp_path, content, exit_code, expected_output):
 def test_check_file_not_found():
     result = runner.invoke(app, ["vault", "check", "nonexistent.md"])
     assert result.exit_code == 1
-    assert "File not found" in result.stdout
+    assert "File not found" in result.stderr
+
+
+def test_check_file_directory_exits_1_cleanly(tmp_path):
+    text_res = runner.invoke(app, ["vault", "check", str(tmp_path)])
+    assert text_res.exit_code == 1
+    assert text_res.exception is None or isinstance(text_res.exception, SystemExit)
+    assert "Path is a directory" in text_res.stderr
+
+    json_res = runner.invoke(app, ["vault", "check", str(tmp_path), "--json"])
+    assert json_res.exit_code == 1
+    data = json.loads(json_res.stdout)
+    assert data["ok"] is False
+    assert "Path is a directory" in data["errors"][0]["message"]
 
 
 def test_check_file_not_found_json():

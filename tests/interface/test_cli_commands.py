@@ -34,14 +34,34 @@ def test_cli_help_shows_new_subgroups():
     assert "queue" in result.stdout
 
 
+def test_cli_version_flag():
+    for flag in ("--version", "-V"):
+        result = runner.invoke(app, [flag])
+        assert result.exit_code == 0
+        assert result.stdout.strip().startswith("arete ")
+
+
+def test_subgroups_display_help_when_invoked_without_args():
+    for group in ("config", "vault", "anki", "graph"):
+        result = runner.invoke(app, [group])
+        assert "Commands" in result.output, group
+
+
 # --- Init ---
 
 
-@patch("arete.interface.wizard.run_init_wizard")
+@patch("arete.interface.wizard.run_init_wizard", return_value=True)
 def test_init_command(mock_wizard):
     """Test init command calls the wizard."""
     result = runner.invoke(app, ["init"])
-    assert result.exit_code == 0 or isinstance(result.exception, SystemExit)
+    assert result.exit_code == 0
+    mock_wizard.assert_called_once()
+
+
+@patch("arete.interface.wizard.run_init_wizard", return_value=False)
+def test_init_command_exits_1_on_wizard_failure(mock_wizard):
+    result = runner.invoke(app, ["init"])
+    assert result.exit_code == 1
     mock_wizard.assert_called_once()
 
 
@@ -425,6 +445,26 @@ def test_graph_check_with_cycles(mock_resolve_config, mock_build_graph):
     result = runner.invoke(app, ["graph", "check"])
     assert result.exit_code == 1
     assert "Cycles:" in result.output
+
+
+@patch("arete.application.queue.graph_resolver.build_graph")
+@patch("arete.interface._common.resolve_config")
+def test_graph_check_json_redirects_chatter_to_stderr(mock_resolve_config, mock_build_graph):
+    from arete.domain.graph import DependencyGraph
+
+    mock_config = MagicMock()
+    mock_config.root_input = Path("/tmp/vault")
+    mock_resolve_config.return_value = mock_config
+
+    def noisy_build(_root):
+        print("library chatter")
+        return DependencyGraph()
+
+    mock_build_graph.side_effect = noisy_build
+    result = runner.invoke(app, ["graph", "check", "--json"])
+    assert result.exit_code == 0
+    assert json.loads(result.stdout)["ok"] is True
+    assert "library chatter" in result.stderr
 
 
 # --- humanize_error ---
