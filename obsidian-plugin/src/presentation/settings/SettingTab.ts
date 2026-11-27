@@ -68,7 +68,7 @@ export class AreteSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('Preview renderer')
-			.setDesc('"Obsidian" renders Markdown/LaTeX (Recommended). "Anki" passes raw text.')
+			.setDesc('"Obsidian" renders Markdown/LaTeX (recommended). "Anki" passes raw text.')
 			.addDropdown((dropdown) =>
 				dropdown
 					.addOption('obsidian', 'Obsidian (Markdown + LaTeX)')

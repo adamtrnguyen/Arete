@@ -12,23 +12,37 @@ import {
 } from 'obsidian';
 import { CardRenderer } from '@/presentation/renderers/CardRenderer';
 
-interface SelectionItem {
-	type: 'file' | 'card';
+interface SelectionItemBase {
 	label: string;
 	description?: string;
-	value: any; // TFile or Card Object
 	id: string; // Unique ID for selection tracking
 	// label and description lowercased once, for the per-keystroke filter
 	labelLower: string;
 	descLower: string;
 }
 
+type SelectionItem =
+	| (SelectionItemBase & { type: 'file'; value: TFile })
+	| (SelectionItemBase & { type: 'back'; value: null })
+	| (SelectionItemBase & { type: 'card'; value: Record<string, unknown> });
+
+type SelectionItemInput =
+	| { type: 'file'; label: string; description?: string; value: TFile; id: string }
+	| { type: 'back'; label: string; description?: string; value: null; id: string }
+	| {
+			type: 'card';
+			label: string;
+			description?: string;
+			value: Record<string, unknown>;
+			id: string;
+	  };
+
 /** Results shown at once; the filter stops at this many matches. */
 const MAX_RESULTS = 20;
 /** Quiet period before the preview of the selected item is rendered. */
 const PREVIEW_DELAY_MS = 100;
 
-function selectionItem(fields: Omit<SelectionItem, 'labelLower' | 'descLower'>): SelectionItem {
+function selectionItem(fields: SelectionItemInput): SelectionItem {
 	return {
 		...fields,
 		labelLower: fields.label.toLowerCase(),
@@ -182,7 +196,7 @@ export class DependencySelectionModal extends Modal {
 		// Back button
 		this.items.unshift(
 			selectionItem({
-				type: 'file', // abusing type slightly for navigation
+				type: 'back',
 				label: '.. (back to files)',
 				description: 'Go up one level',
 				value: null,
@@ -288,8 +302,8 @@ export class DependencySelectionModal extends Modal {
 
 		// Read before clearing, so a superseded preview never touches the pane.
 		let fileContent = '';
-		if (item?.type === 'file' && item.id !== '__back__') {
-			fileContent = await this.app.vault.cachedRead(item.value as TFile);
+		if (item?.type === 'file') {
+			fileContent = await this.app.vault.cachedRead(item.value);
 			if (!current()) return;
 		}
 
@@ -307,7 +321,7 @@ export class DependencySelectionModal extends Modal {
 			return;
 		}
 
-		if (item.id === '__back__') {
+		if (item.type === 'back') {
 			this.previewContainer.createDiv({
 				cls: 'arete-preview-placeholder',
 				text: 'Go back to file list',
@@ -322,7 +336,7 @@ export class DependencySelectionModal extends Modal {
 		const contentEl = this.previewContainer.createDiv({ cls: 'arete-preview-content' });
 
 		if (item.type === 'file') {
-			const file = item.value as TFile;
+			const file = item.value;
 			// Render first 3000 chars to avoid lags on huge files
 			await MarkdownRenderer.render(
 				this.app,
@@ -354,20 +368,19 @@ export class DependencySelectionModal extends Modal {
 		const item = this.filteredItems[this.selectedIndex];
 		if (!item) return;
 
-		if (item.id === '__back__') {
+		if (item.type === 'back') {
 			this.loadFiles();
 			return;
 		}
 
-		if (this.mode === 'files') {
-			const file = item.value as TFile;
+		if (this.mode === 'files' && item.type === 'file') {
+			const file = item.value;
 
 			if (forceDrillDown) {
 				this.loadCards(file);
 			} else {
 				const matchingBasename = this.items.filter(
-					(i) =>
-						i.type === 'file' && (i.value as TFile | null)?.basename === file.basename,
+					(i) => i.type === 'file' && i.value.basename === file.basename,
 				);
 				const ref =
 					matchingBasename.length > 1 ? file.path.replace(/\.md$/, '') : file.basename;

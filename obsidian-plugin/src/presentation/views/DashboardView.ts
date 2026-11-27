@@ -81,7 +81,7 @@ export class DashboardView extends ItemView {
 				new Notice('Failed to refresh stats, check that Anki is running.');
 			}
 		}
-		this.render();
+		await this.render();
 	}
 
 	async onClose() {
@@ -110,7 +110,7 @@ export class DashboardView extends ItemView {
 
 		switch (this.activeTab) {
 			case 'overview':
-				this.renderOverview(contentEl);
+				await this.renderOverview(contentEl);
 				break;
 			case 'leeches':
 				await this.renderLeeches(contentEl);
@@ -156,7 +156,7 @@ export class DashboardView extends ItemView {
 			try {
 				await this.plugin.statsService.refreshStats();
 				await this.plugin.saveStats();
-				this.render();
+				await this.render();
 			} catch (e) {
 				console.error('[Arete] Failed to refresh stats:', e);
 				new Notice('Failed to refresh stats, check that Anki is running.');
@@ -186,7 +186,7 @@ export class DashboardView extends ItemView {
 
 			btn.onclick = () => {
 				this.activeTab = tab.id;
-				this.render();
+				void this.render();
 			};
 		});
 	}

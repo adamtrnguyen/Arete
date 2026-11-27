@@ -50,8 +50,8 @@ export function renderFileDetailPanel(
 	section.createEl('h3', { text: node.basename || node.id });
 
 	const stats = section.createDiv({ cls: 'arete-global-graph-detail-stats' });
-	stats.createEl('div', { text: `Cards: ${cardCount}` });
-	stats.createEl('div', { text: `Path: ${node.id}` });
+	stats.createDiv({ text: `Cards: ${cardCount}` });
+	stats.createDiv({ text: `Path: ${node.id}` });
 
 	const cardToFile = new Map<string, string>();
 	for (const card of graphData.cards) {
@@ -65,8 +65,8 @@ export function renderFileDetailPanel(
 		if (toFile === node.id && fromFile !== node.id) inbound++;
 		if (fromFile === node.id && toFile !== node.id) outbound++;
 	}
-	stats.createEl('div', { text: `Inbound deps: ${inbound}` });
-	stats.createEl('div', { text: `Outbound deps: ${outbound}` });
+	stats.createDiv({ text: `Inbound deps: ${inbound}` });
+	stats.createDiv({ text: `Outbound deps: ${outbound}` });
 
 	if (cardIds.length > 0) {
 		const listSection = section.createDiv();
@@ -128,20 +128,20 @@ export function renderCardDetailPanel(
 	section.createEl('h3', { text: node.title || node.id });
 
 	const info = section.createDiv({ cls: 'arete-global-graph-detail-stats' });
-	info.createEl('div', { text: `ID: ${node.id}` });
+	info.createDiv({ text: `ID: ${node.id}` });
 
-	const fileLink = info.createEl('div');
+	const fileLink = info.createDiv();
 	fileLink.createSpan({ text: 'File: ' });
 	const fLink = fileLink.createEl('a', {
 		text: node.filePath,
 		href: '#',
 	});
-	fLink.addEventListener('click', async (e) => {
+	fLink.addEventListener('click', (e) => {
 		e.preventDefault();
-		await callbacks.onOpenFileAtLine(node.filePath, 1);
+		void callbacks.onOpenFileAtLine(node.filePath, 1);
 	});
 
-	info.createEl('div', { text: `Line: ${node.lineNumber}` });
+	info.createDiv({ text: `Line: ${node.lineNumber}` });
 
 	const prereqs = graphData.requiresEdges
 		.filter((e) => e.fromId === node.id)

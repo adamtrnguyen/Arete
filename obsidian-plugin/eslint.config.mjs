@@ -1,5 +1,5 @@
-import js from '@eslint/js';
 import { defineConfig } from 'eslint/config';
+import obsidianmd from 'eslint-plugin-obsidianmd';
 import tseslint from 'typescript-eslint';
 import eslintConfigPrettier from 'eslint-config-prettier';
 import globals from 'globals';
@@ -20,6 +20,11 @@ const BACKEND_ONLY = [
 		name: 'fs',
 		message:
 			'File system access is in src/infrastructure/arete only; use the vault API elsewhere.',
+	},
+	{
+		name: 'obsidian',
+		importNames: ['requestUrl'],
+		message: 'HTTP requests belong in src/infrastructure/arete only.',
 	},
 ]; // L4
 
@@ -50,25 +55,23 @@ const SYNTAX = [
 		selector: "Program > VariableDeclaration CallExpression[callee.name='require']",
 		message: 'No top-level require(): it runs at plugin load.',
 	}, // R7
+	{
+		selector: 'ImportExpression',
+		message: 'Use static imports; import() defers nothing in this CJS bundle.',
+	}, // R9
 ];
 const PARSE_ONCE = {
 	selector: "CallExpression[callee.property.name='parseCards']",
 	message: 'Read parsed cards from cardRangesField; do not parse the note again.',
 }; // R8
 
-// Rules with custom AST checks. Each has its own rule id (arete/*) so that suppressions
-// (eslint-suppressions.json) count per concern: a new violation of one kind cannot hide behind
-// a fixed violation of another. Prune resolved suppressions with: npm run lint:tighten
 const ratchet = (selector, message) => ({
 	meta: { type: 'suggestion', schema: [] },
 	create: (context) => ({ [selector]: (node) => context.report({ node, message }) }),
 });
+
 const aretePlugin = {
 	rules: {
-		'no-literal-inline-style': ratchet(
-			"AssignmentExpression[left.object.property.name='style'][right.type='Literal']",
-			'A constant style belongs in a CSS class (src/styles/*.css).',
-		), // S1
 		'no-emoji': ratchet(
 			'Literal[value=/\\p{Extended_Pictographic}/u], TemplateElement[value.raw=/\\p{Extended_Pictographic}/u]',
 			'No emoji in UI text; use setIcon with a Lucide icon.',
@@ -84,8 +87,8 @@ const aretePlugin = {
 		), // N5
 		'no-heading-element': ratchet(
 			"CallExpression[callee.property.name='createEl'][arguments.0.value=/^h[1-6]$/]",
-			'Settings headings use new Setting(el).setName(…).setHeading(); modal titles use this.setTitle(…).',
-		), // N2, N5
+			'Modal titles use this.setTitle(…).',
+		), // N5
 		'no-literal-delay': ratchet(
 			":matches(CallExpression[callee.name='setTimeout'], CallExpression[callee.property.name='setTimeout'])[arguments.1.type='Literal'][arguments.1.value>0]",
 			'Name the delay: a *_MS constant.',
@@ -127,49 +130,82 @@ const aretePlugin = {
 	},
 };
 
+const disableTypeCheckedObsidian = Object.fromEntries(
+	Object.keys(obsidianmd.ruleConfigs.recommendedTypeChecked).map((rule) => [rule, 'off']),
+);
+
 export default defineConfig([
-	// Lint only TypeScript sources (the `--ext .ts` scope);
-	// never lint build output, deps, coverage, or JS/MJS build helpers.
-	{ ignores: ['node_modules/', 'coverage/', '**/*.js', '**/*.cjs', '**/*.mjs'] },
+	// Never lint build output, deps, coverage, or JS/MJS build helpers.
+	{ ignores: ['node_modules/', 'coverage/', 'main.js', '**/*.js', '**/*.cjs', '**/*.mjs'] },
 
-	// ESLint core recommended
-	js.configs.recommended,
+	// Official Obsidian plugin rules (includes core ESLint recommended,
+	// typescript-eslint recommendedTypeChecked, @microsoft/sdl, no-unsanitized,
+	// manifest.json / LICENSE / package.json validation).
+	...obsidianmd.configs.recommended,
 
-	// typescript-eslint recommended (replaces plugin:@typescript-eslint/recommended)
-	...tseslint.configs.recommended,
-
-	// Project rules + node globals (env: { node: true })
+	// Dev-only tooling/test dependencies are never bundled into main.js.
 	{
-		files: ['**/*.ts'],
-		languageOptions: {
-			globals: { ...globals.node },
-		},
+		files: ['package.json'],
 		rules: {
-			'@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
-			'@typescript-eslint/no-explicit-any': 'off',
-			'@typescript-eslint/no-require-imports': 'warn',
-			'no-useless-assignment': 'warn',
+			'depend/ban-dependencies': [
+				'error',
+				{
+					presets: ['native', 'microutilities', 'preferred'],
+					allowed: ['builtin-modules', 'js-yaml'],
+				},
+			],
 		},
 	},
 
-	// Jest globals for test files
-	{
-		files: ['tests/**/*.ts', '**/*.test.ts'],
-		languageOptions: {
-			globals: { ...globals.jest },
-		},
-	},
-
-	// Plugin source rules. A later block replaces a rule's options, so blocks repeat shared lists.
+	// Type-checked linting for plugin source files via tsconfig.json.
 	{
 		files: ['src/**/*.ts'],
+		languageOptions: {
+			parserOptions: {
+				projectService: true,
+				tsconfigRootDir: import.meta.dirname,
+			},
+		},
 		plugins: { arete: aretePlugin },
 		rules: {
-			'no-console': ['error', { allow: ['error', 'warn'] }], // G1
+			// T3: shipped arete-* command ids stay fixed so user hotkeys and gui-test never break.
+			'obsidianmd/commands/no-plugin-id-in-command-id': 'off',
+			// T4: keep imperative display() until minAppVersion is raised to 1.13.
+			'obsidianmd/settings-tab/prefer-setting-definitions': 'off',
+			// N1: sentence case for UI strings with Arete's domain proper nouns/acronyms.
+			'obsidianmd/ui/sentence-case': [
+				'error',
+				{
+					ignoreWords: ['Arete', 'AnkiConnect', 'AnkiDirect', 'MathJax', 'Python'],
+					acronyms: [
+						'FSRS',
+						'YAML',
+						'ULID',
+						'SM-2',
+						'CLI',
+						'CSS',
+						'HTML',
+						'JSON',
+						'URL',
+						'ID',
+					],
+				},
+			],
+			// Obsidian's FrontMatterCache and D3 callbacks are typed `any` upstream; keep
+			// the real bug-catching type-checked rules (no-floating-promises, no-misused-promises,
+			// prefer-promise-reject-errors, no-base-to-string, unbound-method, etc.) active.
+			'@typescript-eslint/no-explicit-any': 'off',
+			'@typescript-eslint/no-unsafe-assignment': 'off',
+			'@typescript-eslint/no-unsafe-member-access': 'off',
+			'@typescript-eslint/no-unsafe-call': 'off',
+			'@typescript-eslint/no-unsafe-argument': 'off',
+			'@typescript-eslint/no-unsafe-return': 'off',
+			// X2: forbid @ts-ignore; require @ts-expect-error with description.
+			'@typescript-eslint/ban-ts-comment': 'error',
+			'@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+			'@typescript-eslint/no-require-imports': ['error', { allow: ['^3d-force-graph$'] }],
 			'no-restricted-imports': ['error', { paths: [LAZY_3D], patterns: [RELATIVE] }],
 			'no-restricted-syntax': ['error', ...SYNTAX],
-			'@typescript-eslint/no-require-imports': ['error', { allow: ['^3d-force-graph$'] }],
-			'arete/no-literal-inline-style': 'error',
 			'arete/no-emoji': 'error',
 			'arete/no-title-tooltip': 'error',
 			'arete/no-hand-built-button': 'error',
@@ -180,7 +216,7 @@ export default defineConfig([
 	},
 	{
 		files: ['src/**/*.ts'],
-		ignores: ['src/infrastructure/**'],
+		ignores: ['src/infrastructure/arete/**'],
 		rules: {
 			'no-restricted-imports': [
 				'error',
@@ -194,10 +230,58 @@ export default defineConfig([
 		rules: { 'no-restricted-syntax': ['error', ...SYNTAX, PARSE_ONCE] },
 	},
 	{
-		files: ['src/presentation/settings/**/*.ts', 'src/presentation/modals/**/*.ts'],
+		files: ['src/presentation/modals/**/*.ts'],
 		rules: { 'arete/no-heading-element': 'error' },
 	},
-	{ files: ['src/domain/debugLog.ts'], rules: { 'no-console': 'off' } },
+	// S6: CardPreviewFrame populates a sandboxed iframe (allow-same-origin, scripts disabled).
+	// Allow a single described inline disable for innerHTML here only.
+	{
+		files: ['src/presentation/renderers/CardPreviewFrame.ts'],
+		rules: {
+			'eslint-comments/no-restricted-disable': [
+				'error',
+				'obsidianmd/*',
+				'!obsidianmd/no-misused-promises',
+				'no-console',
+				'no-restricted-globals',
+				'@typescript-eslint/no-restricted-imports',
+				'no-alert',
+				'@typescript-eslint/no-deprecated',
+				'@typescript-eslint/no-explicit-any',
+				'@microsoft/sdl/no-document-write',
+				'no-eval',
+				'obsidianmd/no-nodejs-modules',
+			],
+		},
+	},
+	// G1: debugLog is the single debug-mode-gated wrapper around console.log.
+	{
+		files: ['src/domain/debugLog.ts'],
+		rules: {
+			'obsidianmd/rule-custom-message': 'off',
+			'no-new-func': 'error',
+		},
+	},
+
+	// Test files: syntax-only TS linting + Jest globals (tsconfig.json excludes tests/).
+	{
+		files: ['tests/**/*.ts', '**/*.test.ts'],
+		...tseslint.configs.disableTypeChecked,
+		languageOptions: {
+			...tseslint.configs.disableTypeChecked.languageOptions,
+			globals: { ...globals.node, ...globals.jest },
+		},
+		rules: {
+			...tseslint.configs.disableTypeChecked.rules,
+			...disableTypeCheckedObsidian,
+			'@typescript-eslint/no-explicit-any': 'off',
+			'@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+			'no-useless-assignment': 'warn',
+			// Test mocks simulate MarkdownRenderer.render by writing innerHTML on stub elements.
+			'@microsoft/sdl/no-inner-html': 'off',
+			'no-unsanitized/property': 'off',
+		},
+	},
 
 	// Prettier compatibility — must be last (disables rules that conflict with Prettier)
 	eslintConfigPrettier,

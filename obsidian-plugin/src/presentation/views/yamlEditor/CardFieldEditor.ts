@@ -43,7 +43,7 @@ export function renderCardFieldEditor(container: HTMLElement, ctx: CardFieldEdit
 		const input = group.createEl('textarea', {
 			cls: 'arete-field-input',
 			text: value == null ? '' : String(value),
-		}) as HTMLTextAreaElement;
+		});
 		if (input) inputs.push(input);
 
 		input?.addEventListener('input', () => {

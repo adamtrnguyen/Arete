@@ -82,6 +82,7 @@ if (typeof document === 'undefined') {
 		removeEventListener: jest.fn(),
 	};
 	(global as any).document = mockDoc;
+	(global as any).activeDocument = mockDoc;
 	(global as any).window = {
 		document: mockDoc,
 		navigator: { userAgent: 'node' },
@@ -104,6 +105,9 @@ if (typeof document === 'undefined') {
 		observe() {}
 		disconnect() {}
 	};
+}
+if (typeof (global as any).activeDocument === 'undefined') {
+	(global as any).activeDocument = document;
 }
 
 // Mock factories that return fresh instances
@@ -259,6 +263,7 @@ jest.mock('obsidian', () => {
 		Component,
 		App: jest.fn().mockImplementation(() => ({
 			vault: {
+				configDir: '.obsidian',
 				adapter: { getBasePath: jest.fn() },
 				getMarkdownFiles: jest.fn().mockReturnValue([]),
 				read: jest.fn(),

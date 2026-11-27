@@ -31,7 +31,7 @@ describe('AretePlugin Integrity Check', () => {
 			return { sections: [{ type: 'paragraph' }] };
 		});
 		const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
-		jest.spyOn(console, 'log').mockImplementation(() => undefined);
+		const consoleDebug = jest.spyOn(console, 'debug').mockImplementation(() => undefined);
 
 		await plugin.checkVaultIntegrity();
 
@@ -43,15 +43,17 @@ describe('AretePlugin Integrity Check', () => {
 		expect(cachedRead).toHaveBeenCalledTimes(1);
 		expect(app.vault.read).not.toHaveBeenCalled();
 		consoleError.mockRestore();
+		consoleDebug.mockRestore();
 	});
 
 	test('says so when every note parses', async () => {
 		(app.vault.getMarkdownFiles as jest.Mock).mockReturnValue([{ path: 'Good.md' }]);
 		(app.metadataCache.getFileCache as jest.Mock).mockReturnValue({ frontmatter: {} });
-		jest.spyOn(console, 'log').mockImplementation(() => undefined);
+		const consoleDebug = jest.spyOn(console, 'debug').mockImplementation(() => undefined);
 
 		await plugin.checkVaultIntegrity();
 
 		expect(Notice).toHaveBeenCalledWith('Integrity check passed, Obsidian parses all YAML.');
+		consoleDebug.mockRestore();
 	});
 });

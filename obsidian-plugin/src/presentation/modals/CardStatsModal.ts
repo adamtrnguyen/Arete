@@ -246,7 +246,7 @@ export class CardStatsModal extends Modal {
 		const optimalX = padding.left + (optimalInterval / maxDays) * graphWidth;
 
 		// Create SVG
-		const doc = container.ownerDocument ?? document;
+		const doc = container.ownerDocument ?? activeDocument;
 		const svg = svgEl(doc, 'svg', 'arete-curve-svg', { width, height });
 
 		// Background

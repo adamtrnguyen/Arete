@@ -158,7 +158,9 @@ export default class AretePlugin extends Plugin {
 		this.statusBarItem = this.addStatusBarItem();
 		this.statusBarItem.addClass('mod-clickable');
 		this.statusBarItem.addClass('arete-status-bar');
-		this.statusBarItem.addEventListener('click', () => this.runSync());
+		this.statusBarItem.addEventListener('click', () => {
+			void this.runSync();
+		});
 		this.updateStatusBar('idle');
 
 		// 2. Ribbon icons and commands
@@ -290,14 +292,14 @@ export default class AretePlugin extends Plugin {
 				const pending = this.syncOnSaveTimers.get(file.path);
 				if (pending !== undefined) window.clearTimeout(pending);
 
-				const timer = window.setTimeout(async () => {
+				const timer = window.setTimeout(() => {
 					this.syncOnSaveTimers.delete(file.path);
 					const vaultAdapter = this.app.vault.adapter as FileSystemAdapter;
 					const basePath = vaultAdapter.getBasePath ? vaultAdapter.getBasePath() : null;
 					if (basePath) {
 						const fullPath = path.join(basePath, file.path);
 						debugLog('[Arete] Sync on save triggered for:', file.path);
-						await this.syncScheduler.requestSave(fullPath);
+						void this.syncScheduler.requestSave(fullPath);
 					}
 				}, this.settings.sync_on_save_delay);
 				this.syncOnSaveTimers.set(file.path, timer);
@@ -526,8 +528,7 @@ export default class AretePlugin extends Plugin {
 	async checkVaultIntegrity() {
 		new Notice('Running integrity check...');
 		const files = this.app.vault.getMarkdownFiles();
-		// eslint-disable-next-line no-console -- the command's output is a console report
-		console.log('[Arete] Integrity check started.');
+		console.debug('[Arete] Integrity check started.');
 
 		const failing = await this.linkCheckerService.findAllUnparsedFrontmatter(files);
 		for (const file of failing) {
@@ -536,8 +537,7 @@ export default class AretePlugin extends Plugin {
 			);
 		}
 
-		// eslint-disable-next-line no-console -- the command's output is a console report
-		console.log(
+		console.debug(
 			`[Arete] Integrity check complete: ${files.length} files checked, ${failing.length} potential issues.`,
 		);
 		if (failing.length > 0) {

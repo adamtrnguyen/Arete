@@ -125,7 +125,7 @@ export function resolveGraphColors(host: HTMLElement): GraphColors {
 	let probe: HTMLElement | null = null;
 	try {
 		probe = host.createSpan();
-		const hostDoc = host.doc ?? host.ownerDocument ?? document;
+		const hostDoc = host.doc ?? host.ownerDocument ?? activeDocument;
 		const computed = (host.win ?? window).getComputedStyle.bind(host.win ?? window);
 		for (const key of Object.keys(COLOR_VARS) as (keyof GraphColors)[]) {
 			const [name, fallback] = COLOR_VARS[key];

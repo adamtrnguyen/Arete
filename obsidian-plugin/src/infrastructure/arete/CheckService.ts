@@ -49,7 +49,7 @@ export class CheckService implements FileChecker {
 					resolve(parseJsonStdout(stdout, 'arete vault check'));
 				} catch (e) {
 					console.error('[Arete] Check stderr:', stderr);
-					reject(e);
+					reject(e instanceof Error ? e : new Error(String(e)));
 				}
 			});
 

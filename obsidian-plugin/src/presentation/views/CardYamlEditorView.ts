@@ -199,7 +199,7 @@ export class CardYamlEditorView extends ItemView {
 			if (cards !== undefined && cards === this.loadedSourceCards) return;
 		}
 		const reload = () => {
-			this.loadCards().then(() => {
+			void this.loadCards().then(() => {
 				this.renderIndex();
 				this.refreshActiveView();
 			});
@@ -218,7 +218,7 @@ export class CardYamlEditorView extends ItemView {
 		} else if (this.viewMode === CardEditorViewMode.Fields) {
 			this.renderFieldEditor();
 		} else if (this.viewMode === CardEditorViewMode.Preview) {
-			this.renderPreview();
+			void this.renderPreview();
 		}
 	}
 
@@ -267,7 +267,9 @@ export class CardYamlEditorView extends ItemView {
 			item.addEventListener('contextmenu', (e) => this.showCardContextMenu(e, index));
 			item.addEventListener('dragstart', (e) => this.handleDragStart(e, index));
 			item.addEventListener('dragover', (e) => this.handleDragOver(e));
-			item.addEventListener('drop', (e) => this.handleDrop(e, index));
+			item.addEventListener('drop', (e) => {
+				void this.handleDrop(e, index);
+			});
 			item.addEventListener('dragend', () => this.handleDragEnd());
 		});
 
@@ -375,7 +377,7 @@ export class CardYamlEditorView extends ItemView {
 			this.renderFieldEditor();
 		} else if (mode === CardEditorViewMode.Preview) {
 			this.previewContainer?.show();
-			this.renderPreview();
+			void this.renderPreview();
 		}
 	}
 
@@ -482,7 +484,7 @@ export class CardYamlEditorView extends ItemView {
 			btn.addEventListener('click', () => {
 				if (this.previewSide === side) return;
 				this.previewSide = side;
-				this.renderPreview();
+				void this.renderPreview();
 			});
 		});
 	}
@@ -648,7 +650,7 @@ export class CardYamlEditorView extends ItemView {
 		) {
 			return;
 		}
-		this.syncFromMain();
+		void this.syncFromMain();
 	}
 
 	private async syncFromMain() {

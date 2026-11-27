@@ -156,7 +156,8 @@ export class SyncService {
 		}
 
 		const pluginDir =
-			(this.pluginManifest && this.pluginManifest.dir) || '.obsidian/plugins/arete';
+			(this.pluginManifest && this.pluginManifest.dir) ||
+			`${this.app.vault.configDir}/plugins/arete`;
 		const syncLog = new SyncLog(path.join(vaultPath, pluginDir, 'arete_plugin.log'));
 		const log = (msg: string) => {
 			debugLog(`[Arete] ${msg.trim()}`);

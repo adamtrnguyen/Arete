@@ -26,8 +26,13 @@ export class CardRenderer {
 			// Value handling:
 			// CardYamlEditorView checked `typeof value === 'string'`.
 			// We'll be slightly more robust but prioritize string rendering.
-			if (value === null || value === undefined) continue;
-			if (typeof value === 'object') continue; // Skip arrays/objects like deps/anki if not caught above
+			if (
+				typeof value !== 'string' &&
+				typeof value !== 'number' &&
+				typeof value !== 'boolean'
+			) {
+				continue; // Skip null/undefined/arrays/objects like deps/anki if not caught above
+			}
 
 			debugLog('[Arete] Rendering field:', key, value);
 			const section = container.createDiv({ cls: 'arete-preview-section' });

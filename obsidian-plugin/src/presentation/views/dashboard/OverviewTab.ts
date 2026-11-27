@@ -95,9 +95,7 @@ export function renderDeckNodeView(
 		ctx.persistExpansion();
 
 		if (!ctx.isCacheCurrent()) {
-			const overviewContainer = container.closest(
-				'.arete-dashboard-content',
-			) as HTMLElement | null;
+			const overviewContainer = container.closest<HTMLElement>('.arete-dashboard-content');
 			if (overviewContainer) ctx.rebuildOverview(overviewContainer);
 			return;
 		}

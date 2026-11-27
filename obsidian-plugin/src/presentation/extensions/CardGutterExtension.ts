@@ -49,7 +49,7 @@ class SkipToBottomMarker extends GutterMarker {
 	}
 
 	toDOM() {
-		const doc = this.view.dom?.ownerDocument ?? document;
+		const doc = this.view.dom?.ownerDocument ?? activeDocument;
 		const marker = doc.createElement('div');
 		marker.className = 'arete-skip-button';
 		setIcon(marker, 'arrow-down');
@@ -153,7 +153,7 @@ class CardGutterMarker extends GutterMarker {
 	}
 
 	toDOM(view: EditorView) {
-		const doc = view.dom?.ownerDocument ?? document;
+		const doc = view.dom?.ownerDocument ?? activeDocument;
 		const marker = doc.createElement('div');
 		marker.className = 'arete-gutter-marker';
 		marker.dataset.cardIndex = String(this.index);

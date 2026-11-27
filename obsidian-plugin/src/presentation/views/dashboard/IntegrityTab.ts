@@ -24,11 +24,14 @@ export function renderIntegrityTab(ctx: IntegrityTabContext, container: HTMLElem
 
 	const desc = actionArea.createDiv({ cls: 'arete-integrity-desc' });
 	const scans = desc.createEl('p');
-	scans.createSpan({ text: 'Scans your synced files to find ' });
-	scans.createEl('strong', { text: 'broken image embeds' });
-	scans.createSpan({ text: ' and ' });
-	scans.createEl('strong', { text: 'invalid YAML' });
-	scans.createSpan({ text: '.' });
+	const scanParts: Array<[tag: 'span' | 'strong', text: string]> = [
+		['span', 'Scans your synced files to find '],
+		['strong', 'broken image embeds'],
+		['span', ' and '],
+		['strong', 'invalid YAML'],
+		['span', '.'],
+	];
+	for (const [tag, text] of scanParts) scans.createEl(tag, { text });
 	desc.createEl('p', {
 		text: "Use this to ensure your Anki cards don't have broken media or syntax errors.",
 	});

@@ -167,14 +167,16 @@ export class GlobalGraphView extends ItemView {
 		const refreshBtn = this.toolbarEl.createDiv({ cls: 'clickable-icon' });
 		setIcon(refreshBtn, 'refresh-cw');
 		setTooltip(refreshBtn, 'Rebuild graph');
-		refreshBtn.addEventListener('click', async () => {
-			try {
-				await this.loadData(true);
-				this.render();
-			} catch (e) {
-				console.error('[Arete] Failed to rebuild global graph:', e);
-				this.renderEmpty(`Could not load the graph: ${(e as Error).message}`);
-			}
+		refreshBtn.addEventListener('click', () => {
+			void (async () => {
+				try {
+					await this.loadData(true);
+					this.render();
+				} catch (e) {
+					console.error('[Arete] Failed to rebuild global graph:', e);
+					this.renderEmpty(`Could not load the graph: ${(e as Error).message}`);
+				}
+			})();
 		});
 
 		const searchInput = this.toolbarEl.createEl('input', {
@@ -490,7 +492,9 @@ export class GlobalGraphView extends ItemView {
 				.translate(width / 2, height / 2)
 				.scale(k)
 				.translate(-(minX + maxX) / 2, -(minY + maxY) / 2);
-			svg.transition().duration(400).call(zoom.transform, transform);
+			svg.transition()
+				.duration(400)
+				.call((sel, t) => zoom.transform(sel, t), transform);
 		};
 		sim.on('end.fit', () => this.fitToView?.());
 
@@ -570,7 +574,7 @@ export class GlobalGraphView extends ItemView {
 			}
 		});
 
-		nodeGroup.on('dblclick', async (event, d) => {
+		nodeGroup.on('dblclick', (event, d) => {
 			event.stopPropagation();
 			if (isFileMode) {
 				this.viewMode = 'card';
@@ -578,7 +582,7 @@ export class GlobalGraphView extends ItemView {
 				this.render();
 			} else {
 				const cardNode = d as CardGraphNode;
-				await this.openFileAtLine(cardNode.filePath, cardNode.lineNumber);
+				void this.openFileAtLine(cardNode.filePath, cardNode.lineNumber);
 			}
 		});
 
@@ -909,8 +913,8 @@ export class GlobalGraphView extends ItemView {
 		const neighbours = new Map<string, Set<string>>();
 		const incident = new Map<string, number[]>();
 		links.forEach((l, i) => {
-			const src = typeof l.source === 'string' ? l.source : (l.source as GlobalNode).id;
-			const tgt = typeof l.target === 'string' ? l.target : (l.target as GlobalNode).id;
+			const src = typeof l.source === 'string' ? l.source : l.source.id;
+			const tgt = typeof l.target === 'string' ? l.target : l.target.id;
 			for (const [a, b] of [
 				[src, tgt],
 				[tgt, src],

@@ -54,7 +54,7 @@ To get your plugin into the official list inside Obsidian, you must submit a Pul
           "id": "arete",
           "name": "Arete",
           "author": "Adam Nguyen",
-          "description": "Professional one-way sync from Obsidian to Anki. Supports media, MathJax, and automatic card management.",
+          "description": "One-way sync from your vault to Anki. Supports media, MathJax, and automatic card management.",
           "repo": "adamtrnguyen/Arete"
         }
         ```

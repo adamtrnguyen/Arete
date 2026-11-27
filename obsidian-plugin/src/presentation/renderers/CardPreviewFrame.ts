@@ -44,6 +44,7 @@ export function renderCardPreviewFrame(
 		const style = doc.createElement('style');
 		style.textContent = rendered.css;
 		doc.head.appendChild(style);
+		// eslint-disable-next-line @microsoft/sdl/no-inner-html, no-unsanitized/property -- sandboxed iframe (allow-same-origin, scripts disabled) renders Anki card HTML
 		doc.body.innerHTML = rendered.html;
 
 		for (const image of Array.from(doc.images)) {

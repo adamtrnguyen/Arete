@@ -15,7 +15,7 @@ export async function activateSidebarView(
 		leaf = workspace.getLeavesOfType(viewType)[0];
 	}
 	if (leaf) {
-		workspace.revealLeaf(leaf);
+		await workspace.revealLeaf(leaf);
 	}
 	return leaf;
 }
@@ -29,7 +29,7 @@ export async function activateTabView(
 		leaf = workspace.getLeaf('tab');
 		await leaf.setViewState({ type: viewType, active: true });
 	}
-	workspace.revealLeaf(leaf);
+	await workspace.revealLeaf(leaf);
 	return leaf;
 }
 

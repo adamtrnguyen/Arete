@@ -183,7 +183,7 @@ export class AreteClient
 				try {
 					resolve(parseJsonStdout(stdout, command));
 				} catch (e) {
-					reject(e);
+					reject(e instanceof Error ? e : new Error(String(e)));
 				}
 			});
 		});

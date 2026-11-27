@@ -3,7 +3,7 @@
 	"name": "Arete",
 	"version": "4.0.0",
 	"minAppVersion": "1.7.2",
-	"description": "Professional one-way sync from Obsidian to Anki. Supports media, MathJax, and automatic card management.",
+	"description": "One-way sync from your vault to Anki. Supports media, MathJax, and automatic card management.",
 	"author": "Adam Nguyen",
 	"authorUrl": "https://github.com/adamtrnguyen/Arete",
 	"isDesktopOnly": true

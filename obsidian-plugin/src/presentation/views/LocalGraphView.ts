@@ -192,19 +192,22 @@ export class LocalGraphView extends ItemView {
 		const refreshBtn = toolbar.createDiv({ cls: 'clickable-icon' });
 		setIcon(refreshBtn, 'refresh-cw');
 		setTooltip(refreshBtn, 'Rebuild graph');
-		refreshBtn.addEventListener('click', async () => {
-			try {
-				await this.resolver.buildGraph(true);
-				await this.refresh();
-			} catch (e) {
-				console.error('[Arete] Failed to rebuild local graph:', e);
-				const canvas = this.container.querySelector(
-					'.arete-graph-canvas',
-				) as HTMLElement | null;
-				if (canvas) {
-					this.renderEmpty(canvas, `Could not load the graph: ${(e as Error).message}`);
+		refreshBtn.addEventListener('click', () => {
+			void (async () => {
+				try {
+					await this.resolver.buildGraph(true);
+					await this.refresh();
+				} catch (e) {
+					console.error('[Arete] Failed to rebuild local graph:', e);
+					const canvas = this.container.querySelector<HTMLElement>('.arete-graph-canvas');
+					if (canvas) {
+						this.renderEmpty(
+							canvas,
+							`Could not load the graph: ${(e as Error).message}`,
+						);
+					}
 				}
-			}
+			})();
 		});
 
 		// Render Mode Toggle
@@ -216,7 +219,7 @@ export class LocalGraphView extends ItemView {
 		renderToggle.addEventListener('click', () => {
 			this.renderCardNodes = !this.renderCardNodes;
 			renderToggle.toggleClass('is-active', this.renderCardNodes);
-			this.refresh();
+			void this.refresh();
 		});
 
 		// Related Toggle
@@ -228,7 +231,7 @@ export class LocalGraphView extends ItemView {
 		relatedToggle.addEventListener('click', () => {
 			this.showRelated = !this.showRelated;
 			relatedToggle.toggleClass('is-active', this.showRelated);
-			this.refresh();
+			void this.refresh();
 		});
 
 		// Depth Select
@@ -240,7 +243,7 @@ export class LocalGraphView extends ItemView {
 		});
 		depthSelect.addEventListener('change', () => {
 			this.depth = parseInt(depthSelect.value);
-			this.refresh();
+			void this.refresh();
 		});
 
 		// Separator
@@ -256,7 +259,7 @@ export class LocalGraphView extends ItemView {
 			this.viewMode = this.viewMode === '2d' ? '3d' : '2d';
 			setIcon(dimensionToggle, this.viewMode === '3d' ? 'box' : 'square');
 			dimensionToggle.toggleClass('is-active', this.viewMode === '3d');
-			this.refresh();
+			void this.refresh();
 		});
 
 		// Clustering Toggle
@@ -268,7 +271,7 @@ export class LocalGraphView extends ItemView {
 		clusterToggle.addEventListener('click', () => {
 			this.clusteringEnabled = !this.clusteringEnabled;
 			clusterToggle.toggleClass('is-active', this.clusteringEnabled);
-			this.refresh();
+			void this.refresh();
 		});
 	}
 
@@ -685,7 +688,7 @@ export class LocalGraphView extends ItemView {
 
 					if (card) {
 						// Async render the card content
-						CardRenderer.render(
+						void CardRenderer.render(
 							app,
 							div.node() as HTMLElement,
 							card,
@@ -723,7 +726,7 @@ export class LocalGraphView extends ItemView {
 
 			// Hover Tooltip
 			nodeGroup
-				.on('mouseover', async (event, d) => {
+				.on('mouseover', (event, d) => {
 					if (this.tooltipContainer) {
 						this.tooltipContainer.addClass('is-visible');
 						this.placeTooltip(event);
@@ -749,7 +752,7 @@ export class LocalGraphView extends ItemView {
 							Front: d.title,
 						};
 
-						await CardRenderer.render(
+						void CardRenderer.render(
 							this.app,
 							cardDiv,
 							cardMock,
@@ -763,7 +766,7 @@ export class LocalGraphView extends ItemView {
 		}
 
 		// Click Interaction
-		nodeGroup.on('click', async (event, d) => {
+		nodeGroup.on('click', (event, d) => {
 			event.stopPropagation(); // prevent zoom click
 
 			// If node is in same file, re-center graph
@@ -771,10 +774,10 @@ export class LocalGraphView extends ItemView {
 			if (activeFile && d.filePath === activeFile.path) {
 				debugLog('[Arete] Switching graph center to:', d.id);
 				this.centeredCardId = d.id;
-				this.refresh();
+				void this.refresh();
 			} else {
 				// Navigate to different file
-				await this.openFile(d.filePath);
+				void this.openFile(d.filePath);
 			}
 		});
 
@@ -843,8 +846,8 @@ export class LocalGraphView extends ItemView {
 				lineNumber: n.lineNumber,
 			})),
 			links: links.map((l) => ({
-				source: typeof l.source === 'string' ? l.source : (l.source as GraphNode).id,
-				target: typeof l.target === 'string' ? l.target : (l.target as GraphNode).id,
+				source: typeof l.source === 'string' ? l.source : l.source.id,
+				target: typeof l.target === 'string' ? l.target : l.target.id,
 				type: l.type,
 			})),
 		};
@@ -865,7 +868,7 @@ export class LocalGraphView extends ItemView {
 				debugLog('[Arete] Clicked:', node.id);
 				this.centeredCardId = node.id;
 				this.currentFilePath = node.filePath;
-				this.refresh();
+				void this.refresh();
 			});
 		// Theme colours are read once per drawing, and again when the theme changes.
 		this.repaint3D = () => this.paint3D(this.graph3D, resolveGraphColors(container));
@@ -896,9 +899,9 @@ export class LocalGraphView extends ItemView {
 				});
 
 				// Simple preview (full CardRenderer could be added)
-				cardDiv.createEl('div', { text: node.title, cls: 'arete-card-title' });
-				cardDiv.createEl('div', { text: `ID: ${node.id}`, cls: 'arete-card-id' });
-				cardDiv.createEl('div', { text: `File: ${node.filePath}`, cls: 'arete-card-file' });
+				cardDiv.createDiv({ text: node.title, cls: 'arete-card-title' });
+				cardDiv.createDiv({ text: `ID: ${node.id}`, cls: 'arete-card-id' });
+				cardDiv.createDiv({ text: `File: ${node.filePath}`, cls: 'arete-card-file' });
 			} else if (this.tooltipContainer) {
 				this.tooltipContainer.removeClass('is-visible');
 			}
