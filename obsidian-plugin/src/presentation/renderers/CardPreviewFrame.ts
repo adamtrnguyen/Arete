@@ -70,8 +70,19 @@ export function renderCardPreviewFrame(
 					void app.workspace.openLinkText(link, sourcePath, Keymap.isModEvent(event));
 			} else if (anchor.getAttribute('href')?.startsWith('#')) {
 				doc.getElementById(anchor.hash.slice(1))?.scrollIntoView();
-			} else {
-				hostDocument.defaultView?.open(anchor.href, '_blank', 'noopener');
+			} else if (anchor.href) {
+				try {
+					const parsed = new URL(anchor.href);
+					if (
+						parsed.protocol === 'http:' ||
+						parsed.protocol === 'https:' ||
+						parsed.protocol === 'mailto:'
+					) {
+						hostDocument.defaultView?.open(parsed.href, '_blank', 'noopener');
+					}
+				} catch {
+					/* Ignore malformed or unsupported link URLs. */
+				}
 			}
 		};
 		doc.addEventListener('click', onClick);

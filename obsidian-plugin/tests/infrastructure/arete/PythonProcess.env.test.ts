@@ -1,6 +1,7 @@
 import '../../test-setup';
-import { resolvePythonCommand } from '@infrastructure/arete/PythonProcess';
-import { onLinux } from '../../test-setup';
+import { spawn } from 'child_process';
+import { AreteProcesses, resolvePythonCommand } from '@infrastructure/arete/PythonProcess';
+import { createMockChildProcess, onLinux } from '../../test-setup';
 
 onLinux();
 
@@ -46,25 +47,50 @@ describe('resolvePythonCommand: environment', () => {
 		expect(process.env.PYTHONPATH).toBeUndefined();
 	});
 
-	it('adds the extra tool directories to PATH on macOS only', () => {
+	it('adds tool directories to PATH on Linux and macOS', () => {
 		process.env.HOME = '/Users/t';
 		Object.defineProperty(process, 'platform', { value: 'linux' });
-		const before = resolvePythonCommand(settings).env['PATH'];
-		expect(before).toBe(process.env.PATH);
+		const linuxPath = resolvePythonCommand(settings).env['PATH']!;
+		expect(linuxPath.endsWith('/Users/t/.local/bin:/Users/t/.cargo/bin')).toBe(true);
+		expect(linuxPath.startsWith(`${process.env.PATH}:`)).toBe(true);
 
 		Object.defineProperty(process, 'platform', { value: 'darwin' });
-		const after = resolvePythonCommand(settings).env['PATH']!;
+		const macPath = resolvePythonCommand(settings).env['PATH']!;
 		expect(
-			after.endsWith(
+			macPath.endsWith(
 				'/Users/t/.local/bin:/Users/t/.cargo/bin:/opt/homebrew/bin:/usr/local/bin',
 			),
 		).toBe(true);
-		expect(after.startsWith(`${process.env.PATH}:`)).toBe(true);
+		expect(macPath.startsWith(`${process.env.PATH}:`)).toBe(true);
 	});
 
-	it('leaves PATH alone on macOS when HOME is unset', () => {
+	it('trims whitespace-only python_path back to python3', () => {
+		const result = resolvePythonCommand({ ...settings, python_path: '   \t  ' });
+		expect(result.cmd).toBe('python3');
+		expect(result.args).toEqual(['-m', 'arete']);
+	});
+
+	it('kills a spawned process when its timeout expires', () => {
+		jest.useFakeTimers();
+		try {
+			const child = createMockChildProcess();
+			(spawn as jest.Mock).mockReturnValueOnce(child);
+			const procs = new AreteProcesses('/vault', 5000);
+			procs.spawn(resolvePythonCommand(settings), ['-m', 'arete']);
+			jest.advanceTimersByTime(4999);
+			expect(child.kill).not.toHaveBeenCalled();
+			jest.advanceTimersByTime(1);
+			expect(child.kill).toHaveBeenCalledTimes(1);
+		} finally {
+			jest.useRealTimers();
+		}
+	});
+
+	it('leaves PATH alone on macOS and Linux when HOME is unset', () => {
 		delete process.env.HOME;
 		Object.defineProperty(process, 'platform', { value: 'darwin' });
+		expect(resolvePythonCommand(settings).env['PATH']).toBe(process.env.PATH);
+		Object.defineProperty(process, 'platform', { value: 'linux' });
 		expect(resolvePythonCommand(settings).env['PATH']).toBe(process.env.PATH);
 	});
 });

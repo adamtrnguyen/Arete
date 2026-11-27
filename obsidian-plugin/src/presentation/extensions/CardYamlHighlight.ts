@@ -42,7 +42,9 @@ const cardStart = Decoration.line({ class: 'arete-yaml-card-start' });
 const keyMark = (role: Role) => Decoration.mark({ class: `arete-yk arete-yk-${role}` });
 const valueMark = (role: Role) => Decoration.mark({ class: `arete-yv arete-yv-${role}` });
 const clozeMark = (n: number) =>
-	Decoration.mark({ class: `arete-yaml-cloze arete-yaml-cloze-${((n - 1) % 4) + 1}` });
+	Decoration.mark({
+		class: `arete-yaml-cloze arete-yaml-cloze-${((((n - 1) % 4) + 4) % 4) + 1}`,
+	});
 const mathMark = Decoration.mark({ class: 'arete-yaml-math' });
 
 function build(view: EditorView): DecorationSet {

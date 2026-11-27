@@ -237,23 +237,40 @@ describe('StatsService', () => {
 		expect(root.stability).toBeNull(); // Not provided in mock conceptStats
 	});
 
-	test('aggregates stability and retrievability metrics', () => {
+	test('aggregates stability and retrievability metrics and weights by metric counts', () => {
 		const conceptStats: any[] = [
 			{
-				fileName: 'A.md',
+				fileName: 'intro.md.notes.md',
 				filePath: 'a.md',
 				primaryDeck: 'D1',
-				totalCards: 1,
+				totalCards: 10,
+				sumDifficulty: 0.2,
+				countDifficulty: 1,
 				sumStability: 10,
 				countStability: 1,
 				sumRetrievability: 0.9,
 				countRetrievability: 1,
 				cardStats: {},
 			},
+			{
+				fileName: 'B.md',
+				filePath: 'b.md',
+				primaryDeck: 'D1',
+				totalCards: 10,
+				sumDifficulty: 8.0,
+				countDifficulty: 10,
+				sumStability: 200,
+				countStability: 10,
+				sumRetrievability: 5.0,
+				countRetrievability: 10,
+				cardStats: {},
+			},
 		];
 		const root = service.getAggregatedStats(conceptStats);
-		expect(root.stability).toBe(10);
-		expect(root.retrievability).toBe(0.9);
+		expect(root.difficulty).toBeCloseTo(8.2 / 11, 5);
+		expect(root.stability).toBeCloseTo(210 / 11, 5);
+		expect(root.retrievability).toBeCloseTo(5.9 / 11, 5);
+		expect(root.children[0].children.map((c) => c.title)).toContain('intro.md.notes');
 	});
 
 	describe('fetchAnkiCardStats', () => {

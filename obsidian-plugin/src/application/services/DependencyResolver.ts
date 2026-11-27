@@ -46,9 +46,17 @@ export class DependencyResolver {
 	async buildGraph(force = false): Promise<void> {
 		if (force) this.invalidate();
 		if (!this.loaded) {
-			this.loaded = this.source.fetchGraph(this.vaultRoot).then((g) => this.load(g));
-			this.loaded.catch(() => {
-				this.loaded = null; // a failed fetch is retried
+			const version = this.dataVersion;
+			const pending = this.source.fetchGraph(this.vaultRoot).then((g) => {
+				if (version === this.dataVersion) {
+					this.load(g);
+				}
+			});
+			this.loaded = pending;
+			pending.catch(() => {
+				if (this.loaded === pending) {
+					this.loaded = null; // a failed fetch is retried
+				}
 			});
 		}
 		return this.loaded;

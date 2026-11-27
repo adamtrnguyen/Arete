@@ -92,6 +92,12 @@ describe('DashboardView overview expand/collapse', () => {
 		expect(container.empty).toHaveBeenCalledTimes(2);
 		expect(plugin.statsService.getAggregatedStats).toHaveBeenCalledTimes(2);
 	});
+
+	test('changing health thresholds invalidates the cached overview tree', () => {
+		plugin.settings.stats_lapse_threshold = 9;
+		view.renderOverview(container);
+		expect(plugin.statsService.getAggregatedStats).toHaveBeenCalledTimes(2);
+	});
 });
 
 /** A dashboard over a mock container, with the native components recorded. */
@@ -454,6 +460,11 @@ describe('DashboardView overview', () => {
 			);
 			expect(texts(el)).toEqual(expect.arrayContaining(['Card question']));
 			expect(texts(el)).not.toContain('Card Question');
+		});
+
+		it('renders zero difficulty, stability, and retrievability values instead of dashes', () => {
+			const { el } = renderList(stat({ difficulty: 0, stability: 0, retrievability: 0 }));
+			expect(texts(el)).toEqual(expect.arrayContaining(['0.0', '0', '0%']));
 		});
 
 		it('opens the stats modal with the plugin settings on a stats click', () => {

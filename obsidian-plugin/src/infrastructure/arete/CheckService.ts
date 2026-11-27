@@ -40,7 +40,11 @@ export class CheckService implements FileChecker {
 
 			// `vault check --json` prints its JSON on a failed check too, so any exit code
 			// with JSON on stdout is a result.
-			child.on('close', (_code) => {
+			child.once('close', (_code, signal) => {
+				if (signal) {
+					reject(new Error(`arete vault check was stopped (${signal}).`));
+					return;
+				}
 				try {
 					resolve(parseJsonStdout(stdout, 'arete vault check'));
 				} catch (e) {
@@ -49,7 +53,7 @@ export class CheckService implements FileChecker {
 				}
 			});
 
-			child.on('error', (err) => {
+			child.once('error', (err) => {
 				reject(err);
 			});
 		});
@@ -60,12 +64,30 @@ export class CheckService implements FileChecker {
 		const args = [...resolved.args, 'vault', 'fix', filePath];
 
 		return new Promise((resolve) => {
-			const child = this.processes.spawn(resolved, args);
+			let child: ChildProcess;
+			try {
+				child = this.processes.spawn(resolved, args);
+			} catch (e) {
+				console.error('[Arete] Fix failed to start:', e);
+				new Notice('Fix failed, check the developer console.');
+				resolve();
+				return;
+			}
 
-			child.on('close', (code) => {
-				if (code === 0) {
+			let stderr = '';
+			child.stderr?.on('data', (d) => (stderr += d.toString()));
+
+			child.once('error', (err) => {
+				console.error('[Arete] Fix failed:', err);
+				new Notice('Fix failed, check the developer console.');
+				resolve();
+			});
+
+			child.once('close', (code, signal) => {
+				if (code === 0 && !signal) {
 					new Notice('File auto-fixed.');
 				} else {
+					console.error('[Arete] Fix failed:', stderr || signal || `exit ${code}`);
 					new Notice('Fix failed, check the developer console.');
 				}
 				resolve();

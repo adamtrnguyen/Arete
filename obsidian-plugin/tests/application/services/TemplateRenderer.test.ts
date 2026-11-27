@@ -274,5 +274,53 @@ describe('TemplateRenderer', () => {
 			expect(mockRepo.modelStyling).toHaveBeenCalledTimes(2);
 			expect(mockRepo.modelTemplates).toHaveBeenCalledTimes(2);
 		});
+
+		it('does not corrupt Mustache comments and supports chained filters and hint', async () => {
+			renderer.setMode('anki');
+			mockRepo.modelTemplates.mockResolvedValue({
+				'Card 1': {
+					Front: '{{! comment }}{{type:cloze:Text}}{{hint:Hint}}',
+					Back: '{{text:cloze:Text}}',
+				},
+			});
+			const front = await renderer.render(
+				'Chained',
+				'Front',
+				{ Text: 'A {{c1::b}}', Hint: 'clue' },
+				opts,
+			);
+			expect(front?.html).toContain('arete-type-answer');
+			expect(front?.html).toContain(
+				'<details class="arete-hint"><summary>Hint</summary>clue</details>',
+			);
+			expect(front?.html).not.toContain('comment');
+
+			const back = await renderer.render(
+				'Chained',
+				'Back',
+				{ Text: 'A {{c1::b}}', Hint: 'clue' },
+				opts,
+			);
+			expect(back?.html).toBe('A b');
+		});
+
+		it('ignores an in-flight model load that finishes after clearModelCache()', async () => {
+			let finishStyling!: (css: string) => void;
+			mockRepo.modelStyling
+				.mockImplementationOnce(() => new Promise<string>((r) => (finishStyling = r)))
+				.mockResolvedValueOnce('.fresh{}');
+			mockRepo.modelTemplates
+				.mockResolvedValueOnce({ 'Card 1': { Front: 'OLD', Back: 'OLD' } })
+				.mockResolvedValueOnce({ 'Card 1': { Front: 'NEW', Back: 'NEW' } });
+
+			const stale = renderer.preloadModel('Basic');
+			await Promise.resolve();
+			renderer.clearModelCache();
+			finishStyling('.old{}');
+			await stale;
+
+			const rendered = await renderer.render('Basic', 'Front', {}, opts);
+			expect(rendered).toEqual({ html: 'NEW', css: '.fresh{}' });
+		});
 	});
 });

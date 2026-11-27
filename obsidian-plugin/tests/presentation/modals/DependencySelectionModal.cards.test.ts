@@ -56,9 +56,29 @@ describe('DependencySelectionModal: choosing a card', () => {
 		expect(labels()).toEqual(['Deck', 'Empty']);
 	});
 
-	it('drilling into a note lists its cards that have ids, behind a Back entry', () => {
+	it('plain Enter on a file selects its basename and closes', () => {
 		modal.selectedIndex = 0;
 		modal.selectCurrent();
+
+		expect(onSubmit).toHaveBeenCalledWith('Deck');
+		expect(modal.close).toHaveBeenCalled();
+	});
+
+	it('plain Enter disambiguates duplicate basenames with folder/name path', () => {
+		const a = { path: 'math/Intro.md', basename: 'Intro' };
+		const b = { path: 'bio/Intro.md', basename: 'Intro' };
+		app.vault.getMarkdownFiles = jest.fn(() => [a, b]);
+		modal.loadFiles();
+		modal.selectedIndex = 1;
+		modal.selectCurrent();
+
+		expect(onSubmit).toHaveBeenCalledWith('bio/Intro');
+		expect(modal.close).toHaveBeenCalled();
+	});
+
+	it('Mod+Enter drilling into a note lists its cards that have ids, behind a Back entry', () => {
+		modal.selectedIndex = 0;
+		modal.selectCurrent(true);
 
 		expect(modal.mode).toBe('cards');
 		expect(ids()).toEqual(['__back__', 'arete_1', 'arete_2', 'arete_3']);
@@ -74,15 +94,22 @@ describe('DependencySelectionModal: choosing a card', () => {
 		);
 	});
 
+	it('tolerates null entries and non-string Front values when loading cards', () => {
+		cache['Deck.md'].frontmatter.cards = [null, { id: 'arete_num', Front: 42 }];
+		modal.loadCards(deckNote);
+		expect(ids()).toEqual(['__back__', 'arete_num']);
+		expect(labels()).toEqual(['.. (back to files)', '42']);
+	});
+
 	it('truncates a long front to 60 characters', () => {
 		cache['Deck.md'].frontmatter.cards = [{ id: 'arete_1', Front: 'x'.repeat(100) }];
 		modal.loadCards(deckNote);
 		expect(modal.filteredItems[1].label).toBe('x'.repeat(60));
 	});
 
-	it('a note without cards says so and stays on the file list', () => {
+	it('a note without cards says so and stays on the file list when drilling down', () => {
 		modal.selectedIndex = 1;
-		modal.selectCurrent();
+		modal.selectCurrent(true);
 
 		expect(Notice).toHaveBeenCalledWith('No cards found in Empty');
 		expect(modal.mode).toBe('files');
@@ -193,6 +220,18 @@ describe('DependencySelectionModal: choosing a card', () => {
 		expect(rows[1].addClass).toHaveBeenCalledWith('is-selected');
 		expect(rows[0].removeClass).toHaveBeenCalledWith('is-selected');
 		expect(schedule).toHaveBeenCalled();
+	});
+
+	it('unloads the previous preview component when moving to a new item', async () => {
+		await modal.renderPreview();
+		const firstComp = modal.previewComponent;
+		const unloadFirst = jest.spyOn(firstComp, 'unload');
+
+		modal.selectedIndex = 1;
+		await modal.renderPreview();
+
+		expect(unloadFirst).toHaveBeenCalledTimes(1);
+		expect(modal.previewComponent).not.toBe(firstComp);
 	});
 
 	it('closing cancels a pending preview and unloads the preview component', async () => {

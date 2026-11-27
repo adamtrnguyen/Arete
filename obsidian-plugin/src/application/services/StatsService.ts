@@ -40,6 +40,10 @@ export class StatsService {
 		return this.cache;
 	}
 
+	clearCache(): void {
+		this.cache = { concepts: {}, lastFetched: 0 };
+	}
+
 	async refreshStats(): Promise<ConceptStats[]> {
 		const files = this.app.vault.getMarkdownFiles();
 		const nidMap = new Map<
@@ -289,6 +293,10 @@ export class StatsService {
 		// 2. Build Tree Structure
 		// Map deck names to nodes for quick lookup
 		const deckMap = new Map<string, StatsNode>();
+		const leafMetricCounts = new WeakMap<
+			StatsNode,
+			{ diff: number; stab: number; ret: number }
+		>();
 		deckMap.set('All', root); // 'All' concept is abstract root
 
 		for (const c of concepts) {
@@ -330,18 +338,12 @@ export class StatsService {
 			}
 
 			// Add File Node (Leaf) to the specific deck
-			const diff =
-				c.countDifficulty && c.countDifficulty > 0
-					? (c.sumDifficulty || 0) / c.countDifficulty
-					: null;
-			const stab =
-				c.countStability && c.countStability > 0
-					? (c.sumStability || 0) / c.countStability
-					: null;
-			const ret =
-				c.countRetrievability && c.countRetrievability > 0
-					? (c.sumRetrievability || 0) / c.countRetrievability
-					: null;
+			const diffCount = c.countDifficulty || 0;
+			const stabCount = c.countStability || 0;
+			const retCount = c.countRetrievability || 0;
+			const diff = diffCount > 0 ? (c.sumDifficulty || 0) / diffCount : null;
+			const stab = stabCount > 0 ? (c.sumStability || 0) / stabCount : null;
+			const ret = retCount > 0 ? (c.sumRetrievability || 0) / retCount : null;
 
 			// Each card is judged once, with the same function the gutter uses.
 			const stateCounts = emptyCardStateCounts();
@@ -351,7 +353,7 @@ export class StatsService {
 			}
 
 			const leaf: StatsNode = {
-				title: c.fileName.replace('.md', ''),
+				title: c.fileName.replace(/\.md$/, ''),
 				filePath: c.filePath,
 				deckName: currentPath,
 				isLeaf: true,
@@ -365,11 +367,12 @@ export class StatsService {
 				problematicCount: c.problematicCardsCount,
 				score: c.score,
 			};
+			leafMetricCounts.set(leaf, { diff: diffCount, stab: stabCount, ret: retCount });
 			parent.children.push(leaf);
 		}
 
 		// 3. Aggregate Metrics (Post-Order Traversal)
-		this.aggregateNode(root);
+		this.aggregateNode(root, leafMetricCounts);
 
 		// 4. Sort (Optional: by score or name)
 		this.sortTree(root);
@@ -377,8 +380,13 @@ export class StatsService {
 		return root;
 	}
 
-	private aggregateNode(node: StatsNode) {
-		if (node.isLeaf) return;
+	private aggregateNode(
+		node: StatsNode,
+		leafMetricCounts: WeakMap<StatsNode, { diff: number; stab: number; ret: number }>,
+	): { diff: number; stab: number; ret: number } {
+		if (node.isLeaf) {
+			return leafMetricCounts.get(node) ?? { diff: 0, stab: 0, ret: 0 };
+		}
 
 		let sumDiff = 0,
 			countDiff = 0;
@@ -388,7 +396,7 @@ export class StatsService {
 			countRet = 0;
 
 		for (const child of node.children) {
-			this.aggregateNode(child);
+			const childCounts = this.aggregateNode(child, leafMetricCounts);
 
 			node.count += child.count;
 			node.lapses += child.lapses;
@@ -397,17 +405,17 @@ export class StatsService {
 			}
 			node.problematicCount += child.problematicCount;
 
-			if (child.difficulty !== null) {
-				sumDiff += child.difficulty * child.count;
-				countDiff += child.count;
+			if (child.difficulty !== null && childCounts.diff > 0) {
+				sumDiff += child.difficulty * childCounts.diff;
+				countDiff += childCounts.diff;
 			}
-			if (child.stability !== null) {
-				sumStab += child.stability * child.count;
-				countStab += child.count;
+			if (child.stability !== null && childCounts.stab > 0) {
+				sumStab += child.stability * childCounts.stab;
+				countStab += childCounts.stab;
 			}
-			if (child.retrievability !== null) {
-				sumRet += child.retrievability * child.count;
-				countRet += child.count;
+			if (child.retrievability !== null && childCounts.ret > 0) {
+				sumRet += child.retrievability * childCounts.ret;
+				countRet += childCounts.ret;
 			}
 		}
 
@@ -417,6 +425,8 @@ export class StatsService {
 
 		// Score based on density of issues
 		if (node.count > 0) node.score = node.problematicCount / node.count;
+
+		return { diff: countDiff, stab: countStab, ret: countRet };
 	}
 
 	private sortTree(node: StatsNode) {

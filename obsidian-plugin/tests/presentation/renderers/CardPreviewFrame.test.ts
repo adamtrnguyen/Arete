@@ -307,6 +307,23 @@ describe('renderCardPreviewFrame', () => {
 			expect(dom.open).toHaveBeenCalledWith('https://x.org/', '_blank', 'noopener');
 		});
 
+		it('allows mailto links and blocks unsafe or empty URL schemes', () => {
+			click(dom, anchor({ href: 'mailto:user@example.com' }));
+			expect(dom.open).toHaveBeenCalledWith('mailto:user@example.com', '_blank', 'noopener');
+
+			dom.open.mockClear();
+			for (const href of [
+				'',
+				'file:///etc/passwd',
+				'javascript:alert(1)',
+				'obsidian://open?vault=x',
+				'not a url',
+			]) {
+				click(dom, anchor({ href }));
+			}
+			expect(dom.open).not.toHaveBeenCalled();
+		});
+
 		it('a click that is not on a link is left alone', () => {
 			const e = click(dom, null);
 			expect(e.preventDefault).not.toHaveBeenCalled();

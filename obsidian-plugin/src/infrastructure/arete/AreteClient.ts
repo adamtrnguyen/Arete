@@ -29,6 +29,7 @@ export interface StudyQueue {
  * stdout, which the CLI keeps to a single JSON value.
  */
 export class AreteClient implements GraphSource, AnkiModelSource, CardStatsSource, CardSuspender {
+	private static readonly STATS_BATCH_SIZE = 500;
 	private settings: AretePluginSettings;
 	/** The vault's folder on disk; the queue is planned from its notes. */
 	private vaultRoot: string;
@@ -46,7 +47,17 @@ export class AreteClient implements GraphSource, AnkiModelSource, CardStatsSourc
 	}
 
 	async getCardStats(nids: number[]): Promise<unknown> {
-		return this.runAnki(['stats', '--nids', JSON.stringify(nids)]);
+		if (nids.length <= AreteClient.STATS_BATCH_SIZE) {
+			return this.runAnki(['stats', '--nids', JSON.stringify(nids)]);
+		}
+		const combined: unknown[] = [];
+		for (let i = 0; i < nids.length; i += AreteClient.STATS_BATCH_SIZE) {
+			const batch = nids.slice(i, i + AreteClient.STATS_BATCH_SIZE);
+			const part = await this.runAnki(['stats', '--nids', JSON.stringify(batch)]);
+			if (!Array.isArray(part)) return part;
+			combined.push(...part);
+		}
+		return combined;
 	}
 
 	async suspendCards(cardIds: number[]): Promise<boolean> {

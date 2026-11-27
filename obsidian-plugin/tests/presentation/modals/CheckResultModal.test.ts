@@ -77,6 +77,22 @@ describe('CheckResultModal Deep Coverage', () => {
 		expect(spanTexts(modal.contentEl)).toContain('Validation failed');
 	});
 
+	test('detects fixable flag, case-insensitive missing cards list, and null line numbers', () => {
+		const { ButtonComponent } = jest.requireMock('obsidian');
+		ButtonComponent.instances.length = 0;
+		const result: any = {
+			ok: false,
+			errors: [
+				{ line: null, message: "missing 'cards' list in frontmatter" },
+				{ line: undefined, message: 'Custom fixable', fixable: true },
+			],
+		};
+		modal = new CheckResultModal(app, plugin, result, '/path/to/file.md');
+
+		expect(() => modal.onOpen()).not.toThrow();
+		expect(ButtonComponent.instances).toHaveLength(1);
+	});
+
 	test('onClose empties contentEl', () => {
 		modal = new CheckResultModal(app, plugin, { ok: true }, '/path/to/note.md');
 		modal.onClose();

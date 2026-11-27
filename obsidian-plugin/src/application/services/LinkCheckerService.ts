@@ -1,4 +1,6 @@
+import * as path from 'path';
 import { App, FileSystemAdapter, TFile } from 'obsidian';
+import { isReservedCardKey } from '@/domain/cardKeys';
 import { FileChecker } from '@/domain/ports';
 
 export interface BrokenReference {
@@ -103,12 +105,14 @@ export class LinkCheckerService {
 			if (!first || NON_YAML_FIRST_SECTIONS.has(first.type)) return null;
 		}
 
-		const trimmed = (await this.app.vault.cachedRead(file)).trimStart();
+		// Strip UTF-8 BOM only; leading blank lines before `---` make a thematic break, not YAML.
+		const text = (await this.app.vault.cachedRead(file)).replace(/^\uFEFF/, '');
+		if (!/^---[ \t]*\r?\n/.test(text)) return null;
 
-		// Check for empty frontmatter explicitly (e.g. --- followed directly by ---, or just whitespace)
-		if (/^---\s*\n\s*---/.test(trimmed)) return 'empty';
-		// File has YAML block start, but cache didn't parse it -> Invalid!
-		if (trimmed.startsWith('---\n') || trimmed.startsWith('---\r\n')) return 'invalid';
+		// Check for empty frontmatter explicitly (e.g. --- followed directly by ---, or whitespace)
+		if (/^---[ \t]*\r?\n[ \t]*---(?=[ \t]*(?:\r?\n|$))/.test(text)) return 'empty';
+		// Verify a closing `---` fence exists so a leading horizontal rule is not misreported.
+		if (/\r?\n---[ \t]*(?:\r?\n|$)/.test(text)) return 'invalid';
 		return null;
 	}
 
@@ -125,14 +129,13 @@ export class LinkCheckerService {
 			// 1. Deep Scan YAML Cards (User Request: "Only report inside the card list")
 			const cards = cache.frontmatter.cards;
 			cards.forEach((card: any, idx: number) => {
-				if (!card) return; // Skip null cards
-				const fields = [card.Front, card.Back, card.Text, card['Back Extra']];
-
-				fields.forEach((content) => {
+				if (!card || typeof card !== 'object') return;
+				for (const [key, content] of Object.entries(card)) {
+					if (isReservedCardKey(key)) continue;
 					if (typeof content === 'string') {
 						this.scanTextForBrokenLinks(content, file, broken, `Card #${idx + 1}`);
 					}
-				});
+				}
 			});
 		} else {
 			// 2. Standard Body Scan (Only if NOT a YAML card file)
@@ -141,7 +144,9 @@ export class LinkCheckerService {
 			// Check Embeds (Images, Transclusions)
 			if (cache.embeds) {
 				for (const embed of cache.embeds) {
-					const dest = this.app.metadataCache.getFirstLinkpathDest(embed.link, file.path);
+					const targetPath = embed.link.split('#')[0];
+					if (!targetPath) continue;
+					const dest = this.app.metadataCache.getFirstLinkpathDest(targetPath, file.path);
 					if (!dest) {
 						// STRICT CHECK: Only report if it has a known image extension
 						const imageExtensions = [
@@ -153,7 +158,7 @@ export class LinkCheckerService {
 							'.svg',
 							'.webp',
 						];
-						const lower = embed.link.toLowerCase();
+						const lower = targetPath.toLowerCase();
 						const hasImageExt = imageExtensions.some((ext) => lower.endsWith(ext));
 
 						if (hasImageExt) {
@@ -185,10 +190,12 @@ export class LinkCheckerService {
 
 		while ((match = linkRegex.exec(text)) !== null) {
 			const isEmbed = match[1] === '!';
-			const linkPath = match[2]; // The path part
+			const linkPath = match[2]; // The path part (may include #heading or #^block)
+			const targetPath = linkPath.split('#')[0];
+			if (!targetPath) continue;
 			const original = match[0];
 
-			const dest = this.app.metadataCache.getFirstLinkpathDest(linkPath, file.path);
+			const dest = this.app.metadataCache.getFirstLinkpathDest(targetPath, file.path);
 
 			if (!dest) {
 				// Frontmatter context: report every broken embed, whatever its extension.
@@ -227,7 +234,7 @@ export class LinkCheckerService {
 				const adapter = this.app.vault.adapter;
 				if ('getBasePath' in adapter) {
 					const basePath = (adapter as FileSystemAdapter).getBasePath();
-					fullPath = `${basePath}/${file.path}`;
+					if (basePath) fullPath = path.join(basePath, file.path);
 				}
 
 				const checkRes = await this.checkService.getCheckResult(fullPath);

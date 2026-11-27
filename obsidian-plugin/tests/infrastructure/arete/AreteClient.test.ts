@@ -46,6 +46,21 @@ describe('AreteClient: one `arete` process per call, JSON on stdout', () => {
 			expect(areteArgs()).toEqual(['anki', 'stats', '--nids', '[1,2]', ...BACKEND]);
 		});
 
+		it('getCardStats chunks large NID lists in batches of 500', async () => {
+			const nids = Array.from({ length: 650 }, (_, i) => i + 1);
+			const child1 = cli();
+			const child2 = cli();
+			const promise = client.getCardStats(nids);
+			reply(child1, '[{"card_id": 1}]');
+			await Promise.resolve();
+			await Promise.resolve();
+			reply(child2, '[{"card_id": 501}]');
+			await expect(promise).resolves.toEqual([{ card_id: 1 }, { card_id: 501 }]);
+			expect(spawn).toHaveBeenCalledTimes(2);
+			expect(JSON.parse(areteArgs(0)[3])).toHaveLength(500);
+			expect(JSON.parse(areteArgs(1)[3])).toHaveLength(150);
+		});
+
 		it('suspend and unsuspend pass the card ids and return the verdict', async () => {
 			let child = cli();
 			let promise = client.suspendCards([4, 5]);

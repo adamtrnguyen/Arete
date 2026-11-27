@@ -14,17 +14,21 @@ export interface ParseResult {
 	hasCards: boolean;
 }
 
+function isTopLevelCardsKey(line: string): boolean {
+	return /^cards:(?:\s|$)/.test(line);
+}
+
+function isListItemStart(trimmed: string): boolean {
+	return trimmed === '-' || trimmed.startsWith('- ');
+}
+
 export class CardParserService {
 	/**
-	 * The result `parseCards` returns for a note that has no `cards:` key where
-	 * `parseCards` looks for one, or null when the note has such a key and needs
+	 * The result `parseCards` returns for a note that has no top-level `cards:` key
+	 * where `parseCards` looks for one, or null when the note has such a key and needs
 	 * `parseCards`. Takes the note's lines (as `text.split('\n')` yields them) lazily,
 	 * so it allocates no copy of the text and stops at the closing `---` of the
 	 * frontmatter.
-	 *
-	 * `parseCards` finds a card only after a line whose trimmed text starts with
-	 * `cards:`, at line 1 or later and before the closing `---` when the note opens
-	 * with `---`. With no such line its result is fixed by the frontmatter end alone.
 	 */
 	static noCardsResult(lines: Iterable<string>): ParseResult | null {
 		let i = 0;
@@ -34,7 +38,7 @@ export class CardParserService {
 				opensFrontmatter = line === '---';
 			} else if (opensFrontmatter && line === '---') {
 				return { ranges: [], frontmatterEndLine: i, hasCards: false };
-			} else if (line.trim().startsWith('cards:')) {
+			} else if (isTopLevelCardsKey(line)) {
 				return null;
 			}
 			i++;
@@ -75,14 +79,14 @@ export class CardParserService {
 			if (!trimmed) continue;
 
 			if (!inCards) {
-				if (trimmed === 'cards:' || trimmed.startsWith('cards:')) {
+				if (isTopLevelCardsKey(line)) {
 					inCards = true;
 				}
 				continue;
 			}
 
 			const indent = line.search(/\S/);
-			if (trimmed.startsWith('- ')) {
+			if (isListItemStart(trimmed)) {
 				if (cardsBaseIndent === -1) cardsBaseIndent = indent;
 				if (indent === cardsBaseIndent) {
 					const startLine = i;
@@ -102,7 +106,7 @@ export class CardParserService {
 						}
 						const ni = nl.search(/\S/);
 						// New card item or decreased indent means block ended
-						if (ni === cardsBaseIndent && nt.startsWith('- ')) {
+						if (ni === cardsBaseIndent && isListItemStart(nt)) {
 							endLine = j - 1;
 							break;
 						}

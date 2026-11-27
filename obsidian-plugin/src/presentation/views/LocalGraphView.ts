@@ -67,6 +67,8 @@ export class LocalGraphView extends ItemView {
 
 	/** Delay that lets bursts of leaf changes, selections and resizes settle. */
 	private static readonly REFRESH_DEBOUNCE_MS = 100;
+	private static nextMarkerId = 1;
+	private readonly arrowId = `arete-local-arrow-${LocalGraphView.nextMarkerId++}`;
 	private refreshTimer: ReturnType<typeof setTimeout> | null = null;
 	/** Bumped by each refresh(); a refresh that is no longer the latest does not draw. */
 	private refreshSeq = 0;
@@ -182,8 +184,19 @@ export class LocalGraphView extends ItemView {
 		const refreshBtn = toolbar.createDiv({ cls: 'clickable-icon' });
 		setIcon(refreshBtn, 'refresh-cw');
 		setTooltip(refreshBtn, 'Rebuild graph');
-		refreshBtn.addEventListener('click', () => {
-			this.resolver.buildGraph(true).then(() => this.refresh());
+		refreshBtn.addEventListener('click', async () => {
+			try {
+				await this.resolver.buildGraph(true);
+				await this.refresh();
+			} catch (e) {
+				console.error('[Arete] Failed to rebuild local graph:', e);
+				const canvas = this.container.querySelector(
+					'.arete-graph-canvas',
+				) as HTMLElement | null;
+				if (canvas) {
+					this.renderEmpty(canvas, `Could not load the graph: ${(e as Error).message}`);
+				}
+			}
 		});
 
 		// Render Mode Toggle
@@ -456,6 +469,10 @@ export class LocalGraphView extends ItemView {
 	 * loop otherwise keeps drawing to a detached canvas. The next drawing starts empty.
 	 */
 	private releaseDrawing(): void {
+		if (this.simulation) {
+			this.simulation.stop();
+			this.simulation = null;
+		}
 		if (this.drawingComponent) this.tooltipComponent.removeChild(this.drawingComponent);
 		this.drawingComponent = null;
 		this.tooltipCache.clear();
@@ -555,8 +572,8 @@ export class LocalGraphView extends ItemView {
 	}
 
 	renderD3Graph(container: HTMLElement, nodes: GraphNode[], links: GraphLink[]) {
-		container.empty();
 		this.releaseDrawing();
+		container.empty();
 		const drawingComponent = this.tooltipComponent.addChild(new Component());
 		this.drawingComponent = drawingComponent;
 
@@ -608,7 +625,7 @@ export class LocalGraphView extends ItemView {
 		// Arrows
 		svg.append('defs')
 			.append('marker')
-			.attr('id', 'arrow')
+			.attr('id', this.arrowId)
 			.attr('viewBox', '0 -5 10 10')
 			.attr('refX', 20)
 			.attr('refY', 0)
@@ -626,7 +643,7 @@ export class LocalGraphView extends ItemView {
 			.data(links)
 			.join('line')
 			.attr('class', (d) => `arete-graph-link mod-${d.type}`)
-			.attr('marker-end', (d) => (d.type === 'requires' ? 'url(#arrow)' : null));
+			.attr('marker-end', (d) => (d.type === 'requires' ? `url(#${this.arrowId})` : null));
 
 		// Drag
 		const dragBehavior = d3
@@ -881,8 +898,8 @@ export class LocalGraphView extends ItemView {
 	 * Render the graph in 3D using 3d-force-graph.
 	 */
 	render3DGraph(container: HTMLElement, nodes: GraphNode[], links: GraphLink[]) {
-		container.empty();
 		this.releaseDrawing();
+		container.empty();
 
 		const width = container.clientWidth;
 		const height = container.clientHeight;

@@ -570,6 +570,18 @@ describe('AretePlugin commands, views and status bar', () => {
 			expect(saved.removed_key).toBeUndefined();
 		});
 
+		test('project_root only expands or collapses at exact home path boundaries', async () => {
+			const home = require('os').homedir();
+			plugin.loadData = jest.fn().mockResolvedValue({ project_root: '~other/arete' });
+			await plugin.loadSettings();
+			expect(plugin.settings.project_root).toBe('~other/arete');
+
+			plugin.settings.project_root = `${home}2/arete`;
+			await plugin.saveSettings();
+			const saved = (plugin.saveData as jest.Mock).mock.calls.pop()![0];
+			expect(saved.project_root).toBe(`${home}2/arete`);
+		});
+
 		test('saveStats stores the stats cache beside the settings', async () => {
 			const cache = { concepts: { 'A.md': {} } };
 			(plugin.statsService.getCache as jest.Mock).mockReturnValue(cache);

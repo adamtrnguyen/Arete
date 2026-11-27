@@ -211,7 +211,7 @@ describe('DashboardView actions', () => {
 
 			all(root, (n) => n.textContent === 'Front text')[0].onclick!();
 
-			expect(view.goToCard).toHaveBeenCalledWith('A.md', '<b>Front</b> text');
+			expect(view.goToCard).toHaveBeenCalledWith('A.md', '<b>Front</b> text', 1);
 		});
 	});
 
@@ -336,6 +336,36 @@ describe('DashboardView actions', () => {
 			log.mockRestore();
 		});
 
+		it('disables Send to Anki while creating the queue deck and ignores stale deck loads', async () => {
+			let resolveDecks!: (decks: string[]) => void;
+			plugin.areteClient.getDeckNames.mockReturnValueOnce(
+				new Promise<string[]>((r) => (resolveDecks = r)),
+			);
+			const root1 = el('div');
+			view.renderQueueBuilder(root1);
+			await view.onClose();
+			resolveDecks(['LateDeck']);
+			await flush();
+			expect(all(root1, (n) => n.opts?.text === 'LateDeck')).toHaveLength(0);
+
+			plugin.areteClient.buildStudyQueue.mockResolvedValue(result);
+			let finishSend!: (ok: boolean) => void;
+			plugin.areteClient.createQueueDeck.mockReturnValue(
+				new Promise<boolean>((r) => (finishSend = r)),
+			);
+			const root2 = el('div');
+			const ui = await build(root2);
+			await ui.btn.onClick!();
+			const lastBtn = () => rec.buttons[rec.buttons.length - 1];
+			const sending = lastBtn().onClick!();
+			expect(lastBtn().disabled).toBe(true);
+			expect(lastBtn().text).toBe('Sending...');
+			finishSend(true);
+			await sending;
+			expect(lastBtn().disabled).toBe(false);
+			expect(lastBtn().text).toBe('Send to Anki');
+		});
+
 		it('clicking a queued title opens its note', async () => {
 			plugin.areteClient.buildStudyQueue.mockResolvedValue(result);
 			view.openFile = jest.fn();
@@ -383,14 +413,25 @@ describe('DashboardView actions', () => {
 			expect(openFile).not.toHaveBeenCalled();
 		});
 
-		it('goToCard puts the cursor on the first word of the front', async () => {
+		it('goToCard matches full normalized front to disambiguate shared prefixes and falls back to noteId', async () => {
 			app.vault.getAbstractFileByPath = jest.fn(() => file());
-			const editor = editorFor('intro\n  What is entropy?');
+			const content =
+				'---\ncards:\n  - Front: What is force?\n  - Front: What is entropy?\n    anki:\n      nid: 999888\n---';
+			const editor = editorFor(content);
 
 			await view.goToCard('A.md', '  What   is\nentropy?');
-
-			expect(editor.setCursor).toHaveBeenCalledWith({ line: 0, ch: 'intro\n  '.length });
+			expect(editor.setCursor).toHaveBeenCalledWith({
+				line: 0,
+				ch: content.indexOf('What is entropy?'),
+			});
 			expect(editor.scrollIntoView).toHaveBeenCalled();
+
+			editor.setCursor.mockClear();
+			await view.goToCard('A.md', 'Completely absent front', 999888);
+			expect(editor.setCursor).toHaveBeenCalledWith({
+				line: 0,
+				ch: content.indexOf('999888'),
+			});
 		});
 
 		it('goToCard leaves the cursor alone when the text is not found', async () => {

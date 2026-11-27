@@ -1,5 +1,7 @@
 import { MarkdownView, Notice } from 'obsidian';
 import { CardYamlEditorView } from '@/presentation/views/CardYamlEditorView';
+import { CardParserService } from '@/application/services/CardParserService';
+import { cardRangesField } from '@/presentation/extensions/CardGutterExtension';
 import { createMockElement } from '../../test-setup';
 
 jest.mock('@/presentation/renderers/CardPreviewFrame');
@@ -851,30 +853,44 @@ describe('CardYamlEditorView: Anki links and warnings', () => {
 
 describe('CardYamlEditorView: scrolling the note editor to a card', () => {
 	function editorWith(content: string) {
+		const parsed = CardParserService.parseCards(content);
 		const editor = {
 			getValue: () => content,
 			setCursor: jest.fn(),
 			scrollIntoView: jest.fn(),
+			cm: {
+				state: {
+					field: jest.fn((f: unknown) => (f === cardRangesField ? parsed : undefined)),
+				},
+			},
 		};
 		const mdView: any = new MarkdownView({} as any);
 		mdView.editor = editor;
 		return { editor, mdView };
 	}
 
-	it('puts the cursor on the list item line of the requested card', async () => {
+	it('puts the cursor on the card start line from cardRangesField, skipping nested list dashes', async () => {
 		const { view, app } = makeView(cards());
 		const { editor, mdView } = editorWith(
-			['---', 'cards:', '  - id: a', '    Front: A', '  - id: b', '    Front: B', '---'].join(
-				'\n',
-			),
+			[
+				'---',
+				'cards:',
+				'  - id: a',
+				'    tags:',
+				'      - nested-tag',
+				'    Front: A',
+				'  - id: b',
+				'    Front: B',
+				'---',
+			].join('\n'),
 		);
 		app.workspace.getMostRecentLeaf = jest.fn().mockReturnValue({ view: mdView });
 
 		await view.scrollToCard(1);
 
-		expect(editor.setCursor).toHaveBeenCalledWith({ line: 4, ch: 0 });
+		expect(editor.setCursor).toHaveBeenCalledWith({ line: 6, ch: 0 });
 		expect(editor.scrollIntoView).toHaveBeenCalledWith(
-			{ from: { line: 4, ch: 0 }, to: { line: 4, ch: 0 } },
+			{ from: { line: 6, ch: 0 }, to: { line: 6, ch: 0 } },
 			true,
 		);
 	});

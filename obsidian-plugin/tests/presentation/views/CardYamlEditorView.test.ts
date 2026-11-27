@@ -298,6 +298,24 @@ describe('CardYamlEditorView toolbar', () => {
 		expect(texts).toContain('Lapses: 2');
 	});
 
+	it('prefers cid over nid when looking up card stats for toolbar and modal', () => {
+		const cidStats = { difficulty: 0.92, lapses: 4, due: 0 };
+		const nidStats = { difficulty: 0.2, lapses: 0, due: 0 };
+		view.plugin.settings = { stats_algorithm: 'fsrs', stats_lapse_threshold: 3 };
+		view.cards = [{ Front: 'F', anki: { nid: 7, cid: 70 }, id: 'arete_1' }];
+		view.plugin.statsService = {
+			getCache: () => ({
+				concepts: { 'N.md': { cardStats: { 7: nidStats, 70: cidStats } } },
+			}),
+		};
+		view.renderToolbar();
+		buttons()
+			.find((b) => b.icon === 'bar-chart-2')
+			.clickHandler();
+
+		expect(CardStatsModal).toHaveBeenCalledWith(view.app, cidStats, view.plugin.settings);
+	});
+
 	it('opens the card stats modal with the user thresholds', () => {
 		const stats = { difficulty: 0.5, lapses: 4, due: 0 };
 		view.plugin.settings = { stats_algorithm: 'fsrs', stats_lapse_threshold: 10 };

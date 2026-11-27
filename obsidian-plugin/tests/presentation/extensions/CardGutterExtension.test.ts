@@ -28,6 +28,7 @@ import {
 	highlightCardEffect,
 } from '@/presentation/extensions/CardGutterExtension';
 import { EditorView } from '@codemirror/view';
+import { DEFAULT_SETTINGS } from '@/domain/settings';
 import { CardParserService } from '@/application/services/CardParserService';
 import { ankiCardStats, card, noteYaml } from '../../factories';
 
@@ -66,7 +67,12 @@ function setup(doc: string, thresholds?: () => any, algorithm: 'fsrs' | 'sm2' = 
 	const getCardStats = jest.fn((nid: number | null) =>
 		nid ? (statsByNid.get(nid) ?? null) : null,
 	);
-	const ext = createCardGutter(jest.fn(), getCardStats as any, algorithm, thresholds);
+	const getSettings = () => ({
+		...DEFAULT_SETTINGS,
+		stats_algorithm: algorithm,
+		...(thresholds ? thresholds() : {}),
+	});
+	const ext = createCardGutter(jest.fn(), getCardStats as any, getSettings);
 	const markers = markersFn(ext);
 	const view: FakeView = { state: EditorState.create({ doc, extensions: ext }) };
 	const apply = (spec: TransactionSpec) => {
@@ -408,6 +414,27 @@ describe('card gutter state', () => {
 		expect(stateOf(g)[0]).toBe('warning');
 	});
 
+	it('rebuilds the markers when stats_algorithm changes live', () => {
+		let algo: 'fsrs' | 'sm2' = 'fsrs';
+		const g = setup(threeCards(), () => ({
+			stats_algorithm: algo,
+			stats_lapse_threshold: 3,
+			stats_difficulty_threshold: 0.9,
+			stats_ease_threshold: 2100,
+		}));
+		g.statsByNid.set(
+			NIDS[0],
+			ankiCardStats({ noteId: NIDS[0], cardId: NIDS[0], difficulty: 0.2, ease: 1500 }),
+		);
+		const before = g.markers();
+		expect(cardMarkers(before)[0].marker.algorithm).toBe('fsrs');
+		algo = 'sm2';
+		const after = g.markers();
+		expect(after).not.toBe(before);
+		expect(cardMarkers(after)[0].marker.algorithm).toBe('sm2');
+		expect(cardMarkers(after)[0].marker.diffState).toBe('warning');
+	});
+
 	it('SM-2 ease drives the figure shown beside the badge', () => {
 		const g = setup(threeCards(), undefined, 'sm2');
 		g.statsByNid.set(NIDS[0], ankiCardStats({ noteId: NIDS[0], cardId: NIDS[0], ease: 1500 }));
@@ -490,21 +517,19 @@ describe('card gutter DOM', () => {
 		);
 	});
 
-	it('hover and click toggle is-hovered and is-active on its own editor only', () => {
+	it('hover toggles only is-hovered without stripping is-active', () => {
 		const { el, view } = dom({});
 		const row = { toggleClass: jest.fn() };
 		view.dom.querySelectorAll.mockReturnValue([row]);
 		el.listeners.mouseenter();
-		expect(row.toggleClass.mock.calls).toEqual([
-			['is-hovered', true],
-			['is-active', false],
-		]);
+		expect(row.toggleClass.mock.calls).toEqual([['is-hovered', true]]);
 		row.toggleClass.mockClear();
 		el.listeners.mouseleave();
-		expect(row.toggleClass.mock.calls).toEqual([
-			['is-hovered', false],
-			['is-active', false],
-		]);
+		expect(row.toggleClass.mock.calls).toEqual([['is-hovered', false]]);
+		row.toggleClass.mockClear();
+		el.listeners.click({ preventDefault: jest.fn(), stopPropagation: jest.fn() });
+		expect(row.toggleClass.mock.calls).toContainEqual(['is-active', true]);
+		expect(row.toggleClass.mock.calls).toContainEqual(['is-hovered', true]);
 	});
 });
 

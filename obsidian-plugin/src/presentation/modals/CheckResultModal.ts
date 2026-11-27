@@ -57,16 +57,19 @@ export class CheckResultModal extends Modal {
 
 			const body = table.createEl('tbody');
 			let fixable = false;
+			const errors = Array.isArray(this.result.errors) ? this.result.errors : [];
 
-			this.result.errors.forEach((err: any) => {
+			errors.forEach((err: any) => {
 				const tr = body.createEl('tr');
-				tr.createEl('td', { text: err.line.toString(), cls: 'arete-error-line' });
-				tr.createEl('td', { text: err.message, cls: 'arete-err-msg' });
+				const message = String(err?.message ?? '');
+				tr.createEl('td', { text: String(err?.line ?? '-'), cls: 'arete-error-line' });
+				tr.createEl('td', { text: message, cls: 'arete-err-msg' });
 
 				// Detect fixable errors
 				if (
-					err.message.includes('Tab Character Error') ||
-					err.message.includes("Missing 'cards' list")
+					err?.fixable === true ||
+					message.includes('Tab Character Error') ||
+					/missing 'cards' list/i.test(message)
 				) {
 					fixable = true;
 				}
@@ -83,7 +86,7 @@ export class CheckResultModal extends Modal {
 						await this.plugin.runFix(this.filePath);
 						this.close();
 						// Re-run check
-						this.plugin.runCheck(this.filePath);
+						await this.plugin.runCheck(this.filePath);
 					});
 			}
 

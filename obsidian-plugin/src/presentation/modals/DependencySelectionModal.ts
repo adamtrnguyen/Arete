@@ -1,5 +1,6 @@
 import {
 	App,
+	Keymap,
 	Modal,
 	TFile,
 	setIcon,
@@ -51,6 +52,7 @@ export class DependencySelectionModal extends Modal {
 	private searchInput: SearchComponent;
 
 	private _component = new Component();
+	private previewComponent: Component | null = null;
 	private previewTimer: ReturnType<typeof setTimeout> | null = null;
 	// Incremented per preview; a render that finds it changed has been superseded.
 	private previewRevision = 0;
@@ -112,6 +114,10 @@ export class DependencySelectionModal extends Modal {
 		contentEl.empty();
 		if (this.previewTimer) clearTimeout(this.previewTimer);
 		this.previewRevision++;
+		if (this.previewComponent) {
+			this._component.removeChild(this.previewComponent);
+			this.previewComponent = null;
+		}
 		this._component.unload(); // Unload the component
 	}
 
@@ -155,18 +161,19 @@ export class DependencySelectionModal extends Modal {
 
 		this.items = cards
 			.map((c: any) => {
-				if (!c.id) return null;
+				if (!c || typeof c !== 'object' || !c.id) return null;
 				// Clean up Front text for label (remove markdown for readability)
-				const rawFront = c.Front || c.Text || 'Untitled Card';
+				const rawFront = c.Front ?? c.Text ?? 'Untitled Card';
+				const frontStr = typeof rawFront === 'string' ? rawFront : String(rawFront);
 				// Simple strip of images/links for list view
-				const label = rawFront.replace(/!\[\[.*?\]\]/g, '[Image]').substring(0, 60);
+				const label = frontStr.replace(/!\[\[.*?\]\]/g, '[Image]').substring(0, 60);
 
 				return selectionItem({
 					type: 'card',
 					label: label,
-					description: c.id,
+					description: String(c.id),
 					value: c, // Card Object
-					id: c.id,
+					id: String(c.id),
 				});
 			})
 			.filter((i): i is SelectionItem => i !== null);
@@ -228,8 +235,8 @@ export class DependencySelectionModal extends Modal {
 				this.updateSelectionVisuals();
 				this.schedulePreview();
 			});
-			el.addEventListener('click', () => {
-				this.selectCurrent();
+			el.addEventListener('click', (evt) => {
+				this.selectCurrent(Boolean(Keymap.isModEvent(evt)));
 			});
 		});
 
@@ -285,6 +292,10 @@ export class DependencySelectionModal extends Modal {
 			if (!current()) return;
 		}
 
+		if (this.previewComponent) {
+			this._component.removeChild(this.previewComponent);
+			this.previewComponent = null;
+		}
 		this.previewContainer.empty();
 
 		if (!item) {
@@ -303,18 +314,21 @@ export class DependencySelectionModal extends Modal {
 			return;
 		}
 
+		const previewComp = this._component.addChild(new Component());
+		this.previewComponent = previewComp;
+
 		// Loading indicator
 		const contentEl = this.previewContainer.createDiv({ cls: 'arete-preview-content' });
 
 		if (item.type === 'file') {
 			const file = item.value as TFile;
-			// Render first 2000 chars to avoid lags on huge files
+			// Render first 3000 chars to avoid lags on huge files
 			await MarkdownRenderer.render(
 				this.app,
 				fileContent.substring(0, 3000),
 				contentEl,
 				file.path,
-				this._component,
+				previewComp,
 			);
 		} else if (item.type === 'card') {
 			const card = item.value; // Card Object
@@ -325,8 +339,13 @@ export class DependencySelectionModal extends Modal {
 				cardContainer,
 				card,
 				this.currentFile?.path || '',
-				this._component,
+				previewComp,
 			);
+		}
+
+		if (!current()) {
+			this._component.removeChild(previewComp);
+			if (this.previewComponent === previewComp) this.previewComponent = null;
 		}
 	}
 
@@ -342,11 +361,17 @@ export class DependencySelectionModal extends Modal {
 		if (this.mode === 'files') {
 			const file = item.value as TFile;
 
-			// A file always drills down into its cards, with or without forceDrillDown.
 			if (forceDrillDown) {
 				this.loadCards(file);
 			} else {
-				this.loadCards(file);
+				const matchingBasename = this.items.filter(
+					(i) =>
+						i.type === 'file' && (i.value as TFile | null)?.basename === file.basename,
+				);
+				const ref =
+					matchingBasename.length > 1 ? file.path.replace(/\.md$/, '') : file.basename;
+				this.resolve(ref);
+				this.close();
 			}
 		} else {
 			// Card mode

@@ -190,4 +190,13 @@ describe('LocalGraphView logging', () => {
 		expect(view.renderD3Graph).toHaveBeenCalled();
 		expect(log).not.toHaveBeenCalled();
 	});
+
+	it('releaseDrawing stops and clears an active D3 simulation', () => {
+		const { view } = setup();
+		const stop = jest.fn();
+		view.simulation = { stop };
+		view.releaseDrawing();
+		expect(stop).toHaveBeenCalledTimes(1);
+		expect(view.simulation).toBeNull();
+	});
 });

@@ -306,4 +306,76 @@ describe('GlobalGraphView search and resize', () => {
 		expect(resizeViewport).toHaveBeenCalledTimes(1);
 		expect(render).not.toHaveBeenCalled();
 	});
+
+	it('still registers ResizeObserver and css-change when initial loadData() fails', async () => {
+		const errSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+		const observe = jest.fn();
+		(global as any).ResizeObserver = class {
+			observe = observe;
+			disconnect() {}
+		};
+		const resolver = {
+			buildGraph: jest.fn().mockRejectedValue(new Error('cli failed')),
+			getGlobalGraph: jest.fn(),
+		};
+		const view: any = new GlobalGraphView({} as any, { dependencyResolver: resolver as any });
+		view.app = new (jest.requireMock('obsidian').App)();
+		view.registerEvent = jest.fn();
+		view.contentEl = createMockElement('div');
+
+		await view.onOpen();
+
+		expect(observe).toHaveBeenCalledTimes(1);
+		expect(view.registerEvent).toHaveBeenCalledTimes(1);
+		errSpy.mockRestore();
+	});
+
+	it('preserves filenames containing arrows and keeps requires/related edges separate in 2D and 3D', async () => {
+		const arrowGraph: GlobalGraphResult = {
+			files: [
+				{ path: 'A→B.md', basename: 'A→B', cardCount: 1, cardIds: ['c1'] },
+				{ path: 'C→D.md', basename: 'C→D', cardCount: 1, cardIds: ['c2'] },
+			],
+			cards: [card('c1', 'A→B.md'), card('c2', 'C→D.md')],
+			requiresEdges: [{ type: 'requires', fromId: 'c1', toId: 'c2' }],
+			relatedEdges: [{ type: 'related', fromId: 'c1', toId: 'c2' }],
+		};
+		const view: any = await makeView(arrowGraph);
+		view.showRelated = true;
+		view.graphContainer = createMockElement('div', { clientWidth: 400, clientHeight: 300 });
+		const renderD3 = jest.spyOn(view, 'renderD3').mockImplementation(() => undefined);
+
+		view.renderFileMode();
+		expect(renderD3.mock.calls[0][2]).toEqual([
+			{ source: 'A→B.md', target: 'C→D.md', edgeType: 'requires', weight: 1 },
+			{ source: 'A→B.md', target: 'C→D.md', edgeType: 'related', weight: 1 },
+		]);
+
+		view.renderFile3D();
+		expect(view.graph3D.graphData).toHaveBeenCalledWith(
+			expect.objectContaining({
+				links: [
+					{ source: 'A→B.md', target: 'C→D.md', type: 'requires', weight: 1 },
+					{ source: 'A→B.md', target: 'C→D.md', type: 'related', weight: 1 },
+				],
+			}),
+		);
+	});
+
+	it('passes 0-based eState.line to Obsidian openFile', async () => {
+		const { TFile } = jest.requireMock('obsidian');
+		const file = Object.assign(new TFile(), { path: 'A.md' });
+		const openFile = jest.fn().mockResolvedValue(undefined);
+		const view: any = await makeView(graph());
+		view.app = {
+			vault: { getAbstractFileByPath: jest.fn(() => file) },
+			workspace: { getLeaf: jest.fn(() => ({ openFile })) },
+		};
+
+		await view.openFileAtLine('A.md', 5);
+		expect(openFile).toHaveBeenCalledWith(file, { eState: { line: 4 } });
+
+		await view.openFileAtLine('A.md', 0);
+		expect(openFile).toHaveBeenCalledWith(file, { eState: { line: 0 } });
+	});
 });

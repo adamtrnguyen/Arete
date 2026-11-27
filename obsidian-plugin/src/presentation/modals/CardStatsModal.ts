@@ -14,11 +14,12 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 
 /** An SVG element with its class and attributes; styling lives in dashboard.css. */
 function svgEl(
+	doc: Document,
 	tag: string,
 	cls: string | null,
 	attrs: Record<string, string | number> = {},
 ): SVGElement {
-	const el = document.createElementNS(SVG_NS, tag);
+	const el = doc.createElementNS(SVG_NS, tag);
 	if (cls) el.setAttribute('class', cls);
 	for (const [name, value] of Object.entries(attrs)) el.setAttribute(name, String(value));
 	return el;
@@ -245,11 +246,12 @@ export class CardStatsModal extends Modal {
 		const optimalX = padding.left + (optimalInterval / maxDays) * graphWidth;
 
 		// Create SVG
-		const svg = svgEl('svg', 'arete-curve-svg', { width, height });
+		const doc = container.ownerDocument ?? document;
+		const svg = svgEl(doc, 'svg', 'arete-curve-svg', { width, height });
 
 		// Background
 		svg.appendChild(
-			svgEl('rect', 'arete-curve-bg', {
+			svgEl(doc, 'rect', 'arete-curve-bg', {
 				x: padding.left,
 				y: padding.top,
 				width: graphWidth,
@@ -261,7 +263,7 @@ export class CardStatsModal extends Modal {
 		// Target retention line
 		const targetY = padding.top + (1 - targetR) * graphHeight;
 		svg.appendChild(
-			svgEl('line', 'arete-curve-target', {
+			svgEl(doc, 'line', 'arete-curve-target', {
 				x1: padding.left,
 				y1: targetY,
 				x2: padding.left + graphWidth,
@@ -272,7 +274,7 @@ export class CardStatsModal extends Modal {
 		// Optimal interval vertical line
 		if (optimalX <= padding.left + graphWidth) {
 			svg.appendChild(
-				svgEl('line', 'arete-curve-optimal', {
+				svgEl(doc, 'line', 'arete-curve-optimal', {
 					x1: optimalX,
 					y1: padding.top,
 					x2: optimalX,
@@ -282,7 +284,7 @@ export class CardStatsModal extends Modal {
 		}
 
 		// Forgetting curve
-		svg.appendChild(svgEl('polyline', 'arete-curve-line', { points: points.join(' ') }));
+		svg.appendChild(svgEl(doc, 'polyline', 'arete-curve-line', { points: points.join(' ') }));
 
 		// Current retrievability point - calculate elapsed days from R
 		// Inverse of R(t) = (1 + t/(9*S))^(-1) -> t = 9*S * (R^(-1) - 1)
@@ -292,6 +294,7 @@ export class CardStatsModal extends Modal {
 		const currentY = padding.top + (1 - currentR) * graphHeight;
 		svg.appendChild(
 			svgEl(
+				doc,
 				'circle',
 				currentR >= targetR
 					? 'arete-curve-point mod-success'
@@ -304,7 +307,7 @@ export class CardStatsModal extends Modal {
 		const labels = [0, Math.round(maxDays / 2), Math.round(maxDays)];
 		labels.forEach((d) => {
 			const lx = padding.left + (d / maxDays) * graphWidth;
-			const text = svgEl('text', 'arete-curve-label', {
+			const text = svgEl(doc, 'text', 'arete-curve-label', {
 				x: lx,
 				y: height - 5,
 				'text-anchor': 'middle',
@@ -317,7 +320,7 @@ export class CardStatsModal extends Modal {
 		const yLabels = [100, 50, 0];
 		yLabels.forEach((p) => {
 			const ly = padding.top + (1 - p / 100) * graphHeight;
-			const text = svgEl('text', 'arete-curve-label', {
+			const text = svgEl(doc, 'text', 'arete-curve-label', {
 				x: padding.left - 5,
 				y: ly + 3,
 				'text-anchor': 'end',

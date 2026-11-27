@@ -197,4 +197,52 @@ describe('dependency graph invalidation', () => {
 		vaultHandlers.rename({ path: 'new-cards.md' }, 'old-cards.md');
 		expect(plugin.dependencyResolver.invalidate).toHaveBeenCalledTimes(1);
 	});
+
+	test('deleting or renaming a note cancels pending sync timers and cleans/migrates context and stats', async () => {
+		jest.useFakeTimers();
+		try {
+			const { plugin, vaultHandlers } = await setup({});
+			plugin.settings.sync_on_save = true;
+			plugin.settings.sync_on_save_delay = 1000;
+			(plugin.syncService.runSync as jest.Mock).mockResolvedValue('success');
+			plugin.setCardContext('A.md', 'arete_1');
+			plugin.statsService.getCache().concepts['A.md'] = {
+				filePath: 'A.md',
+				fileName: 'A.md',
+			} as any;
+
+			vaultHandlers.modify({ path: 'A.md' });
+			vaultHandlers.rename({ path: 'B.md', name: 'B.md' }, 'A.md');
+			await jest.advanceTimersByTimeAsync(2000);
+
+			expect(plugin.syncService.runSync).not.toHaveBeenCalled();
+			expect(plugin.getCardContext('A.md')).toBeUndefined();
+			expect(plugin.getCardContext('B.md')).toBe('arete_1');
+			expect(plugin.statsService.getCache().concepts['A.md']).toBeUndefined();
+			expect(plugin.statsService.getCache().concepts['B.md']?.filePath).toBe('B.md');
+
+			vaultHandlers.modify({ path: 'B.md' });
+			vaultHandlers.delete({ path: 'B.md' });
+			await jest.advanceTimersByTimeAsync(2000);
+
+			expect(plugin.syncService.runSync).not.toHaveBeenCalled();
+			expect(plugin.getCardContext('B.md')).toBeUndefined();
+			expect(plugin.statsService.getCache().concepts['B.md']).toBeUndefined();
+		} finally {
+			jest.useRealTimers();
+		}
+	});
+
+	test('onload stops early without registering commands if initialization fails', async () => {
+		const errSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+		const app = new App();
+		const plugin = new AretePlugin(app, { dir: 'd' } as any);
+		plugin.loadData = jest.fn().mockRejectedValue(new Error('corrupt data.json'));
+		const addCommand = jest.spyOn(plugin, 'addCommand');
+
+		await plugin.onload();
+
+		expect(addCommand).not.toHaveBeenCalled();
+		errSpy.mockRestore();
+	});
 });

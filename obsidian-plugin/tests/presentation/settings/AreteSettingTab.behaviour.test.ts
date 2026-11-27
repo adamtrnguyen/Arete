@@ -1,6 +1,7 @@
 import '../../test-setup';
-import { App, Setting, requestUrl } from 'obsidian';
+import { App, ButtonComponent, Setting, requestUrl } from 'obsidian';
 import { AreteSettingTab } from '@presentation/settings/SettingTab';
+import { ConfirmModal } from '@presentation/modals/ConfirmModal';
 import { DEFAULT_SETTINGS } from '@domain/settings';
 
 describe('AreteSettingTab: what each control writes and triggers', () => {
@@ -13,9 +14,19 @@ describe('AreteSettingTab: what each control writes and triggers', () => {
 		app = new App();
 		app.setting = { openTabById: jest.fn(), activeTab: null };
 		app.commands = { findCommand: jest.fn().mockReturnValue(null) };
+		let clearedCache: { concepts: Record<string, unknown>; lastFetched: number } = {
+			concepts: { 'A.md': {} },
+			lastFetched: 5,
+		};
 		plugin = {
 			settings: { ...DEFAULT_SETTINGS },
-			statsCache: { concepts: { 'A.md': {} }, lastFetched: 5 },
+			statsCache: clearedCache,
+			statsService: {
+				clearCache: jest.fn(() => {
+					clearedCache = { concepts: {}, lastFetched: 0 };
+				}),
+				getCache: jest.fn(() => clearedCache),
+			},
 			saveSettings: jest.fn().mockResolvedValue(undefined),
 			testConfig: jest.fn().mockResolvedValue(undefined),
 			testAnkiConnect: jest.fn().mockResolvedValue(undefined),
@@ -106,11 +117,14 @@ describe('AreteSettingTab: what each control writes and triggers', () => {
 			expect(plugin.templateRenderer.setMode).toHaveBeenCalledWith('anki');
 		});
 
-		it('sync on save and its delay', async () => {
-			plugin.settings.sync_on_save = true;
+		it('sync on save toggles re-render and updates its delay', async () => {
+			plugin.settings.sync_on_save = false;
 			render();
-			await byName('Sync on save').mockToggle._onChange(false);
-			expect(plugin.settings.sync_on_save).toBe(false);
+			expect(names()).not.toContain('Debounce delay (ms)');
+
+			await byName('Sync on save').mockToggle._onChange(true);
+			expect(plugin.settings.sync_on_save).toBe(true);
+			expect(names()).toContain('Debounce delay (ms)');
 
 			const slider = byName('Debounce delay (ms)').mockSlider;
 			expect(slider.setLimits).toHaveBeenCalledWith(500, 5000, 500);
@@ -131,11 +145,15 @@ describe('AreteSettingTab: what each control writes and triggers', () => {
 			expect(slider.setLimits).toHaveBeenCalledWith(1, 16, 1);
 		});
 
-		it('ease threshold is shown in percent and stored x10', async () => {
+		it('ease threshold is shown in percent, states Default: 210%, and stores x10', async () => {
 			plugin.settings.stats_algorithm = 'sm2';
 			plugin.settings.stats_ease_threshold = 2100;
 			render();
-			const slider = byName('Ease threshold (%)').mockSlider;
+			const easeSetting = byName('Ease threshold (%)');
+			expect(easeSetting.setDesc).toHaveBeenCalledWith(
+				expect.stringContaining('Default: 210%'),
+			);
+			const slider = easeSetting.mockSlider;
 			expect(slider.setValue).toHaveBeenCalledWith(210);
 			await slider._onChange(250);
 			expect(plugin.settings.stats_ease_threshold).toBe(2500);
@@ -166,6 +184,7 @@ describe('AreteSettingTab: what each control writes and triggers', () => {
 			await dropdown._onChange('fsrs');
 
 			expect(plugin.settings.stats_algorithm).toBe('fsrs');
+			expect(plugin.statsService.clearCache).toHaveBeenCalledTimes(1);
 			expect(plugin.statsCache).toEqual({ concepts: {}, lastFetched: 0 });
 			expect(plugin.saveSettings).toHaveBeenCalled();
 			expect(names()).toContain('Difficulty threshold (FSRS)');
@@ -188,30 +207,42 @@ describe('AreteSettingTab: what each control writes and triggers', () => {
 	describe('Clear all tags', () => {
 		beforeEach(() => {
 			plugin.settings.graph_coloring_enabled = true;
-		});
-		afterEach(() => {
-			delete (globalThis as any).confirm;
+			(ButtonComponent as any).instances.length = 0;
 		});
 
-		it('is styled as a warning and clears tags only after confirmation', async () => {
-			(globalThis as any).confirm = jest.fn().mockReturnValue(true);
+		it('is styled as a warning and clears tags only after ConfirmModal confirmation', async () => {
+			const openSpy = jest.spyOn(ConfirmModal.prototype, 'open').mockImplementation(function (
+				this: ConfirmModal,
+			) {
+				this.onOpen();
+			});
 			render();
 			const button = byName('Clear all tags').mockButton;
 			expect(button.setWarning).toHaveBeenCalled();
 
-			await button._onClick();
+			const pending = button._onClick();
+			const confirmBtn = (ButtonComponent as any).instances[1];
+			confirmBtn.clickHandler();
+			await pending;
 
-			expect((globalThis as any).confirm).toHaveBeenCalledWith(
-				'Are you sure you want to remove all retention tags?',
-			);
 			expect(plugin.graphService.clearAllTags).toHaveBeenCalledTimes(1);
+			openSpy.mockRestore();
 		});
 
-		it('does nothing when the user declines', async () => {
-			(globalThis as any).confirm = jest.fn().mockReturnValue(false);
+		it('does nothing when the user cancels ConfirmModal', async () => {
+			const openSpy = jest.spyOn(ConfirmModal.prototype, 'open').mockImplementation(function (
+				this: ConfirmModal,
+			) {
+				this.onOpen();
+			});
 			render();
-			await byName('Clear all tags').mockButton._onClick();
+			const pending = byName('Clear all tags').mockButton._onClick();
+			const cancelBtn = (ButtonComponent as any).instances[0];
+			cancelBtn.clickHandler();
+			await pending;
+
 			expect(plugin.graphService.clearAllTags).not.toHaveBeenCalled();
+			openSpy.mockRestore();
 		});
 	});
 

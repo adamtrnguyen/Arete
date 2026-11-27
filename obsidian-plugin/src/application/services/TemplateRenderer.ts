@@ -12,8 +12,9 @@ interface ModelData {
 export class TemplateRenderer {
 	private repo: AnkiModelSource;
 	private cache: Map<string, ModelData> = new Map();
+	private cacheEpoch = 0;
 	private pendingModels = new Map<string, Promise<void>>();
-	private static modelLoadQueue: Promise<void> = Promise.resolve();
+	private static queues = new WeakMap<AnkiModelSource, Promise<void>>();
 	private app: App;
 	private mode: 'obsidian' | 'anki' = 'obsidian';
 
@@ -28,7 +29,9 @@ export class TemplateRenderer {
 
 	/** Forget the loaded note types, so the next render fetches them from Anki again. */
 	clearModelCache(): void {
+		this.cacheEpoch++;
 		this.cache.clear();
+		this.pendingModels.clear();
 	}
 
 	/**
@@ -70,20 +73,33 @@ export class TemplateRenderer {
 		derived: Record<string, string>,
 	): string {
 		return tmpl.replace(
-			/\{\{\s*(cloze|type|text):\s*([^}]+?)\s*\}\}/g,
-			(_match, kind: string, field: string) => {
-				const value = fields[field] ?? '';
-				const key = `__${kind}_${side}_${field}`.replace(/\W/g, '_');
-				if (kind === 'cloze') {
-					derived[key] = renderCloze(value, clozeOrdinals(value)[0] ?? 1, side);
-				} else if (kind === 'type') {
-					derived[key] =
-						side === 'Front'
-							? '<span class="arete-type-answer" style="display:inline-block;min-width:10em;padding:2px 8px;border:1px solid #999;border-radius:4px;color:#888">type answer</span>'
-							: value;
-				} else {
-					derived[key] = value;
+			/\{\{\s*((?:(?:cloze|type|text|hint):\s*)+)([^}]+?)\s*\}\}/g,
+			(_match, rawChain: string, field: string) => {
+				const filters = rawChain
+					.split(':')
+					.map((f) => f.trim())
+					.filter(Boolean);
+				const key = `__${filters.join('_')}_${side}_${field}`.replace(/\W/g, '_');
+				let value = fields[field] ?? '';
+				// Apply filters right-to-left (innermost first), matching Anki.
+				for (let i = filters.length - 1; i >= 0; i--) {
+					const kind = filters[i];
+					if (kind === 'cloze') {
+						value = renderCloze(value, clozeOrdinals(value)[0] ?? 1, side);
+					} else if (kind === 'type') {
+						value =
+							side === 'Front'
+								? '<span class="arete-type-answer" style="display:inline-block;min-width:10em;padding:2px 8px;border:1px solid #999;border-radius:4px;color:#888">type answer</span>'
+								: value;
+					} else if (kind === 'hint') {
+						value = value
+							? `<details class="arete-hint"><summary>${field}</summary>${value}</details>`
+							: '';
+					} else if (kind === 'text') {
+						value = value.replace(/<[^>]*>/g, '');
+					}
 				}
+				derived[key] = value;
 				return `{{${key}}}`;
 			},
 		);
@@ -99,19 +115,28 @@ export class TemplateRenderer {
 		const pending = this.pendingModels.get(modelName);
 		if (pending) return pending;
 
-		// Each CLI request can open the same Anki collection. Serialize across
-		// models and renderer instances, and share concurrent requests per model.
-		const load = TemplateRenderer.modelLoadQueue.then(async () => {
+		const epoch = this.cacheEpoch;
+		// Each CLI request can open the same Anki collection. Serialize per repository
+		// so renderers targeting the same backend do not contend, without leaking globally.
+		const previous = TemplateRenderer.queues.get(this.repo) ?? Promise.resolve();
+		const load = previous.then(async () => {
 			try {
 				const css = await this.repo.modelStyling(modelName);
 				const templates = await this.repo.modelTemplates(modelName);
-				this.cache.set(modelName, { css, templates });
+				if (epoch === this.cacheEpoch) {
+					this.cache.set(modelName, { css, templates });
+				}
 			} finally {
-				this.pendingModels.delete(modelName);
+				if (this.pendingModels.get(modelName) === load) {
+					this.pendingModels.delete(modelName);
+				}
 			}
 		});
 		this.pendingModels.set(modelName, load);
-		TemplateRenderer.modelLoadQueue = load.catch((): void => undefined);
+		TemplateRenderer.queues.set(
+			this.repo,
+			load.catch((): void => undefined),
+		);
 		return load;
 	}
 
@@ -211,9 +236,9 @@ export class TemplateRenderer {
 
 		// Helper to force unescaped variables in template
 		const makeUnescaped = (tmpl: string) => {
-			// Replace {{Var}} with {{{Var}}} to prevent escaping HTML
-			// Avoids {{#Section}}, {{/Section}}, {{^Invert}}, {{&Unescaped}}, {{{Triple}}}
-			return tmpl.replace(/\{\{(?!\{|#|\^|\/|&)(.+?)\}\}/g, '{{{$1}}}');
+			// Replace {{Var}} with {{{Var}}} to prevent escaping HTML.
+			// Leaves sections (#/^//), unescaped (&/{{{), comments (!), partials (>), and delimiters (=) untouched.
+			return tmpl.replace(/\{\{(?!\{|#|\^|\/|&|!|>|=)(.+?)\}\}/g, '{{{$1}}}');
 		};
 
 		if (templateType === 'Back' && frontTemplate) {

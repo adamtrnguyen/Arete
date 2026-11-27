@@ -57,8 +57,10 @@ export class DashboardView extends ItemView {
 	// Overview State
 	expandedConcepts: Set<string>;
 	expandedDecks: Set<string>;
-	// Deck tree for one stats-cache `concepts` map; rebuilt only when the map is replaced.
-	private aggregated: { concepts: object; root: StatsNode } | null = null;
+	// Deck tree for one stats-cache `concepts` map and threshold snapshot.
+	private aggregated: { concepts: object; thresholds: string; root: StatsNode } | null = null;
+	// Incremented each time Queue Builder renders or view closes to discard stale deck loads.
+	private queueBuilderRevision = 0;
 	// Integrity State
 	brokenRefs: BrokenReference[] | null = null;
 	isScanning = false;
@@ -95,6 +97,20 @@ export class DashboardView extends ItemView {
 			}
 		}
 		this.render();
+	}
+
+	async onClose() {
+		this.queueBuilderRevision++;
+	}
+
+	private thresholdSnapshot(): string {
+		const s = this.plugin.settings;
+		return JSON.stringify([
+			s.stats_algorithm,
+			s.stats_lapse_threshold,
+			s.stats_difficulty_threshold,
+			s.stats_ease_threshold,
+		]);
 	}
 
 	async render() {
@@ -215,9 +231,13 @@ export class DashboardView extends ItemView {
 		}
 
 		// Use the service to get the pre-calculated tree
-		if (this.aggregated?.concepts !== conceptsMap) {
+		const thresholds = this.thresholdSnapshot();
+		if (
+			this.aggregated?.concepts !== conceptsMap ||
+			this.aggregated.thresholds !== thresholds
+		) {
 			const root = this.plugin.statsService.getAggregatedStats(concepts);
-			this.aggregated = { concepts: conceptsMap, root };
+			this.aggregated = { concepts: conceptsMap, thresholds, root };
 		}
 		const root = this.aggregated.root;
 
@@ -310,8 +330,11 @@ export class DashboardView extends ItemView {
 			}
 			this.persistExpansion();
 
-			// Stats refreshed since the tree was built: rebuild it all with the new numbers.
-			if (this.aggregated?.concepts !== this.plugin.statsService.getCache().concepts) {
+			// Stats or thresholds changed since the tree was built: rebuild with the new numbers.
+			if (
+				this.aggregated?.concepts !== this.plugin.statsService.getCache().concepts ||
+				this.aggregated.thresholds !== this.thresholdSnapshot()
+			) {
 				const overviewContainer = container.closest(
 					'.arete-dashboard-content',
 				) as HTMLElement | null;
@@ -389,7 +412,7 @@ export class DashboardView extends ItemView {
 
 					cRow.onclick = (e) => {
 						e.stopPropagation();
-						if (card.front) this.goToCard(concept.filePath, card.front);
+						if (card.front) this.goToCard(concept.filePath, card.front, card.noteId);
 					};
 
 					try {
@@ -404,7 +427,8 @@ export class DashboardView extends ItemView {
 
 						qSpan.onclick = (e) => {
 							e.stopPropagation();
-							if (card.front) this.goToCard(concept.filePath, card.front);
+							if (card.front)
+								this.goToCard(concept.filePath, card.front, card.noteId);
 						};
 
 						// --- Stats Group (Click for Modal) ---
@@ -428,15 +452,17 @@ export class DashboardView extends ItemView {
 						// 1. Difficulty, stored 0..1; scale only to display it
 						col(
 							'difficulty',
-							card.difficulty ? difficultyOutOfTen(card.difficulty).toFixed(1) : '-',
-							card.difficulty ? flagClass(states.difficulty) : null,
+							card.difficulty != null
+								? difficultyOutOfTen(card.difficulty).toFixed(1)
+								: '-',
+							card.difficulty != null ? flagClass(states.difficulty) : null,
 						);
 
 						// 2. Stability
 						col(
 							'stability',
-							card.stability ? card.stability.toFixed(0) : '-',
-							card.stability ? flagClass(states.stability) : null,
+							card.stability != null ? card.stability.toFixed(0) : '-',
+							card.stability != null ? flagClass(states.stability) : null,
 						);
 
 						// 3. Interval growth: green unless it is below the cut-off
@@ -453,10 +479,10 @@ export class DashboardView extends ItemView {
 						// 4. Retrievability
 						col(
 							'retrievability',
-							card.retrievability
+							card.retrievability != null
 								? `${(card.retrievability * 100).toFixed(0)}%`
 								: '-',
-							card.retrievability ? flagClass(states.retrievability) : null,
+							card.retrievability != null ? flagClass(states.retrievability) : null,
 						);
 
 						// 5. Lapses
@@ -504,7 +530,7 @@ export class DashboardView extends ItemView {
 			const frontDiv = cellFront.createDiv({ cls: 'arete-leech-front arete-clickable' });
 			frontDiv.textContent = leech.front.replace(/<[^>]*>?/gm, '');
 			setTooltip(frontDiv, leech.front);
-			frontDiv.onclick = () => this.goToCard(leech.filePath, leech.front);
+			frontDiv.onclick = () => this.goToCard(leech.filePath, leech.front, leech.noteId);
 
 			const states = metricStates(
 				{ lapses: leech.lapses, difficulty: leech.difficulty, ease: leech.ease },
@@ -661,6 +687,7 @@ export class DashboardView extends ItemView {
 	// --- 4. QUEUE BUILDER TAB ---
 	renderQueueBuilder(container: HTMLElement) {
 		container.empty();
+		const revision = ++this.queueBuilderRevision;
 
 		// Header
 		container.createEl('h3', { text: 'Queue builder' });
@@ -678,10 +705,17 @@ export class DashboardView extends ItemView {
 		const deckSelect = deckRow.createEl('select', { cls: 'dropdown arete-queue-field' });
 		deckSelect.createEl('option', { value: '', text: 'All decks' });
 
-		// Load decks async
-		this.plugin.areteClient.getDeckNames().then((decks) => {
-			decks.forEach((d) => deckSelect.createEl('option', { value: d, text: d }));
-		});
+		// Load decks async, ignoring responses after the tab rerendered or closed.
+		this.plugin.areteClient
+			.getDeckNames()
+			.then((decks) => {
+				if (revision !== this.queueBuilderRevision) return;
+				if ((deckSelect as { isConnected?: boolean }).isConnected === false) return;
+				decks.forEach((d) => deckSelect.createEl('option', { value: d, text: d }));
+			})
+			.catch((e) => {
+				console.error('[Arete] Failed to load deck names:', e);
+			});
 
 		// Depth control
 		const depthRow = controls.createDiv({ cls: 'setting-item' });
@@ -735,10 +769,18 @@ export class DashboardView extends ItemView {
 				const sendBtn = new ButtonComponent(resultsArea).setButtonText('Send to Anki');
 				sendBtn.buttonEl.addClass('arete-queue-send');
 				sendBtn.onClick(async () => {
-					const ok = await this.plugin.areteClient.createQueueDeck(
-						result.queue.map((c) => c.id),
-					);
-					new Notice(ok ? 'Queue sent to Anki.' : 'Failed to create deck.');
+					sendBtn.setButtonText('Sending...').setDisabled(true);
+					try {
+						const ok = await this.plugin.areteClient.createQueueDeck(
+							result.queue.map((c) => c.id),
+						);
+						new Notice(ok ? 'Queue sent to Anki.' : 'Failed to create deck.');
+					} catch (e) {
+						console.error('[Arete] Failed to send queue to Anki:', e);
+						new Notice('Failed to create deck.');
+					} finally {
+						sendBtn.setButtonText('Send to Anki').setDisabled(false);
+					}
 				});
 
 				// Queue list
@@ -788,21 +830,57 @@ export class DashboardView extends ItemView {
 		if (file instanceof TFile) await this.app.workspace.getLeaf().openFile(file);
 	}
 
-	async goToCard(filePath: string, frontText: string) {
+	async goToCard(filePath: string, frontText: string, noteId?: number) {
 		await this.openFile(filePath);
 		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
 		if (view) {
 			const editor = view.editor;
 			const content = editor.getValue();
-			// Normalize newlines and spaces for robust matching
-			const cleanFront = frontText.trim().replace(/\s+/g, ' ');
-			const index = content.indexOf(cleanFront.split(' ')[0]); // Try finding first token
+			const index = this.findCardOffset(content, frontText, noteId);
 			if (index >= 0) {
 				const pos = editor.offsetToPos(index);
 				editor.setCursor(pos);
 				editor.scrollIntoView({ from: pos, to: pos }, true);
 			}
 		}
+	}
+
+	private findCardOffset(content: string, frontText: string, noteId?: number): number {
+		const cleanFront = frontText.trim().replace(/\s+/g, ' ');
+		if (cleanFront) {
+			// 1. Exact full normalized match across line breaks / indentation
+			const escapedTokens = cleanFront
+				.split(' ')
+				.map((tok) => tok.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+			const fullRegex = new RegExp(escapedTokens.join('\\s+'));
+			const fullMatch = fullRegex.exec(content);
+			if (fullMatch) return fullMatch.index;
+
+			// 2. First non-empty line trimmed
+			const firstLine = frontText
+				.split(/\r?\n/)
+				.map((line) => line.trim())
+				.find(Boolean);
+			if (firstLine) {
+				const lineIdx = content.indexOf(firstLine);
+				if (lineIdx >= 0) return lineIdx;
+			}
+		}
+
+		// 3. Fallback to Anki note ID if present in frontmatter
+		if (noteId != null) {
+			const nidIdx = content.indexOf(String(noteId));
+			if (nidIdx >= 0) return nidIdx;
+		}
+
+		// 4. Last resort: first distinctive token
+		if (cleanFront) {
+			const firstToken = cleanFront.split(' ')[0];
+			if (firstToken) {
+				return content.indexOf(firstToken);
+			}
+		}
+		return -1;
 	}
 
 	async goToIssue(file: TFile, searchText: string) {

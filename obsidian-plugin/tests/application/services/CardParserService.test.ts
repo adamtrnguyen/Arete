@@ -65,6 +65,29 @@ cards:
 		expect(result.ranges.length).toBe(1);
 		expect(result.ranges[0].nid).toBeNull();
 	});
+
+	it('parses bare-dash card entries and ignores indented nested cards: keys', () => {
+		const bareDashYaml = [
+			'---',
+			'meta:',
+			'  cards:',
+			'    - not_a_card: true',
+			'cards:',
+			'  -',
+			'    Front: First',
+			'    anki:',
+			'      nid: 111',
+			'  -',
+			'    Front: Second',
+			'    anki:',
+			'      nid: 222',
+			'---',
+		].join('\n');
+		const result = CardParserService.parseCards(bareDashYaml);
+		expect(result.ranges).toHaveLength(2);
+		expect(result.ranges[0]).toMatchObject({ startLine: 5, endLine: 8, nid: 111 });
+		expect(result.ranges[1]).toMatchObject({ startLine: 9, endLine: 12, nid: 222 });
+	});
 });
 
 describe('CardParserService.noCardsResult', () => {
@@ -90,9 +113,8 @@ describe('CardParserService.noCardsResult', () => {
 		expect(expectAgrees(text)).toBeNull();
 	});
 
-	it('needs the full parse for a cards key anywhere parseCards looks', () => {
+	it('needs the full parse for a top-level cards key anywhere parseCards looks', () => {
 		for (const text of [
-			'---\ntags:\n  - a\n  cards:\n    - Front: q\n---\n',
 			'---\ncards: []\n---\n',
 			'# No frontmatter\ncards:\n  - Front: q\n',
 			'---\nunclosed: true\ncards:\n  - Front: q\n',
@@ -101,13 +123,14 @@ describe('CardParserService.noCardsResult', () => {
 		}
 	});
 
-	it('answers without parsing when parseCards cannot find a cards key', () => {
+	it('answers without parsing when parseCards cannot find a top-level cards key', () => {
 		for (const text of [
 			'',
 			'---',
 			'---\n---',
 			'plain text',
 			'---\ntitle: x\n---\n# Body\n',
+			'---\ntags:\n  - a\n  cards:\n    - Front: q\n---\n',
 			'---\ntitle: x\n---\ncards:\n  - Front: in the body, after the frontmatter\n',
 			'cards:\n  - Front: on line 0, which parseCards skips\n',
 		]) {

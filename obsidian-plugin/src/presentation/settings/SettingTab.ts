@@ -1,15 +1,18 @@
 import { App, Plugin, PluginSettingTab, Setting } from 'obsidian';
 import { CheckResultHost, CheckResultModal } from '@presentation/modals/CheckResultModal';
+import { ConfirmModal } from '@presentation/modals/ConfirmModal';
 import { AretePluginSettings } from '@/domain/settings';
 import { StatsCache } from '@/domain/stats';
 import { TemplateRenderer } from '@application/services/TemplateRenderer';
 import { GraphService } from '@application/services/GraphService';
+import { StatsService } from '@application/services/StatsService';
 
 /** What the settings tab needs from the plugin (main.ts satisfies it; no import of main). */
 export type SettingsHost = Plugin &
 	CheckResultHost & {
 		settings: AretePluginSettings;
 		statsCache: StatsCache;
+		statsService?: Pick<StatsService, 'clearCache' | 'getCache'>;
 		templateRenderer: TemplateRenderer;
 		graphService: GraphService;
 		saveSettings(): Promise<void>;
@@ -87,6 +90,7 @@ export class AreteSettingTab extends PluginSettingTab {
 				toggle.setValue(this.plugin.settings.sync_on_save).onChange(async (value) => {
 					this.plugin.settings.sync_on_save = value;
 					await this.plugin.saveSettings();
+					this.display();
 				}),
 			);
 
@@ -219,7 +223,12 @@ export class AreteSettingTab extends PluginSettingTab {
 					.setValue(this.plugin.settings.stats_algorithm)
 					.onChange(async (value: 'sm2' | 'fsrs') => {
 						this.plugin.settings.stats_algorithm = value;
-						this.plugin.statsCache = { concepts: {}, lastFetched: 0 };
+						if (this.plugin.statsService) {
+							this.plugin.statsService.clearCache();
+							this.plugin.statsCache = this.plugin.statsService.getCache();
+						} else {
+							this.plugin.statsCache = { concepts: {}, lastFetched: 0 };
+						}
 						await this.plugin.saveSettings();
 						this.display(); // Re-render to show algorithm-specific options
 					}),
@@ -242,7 +251,7 @@ export class AreteSettingTab extends PluginSettingTab {
 		if (this.plugin.settings.stats_algorithm === 'sm2') {
 			new Setting(containerEl)
 				.setName('Ease threshold (%)')
-				.setDesc('Cards with ease below this are in "ease hell". Default: 250%')
+				.setDesc('Cards with ease below this are in "ease hell". Default: 210%')
 				.addSlider((slider) =>
 					slider
 						.setLimits(130, 300, 10)
@@ -308,7 +317,12 @@ export class AreteSettingTab extends PluginSettingTab {
 						.setButtonText('Clear tags')
 						.setWarning()
 						.onClick(async () => {
-							if (confirm('Are you sure you want to remove all retention tags?')) {
+							const confirmed = await new ConfirmModal(this.app, {
+								title: 'Clear retention tags',
+								message: 'Remove all Arete retention tags from your vault?',
+								confirmText: 'Clear tags',
+							}).ask();
+							if (confirmed) {
 								await this.plugin.graphService.clearAllTags();
 							}
 						}),

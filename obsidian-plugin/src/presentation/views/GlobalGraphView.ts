@@ -91,6 +91,8 @@ export class GlobalGraphView extends ItemView {
 	private static readonly ZOOM_TO_FIT_MS = 400;
 	/** Class of a file node's name label, the text the search dims. */
 	private static readonly FILE_LABEL_CLASS = 'arete-global-graph-node-label';
+	private static nextMarkerId = 1;
+	private readonly arrowId = `arete-global-arrow-${GlobalGraphView.nextMarkerId++}`;
 	private searchTimer: ReturnType<typeof setTimeout> | null = null;
 	private resizeTimer: ReturnType<typeof setTimeout> | null = null;
 	/** The current 2D drawing's elements the search restyles; null when none is drawn. */
@@ -141,9 +143,14 @@ export class GlobalGraphView extends ItemView {
 		this.detailPanel = body.createDiv({ cls: 'arete-global-graph-detail' });
 		this.renderDetailEmpty();
 
-		// Load and render
-		await this.loadData();
-		this.render();
+		// Load and render (never let load failure skip ResizeObserver or css-change registration)
+		try {
+			await this.loadData();
+			this.render();
+		} catch (e) {
+			console.error('[Arete] Failed to load global graph:', e);
+			this.renderEmpty(`Could not load the graph: ${(e as Error).message}`);
+		}
 
 		// Follow the canvas size. A render while hidden measures 0x0 and draws nothing, so
 		// the first non-zero size renders; later sizes only resize the drawing (debounced),
@@ -181,8 +188,13 @@ export class GlobalGraphView extends ItemView {
 		setIcon(refreshBtn, 'refresh-cw');
 		setTooltip(refreshBtn, 'Rebuild graph');
 		refreshBtn.addEventListener('click', async () => {
-			await this.loadData(true);
-			this.render();
+			try {
+				await this.loadData(true);
+				this.render();
+			} catch (e) {
+				console.error('[Arete] Failed to rebuild global graph:', e);
+				this.renderEmpty(`Could not load the graph: ${(e as Error).message}`);
+			}
 		});
 
 		// Search
@@ -327,8 +339,8 @@ export class GlobalGraphView extends ItemView {
 	// --- File Mode (2D) ---
 
 	private renderFileMode(): void {
-		this.graphContainer.empty();
 		this.stopSimulation();
+		this.graphContainer.empty();
 		if (!this.graphData) return;
 
 		const { files, cards, requiresEdges, relatedEdges } = this.graphData;
@@ -353,36 +365,35 @@ export class GlobalGraphView extends ItemView {
 			type: 'file' as const,
 		}));
 
-		// Aggregate edges at file level
-		const fileEdgeMap = new Map<string, { type: 'requires' | 'related'; weight: number }>();
+		// Aggregate edges at file level (keyed safely so any filename character works)
+		const fileEdgeMap = new Map<
+			string,
+			{ source: string; target: string; type: 'requires' | 'related'; weight: number }
+		>();
 		const addFileEdge = (edges: DependencyEdge[], type: 'requires' | 'related') => {
 			if (type === 'related' && !this.showRelated) return;
 			for (const e of edges) {
 				const fromFile = cardToFile.get(e.fromId);
 				const toFile = cardToFile.get(e.toId);
 				if (!fromFile || !toFile || fromFile === toFile) continue;
-				const key = `${fromFile}→${toFile}→${type}`;
+				const key = JSON.stringify([fromFile, toFile, type]);
 				const existing = fileEdgeMap.get(key);
 				if (existing) {
 					existing.weight++;
 				} else {
-					fileEdgeMap.set(key, { type, weight: 1 });
+					fileEdgeMap.set(key, { source: fromFile, target: toFile, type, weight: 1 });
 				}
 			}
 		};
 		addFileEdge(requiresEdges, 'requires');
 		addFileEdge(relatedEdges, 'related');
 
-		const fileLinks: GlobalLink[] = [];
-		for (const [key, val] of fileEdgeMap) {
-			const [source, target] = key.split('→');
-			fileLinks.push({
-				source,
-				target,
-				edgeType: val.type,
-				weight: val.weight,
-			});
-		}
+		const fileLinks: GlobalLink[] = Array.from(fileEdgeMap.values()).map((val) => ({
+			source: val.source,
+			target: val.target,
+			edgeType: val.type,
+			weight: val.weight,
+		}));
 
 		this.renderD3(this.graphContainer, fileNodes, fileLinks);
 	}
@@ -390,8 +401,8 @@ export class GlobalGraphView extends ItemView {
 	// --- Card Mode (2D) ---
 
 	private renderCardMode(): void {
-		this.graphContainer.empty();
 		this.stopSimulation();
+		this.graphContainer.empty();
 		if (!this.graphData) return;
 
 		const { cards, requiresEdges, relatedEdges } = this.graphData;
@@ -483,7 +494,7 @@ export class GlobalGraphView extends ItemView {
 		// Arrow marker
 		svg.append('defs')
 			.append('marker')
-			.attr('id', 'global-arrow')
+			.attr('id', this.arrowId)
 			.attr('viewBox', '0 -5 10 10')
 			.attr('refX', 20)
 			.attr('refY', 0)
@@ -552,7 +563,9 @@ export class GlobalGraphView extends ItemView {
 				if (isFileMode) return Math.min(1 + d.weight * 0.5, 6);
 				return d.edgeType === 'requires' ? 1.5 : 0.8;
 			})
-			.attr('marker-end', (d) => (d.edgeType === 'requires' ? 'url(#global-arrow)' : null));
+			.attr('marker-end', (d) =>
+				d.edgeType === 'requires' ? `url(#${this.arrowId})` : null,
+			);
 
 		// Drag
 		const dragBehavior = d3
@@ -769,8 +782,8 @@ export class GlobalGraphView extends ItemView {
 	// --- 3D Rendering ---
 
 	private renderFile3D(): void {
-		this.graphContainer.empty();
 		this.stopSimulation();
+		this.graphContainer.empty();
 		if (!this.graphData) return;
 
 		const { files, cards, requiresEdges, relatedEdges } = this.graphData;
@@ -792,18 +805,21 @@ export class GlobalGraphView extends ItemView {
 			cardToFile.set(card.id, card.filePath);
 		}
 
-		// Aggregate edges
-		const fileEdgeMap = new Map<string, { type: string; weight: number }>();
-		const addEdge = (edges: DependencyEdge[], type: string) => {
+		// Aggregate edges preserving edge type and safely handling any filename character
+		const fileEdgeMap = new Map<
+			string,
+			{ source: string; target: string; type: 'requires' | 'related'; weight: number }
+		>();
+		const addEdge = (edges: DependencyEdge[], type: 'requires' | 'related') => {
 			if (type === 'related' && !this.showRelated) return;
 			for (const e of edges) {
 				const fromFile = cardToFile.get(e.fromId);
 				const toFile = cardToFile.get(e.toId);
 				if (!fromFile || !toFile || fromFile === toFile) continue;
-				const key = `${fromFile}→${toFile}`;
+				const key = JSON.stringify([fromFile, toFile, type]);
 				const existing = fileEdgeMap.get(key);
 				if (existing) existing.weight++;
-				else fileEdgeMap.set(key, { type, weight: 1 });
+				else fileEdgeMap.set(key, { source: fromFile, target: toFile, type, weight: 1 });
 			}
 		};
 		addEdge(requiresEdges, 'requires');
@@ -816,10 +832,7 @@ export class GlobalGraphView extends ItemView {
 				cardCount: f.cardCount,
 				val: Math.max(1, Math.sqrt(f.cardCount)),
 			})),
-			links: Array.from(fileEdgeMap.entries()).map(([key, val]) => {
-				const [source, target] = key.split('→');
-				return { source, target, type: val.type, weight: val.weight };
-			}),
+			links: Array.from(fileEdgeMap.values()),
 		};
 
 		if (this.graph3D) {
@@ -879,8 +892,8 @@ export class GlobalGraphView extends ItemView {
 	}
 
 	private renderCard3D(): void {
-		this.graphContainer.empty();
 		this.stopSimulation();
+		this.graphContainer.empty();
 		if (!this.graphData) return;
 
 		const { cards, requiresEdges, relatedEdges } = this.graphData;
@@ -1352,7 +1365,7 @@ export class GlobalGraphView extends ItemView {
 		if (file instanceof TFile) {
 			const leaf = this.app.workspace.getLeaf();
 			await leaf.openFile(file, {
-				eState: { line: lineNumber },
+				eState: { line: Math.max(0, lineNumber - 1) },
 			});
 		}
 	}

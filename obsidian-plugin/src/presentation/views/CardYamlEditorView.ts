@@ -23,6 +23,7 @@ import { CardStatsModal } from '@/presentation/modals/CardStatsModal';
 import { DependencyField } from '@/presentation/components/DependencyField';
 import { CardRenderer } from '@/presentation/renderers/CardRenderer';
 import { renderCardPreviewFrame } from '@/presentation/renderers/CardPreviewFrame';
+import { cardRangesField } from '@/presentation/extensions/CardGutterExtension';
 import { AretePluginSettings } from '@/domain/settings';
 import { StatsService } from '@application/services/StatsService';
 import { TemplateRenderer } from '@application/services/TemplateRenderer';
@@ -390,12 +391,14 @@ export class CardYamlEditorView extends ItemView {
 
 		const activeFile = this.app.workspace.getActiveFile();
 		const card = this.cards[this.currentCardIndex];
+		const cid = card?.['anki']?.['cid'];
 		const nid = card?.['anki']?.['nid'];
 
-		if (activeFile && nid) {
+		if (activeFile && (cid || nid)) {
 			const cache = this.plugin.statsService.getCache().concepts[activeFile.path];
-			if (cache && cache.cardStats && cache.cardStats[nid]) {
-				const stats = cache.cardStats[nid];
+			const stats =
+				(cid && cache?.cardStats?.[cid]) || (nid && cache?.cardStats?.[nid]) || null;
+			if (stats) {
 				const statsContainer = leftGroup.createDiv({ cls: 'arete-toolbar-stats' });
 				const algo = this.plugin.settings.stats_algorithm;
 				// The same cut-offs as the gutter, dashboard and card stats modal.
@@ -496,15 +499,15 @@ export class CardYamlEditorView extends ItemView {
 		this.addToolbarButton(
 			centerGroup,
 			'bar-chart-2',
-			nid ? 'View card stats' : 'Card not synced (no NID)',
+			cid || nid ? 'View card stats' : 'Card not synced (no NID)',
 			() => {
-				if (!nid) {
+				if (!cid && !nid) {
 					new Notice('Card not synced to Anki yet (no NID).');
 					return;
 				}
-				debugLog('[Arete] Opening stats modal for NID:', nid);
+				debugLog('[Arete] Opening stats modal for card:', cid ?? nid);
 				const activeFile = this.app.workspace.getActiveFile();
-				if (activeFile && nid) {
+				if (activeFile && (cid || nid)) {
 					const cache = this.plugin.statsService.getCache();
 					const conceptStats = cache.concepts[activeFile.path];
 					if (!conceptStats) {
@@ -512,7 +515,9 @@ export class CardYamlEditorView extends ItemView {
 						return;
 					}
 
-					const cardStats = conceptStats.cardStats?.[nid];
+					const cardStats =
+						(cid && conceptStats.cardStats?.[cid]) ||
+						(nid && conceptStats.cardStats?.[nid]);
 
 					if (cardStats) {
 						new CardStatsModal(this.app, cardStats, this.plugin.settings).open();
@@ -521,7 +526,7 @@ export class CardYamlEditorView extends ItemView {
 					}
 				}
 			},
-			{ disabled: !nid },
+			{ disabled: !cid && !nid },
 		);
 		this.addToolbarButton(centerGroup, 'share-2', 'Open local graph', () => {
 			const current = this.cards[this.currentCardIndex];
@@ -940,34 +945,15 @@ export class CardYamlEditorView extends ItemView {
 		const leaf = this.app.workspace.getMostRecentLeaf();
 		if (leaf && leaf.view instanceof MarkdownView) {
 			const editor = leaf.view.editor;
-			const content = editor.getValue();
-			const lines = content.split('\n');
+			const cm = (editor as unknown as { cm?: EditorView }).cm;
+			const range = cm?.state
+				?.field(cardRangesField, false)
+				?.ranges.find((r) => r.index === index);
+			if (!range) return;
 
-			let cardCount = 0;
-			let targetLine = -1;
-
-			for (let i = 0; i < lines.length; i++) {
-				if (lines[i].includes('cards:')) {
-					for (let j = i + 1; j < lines.length; j++) {
-						if (lines[j].trim().startsWith('-')) {
-							if (cardCount === index) {
-								targetLine = j;
-								break;
-							}
-							cardCount++;
-						}
-					}
-					break;
-				}
-			}
-
-			if (targetLine !== -1) {
-				editor.setCursor({ line: targetLine, ch: 0 });
-				editor.scrollIntoView(
-					{ from: { line: targetLine, ch: 0 }, to: { line: targetLine, ch: 0 } },
-					true,
-				);
-			}
+			const pos = { line: range.startLine, ch: 0 };
+			editor.setCursor(pos);
+			editor.scrollIntoView({ from: pos, to: pos }, true);
 		}
 	}
 

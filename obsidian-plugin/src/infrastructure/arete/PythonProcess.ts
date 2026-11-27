@@ -49,7 +49,7 @@ export function resolvePythonCommand(
 ): PythonCommand {
 	const win = process.platform === 'win32';
 	const p = win ? path.win32 : path.posix;
-	const pythonSetting = settings.python_path || 'python3';
+	const pythonSetting = (settings.python_path || '').trim() || 'python3';
 	const projectRoot = settings.project_root || '';
 
 	const parts = splitCommand(pythonSetting);
@@ -87,6 +87,9 @@ export function resolvePythonCommand(
 			'/opt/homebrew/bin',
 			'/usr/local/bin',
 		);
+	} else if (process.platform === 'linux' && process.env.HOME) {
+		const home = process.env.HOME;
+		extraPaths.push(p.join(home, '.local', 'bin'), p.join(home, '.cargo', 'bin'));
 	} else if (win && process.env.USERPROFILE) {
 		extraPaths.push(p.join(process.env.USERPROFILE, '.local', 'bin'));
 	}
@@ -122,17 +125,25 @@ export function vaultBasePath(app: App): string {
  * names the vault, not the file's folder, as its root (in `_obsidian_source`, in
  * `obsidian://` links and for media lookup).
  */
+/** Default kill timeout for short CLI commands (60 s). Pass 0 to disable. */
+export const DEFAULT_PROCESS_TIMEOUT_MS = 60_000;
+
 export class AreteProcesses {
 	private live = new Set<ChildProcess>();
+	private timers = new Map<ChildProcess, ReturnType<typeof setTimeout>>();
 	private closed = false;
 
-	constructor(private readonly vaultRoot: string) {}
+	constructor(
+		private readonly vaultRoot: string,
+		private readonly defaultTimeoutMs: number = DEFAULT_PROCESS_TIMEOUT_MS,
+	) {}
 
 	/** Start `arete <args>` as `command` resolves it (interpreter, cwd, env). */
 	spawn(
 		command: PythonCommand,
 		args: string[],
 		env: Record<string, string | undefined> = command.env,
+		timeoutMs: number = this.defaultTimeoutMs,
 	): ChildProcess {
 		if (this.closed) throw new Error('Arete is unloading; the command was not started.');
 		if (process.platform === 'win32' && /\.(cmd|bat)$/i.test(command.cmd)) {
@@ -148,14 +159,32 @@ export class AreteProcesses {
 		// chunks would otherwise become two replacement characters. The CLI prints UTF-8.
 		child.stdout?.setEncoding('utf8');
 		child.stderr?.setEncoding('utf8');
-		return this.track(child);
+		return this.track(child, timeoutMs);
 	}
 
 	/** Watch a process started elsewhere until it exits. */
-	track(child: ChildProcess): ChildProcess {
+	track(child: ChildProcess, timeoutMs = 0): ChildProcess {
 		this.live.add(child);
-		child.once('close', () => this.live.delete(child));
-		child.once('error', () => this.live.delete(child));
+		const cleanup = () => {
+			this.live.delete(child);
+			const timer = this.timers.get(child);
+			if (timer) {
+				clearTimeout(timer);
+				this.timers.delete(child);
+			}
+		};
+		child.once('close', cleanup);
+		child.once('error', cleanup);
+		if (timeoutMs > 0) {
+			const timer = setTimeout(() => {
+				this.timers.delete(child);
+				if (this.live.has(child)) {
+					child.kill();
+				}
+			}, timeoutMs);
+			timer.unref?.();
+			this.timers.set(child, timer);
+		}
 		return child;
 	}
 
@@ -166,6 +195,8 @@ export class AreteProcesses {
 
 	killAll(): void {
 		this.closed = true;
+		for (const timer of this.timers.values()) clearTimeout(timer);
+		this.timers.clear();
 		for (const child of this.live) child.kill();
 		this.live.clear();
 	}

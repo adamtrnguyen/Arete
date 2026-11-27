@@ -115,4 +115,43 @@ describe('DependencyResolver', () => {
 		await r.buildGraph();
 		expect(r.getLocalGraph('arete_A')!.cycles).toEqual([['arete_A', 'arete_M']]);
 	});
+
+	it('ignores a stale fetch that finishes or rejects after invalidate()', async () => {
+		let resolveFirst!: (g: GraphExport) => void;
+		let rejectSecond!: (e: Error) => void;
+		const src = source();
+		(src.fetchGraph as jest.Mock)
+			.mockImplementationOnce(() => new Promise<GraphExport>((res) => (resolveFirst = res)))
+			.mockResolvedValueOnce({
+				...GRAPH,
+				nodes: [{ id: 'fresh', title: 'Fresh', file: 'Fresh.md', line: 1 }],
+				requires: [],
+				related: [],
+			})
+			.mockImplementationOnce(
+				() => new Promise<GraphExport>((_res, rej) => (rejectSecond = rej)),
+			)
+			.mockResolvedValueOnce(GRAPH);
+
+		const r = new DependencyResolver(src, '/vault');
+		const first = r.buildGraph();
+		r.invalidate();
+		const second = r.buildGraph();
+		await second;
+		// Stale first fetch completes after second: must not overwrite fresh graph.
+		resolveFirst(GRAPH);
+		await first;
+		expect(r.getGlobalGraph().cards.map((c) => c.id)).toEqual(['fresh']);
+
+		// Stale rejection after invalidate + newer fetch must not clear `loaded`.
+		r.invalidate();
+		const third = r.buildGraph();
+		r.invalidate();
+		const fourth = r.buildGraph();
+		await fourth;
+		rejectSecond(new Error('stale failure'));
+		await expect(third).rejects.toThrow('stale failure');
+		await r.buildGraph();
+		expect(src.fetchGraph).toHaveBeenCalledTimes(4);
+	});
 });

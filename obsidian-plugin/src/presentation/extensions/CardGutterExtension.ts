@@ -49,7 +49,8 @@ class SkipToBottomMarker extends GutterMarker {
 	}
 
 	toDOM() {
-		const marker = document.createElement('div');
+		const doc = this.view.dom?.ownerDocument ?? document;
+		const marker = doc.createElement('div');
 		marker.className = 'arete-skip-button';
 		setIcon(marker, 'arrow-down');
 		setTooltip(marker, 'Skip to end of frontmatter');
@@ -73,8 +74,13 @@ class SkipToBottomMarker extends GutterMarker {
 }
 
 /** A difficulty or lapse figure. `ok` shows green only for difficulty. */
-function statSpan(text: string, state: MetricState, okIsSuccess: boolean): HTMLElement {
-	const span = document.createElement('span');
+function statSpan(
+	doc: Document,
+	text: string,
+	state: MetricState,
+	okIsSuccess: boolean,
+): HTMLElement {
+	const span = doc.createElement('span');
 	span.className = 'arete-gutter-stat';
 	span.textContent = text;
 	const flag = flagClass(state);
@@ -147,7 +153,8 @@ class CardGutterMarker extends GutterMarker {
 	}
 
 	toDOM(view: EditorView) {
-		const marker = document.createElement('div');
+		const doc = view.dom?.ownerDocument ?? document;
+		const marker = doc.createElement('div');
 		marker.className = 'arete-gutter-marker';
 		marker.dataset.cardIndex = String(this.index);
 
@@ -166,47 +173,57 @@ class CardGutterMarker extends GutterMarker {
 		if (visuals.tooltip) setTooltip(marker, visuals.tooltip);
 
 		if (this.isStart) {
-			const infoContainer = document.createElement('div');
+			const infoContainer = doc.createElement('div');
 			infoContainer.className = 'arete-gutter-info-container';
 
 			// Index Badge
-			const badge = document.createElement('span');
+			const badge = doc.createElement('span');
 			badge.className = 'arete-gutter-badge';
 			badge.textContent = String(this.index + 1);
 			infoContainer.appendChild(badge);
 
 			// Stats (Difficulty / Lapses)
 			if (visuals.diffText) {
-				infoContainer.appendChild(statSpan(visuals.diffText, this.diffState, true));
+				infoContainer.appendChild(statSpan(doc, visuals.diffText, this.diffState, true));
 			}
 
 			if (visuals.lapseText) {
-				infoContainer.appendChild(statSpan(visuals.lapseText, this.lapseState, false));
+				infoContainer.appendChild(statSpan(doc, visuals.lapseText, this.lapseState, false));
 			}
 
 			marker.appendChild(infoContainer);
 		}
 
 		// The bar draws in the marker's state colour (see gutter.css).
-		const bar = document.createElement('div');
+		const bar = doc.createElement('div');
 		bar.className = 'arete-gutter-bar';
 		marker.appendChild(bar);
 
-		// Update every line of this card in this editor. Another pane, even one showing a
-		// different note, has markers with the same card index; it is left alone.
-		const setCardState = (hover: boolean, active: boolean) => {
+		// Update every line of this card in this editor without touching other panes.
+		// Hover and active are separate classes so moving the pointer never clears selection.
+		const setCardHover = (hover: boolean) => {
 			view.dom
 				.querySelectorAll<HTMLElement>(
 					`.arete-gutter-marker[data-card-index="${this.index}"]`,
 				)
 				.forEach((el) => {
 					el.toggleClass('is-hovered', hover);
-					el.toggleClass('is-active', active);
 				});
 		};
 
-		marker.addEventListener('mouseenter', () => setCardState(true, false));
-		marker.addEventListener('mouseleave', () => setCardState(false, false));
+		const setCardActive = () => {
+			view.dom
+				.querySelectorAll<HTMLElement>('.arete-gutter-marker.is-active')
+				.forEach((el) => el.toggleClass('is-active', false));
+			view.dom
+				.querySelectorAll<HTMLElement>(
+					`.arete-gutter-marker[data-card-index="${this.index}"]`,
+				)
+				.forEach((el) => el.toggleClass('is-active', true));
+		};
+
+		marker.addEventListener('mouseenter', () => setCardHover(true));
+		marker.addEventListener('mouseleave', () => setCardHover(false));
 
 		marker.addEventListener('click', (e) => {
 			e.preventDefault();
@@ -219,10 +236,8 @@ class CardGutterMarker extends GutterMarker {
 					: `card ${this.index + 1}, no stats`,
 			);
 
-			view.dom
-				.querySelectorAll<HTMLElement>('.arete-gutter-marker.is-active')
-				.forEach((el) => el.toggleClass('is-active', false));
-			setCardState(true, true);
+			setCardActive();
+			setCardHover(true);
 			this.onClick();
 		});
 
@@ -317,15 +332,12 @@ export function createCardGutter(
 		cid: number | null,
 		view: EditorView,
 	) => AnkiCardStats | null = () => null,
-	algorithm: 'fsrs' | 'sm2' = 'fsrs',
-	// The cut-offs the state colours use, read on every call so a settings change shows at
-	// the next rebuild. The default is the settings default.
-	getThresholds: () => Omit<CardStateSettings, 'stats_algorithm'> = () => DEFAULT_SETTINGS,
+	// Algorithm and cut-offs are read on every call so settings changes take effect live.
+	getSettings: () => CardStateSettings = () => DEFAULT_SETTINGS,
 ) {
 	// CodeMirror calls `markers` on every view update (cursor move, scroll, focus,
-	// keystroke). The marker set is rebuilt only when the parse result or a card's stats
-	// object changed; otherwise the previous set is returned and CodeMirror skips the
-	// gutter DOM. One entry per editor view, since the extension is shared by all editors.
+	// keystroke). The marker set is rebuilt only when the parse result, a card's stats
+	// object, or card-health settings changed; otherwise the previous set is returned.
 	const cache = new WeakMap<
 		EditorView,
 		{
@@ -348,13 +360,14 @@ export function createCardGutter(
 				const cardStats = result.ranges.map((range) =>
 					range.nid || range.cid ? getCardStats(range.nid, range.cid, view) : null,
 				);
-				const t = getThresholds();
+				const t = getSettings();
 				const cached = cache.get(view);
 				if (
 					cached &&
 					cached.result === result &&
 					cached.stats.length === cardStats.length &&
 					cached.stats.every((s, i) => s === cardStats[i]) &&
+					cached.thresholds.stats_algorithm === t.stats_algorithm &&
 					cached.thresholds.stats_lapse_threshold === t.stats_lapse_threshold &&
 					cached.thresholds.stats_difficulty_threshold === t.stats_difficulty_threshold &&
 					cached.thresholds.stats_ease_threshold === t.stats_ease_threshold
@@ -362,7 +375,7 @@ export function createCardGutter(
 					return cached.markers;
 				}
 				const thresholds: CardStateSettings = {
-					stats_algorithm: algorithm,
+					stats_algorithm: t.stats_algorithm,
 					stats_lapse_threshold: t.stats_lapse_threshold,
 					stats_difficulty_threshold: t.stats_difficulty_threshold,
 					stats_ease_threshold: t.stats_ease_threshold,
@@ -402,7 +415,7 @@ export function createCardGutter(
 								lineIndex,
 								totalLines,
 								stats,
-								algorithm,
+								thresholds.stats_algorithm,
 								isSynced,
 								state,
 								() => onCardClick(range.index),

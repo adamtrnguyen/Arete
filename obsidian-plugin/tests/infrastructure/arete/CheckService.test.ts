@@ -84,9 +84,7 @@ describe('CheckService', () => {
 		mockChild.emit('close', null, 'SIGTERM');
 
 		expect(mockChild.kill).toHaveBeenCalledTimes(1);
-		await expect(promise).rejects.toThrow(
-			'arete vault check printed something other than JSON',
-		);
+		await expect(promise).rejects.toThrow('arete vault check was stopped (SIGTERM).');
 	});
 
 	test('runFix spawns vault fix command (success)', async () => {
@@ -106,14 +104,31 @@ describe('CheckService', () => {
 	});
 
 	test('runFix spawns vault fix command (failure)', async () => {
+		const errSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
 		const mockChild = createMockChildProcess();
 		(spawn as jest.Mock).mockReturnValue(mockChild);
 
 		const promise = service.runFix('test.md');
+		mockChild.stderr.emit('data', 'fix crashed');
 		mockChild.emit('close', 1);
 		await promise;
 
 		expect(Notice).toHaveBeenCalledWith('Fix failed, check the developer console.');
+		expect(errSpy).toHaveBeenCalledWith('[Arete] Fix failed:', 'fix crashed');
+		errSpy.mockRestore();
+	});
+
+	test('runFix resolves cleanly on spawn error instead of hanging', async () => {
+		const errSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+		const mockChild = createMockChildProcess();
+		(spawn as jest.Mock).mockReturnValue(mockChild);
+
+		const promise = service.runFix('test.md');
+		mockChild.emit('error', new Error('ENOENT'));
+		await promise;
+
+		expect(Notice).toHaveBeenCalledWith('Fix failed, check the developer console.');
+		errSpy.mockRestore();
 	});
 
 	test('testConfig runs the resolved command with --help, without a shell', async () => {

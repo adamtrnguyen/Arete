@@ -92,6 +92,8 @@ export default class AretePlugin extends Plugin {
 
 	// Returns the status bar to idle after a successful sync.
 	private statusBarResetTimer: ReturnType<typeof setTimeout> | null = null;
+	// Active waitForParse cleanup callbacks so timers/refs do not outlive plugin unload.
+	private parseWaitCleanups: Set<() => void> = new Set();
 
 	async onload() {
 		setDebugLogSwitch(() => this.settings?.debug_mode === true);
@@ -143,6 +145,7 @@ export default class AretePlugin extends Plugin {
 		} catch (e) {
 			console.error('[Arete] Failed to initialize plugin services:', e);
 			new Notice('Arete failed to initialize, check the developer console for details.');
+			return;
 		}
 
 		// 1. Status Bar Setup
@@ -349,7 +352,6 @@ export default class AretePlugin extends Plugin {
 
 					return null;
 				},
-				this.settings.stats_algorithm,
 				() => this.settings,
 			),
 		);
@@ -370,7 +372,38 @@ export default class AretePlugin extends Plugin {
 			}),
 		);
 		this.registerEvent(
+			this.app.vault.on('delete', (file) => {
+				const pending = this.syncOnSaveTimers.get(file.path);
+				if (pending) {
+					clearTimeout(pending);
+					this.syncOnSaveTimers.delete(file.path);
+				}
+				this.activeCardContext.delete(file.path);
+				const concepts = this.statsService?.getCache().concepts;
+				if (concepts && file.path in concepts) {
+					delete concepts[file.path];
+				}
+			}),
+		);
+		this.registerEvent(
 			this.app.vault.on('rename', (file, oldPath) => {
+				const pending = this.syncOnSaveTimers.get(oldPath);
+				if (pending) {
+					clearTimeout(pending);
+					this.syncOnSaveTimers.delete(oldPath);
+				}
+				const rememberedCard = this.activeCardContext.get(oldPath);
+				if (rememberedCard !== undefined) {
+					this.activeCardContext.delete(oldPath);
+					this.activeCardContext.set(file.path, rememberedCard);
+				}
+				const concepts = this.statsService?.getCache().concepts;
+				if (concepts && oldPath in concepts) {
+					const moved = { ...concepts[oldPath], filePath: file.path };
+					if (file instanceof TFile) moved.fileName = file.name;
+					concepts[file.path] = moved;
+					delete concepts[oldPath];
+				}
 				if (!file.path.endsWith('.md') && !oldPath.endsWith('.md')) return;
 				if (mayAffectGraph(this.app.metadataCache.getFileCache(file as TFile))) {
 					this.dependencyResolver?.invalidate();
@@ -506,7 +539,11 @@ export default class AretePlugin extends Plugin {
 	private waitForParse(file: TFile, timeoutMs = PARSE_WAIT_MS): Promise<void> {
 		if (this.app.metadataCache.getFileCache(file)?.frontmatter) return Promise.resolve();
 		return new Promise((resolve) => {
+			let settled = false;
 			const done = () => {
+				if (settled) return;
+				settled = true;
+				this.parseWaitCleanups.delete(done);
 				this.app.metadataCache.offref(ref);
 				clearTimeout(timer);
 				resolve();
@@ -515,6 +552,7 @@ export default class AretePlugin extends Plugin {
 				if (changed.path === file.path) done();
 			});
 			const timer = setTimeout(done, timeoutMs);
+			this.parseWaitCleanups.add(done);
 		});
 	}
 
@@ -570,6 +608,8 @@ export default class AretePlugin extends Plugin {
 		if (this.statusBarResetTimer) clearTimeout(this.statusBarResetTimer);
 		for (const timer of this.syncOnSaveTimers.values()) clearTimeout(timer);
 		this.syncOnSaveTimers.clear();
+		for (const cleanup of [...this.parseWaitCleanups]) cleanup();
+		this.parseWaitCleanups.clear();
 		if (this.uiStateSaveTimer) void this.flushUiState();
 		if (this.statusBarItem) {
 			this.statusBarItem.empty();
@@ -742,8 +782,9 @@ export default class AretePlugin extends Plugin {
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, known);
 		this.statsCache = data?.statsCache;
 		const home = os.homedir();
-		if (this.settings.project_root.startsWith('~')) {
-			this.settings.project_root = this.settings.project_root.replace('~', home);
+		const root = this.settings.project_root;
+		if (root === '~' || root.startsWith('~/') || root.startsWith('~\\')) {
+			this.settings.project_root = home + root.slice(1);
 		}
 		this.savedUiState = this.uiStateKey();
 	}
@@ -752,8 +793,9 @@ export default class AretePlugin extends Plugin {
 	private dataToSave() {
 		const toSave = { ...this.settings, statsCache: this.statsCache };
 		const home = os.homedir();
-		if (toSave.project_root.startsWith(home)) {
-			toSave.project_root = toSave.project_root.replace(home, '~');
+		const root = toSave.project_root;
+		if (root === home || root.startsWith(`${home}/`) || root.startsWith(`${home}\\`)) {
+			toSave.project_root = `~${root.slice(home.length)}`;
 		}
 		return toSave;
 	}

@@ -102,6 +102,9 @@ interface ProcessResult {
 	spawnError?: Error;
 }
 
+/** Generous timeout for a full-vault sync (10 minutes). */
+const SYNC_TIMEOUT_MS = 10 * 60_000;
+
 export class SyncService {
 	app: App;
 	settings: AretePluginSettings;
@@ -114,7 +117,7 @@ export class SyncService {
 		this.app = app;
 		this.settings = settings;
 		this.pluginManifest = manifest;
-		this.processes = new AreteProcesses(vaultBasePath(app));
+		this.processes = new AreteProcesses(vaultBasePath(app), SYNC_TIMEOUT_MS);
 	}
 
 	/**

@@ -45,20 +45,33 @@ describe('LinkCheckerService', () => {
 			expect(service.getBrokenReferences(file)).toHaveLength(0);
 		});
 
-		test('scans YAML cards for broken embeds', () => {
+		test('scans all non-reserved card string fields and strips #subpath before lookup', () => {
 			const file = { path: 'test.md' } as TFile;
 			(app.metadataCache.getFileCache as jest.Mock).mockReturnValue({
 				frontmatter: {
 					arete: true,
-					cards: [{ Front: '![[broken-img]]', Back: 'Valid content' }],
+					cards: [
+						{
+							Front: '![[broken-img]]',
+							Back: 'Valid content',
+							Hint: '![[custom-field.png#heading]] and ![[#local-only]]',
+							tags: '![[ignored-reserved.png]]',
+						},
+					],
 				},
 			});
-			(app.metadataCache.getFirstLinkpathDest as jest.Mock).mockReturnValue(null);
+			(app.metadataCache.getFirstLinkpathDest as jest.Mock).mockImplementation((p: string) =>
+				p === 'custom-field.png' ? { path: 'custom-field.png' } : null,
+			);
 
 			const broken = service.getBrokenReferences(file);
 			expect(broken).toHaveLength(1);
 			expect(broken[0].linkPath).toBe('broken-img');
 			expect(broken[0].type).toBe('image');
+			expect(app.metadataCache.getFirstLinkpathDest).toHaveBeenCalledWith(
+				'custom-field.png',
+				'test.md',
+			);
 		});
 
 		test('scans standard body embeds for images', () => {
@@ -92,11 +105,20 @@ describe('LinkCheckerService', () => {
 			expect(result?.linkText).toBe('EMPTY YAML');
 		});
 
+		test('ignores leading blank line before --- and horizontal rules without closing ---', async () => {
+			(app.metadataCache.getFileCache as jest.Mock).mockReturnValue({});
+			((app.vault as any).cachedRead as jest.Mock).mockResolvedValue('\n---\nkey: val\n---');
+			expect(await service.getInvalidFrontmatter({ path: 'hr1.md' } as TFile)).toBeNull();
+
+			((app.vault as any).cachedRead as jest.Mock).mockResolvedValue('---\n# Heading');
+			expect(await service.getInvalidFrontmatter({ path: 'hr2.md' } as TFile)).toBeNull();
+		});
+
 		test('detects invalid YAML and uses CLI for reason', async () => {
 			const file = { path: 'invalid.md' } as TFile;
 			(app.metadataCache.getFileCache as jest.Mock).mockReturnValue({});
 			((app.vault as any).cachedRead as jest.Mock).mockResolvedValue(
-				'---\ninvalid: [unclosed',
+				'\uFEFF---\ninvalid: [unclosed\n---',
 			);
 			((app.vault.adapter as any).getBasePath as jest.Mock).mockReturnValue('/mock/vault');
 			plugin.checkService.getCheckResult.mockResolvedValue({
@@ -112,7 +134,9 @@ describe('LinkCheckerService', () => {
 		test('handles CLI check failure gracefully', async () => {
 			const file = { path: 'invalid.md' } as TFile;
 			(app.metadataCache.getFileCache as jest.Mock).mockReturnValue({});
-			((app.vault as any).cachedRead as jest.Mock).mockResolvedValue('---\ninvalid: yaml');
+			((app.vault as any).cachedRead as jest.Mock).mockResolvedValue(
+				'---\ninvalid: yaml\n---',
+			);
 			plugin.checkService.getCheckResult.mockRejectedValue(new Error('CLI error'));
 
 			const result = await service.getInvalidFrontmatter(file);
@@ -158,7 +182,7 @@ describe('LinkCheckerService', () => {
 			const files = Array.from({ length: 10 }, (_, i) => note(`n${i}.md`));
 			(app.vault.getMarkdownFiles as jest.Mock).mockReturnValue(files);
 			(app.metadataCache.getFileCache as jest.Mock).mockReturnValue({});
-			((app.vault as any).cachedRead as jest.Mock).mockResolvedValue('---\nbad: [');
+			((app.vault as any).cachedRead as jest.Mock).mockResolvedValue('---\nbad: [\n---');
 			let inFlight = 0;
 			let peak = 0;
 			plugin.checkService.getCheckResult.mockImplementation(async (p: string) => {

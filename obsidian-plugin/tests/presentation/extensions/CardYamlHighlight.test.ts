@@ -174,4 +174,15 @@ describe('highlight decorations', () => {
 		expect(e.highlight.decorations.size).toBe(before.size);
 		expect(e.highlight.decorations.size).toBeGreaterThan(0);
 	});
+
+	it('maps cloze {{c0::...}} to a valid 1..4 class', () => {
+		const e = editor(noteYaml({ cards: [card({ Front: '{{c0::zero}}' })] }));
+		const classes: string[] = [];
+		for (const it = e.highlight.decorations.iter(); it.value; it.next()) {
+			const cls = (it.value as any).spec?.class;
+			if (cls) classes.push(cls);
+		}
+		expect(classes).toContain('arete-yaml-cloze arete-yaml-cloze-4');
+		expect(classes.join(' ')).not.toContain('arete-yaml-cloze-0');
+	});
 });
