@@ -15,12 +15,16 @@ from arete.application.sync.id_writeback import (
 )
 from arete.application.utils.common import sanitize
 from arete.application.utils.fs import iter_markdown_files, read_text_and_newline, replace_text
-from arete.application.utils.text import parse_frontmatter, rebuild_markdown_with_frontmatter
+from arete.application.utils.text import (
+    frontmatter_slice,
+    parse_frontmatter,
+    rebuild_markdown_with_frontmatter,
+)
 from arete.domain.interfaces import ContentCache
 from arete.domain.models import UpdateItem
 
 # _quick_check_file reasons for an Arete file whose cards (and nids) could not be read.
-UNREADABLE_REASONS = ("read_error", "no_or_bad_yaml", "no_deck")
+UNREADABLE_REASONS = ("read_error", "no_or_bad_yaml")
 
 # Stat-cache meta for a file whose text is not an Arete note. The entry matches only the
 # mtime and size it was read at, so any edit (one that adds `arete:` included) misses it
@@ -142,16 +146,25 @@ class VaultService:
         except Exception as e:
             return (False, 0, f"read_error:{e}", None, True)
 
-        # Only parse files that could be Arete notes; the parse below decides. The marker
-        # can sit after a long cards block, so the whole text is searched, not a prefix.
-        if "arete:" not in text:
+        # Inspect frontmatter only (never prose body) so a plain note mentioning `arete:`
+        # in body text is never misclassified as broken YAML.
+        fm = frontmatter_slice(text)
+        if fm == "":
+            self._not_arete.append((md_file, mtime, size))
+            return (False, 0, "not_arete_file", None, True)
+        if fm is None:
+            if "arete" in text or "\\" in text:
+                return (False, 0, "no_or_bad_yaml", None, True)
+            self._not_arete.append((md_file, mtime, size))
+            return (False, 0, "not_arete_file", None, True)
+        if "arete" not in fm and "\\" not in fm:
             self._not_arete.append((md_file, mtime, size))
             return (False, 0, "not_arete_file", None, True)
 
         meta, _body = self.parse(md_file, text)
-        if not meta or "__yaml_error__" in meta:
+        if "__yaml_error__" in meta:
             return (False, 0, "no_or_bad_yaml", None, True)
-        if meta.get("arete") is not True:
+        if not meta or meta.get("arete") is not True:
             self._not_arete.append((md_file, mtime, size))
             return (False, 0, "not_arete_file", None, True)
 
@@ -255,7 +268,7 @@ class VaultService:
         edits = [
             CardIds(i, id=generate_arete_id())
             for i, card in enumerate(cards if isinstance(cards, list) else [])
-            if isinstance(card, dict) and "id" not in card
+            if isinstance(card, dict) and not sanitize(card.get("id", "")).strip()
         ]
         result = write_card_ids(text, edits)
         if result.refused or result.text == text:

@@ -150,267 +150,286 @@ async def run_pipeline(
     logger.debug("Compatible files:")
     for c in compatible:
         logger.debug(f"  - {c[0]} (fresh={c[2]})")
+
+    for bad_path, why in vault_service.unreadable:
+        logger.error(f"[vault-error] {bad_path}: unreadable Arete file ({why})")
+        recorder.add_error(bad_path, f"unreadable Arete file ({why})")
+
+    updates: list[UpdateItem] = []
+    unparsed_files: list[Path] = []
+    scanned = VaultClaims()
+
     if not compatible:
         logger.info("No compatible markdown files found.")
-        return RunStats(0, 0, 0)
+    else:
+        failed_files: set[Path] = set()  # a card here did not reach Anki; do not mark it synced
 
-    failed_files: set[Path] = set()  # a card here did not reach Anki; do not mark it synced
-
-    # -------- Stage 1.5: ensure all cards have Arete IDs --------
-    ids_total = 0
-    # A file whose new ids could not be written: none of its cards is sent, because Anki
-    # would receive ids the vault does not hold. Its declared nids stay in the inventory.
-    unwritten_ids: set[Path] = set()
-    updated_compatible: list[tuple[Path, dict[str, Any], bool]] = []
-    for path, meta, is_fresh in compatible:
-        if not any(isinstance(c, dict) and "id" not in c for c in meta.get("cards") or []):
-            updated_compatible.append((path, meta, is_fresh))
-            continue
-        # Each new id is one inserted line; the downstream stages see the meta it gives.
-        problems: list[tuple[str, str | None]] = []
-        assigned, new_meta = 0, meta
-        try:
-            assigned, new_meta, refused = vault_service.assign_ids(path, dry_run=config.dry_run)
-            problems = [
-                (f"could not write new Arete ids: {why}; the file is unchanged", f"#{i + 1}")
-                for i, why in refused.items()
-            ]
-        except Exception as e:
-            problems = [(f"could not write new Arete ids: {e}", None)]
-        if problems:
-            logger.error(f"[id-error] {path}: {problems[0][0]}. Not syncing this file.")
-            for msg, where in problems:
-                recorder.add_error(path, msg, where)
-            failed_files.add(path)
-            unwritten_ids.add(path)
-            recorder.add_inventory(
-                [
-                    {"nid": nid, "deck": None}
-                    for c in meta.get("cards") or []
-                    if isinstance(c, dict) and (nid := parser._extract_raw_nid(c))
+        # -------- Stage 1.5: ensure all cards have Arete IDs --------
+        ids_total = 0
+        # A file whose new ids could not be written: none of its cards is sent, because Anki
+        # would receive ids the vault does not hold. Its declared nids stay in the inventory.
+        unwritten_ids: set[Path] = set()
+        updated_compatible: list[tuple[Path, dict[str, Any], bool]] = []
+        for path, meta, is_fresh in compatible:
+            if not any(
+                isinstance(c, dict) and not parser.declared_id(c) for c in meta.get("cards") or []
+            ):
+                updated_compatible.append((path, meta, is_fresh))
+                continue
+            # Each new id is one inserted line; the downstream stages see the meta it gives.
+            problems: list[tuple[str, str | None]] = []
+            assigned, new_meta = 0, meta
+            try:
+                assigned, new_meta, refused = vault_service.assign_ids(path, dry_run=config.dry_run)
+                problems = [
+                    (f"could not write new Arete ids: {why}; the file is unchanged", f"#{i + 1}")
+                    for i, why in refused.items()
                 ]
-            )
-            updated_compatible.append((path, meta, is_fresh))
-            continue
-        if assigned:
-            ids_total += assigned
-            verb = "would assign" if config.dry_run else "Assigned"
-            logger.info(f"[id] {verb} {assigned} new IDs in {path.name}")
-        updated_compatible.append((path, new_meta, True))
-    compatible = updated_compatible
-    if ids_total > 0:
-        logger.info(f"[id] Assigned {ids_total} new Arete IDs across vault")
+            except Exception as e:
+                problems = [(f"could not write new Arete ids: {e}", None)]
+            if problems:
+                logger.error(f"[id-error] {path}: {problems[0][0]}. Not syncing this file.")
+                for msg, where in problems:
+                    recorder.add_error(path, msg, where)
+                failed_files.add(path)
+                unwritten_ids.add(path)
+                recorder.add_inventory(
+                    [
+                        {"nid": nid, "deck": None}
+                        for c in meta.get("cards") or []
+                        if isinstance(c, dict) and (nid := parser._extract_raw_nid(c))
+                    ]
+                )
+                updated_compatible.append((path, meta, is_fresh))
+                continue
+            if assigned:
+                ids_total += assigned
+                verb = "would assign" if config.dry_run else "Assigned"
+                logger.info(f"[id] {verb} {assigned} new IDs in {path.name}")
+            updated_compatible.append((path, new_meta, True))
+        compatible = updated_compatible
+        if ids_total > 0:
+            logger.info(f"[id] Assigned {ids_total} new Arete IDs across vault")
 
-    # -------- Stage 1.6: one Anki note claimed by cards in different files --------
-    claims: dict[str, list[tuple[Path, int]]] = {}
-    for path, meta, _fresh in compatible:
-        for idx, card in enumerate(meta.get("cards") or [], start=1):
-            if isinstance(card, dict) and (nid := parser._extract_raw_nid(card)):
-                claims.setdefault(nid, []).append((path, idx))
-    contested = {nid: c for nid, c in claims.items() if len({p for p, _ in c}) > 1}
-    parser.contested_nids = {
-        nid: [f"{p.name} card#{i}" for p, i in c] for nid, c in contested.items()
-    }
-    for nid, c in contested.items():
-        for p, i in c:
-            failed_files.add(p)
-            recorder.add_error(p, f"anki.nid {nid} is claimed by cards in several files", f"#{i}")
+        # -------- Stage 1.6: one Anki note claimed by cards in different files --------
+        claims: dict[str, list[tuple[Path, int]]] = {}
+        for path, meta, _fresh in compatible:
+            for idx, card in enumerate(meta.get("cards") or [], start=1):
+                if isinstance(card, dict) and (nid := parser._extract_raw_nid(card)):
+                    claims.setdefault(nid, []).append((path, idx))
+        contested = {nid: c for nid, c in claims.items() if len({p for p, _ in c}) > 1}
+        parser.contested_nids = {
+            nid: [f"{p.name} card#{i}" for p, i in c] for nid, c in contested.items()
+        }
+        for nid, c in contested.items():
+            for p, i in c:
+                failed_files.add(p)
+                recorder.add_error(
+                    p, f"anki.nid {nid} is claimed by cards in several files", f"#{i}"
+                )
 
-    # -------- Stage 1.7: one Arete id declared by several cards --------
-    # The id is the card's identity in Anki, so no copy may be sent: each would claim the
-    # note of the others. Ids differing only in case are one tag in Anki.
-    duplicated = group_duplicate_ids(
-        ((path, idx), card_id)
-        for path, meta, _fresh in compatible
-        for idx, card in enumerate(meta.get("cards") or [], start=1)
-        if (card_id := parser.declared_id(card))
-    )
-    parser.duplicate_ids = {
-        key: [f"{p.name} card#{i}" for (p, i), _ in c] for key, c in duplicated.items()
-    }
-    for c in duplicated.values():
-        for (p, i), card_id in c:
-            failed_files.add(p)
-            recorder.add_error(
-                p, f"Arete id {card_id} is declared by {len(c)} cards; none is synced", f"#{i}"
-            )
-    # A dry run decides through the same NoteSync, reading Anki and writing nothing.
-    scanned = vault_claims(compatible, parser)
-    note_sync = NoteSync(anki_bridge, scanned, logger, dry_run=config.dry_run)
-    # Every note the vault names, read once: every card is compared with Anki, and the
-    # batches compare against this read instead of reading their own.
-    await note_sync.prefetch(scanned.nid_owners, vault_models(compatible))
+        # -------- Stage 1.7: one Arete id declared by several cards --------
+        # The id is the card's identity in Anki, so no copy may be sent: each would claim the
+        # note of the others. Ids differing only in case are one tag in Anki.
+        duplicated = group_duplicate_ids(
+            ((path, idx), card_id)
+            for path, meta, _fresh in compatible
+            for idx, card in enumerate(meta.get("cards") or [], start=1)
+            if (card_id := parser.declared_id(card))
+        )
+        parser.duplicate_ids = {
+            key: [f"{p.name} card#{i}" for (p, i), _ in c] for key, c in duplicated.items()
+        }
+        for c in duplicated.values():
+            for (p, i), card_id in c:
+                failed_files.add(p)
+                recorder.add_error(
+                    p,
+                    f"Arete id {card_id} is declared by {len(c)} cards; none is synced",
+                    f"#{i}",
+                )
+        # A dry run decides through the same NoteSync, reading Anki and writing nothing.
+        scanned = vault_claims(compatible, parser)
+        note_sync = NoteSync(anki_bridge, scanned, logger, dry_run=config.dry_run)
+        # Every note the vault names, read once: every card is compared with Anki, and the
+        # batches compare against this read instead of reading their own.
+        await note_sync.prefetch(scanned.nid_owners, vault_models(compatible))
 
-    # -------- Stage 2: media index, walked on the first image lookup --------
-    assert config.vault_root is not None  # execute_sync refuses a run without one
-    name_index = FilenameIndex(config.vault_root, logger)
+        # -------- Stage 2: media index, walked on the first image lookup --------
+        assert config.vault_root is not None  # execute_sync refuses a run without one
+        name_index = FilenameIndex(config.vault_root, logger)
 
-    # -------- Stage 3: Producers + Consumer --------
-    work_q: asyncio.Queue[WorkItem | None] = asyncio.Queue(maxsize=max(1, config.queue_size))
-    updates: list[UpdateItem] = []
-    updates_lock = asyncio.Lock()
-    unparsed_files: list[Path] = []
+        # -------- Stage 3: Producers + Consumer --------
+        work_q: asyncio.Queue[WorkItem | None] = asyncio.Queue(maxsize=max(1, config.queue_size))
+        updates_lock = asyncio.Lock()
 
-    # How many batches may be in flight. A backend that cannot take overlapping
-    # calls serializes them itself, so this does not depend on which one we got.
-    max_sync_concurrency = max(1, config.workers)
-    sync_semaphore = asyncio.Semaphore(max_sync_concurrency)
+        # How many batches may be in flight. A backend that cannot take overlapping
+        # calls serializes them itself, so this does not depend on which one we got.
+        max_sync_concurrency = max(1, config.workers)
+        sync_semaphore = asyncio.Semaphore(max_sync_concurrency)
 
-    async def producer_file(md_file: Path, meta: dict[str, Any], is_fresh: bool):
-        try:
-            notes, skipped_indices, inventory = parser.parse_file(
-                md_file, meta, cache, name_index, is_fresh
-            )
-            recorder.cards_generated += len(notes) + len(skipped_indices)
+        async def producer_file(md_file: Path, meta: dict[str, Any], is_fresh: bool):
+            try:
+                notes, skipped_indices, inventory = parser.parse_file(
+                    md_file, meta, cache, name_index, is_fresh
+                )
+                recorder.cards_generated += len(notes) + len(skipped_indices)
 
-            recorder.add_inventory(inventory)
+                recorder.add_inventory(inventory)
 
-            for note in notes:
-                wi = WorkItem(note=note, source_file=md_file, source_index=note.source_index)
-                await work_q.put(wi)
-        except Exception as e:
-            logger.error(f"[producer-error] {md_file}: {e}")
-            recorder.add_error(md_file, str(e))
-            unparsed_files.append(md_file)  # its nids never reached the prune inventory
-            failed_files.add(md_file)
+                for note in notes:
+                    wi = WorkItem(note=note, source_file=md_file, source_index=note.source_index)
+                    await work_q.put(wi)
+            except Exception as e:
+                logger.error(f"[producer-error] {md_file}: {e}")
+                recorder.add_error(md_file, str(e))
+                unparsed_files.append(md_file)  # its nids never reached the prune inventory
+                failed_files.add(md_file)
 
-    async def consumer():
-        while True:
-            # Wait for at least one item
-            first_item = await work_q.get()
-            if first_item is None:
-                work_q.task_done()
-                break
-
-            batch = [first_item]
-
-            # Non-blocking peek for more items to batch them
-            while len(batch) < CONSUMER_BATCH_SIZE:
-                try:
-                    next_item = work_q.get_nowait()
-                    if next_item is None:
-                        # Re-queue sentinel for other consumers
-                        await work_q.put(None)
-                        break
-                    batch.append(next_item)
-                except asyncio.QueueEmpty:
+        async def consumer():
+            while True:
+                # Wait for at least one item
+                first_item = await work_q.get()
+                if first_item is None:
+                    work_q.task_done()
                     break
 
-            try:
-                # A dry run's NoteSync reads and reports; the cache stays untouched below,
-                # so the next real run still sees these cards as pending.
-                async with sync_semaphore:
-                    batch_updates = await note_sync.sync_notes(batch)
+                batch = [first_item]
 
-                async with updates_lock:
-                    synced_rows: list[tuple[Path, int, str, str]] = []
-                    for u in batch_updates:
-                        updates.append(u)
-                        if u.ok:
-                            recorder.cards_synced += 1
-                            # A note created this run is in the vault now: protect it from
-                            # --prune, which otherwise saw its fresh nid as an orphan.
-                            if u.new_nid:
-                                recorder.add_inventory(
-                                    [{"nid": u.new_nid, "deck": u.note.deck if u.note else None}]
-                                )
-                            if u.note and u.note.content_hash and not config.dry_run:
-                                # Refresh the hot-cache entry WITH the nid Anki assigned,
-                                # otherwise the cached note keeps nid=None and every warm
-                                # run re-sends the card as new.
-                                u.note.nid = u.new_nid or u.note.nid
-                                u.note.cid = u.new_cid or u.note.cid
-                                synced_rows.append(
-                                    (
-                                        u.source_file,
-                                        u.source_index,
-                                        u.note.content_hash,
-                                        json.dumps(u.note.to_dict()),
+                # Non-blocking peek for more items to batch them
+                while len(batch) < CONSUMER_BATCH_SIZE:
+                    try:
+                        next_item = work_q.get_nowait()
+                        if next_item is None:
+                            # Re-queue sentinel for other consumers
+                            await work_q.put(None)
+                            break
+                        batch.append(next_item)
+                    except asyncio.QueueEmpty:
+                        break
+
+                try:
+                    # A dry run's NoteSync reads and reports; the cache stays untouched below,
+                    # so the next real run still sees these cards as pending.
+                    async with sync_semaphore:
+                        batch_updates = await note_sync.sync_notes(batch)
+
+                    async with updates_lock:
+                        synced_rows: list[tuple[Path, int, str, str]] = []
+                        for u in batch_updates:
+                            updates.append(u)
+                            if u.ok:
+                                recorder.cards_synced += 1
+                                # A note created this run is in the vault now: protect it from
+                                # --prune, which otherwise saw its fresh nid as an orphan.
+                                if u.new_nid:
+                                    recorder.add_inventory(
+                                        [
+                                            {
+                                                "nid": u.new_nid,
+                                                "deck": u.note.deck if u.note else None,
+                                            }
+                                        ]
                                     )
+                                if u.note and u.note.content_hash and not config.dry_run:
+                                    # Refresh the hot-cache entry WITH the nid Anki assigned,
+                                    # otherwise the cached note keeps nid=None and every warm
+                                    # run re-sends the card as new.
+                                    u.note.nid = u.new_nid or u.note.nid
+                                    u.note.cid = u.new_cid or u.note.cid
+                                    synced_rows.append(
+                                        (
+                                            u.source_file,
+                                            u.source_index,
+                                            u.note.content_hash,
+                                            json.dumps(u.note.to_dict()),
+                                        )
+                                    )
+                            else:
+                                recorder.cards_failed += 1
+                                failed_files.add(u.source_file)
+                                recorder.add_error(
+                                    u.source_file, f"Sync fail: {u.error}", f"#{u.source_index}"
                                 )
-                        else:
-                            recorder.cards_failed += 1
-                            failed_files.add(u.source_file)
-                            recorder.add_error(
-                                u.source_file, f"Sync fail: {u.error}", f"#{u.source_index}"
-                            )
-                    # One transaction per batch, written after Anki accepted these cards. A
-                    # crash before the commit loses the rows; the cards are checked again.
-                    if synced_rows:
-                        cache.set_notes(synced_rows)
-            except Exception as e:
-                logger.error(f"[consumer-error] {e}")
-                for wi in batch:
-                    failed_files.add(wi.source_file)
-                    recorder.add_error(
-                        wi.source_file, f"Consumer batch crash: {e}", f"#{wi.source_index}"
-                    )
-            finally:
-                for _ in range(len(batch)):
-                    work_q.task_done()
+                        # One transaction per batch, written after Anki accepted these cards. A
+                        # crash before the commit loses the rows; the cards are checked again.
+                        if synced_rows:
+                            cache.set_notes(synced_rows)
+                except Exception as e:
+                    logger.error(f"[consumer-error] {e}")
+                    for wi in batch:
+                        failed_files.add(wi.source_file)
+                        recorder.add_error(
+                            wi.source_file, f"Consumer batch crash: {e}", f"#{wi.source_index}"
+                        )
+                finally:
+                    for _ in range(len(batch)):
+                        work_q.task_done()
 
-    # Create consumers
-    consumers = [asyncio.create_task(consumer()) for _ in range(max_sync_concurrency)]
+        # Create consumers
+        consumers = [asyncio.create_task(consumer()) for _ in range(max_sync_concurrency)]
 
-    # Run producers
-    # Limit producer concurrency as well to avoid overwhelming memory if vault is huge
-    prod_semaphore = asyncio.Semaphore(max(1, config.workers))
+        # Run producers
+        # Limit producer concurrency as well to avoid overwhelming memory if vault is huge
+        prod_semaphore = asyncio.Semaphore(max(1, config.workers))
 
-    async def bounded_producer(p, m, f):
-        async with prod_semaphore:
-            await producer_file(p, m, f)
+        async def bounded_producer(p, m, f):
+            async with prod_semaphore:
+                await producer_file(p, m, f)
 
-    producer_tasks = [
-        asyncio.create_task(bounded_producer(p, meta, is_fresh))
-        for (p, meta, is_fresh) in compatible
-        if p not in unwritten_ids
-    ]
+        producer_tasks = [
+            asyncio.create_task(bounded_producer(p, meta, is_fresh))
+            for (p, meta, is_fresh) in compatible
+            if p not in unwritten_ids
+        ]
 
-    # disable=None: tqdm shows the bar only when stderr is a terminal.
-    with tqdm(total=len(producer_tasks), desc="Processing", unit="file", disable=None) as pbar:
-        for coro in asyncio.as_completed(producer_tasks):
-            await coro
-            pbar.update(1)
-            pbar.set_postfix(
-                {
-                    "gen": recorder.cards_generated,
-                    "ok": recorder.cards_synced,
-                    "err": recorder.cards_failed,
-                }
-            )
+        # disable=None: tqdm shows the bar only when stderr is a terminal.
+        with tqdm(total=len(producer_tasks), desc="Processing", unit="file", disable=None) as pbar:
+            for coro in asyncio.as_completed(producer_tasks):
+                await coro
+                pbar.update(1)
+                pbar.set_postfix(
+                    {
+                        "gen": recorder.cards_generated,
+                        "ok": recorder.cards_synced,
+                        "err": recorder.cards_failed,
+                    }
+                )
 
-    # Signal consumers to stop
-    for _ in range(max_sync_concurrency):
-        await work_q.put(None)
+        # Signal consumers to stop
+        for _ in range(max_sync_concurrency):
+            await work_q.put(None)
 
-    # Wait for consumers to finish processing and exit
-    # NOTE: Do NOT use work_q.join() here. When a consumer encounters a None
-    # sentinel during batch building (get_nowait), it re-queues the None via
-    # put(), which increments unfinished_tasks without a matching task_done().
-    # This causes join() to hang indefinitely. gather() simply waits for all
-    # consumer coroutines to return.
-    await asyncio.gather(*consumers)
+        # Wait for consumers to finish processing and exit
+        # NOTE: Do NOT use work_q.join() here. When a consumer encounters a None
+        # sentinel during batch building (get_nowait), it re-queues the None via
+        # put(), which increments unfinished_tasks without a matching task_done().
+        # This causes join() to hang indefinitely. gather() simply waits for all
+        # consumer coroutines to return.
+        await asyncio.gather(*consumers)
 
-    # -------- Stage 4: Persist Updates (Write back NIDs) --------
-    if updates:
-        logger.info("[pipeline] Persisting NIDs/CIDs to frontmatter...")
-        written = vault_service.apply_updates(updates, dry_run=config.dry_run)
-        for path, index, why in vault_service.write_refused:
-            failed_files.add(path)
-            recorder.add_error(
-                path, f"could not write its Anki ids: {why}; the file is unchanged", f"#{index}"
-            )
+        # -------- Stage 4: Persist Updates (Write back NIDs) --------
+        if updates:
+            logger.info("[pipeline] Persisting NIDs/CIDs to frontmatter...")
+            written = vault_service.apply_updates(updates, dry_run=config.dry_run)
+            for path, index, why in vault_service.write_refused:
+                failed_files.add(path)
+                recorder.add_error(
+                    path,
+                    f"could not write its Anki ids: {why}; the file is unchanged",
+                    f"#{index}",
+                )
+            if not config.dry_run:
+                failed_files |= await true_source_lines(
+                    written, updates, vault_service, parser, note_sync, cache, logger
+                )
+
+        # A file is recorded as synced only once every card in it reached Anki, so a dry
+        # run or a failed card leaves it fresh and the next run looks at it again.
         if not config.dry_run:
-            failed_files |= await true_source_lines(
-                written, updates, vault_service, parser, note_sync, cache, logger
+            vault_service.record_synced(
+                p for p, _meta, is_fresh in compatible if is_fresh and p not in failed_files
             )
-
-    # A file is recorded as synced only once every card in it reached Anki, so a dry
-    # run or a failed card leaves it fresh and the next run looks at it again.
-    if not config.dry_run:
-        vault_service.record_synced(
-            p for p, _meta, is_fresh in compatible if is_fresh and p not in failed_files
-        )
 
     # -------- Stage 5: Prune Orphans (Destructive) --------
     prune_report: PruneReport | None = None

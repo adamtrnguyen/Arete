@@ -114,3 +114,35 @@ def test_a_gained_card_reaches_anki_on_the_next_sync(root: Path, tmp_path: Path)
 
     sync(root, anki, cache)
     assert sorted(name for name, _ in anki.sent[3:]) == ["card.md", "plain0.md"]
+
+
+def test_plain_note_mentioning_arete_in_body_is_not_unreadable(root: Path, tmp_path: Path):
+    """Prose mentioning `arete:` outside frontmatter must not be flagged unreadable."""
+    (root / "prose.md").write_text(
+        "# Notes\nRemember to set arete: true later.\n", encoding="utf-8"
+    )
+    (root / "fm_prose.md").write_text(
+        "---\ntags: [meta]\n---\nBody mentions arete: true in prose.\n", encoding="utf-8"
+    )
+    service = VaultService(root, ContentCache(tmp_path / "cache.db"))
+    found = [p.name for p, _meta, _fresh in service.scan_for_compatible_files()]
+    assert found == ["card.md"]
+    assert service.unreadable == []
+
+
+def test_assign_ids_fills_blank_and_empty_id_fields(tmp_path: Path):
+    """Cards with `id:` (null) or `id: ""` get ULIDs assigned just like cards omitting `id`."""
+    from arete.domain.ownership import is_arete_id
+
+    note = tmp_path / "blank_ids.md"
+    note.write_text(
+        "---\narete: true\ndeck: D\ncards:\n"
+        "- id:\n  Front: Q1\n  Back: A1\n"
+        "- id: ''\n  Front: Q2\n  Back: A2\n---\n",
+        encoding="utf-8",
+    )
+    service = VaultService(tmp_path, ContentCache(tmp_path / "cache.db"))
+    assigned, new_meta, refused = service.assign_ids(note)
+    assert assigned == 2 and refused == {}
+    ids = [c["id"] for c in new_meta["cards"]]
+    assert all(is_arete_id(i) for i in ids) and len(set(ids)) == 2

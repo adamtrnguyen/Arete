@@ -558,3 +558,65 @@ async def test_curl_bridge_fallback():
         adapter = AnkiConnectAdapter(url="http://localhost:8765")
 
         assert adapter.use_windows_curl is False
+
+
+@pytest.mark.asyncio
+async def test_is_responsive_uses_curl_on_wsl():
+    """On WSL with curl.exe bridge, is_responsive must route through _http_request."""
+    adapter = AnkiConnectAdapter(url="http://127.0.0.1:8765")
+    adapter.use_windows_curl = True
+    with patch.object(adapter, "_http_request", new_callable=AsyncMock) as mock_http:
+        mock_http.return_value = {"result": 6, "error": None}
+        assert await adapter.is_responsive() is True
+        mock_http.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_is_responsive_initializes_client_with_limits():
+    """is_responsive shares _ensure_client so httpx.Limits are applied under auto mode."""
+    from arete.domain.constants import SYNC_CONCURRENCY
+
+    adapter = AnkiConnectAdapter(url="http://127.0.0.1:8765")
+    adapter.use_windows_curl = False
+    with respx.mock:
+        respx.post("http://127.0.0.1:8765").mock(
+            return_value=httpx.Response(200, json={"result": 6, "error": None})
+        )
+        assert await adapter.is_responsive() is True
+        assert adapter._client is not None
+        assert adapter._client._transport._pool._max_connections == SYNC_CONCURRENCY
+    await adapter.close()
+
+
+@pytest.mark.asyncio
+async def test_suspend_and_unsuspend_return_true_on_none_or_false_reply():
+    """Add-on unsuspend returns None and suspend returns False if already suspended."""
+    adapter = AnkiConnectAdapter(url="http://mock:8765")
+    with patch.object(adapter, "_invoke", new_callable=AsyncMock) as mock_invoke:
+        mock_invoke.return_value = None
+        assert await adapter.unsuspend_cards([1]) is True
+        mock_invoke.return_value = False
+        assert await adapter.suspend_cards([1]) is True
+
+
+@pytest.mark.asyncio
+async def test_addon_outdated_propagates_for_change_note_type_and_create_filtered_deck():
+    """Unsupported changeNoteType and createFilteredDeck surface AddonOutdated."""
+    from arete.domain.models import AddonOutdated, NoteChange
+    from arete.infrastructure.adapters.anki_connect import ConnectNoteSession, _model_info
+
+    assert (
+        _model_info("basic", {"name": "Basic", "type": 0, "fields": ["Front"], "templates": 1}).name
+        == "Basic"
+    )
+
+    adapter = AnkiConnectAdapter(url="http://mock:8765")
+    session = ConnectNoteSession(adapter)
+    change = NoteChange(nid=1, retype=("Cloze", (0,)))
+    err = await session._settle(change, ("changeNoteType", {}), Exception("unsupported action"))
+    assert isinstance(err, AddonOutdated)
+
+    with patch.object(adapter, "_invoke", new_callable=AsyncMock) as mock_invoke:
+        mock_invoke.side_effect = Exception("unsupported action")
+        with pytest.raises(AddonOutdated, match="createFilteredDeck"):
+            await adapter.create_topo_deck("Arete::Queue", [1])

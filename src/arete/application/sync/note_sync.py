@@ -275,7 +275,7 @@ class NoteSync:
         """
         changes = []
         for nid, model, fields in items:
-            info = self._types.get(model)
+            info = self._types.get(model.casefold())
             wanted = _type_fields(info, fields) if isinstance(info, NoteTypeInfo) else {}
             if wanted:
                 changes.append(NoteChange(nid, fields=wanted))
@@ -322,37 +322,44 @@ class NoteSync:
     async def _load_types(self, s: NoteStoreSession, names: Collection[str]) -> None:
         async with self._types_lock:
             # A type whose read failed is read again by the next batch that needs it.
-            todo = sorted(
-                n for n in names if n not in self._types or isinstance(self._types[n], Exception)
-            )
+            # Deduplicate case-insensitively: Anki treats note type names ignoring case.
+            wanted: dict[str, str] = {}
+            for name in sorted(names):
+                key = name.casefold()
+                if key not in self._types or isinstance(self._types[key], Exception):
+                    wanted.setdefault(key, name)
+            todo = list(wanted.values())
             if not todo:
                 return
             try:
-                self._types.update(await s.note_types(todo))
+                loaded = await s.note_types(todo)
             except AddonOutdated:
                 raise
             except Exception as e:
                 self._log.error(f"[sync] reading note types {todo} failed: {e}")
                 return  # not cached: the cards fail now, a later batch reads again
+            for req_name, info in loaded.items():
+                self._types[req_name.casefold()] = info
 
     def _type(self, name: str) -> NoteTypeInfo | str:
         """The type, or why the card cannot be synced."""
-        info = self._types.get(name)
+        key = name.casefold()
+        info = self._types.get(key)
         if isinstance(info, NoteTypeInfo):
             return info
-        if info is None and name in self._types:
+        if info is None and key in self._types:
             return f"note type '{name}' not found in Anki"
         return f"note type '{name}' could not be read: {info}"
 
     async def _ensure_source_fields(self, s: NoteStoreSession, cards: list[_Card]) -> None:
         """Give each type a card sends `_obsidian_source` to that field, once per run."""
-        needed = {c.work.note.model for c in cards if SOURCE_FIELD in c.work.note.fields}
+        needed = {c.work.note.model.casefold() for c in cards if SOURCE_FIELD in c.work.note.fields}
         async with self._types_lock:
-            for name in sorted(needed - self._source_tried):
-                info = self._types.get(name)
+            for key in sorted(needed - self._source_tried):
+                info = self._types.get(key)
                 if not isinstance(info, NoteTypeInfo) or SOURCE_FIELD in info.fields:
                     continue
-                self._source_tried.add(name)
+                self._source_tried.add(key)
                 if self._dry:
                     self._plan(f"would add field {SOURCE_FIELD} to note type '{info.name}'")
                 else:
@@ -362,7 +369,7 @@ class NoteSync:
                         self._log.warning(f"Could not add {SOURCE_FIELD} to '{info.name}': {e}")
                         continue
                     self._log.info(f"Added '{SOURCE_FIELD}' field to model '{info.name}'")
-                self._types[name] = NoteTypeInfo(
+                self._types[key] = NoteTypeInfo(
                     info.name, (*info.fields, SOURCE_FIELD), info.is_cloze, info.n_templates
                 )
 
@@ -550,8 +557,9 @@ class NoteSync:
 
         A failed scan is not kept, so a later batch scans again.
         """
+        model_key = model.casefold()
         async with self._index_lock:
-            if model not in self._index:
+            if model_key not in self._index:
                 try:
                     scanned = await s.scan_model(model)
                 except Exception as e:
@@ -559,12 +567,12 @@ class NoteSync:
                 index: dict[str, list[tuple[int, frozenset[str]]]] = {}
                 # A note of another type is never adopted as this type's, whatever the
                 # store's search returned.
-                of_type = [h for h in scanned if h.model.casefold() == model.casefold()]
+                of_type = [h for h in scanned if h.model.casefold() == model_key]
                 for held in sorted(of_type, key=lambda h: h.nid):
                     if key := _held_first_key(held):
                         index.setdefault(key, []).append((held.nid, frozenset(_arete_ids_of(held))))
-                self._index[model] = index
-            return self._index[model]
+                self._index[model_key] = index
+            return self._index[model_key]
 
     # -- create --------------------------------------------------------------
 
@@ -622,7 +630,9 @@ class NoteSync:
         """
         keyed = [(c, n, k) for c, n in todo if (k := self._front_key(n))]
         index = self._index
-        nids = sorted({n for _, new, k in keyed for n, _ in index.get(new.model, {}).get(k, [])})
+        nids = sorted(
+            {n for _, new, k in keyed for n, _ in index.get(new.model.casefold(), {}).get(k, [])}
+        )
         held: dict[int, HeldNote | None | Exception] = {}
         if nids:
             try:
@@ -632,13 +642,13 @@ class NoteSync:
         for card, new, key in keyed:
             holder = self._front_holder(new, key, held)
             if holder is None:
-                self._fronts.setdefault((new.model, new.deck.casefold(), key), card)
+                self._fronts.setdefault((new.model.casefold(), new.deck.casefold(), key), card)
             else:
                 card.duplicate = (holder, new.deck, new.model)
                 card.fail("duplicate first field")
 
     def _front_key(self, new: NewNote) -> str:
-        info = self._types.get(new.model)
+        info = self._types.get(new.model.casefold())
         if not isinstance(info, NoteTypeInfo) or not info.fields:
             return ""
         return first_field_key(new.fields.get(info.fields[0], ""))
@@ -651,11 +661,12 @@ class NoteSync:
         A note whose decks could not be read counts as holding it: refusing is the safe
         side, and the next sync checks again.
         """
+        model_key = new.model.casefold()
         deck = new.deck.casefold()
-        earlier = self._fronts.get((new.model, deck, key))
+        earlier = self._fronts.get((model_key, deck, key))
         if earlier is not None:
             return earlier
-        for nid, _ in self._index.get(new.model, {}).get(key, []):
+        for nid, _ in self._index.get(model_key, {}).get(key, []):
             note = held.get(nid)
             if isinstance(note, Exception):
                 return Exception(f"note {nid}, whose decks could not be read: {note}")
@@ -671,7 +682,7 @@ class NoteSync:
                 if isinstance(info, NoteTypeInfo):
                     key = _first_key(info, card.work.note.fields)
                     if key:
-                        where = (info.name, card.work.note.deck.casefold(), key)
+                        where = (info.name.casefold(), card.work.note.deck.casefold(), key)
                         self._fronts.setdefault(where, card)
 
     @staticmethod
@@ -794,7 +805,7 @@ class NoteSync:
             card.fail(info)
             return None
         retype = None
-        if held.model != info.name:
+        if held.model.casefold() != info.name.casefold():
             n_cards = len(held.cards)
             keeps = n_cards if info.is_cloze else info.n_templates
             if n_cards > keeps:
@@ -804,11 +815,17 @@ class NoteSync:
                     "converting. Split the card in the vault, or change the type in Anki."
                 )
                 return None
-            old = self._types.get(held.model)
+            old = self._types.get(held.model.casefold())
             old_fields = list(old.fields) if isinstance(old, NoteTypeInfo) else list(held.fields)
             retype = (info.name, tuple(map_note_type_fields(old_fields, list(info.fields))))
         fields = _type_fields(info, note.fields)
-        if retype is None and all(held.fields.get(k) == v for k, v in fields.items()):
+        # Invariant 1: omitted note-type fields (except `_obsidian_source` outside vault)
+        # are cleared to "" so removed vault fields and Anki-side edits do not survive.
+        # Done here only — never in `_type_fields`, which `rewrite_fields` uses for partial writes.
+        for name in info.fields:
+            if name not in fields and name != SOURCE_FIELD:
+                fields[name] = ""
+        if retype is None and all(held.fields.get(k, "") == v for k, v in fields.items()):
             fields = {}
         add, remove = _tag_change(note.tags, held.tags)
         return NoteChange(
@@ -893,7 +910,7 @@ def _describe(card: _Card, change: NoteChange) -> str:
     if change.retype and held is not None:
         parts.append(f"type {held.model} -> {change.retype[0]}")
     if change.fields and held is not None:
-        names = [k for k, v in change.fields.items() if held.fields.get(k) != v]
+        names = [k for k, v in change.fields.items() if held.fields.get(k, "") != v]
         parts.append(f"fields {', '.join(names or list(change.fields))}")
     if change.add_tags or change.remove_tags:
         tags = [f"+{t}" for t in change.add_tags] + [f"-{t}" for t in change.remove_tags]

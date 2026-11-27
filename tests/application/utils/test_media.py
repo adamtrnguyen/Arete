@@ -155,3 +155,52 @@ def test_transform_images_copy_fails_logging(tmp_path, logger):
                 for call in mock_warn.call_args_list
             )
             assert found
+
+
+def test_resolve_candidate_paths_blocks_traversal_and_absolute_paths(tmp_path, logger):
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    secret = tmp_path / "secret.png"
+    secret.write_bytes(b"secret")
+    md_path = vault / "sub" / "note.md"
+    md_path.parent.mkdir(parents=True)
+    anki_media = tmp_path / "anki_media"
+
+    # Relative traversal and absolute paths outside vault must not resolve or copy.
+    assert _resolve_candidate_paths(md_path, vault, "../../secret.png") == []
+    assert _resolve_candidate_paths(md_path, vault, str(secret)) == []
+
+    text = f"![[../../secret.png]] ![]({secret})"
+    out = transform_images_in_text(text, md_path, vault, anki_media, logger)
+    assert out == text
+    assert not anki_media.exists()
+
+
+def test_filename_index_matches_nfd_disk_from_nfc_yaml(tmp_path, logger):
+    import unicodedata
+
+    vault = tmp_path / "vault"
+    assets = vault / "assets"
+    assets.mkdir(parents=True)
+    nfd_name = unicodedata.normalize("NFD", "Cramér.png")
+    nfc_name = unicodedata.normalize("NFC", "Cramér.png")
+    (assets / nfd_name).write_bytes(b"img")
+
+    idx = build_filename_index(vault, logger)
+    cands = _resolve_candidate_paths(vault / "note.md", vault, nfc_name, name_index=idx)
+    assert any(c.exists() and c.parent == assets.resolve() for c in cands)
+
+
+def test_transform_markdown_img_preserves_alt_text_when_uniquified(tmp_path, logger):
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    anki_media = tmp_path / "anki_media"
+    anki_media.mkdir()
+    (vault / "diagram.png").write_bytes(b"new-bytes")
+    (anki_media / "diagram.png").write_bytes(b"existing-different-bytes")
+
+    out = transform_images_in_text(
+        "![diagram.png](diagram.png)", vault / "note.md", vault, anki_media, logger
+    )
+    assert out.startswith("![diagram.png](diagram_")
+    assert out.endswith(".png)")

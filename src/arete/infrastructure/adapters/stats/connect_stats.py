@@ -3,6 +3,7 @@
 Implements StatsRepository by calling AnkiConnect endpoints.
 """
 
+import json
 import logging
 from typing import Any
 
@@ -121,6 +122,19 @@ class ConnectStatsRepository(StatsRepository):
             for cid_str, reviews in result.items():
                 cid = int(cid_str)
                 for rev in reviews:
+                    s_at_review = None
+                    d_at_review = None
+                    r_at_review = None
+                    raw_data = rev.get("data")
+                    if raw_data:
+                        try:
+                            parsed = json.loads(raw_data) if isinstance(raw_data, str) else raw_data
+                            if isinstance(parsed, dict):
+                                s_at_review = parsed.get("s")
+                                d_at_review = parsed.get("d")
+                                r_at_review = parsed.get("r")
+                        except Exception as e:
+                            logger.debug(f"[stats] unreadable revlog data: {e}")
                     entries.append(
                         ReviewEntry(
                             card_id=cid,
@@ -128,6 +142,10 @@ class ConnectStatsRepository(StatsRepository):
                             rating=rev.get("ease", 0),
                             interval=revlog_interval_days(rev.get("ivl", 0)),
                             last_interval=revlog_interval_days(rev.get("lastIvl", 0)),
+                            stability=s_at_review,
+                            difficulty=d_at_review,
+                            retrievability=r_at_review,
+                            time_ms=int(rev.get("time") or 0),
                         )
                     )
 

@@ -57,6 +57,7 @@ class ReviewEntry:
     stability: float | None = None
     difficulty: float | None = None
     retrievability: float | None = None
+    time_ms: int = 0
 
 
 @dataclass

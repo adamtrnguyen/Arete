@@ -376,22 +376,24 @@ async def test_get_deck_params_success(mock_repo):
 
 @pytest.mark.asyncio
 async def test_get_deck_params_deck_not_found(mock_repo):
-    """When deck doesn't exist, it is silently skipped."""
+    """When deck doesn't exist, default params are returned (matching ConnectStatsRepository)."""
     mock_repo.col.decks.by_name.return_value = None
 
     repo = DirectStatsRepository(anki_base=None)
     result = await repo.get_deck_params(["NonExistent"])
 
-    assert result == {}
+    assert result == {
+        "NonExistent": {"desired_retention": 0.9, "weights": [], "sm2_retention": 0.9}
+    }
 
 
 @pytest.mark.asyncio
 async def test_get_deck_params_config_not_found(mock_repo):
-    """When config lookup returns None, deck is skipped."""
+    """When config lookup returns None, default params are returned."""
     mock_repo.col.decks.by_name.return_value = {"name": "X", "conf": 99}
     mock_repo.col.decks.get_config.return_value = None
 
     repo = DirectStatsRepository(anki_base=None)
     result = await repo.get_deck_params(["X"])
 
-    assert result == {}
+    assert result == {"X": {"desired_retention": 0.9, "weights": [], "sm2_retention": 0.9}}

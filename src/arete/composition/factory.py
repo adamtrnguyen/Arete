@@ -73,7 +73,19 @@ def get_vault_service(config: AppConfig) -> VaultService:
     if config.clear_cache:
         cache.clear()
     # `force` = ignore the cache; `clear_cache` = wipe it. Same meaning as in orchestrator.
-    return VaultService(vault_root, cache, ignore_cache=config.force)
+    # Use `root_input` when given so single-file/subfolder commands do not touch the whole vault.
+    return VaultService(config.root_input or vault_root, cache, ignore_cache=config.force)
+
+
+@contextmanager
+def opened_vault_service(config: AppConfig) -> Iterator[VaultService]:
+    """A VaultService for the block whose underlying cache connection closes on exit."""
+    vault_root = require_vault_root(config)
+    db_path = Path(config.cache_db) if config.cache_db else None
+    with opened_cache(db_path) as cache:
+        if config.clear_cache:
+            cache.clear()
+        yield VaultService(config.root_input or vault_root, cache, ignore_cache=config.force)
 
 
 async def get_stats_repo(config: AppConfig) -> StatsRepository:

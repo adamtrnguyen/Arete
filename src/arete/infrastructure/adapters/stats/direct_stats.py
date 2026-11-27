@@ -9,7 +9,7 @@ from typing import Any, cast
 
 from arete.domain.stats.models import CardStatsAggregate, ReviewEntry, revlog_interval_days
 from arete.domain.stats.ports import StatsRepository
-from arete.infrastructure.adapters.stats.deck_config import deck_params
+from arete.infrastructure.adapters.stats.deck_config import deck_params, default_params
 from arete.infrastructure.anki.fsrs import fsrs_state_of
 from arete.infrastructure.anki.repository import AnkiRepository
 
@@ -169,7 +169,8 @@ class DirectStatsRepository(StatsRepository):
     async def get_deck_params(self, deck_names: list[str]) -> dict[str, dict]:
         """Fetch FSRS parameters (desired retention, weights) for the given decks.
 
-        A deck Anki does not hold is left out; a failed read raises.
+        A deck Anki does not hold (or whose config cannot be read) gets the defaults,
+        matching `ConnectStatsRepository`; a failed read raises.
         """
         params: dict[str, dict] = {}
 
@@ -180,11 +181,11 @@ class DirectStatsRepository(StatsRepository):
             for deck_name in deck_names:
                 deck = repo.col.decks.by_name(deck_name)
                 if not deck:
+                    params[deck_name] = default_params()
                     continue
                 # Get deck config (config id is 'conf')
                 config = repo.col.decks.get_config(deck["conf"])
-                if config:
-                    params[deck_name] = deck_params(config)
+                params[deck_name] = deck_params(config) if config else default_params()
 
         return params
 

@@ -192,3 +192,19 @@ def test_get_vault_service_clear_cache(tmp_path):
 
     config = _make_config(vault_root=tmp_path, clear_cache=False, force=True, cache_db=str(db))
     assert get_vault_service(config).ignore_cache is True
+
+
+def test_opened_vault_service_uses_root_input_and_closes_cache(tmp_path):
+    import sqlite3
+
+    from arete.composition.factory import opened_vault_service
+
+    single = tmp_path / "one.md"
+    single.write_text("# x\n", encoding="utf-8")
+    db = tmp_path / "c.db"
+    config = _make_config(vault_root=tmp_path, root_input=single, cache_db=str(db))
+    with opened_vault_service(config) as vs:
+        assert vs.root == single
+        cache = vs.cache
+    with pytest.raises(sqlite3.ProgrammingError):
+        cache.get_hash(single, 1)

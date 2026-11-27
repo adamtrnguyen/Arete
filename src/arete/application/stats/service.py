@@ -32,8 +32,21 @@ class FsrsStatsService:
         # 4. Enrich each card
         results = []
         for s in stats:
-            # Attach reviews
-            s.reviews = reviews_by_cid.get(s.card_id, [])
+            # Attach reviews and backfill aggregates unavailable from cardsInfo (AnkiConnect)
+            reviews = reviews_by_cid.get(s.card_id, [])
+            s.reviews = reviews
+            if reviews:
+                if s.last_review is None:
+                    s.last_review = max(r.review_time for r in reviews)
+                if not s.answer_distribution:
+                    dist: dict[int, int] = {}
+                    for r in reviews:
+                        dist[r.rating] = dist.get(r.rating, 0) + 1
+                    s.answer_distribution = dist
+                if s.average_time_ms == 0:
+                    total_time = sum(r.time_ms for r in reviews)
+                    if total_time > 0:
+                        s.average_time_ms = int(total_time / len(reviews))
 
             # Enrich
             d_params = deck_params.get(s.deck_name)

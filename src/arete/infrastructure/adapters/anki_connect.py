@@ -259,13 +259,15 @@ class ConnectNoteSession(NoteStoreSession):
     async def _settle(
         self, change: NoteChange, step: tuple[str, dict], error: Exception | None
     ) -> Exception | None:
-        """A step's final error: a lost retype is confirmed, an unknown action named."""
+        """A step's final error: an unknown action is named, a lost retype confirmed."""
         if error is None:
             return None
         action, _params = step
+        if outdated := _outdated(action, error):
+            return outdated
         if action == "changeNoteType":
             return await self._confirm_retype(change, error)
-        return _outdated(action, error) or error
+        return error
 
     async def _confirm_retype(self, change: NoteChange, error: Exception) -> Exception | None:
         """A lost `changeNoteType` reply: done if the note has the new type, else the error.
@@ -287,11 +289,12 @@ def _no_such_model(error: Exception) -> bool:
 
 
 def _model_info(name: str, info: Any) -> NoteTypeInfo | None:
-    """A note type from `getModelInfo`: kind 1 is cloze."""
+    """A note type from `getModelInfo`: kind 1 is cloze; uses Anki's canonical name when sent."""
     if not isinstance(info, dict):
         return None
     fields = tuple(str(f) for f in info.get("fields") or [])
-    return NoteTypeInfo(name, fields, info.get("type") == 1, int(info.get("templates") or 0))
+    canonical = str(info.get("name") or name)
+    return NoteTypeInfo(canonical, fields, info.get("type") == 1, int(info.get("templates") or 0))
 
 
 def _held(info: dict, homes: dict[int, tuple[str | None, bool | None]]) -> HeldNote:
@@ -415,16 +418,27 @@ class AnkiConnectAdapter(AnkiBridge):
         """Note reads and writes over AnkiConnect (`NoteStorePort`); nothing to open."""
         yield ConnectNoteSession(self)
 
+    def _ensure_client(self) -> httpx.AsyncClient:
+        if self._client is None:
+            self._client = httpx.AsyncClient(
+                timeout=REQUEST_TIMEOUT,
+                limits=httpx.Limits(
+                    max_connections=SYNC_CONCURRENCY,
+                    max_keepalive_connections=SYNC_CONCURRENCY,
+                ),
+            )
+        return self._client
+
     async def is_responsive(self) -> bool:
         """Check if AnkiConnect is reachable and has the expected API version."""
         try:
             payload = {"action": "version", "version": 6}
-            if self._client is None:
-                self._client = httpx.AsyncClient(timeout=REQUEST_TIMEOUT)
-            resp = await self._client.post(self.url, json=payload, timeout=RESPONSIVENESS_TIMEOUT)
-            if resp.status_code == 200:
-                data = resp.json()
-                return int(data.get("result", 0)) >= 6
+            data = await asyncio.wait_for(
+                self._http_request(payload, timeout=RESPONSIVENESS_TIMEOUT),
+                timeout=RESPONSIVENESS_TIMEOUT,
+            )
+            if isinstance(data, dict):
+                return int(data.get("result") or 0) >= 6
             return False
         except Exception:
             return False
@@ -486,7 +500,7 @@ class AnkiConnectAdapter(AnkiBridge):
             [held] = await self._invoke("notesInfo", notes=[nid])
         except Exception as e:
             raise OutcomeUnknown(f"{lost}. Re-reading note {nid} failed: {e}") from lost
-        if held.get("modelName") != new_model:
+        if str(held.get("modelName", "")).casefold() != new_model.casefold():
             raise OutcomeUnknown(
                 f"{lost}. Note {nid} is still {held.get('modelName')!r}, so it was not sent "
                 "again; the next sync converts it."
@@ -568,7 +582,7 @@ class AnkiConnectAdapter(AnkiBridge):
             raise Exception(data["error"])
         return data["result"]
 
-    async def _http_request(self, payload: dict) -> dict:
+    async def _http_request(self, payload: dict, *, timeout: float | None = None) -> dict:
         if self.use_windows_curl:
             cmd = ["curl.exe", "-s", "-X", "POST", self.url, "-d", "@-"]
             proc = await asyncio.create_subprocess_exec(
@@ -583,15 +597,11 @@ class AnkiConnectAdapter(AnkiBridge):
                 raise Exception(f"curl.exe failed: {stderr.decode('utf-8')}")
             return json.loads(stdout.decode("utf-8"))
         else:
-            if self._client is None:
-                self._client = httpx.AsyncClient(
-                    timeout=REQUEST_TIMEOUT,
-                    limits=httpx.Limits(
-                        max_connections=SYNC_CONCURRENCY,
-                        max_keepalive_connections=SYNC_CONCURRENCY,
-                    ),
-                )
-            resp = await self._client.post(self.url, json=payload)
+            client = self._ensure_client()
+            if timeout is not None:
+                resp = await client.post(self.url, json=payload, timeout=timeout)
+            else:
+                resp = await client.post(self.url, json=payload)
             resp.raise_for_status()
             return resp.json()
 
@@ -648,14 +658,14 @@ class AnkiConnectAdapter(AnkiBridge):
     async def suspend_cards(self, cids: list[int]) -> bool:
         if not cids:
             return True  # Nothing to do
-        res = await self._invoke("suspend", cards=cids)
-        return bool(res)
+        await self._invoke("suspend", cards=cids)
+        return True
 
     async def unsuspend_cards(self, cids: list[int]) -> bool:
         if not cids:
             return True
-        res = await self._invoke("unsuspend", cards=cids)
-        return bool(res)
+        await self._invoke("unsuspend", cards=cids)
+        return True
 
     async def get_model_styling(self, model_name: str) -> str:
         """The note type's CSS; "" for a type Anki does not hold, as the direct backend."""
@@ -728,6 +738,8 @@ class AnkiConnectAdapter(AnkiBridge):
             )
             return True
         except Exception as e:
+            if outdated := _outdated("createFilteredDeck", e):
+                raise outdated from e
             self.logger.error(f"create_topo_deck failed: {e}")
             return False
 

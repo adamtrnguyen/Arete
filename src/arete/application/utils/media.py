@@ -7,6 +7,7 @@ from urllib.parse import quote, unquote
 
 from arete.application.utils.consts import MARKDOWN_IMG_RE, WIKILINK_IMG_RE, WIKILINK_RE
 from arete.application.utils.fs import file_md5
+from arete.application.utils.text import normalize_filename
 from arete.domain.constants import MEDIA_DIR_NAMES
 
 
@@ -66,7 +67,7 @@ def _index_dir(top: str, idx: dict[str, list[Path]]) -> None:
             continue
         path = _resolved_file(entry, top, real_dir)
         if path is not None:
-            idx.setdefault(entry.name, []).append(path)
+            idx.setdefault(normalize_filename(entry.name), []).append(path)
     for sub in subdirs:
         _index_dir(sub, idx)
 
@@ -129,17 +130,21 @@ def _resolve_candidate_paths(
     if "|" in target:
         target = target.split("|", 1)[0].strip()
     p = Path(target)
+    vault_resolved = vault_root.resolve()
 
-    candidates: list[Path] = [
-        (md_path.parent / p).resolve(),
-        (vault_root / p).resolve(),
-    ]
+    candidates: list[Path] = []
+    if not p.is_absolute():
+        for raw_cand in (md_path.parent / p, vault_root / p):
+            resolved = raw_cand.resolve()
+            if resolved.is_relative_to(vault_resolved):
+                candidates.append(resolved)
 
     filename = p.name
     if isinstance(name_index, FilenameIndex) and filename:
         name_index.ensure_built()
     if name_index and filename:
-        candidates.extend(name_index.get(filename, []))
+        norm = normalize_filename(filename)
+        candidates.extend(name_index.get(norm) or name_index.get(filename) or [])
 
     seen, uniq = set(), []
     for c in candidates:
@@ -181,7 +186,11 @@ def transform_images_in_text(
         for cand in _resolve_candidate_paths(md_path, vault_root, raw, name_index=name_index):
             if cand.exists() and cand.is_file():
                 media_name = _copy_to_anki_media(cand, anki_media_dir, logger)
-                return m.group(0).replace(raw, media_name) if media_name else m.group(0)
+                if not media_name:
+                    return m.group(0)
+                start = m.start(1) - m.start(0)
+                end = m.end(1) - m.start(0)
+                return m.group(0)[:start] + media_name + m.group(0)[end:]
         return m.group(0)
 
     out = MARKDOWN_IMG_RE.sub(repl_markdown_img, out)

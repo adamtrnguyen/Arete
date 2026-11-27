@@ -166,3 +166,19 @@ def test_a_crlf_file_differing_only_in_line_endings_is_not_formatted(tmp_path):
 
     assert "Formatted 0 files." in result.stdout
     assert note.read_bytes() == CLEAN.replace("\n", "\r\n").encode("utf-8")
+
+
+def test_format_single_file_only_formats_that_file(tmp_path):
+    """Passing a single file to `vault format` must not reformat sibling files in the vault."""
+    v = tmp_path / "vault"
+    (v / ".obsidian").mkdir(parents=True)
+    target = v / "target.md"
+    sibling = v / "sibling.md"
+    target.write_text(QUOTED, encoding="utf-8")
+    sibling.write_text(QUOTED, encoding="utf-8")
+
+    result = runner.invoke(app, ["vault", "format", str(target)])
+    assert result.exit_code == 0
+    assert "Formatted 1 files." in result.stdout
+    assert target.read_text(encoding="utf-8") == QUOTED_FORMATTED
+    assert sibling.read_text(encoding="utf-8") == QUOTED

@@ -158,13 +158,19 @@ class FakeNoteStore(NoteStorePort, NoteStoreSession):
     def _failure(self, op: str, key: Any) -> Exception | None:
         return self.fail(op, key)
 
+    def _type_by_name(self, name: str) -> NoteTypeInfo | None:
+        if name in self.types:
+            return self.types[name]
+        folded = name.casefold()
+        return next((info for k, info in self.types.items() if k.casefold() == folded), None)
+
     async def note_types(
         self, names: Collection[str]
     ) -> dict[str, NoteTypeInfo | None | Exception]:
         self._enter("note_types", sorted(names))
         out: dict[str, NoteTypeInfo | None | Exception] = {}
         for name in names:
-            out[name] = self._failure("note_types", name) or self.types.get(name)
+            out[name] = self._failure("note_types", name) or self._type_by_name(name)
         return out
 
     async def add_field(self, model: str, field_name: str) -> None:
@@ -221,7 +227,12 @@ class FakeNoteStore(NoteStorePort, NoteStoreSession):
         self._enter("scan_model", model)
         if error := self._failure("scan_model", model):
             raise error
-        return [self.held(nid) for nid in sorted(self.notes) if self.notes[nid].model == model]
+        wanted = model.casefold()
+        return [
+            self.held(nid)
+            for nid in sorted(self.notes)
+            if self.notes[nid].model.casefold() == wanted
+        ]
 
     async def create_notes(self, notes: Sequence[NewNote]) -> list[int | Exception]:
         self._enter("create_notes", list(notes))

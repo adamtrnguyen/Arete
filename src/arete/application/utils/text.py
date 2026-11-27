@@ -35,6 +35,29 @@ def normalize_filename(name: str) -> str:
 # ---------- Frontmatter helpers ----------
 
 
+def frontmatter_slice(text: str) -> str | None:
+    """The raw YAML block between opening and closing `---`, found by string search alone.
+
+    Returns "" when the text has no opening `---` line, and None when the opening `---`
+    never closes (so callers can distinguish frontmatterless notes from unclosed YAML).
+    """
+    text = text.lstrip("\ufeff")
+    first_end = text.find("\n")
+    first_line = text if first_end == -1 else text[:first_end]
+    if first_line.strip() != "---":
+        return ""
+    if first_end == -1:
+        return None
+    pos = first_end
+    while (pos := text.find("\n---", pos)) != -1:
+        line_end = text.find("\n", pos + 1)
+        line = text[pos + 1 :] if line_end == -1 else text[pos + 1 : line_end]
+        if line.rstrip() == "---":
+            return text[first_end + 1 : pos]
+        pos += 1
+    return None
+
+
 def _split_frontmatter(md_text: str) -> tuple[list[str], int | None] | None:
     """Split into lines and find the frontmatter's closing `---`, line by line, no regex.
 
@@ -262,6 +285,14 @@ def _extract_frontmatter_bounds(md_text: str) -> tuple[str, int, int] | None:
     return yaml_content, start, start + len(yaml_content)
 
 
+def _quote_template_tag(match: re.Match[str]) -> str:
+    prefix, inner = match.group(1), match.group(2)
+    # Never quote Anki cloze deletions (`{{c1::...}}`) — they are valid text, not templates.
+    if re.match(r"c\d+::", inner):
+        return match.group(0)
+    return f'{prefix}"{{{{{inner}}}}}"'
+
+
 def _preprocess_frontmatter_text(fm_text: str) -> str:
     """Minimal text fixes to make broken YAML parseable.
 
@@ -273,11 +304,24 @@ def _preprocess_frontmatter_text(fm_text: str) -> str:
     if "\t" in fm_text:
         fm_text = fm_text.replace("\t", "  ")
 
-    # Quote bare template tags: {{title}} → "{{title}}" (YAML flow-mapping syntax)
-    fm_text = re.sub(r"(:\s*)\{\{(.*?)\}\}", r'\1"{{\2}}"', fm_text)
+    # Quote bare template tags when the entire value is `{{...}}` (not Cloze `{{cN::...}}`
+    # and not a value with trailing text or content inside a block scalar).
+    fm_text = re.sub(
+        r"^([ \t]*-?[ \t]*[^:\n]+:[ \t]*)\{\{([^}\n]+)\}\}[ \t]*$",
+        _quote_template_tag,
+        fm_text,
+        flags=re.MULTILINE,
+    )
 
-    # Fix invalid block scalar start: `| '...` → `'...`
-    fm_text = re.sub(r"(\|[-+]?)\s*(['\"])", r"\2", fm_text)
+    # Fix invalid inline block scalar start on a mapping value: `key: | '...'` → `key: '...'`.
+    # Uses `[ \t]*` (never `\s*`) so valid multi-line block scalars whose first line starts
+    # with a quote (`Front: |\n  'line 1'`) are untouched.
+    fm_text = re.sub(
+        r"^([ \t]*-?[ \t]*[^:\n]+:[ \t]*)\|[-+]?[ \t]*(['\"])",
+        r"\1\2",
+        fm_text,
+        flags=re.MULTILINE,
+    )
 
     return fm_text
 
@@ -297,7 +341,11 @@ def apply_fixes(md_text: str) -> str:
     Phase 1: Minimal text pre-processing (make broken YAML parseable).
     Phase 2: Parse to dict, fix structure, dump with _LiteralDumper
              (handles block scalars, indentation, quote styles automatically).
+    If Phase 2 still fails to parse, returns the original text unchanged rather than
+    writing partially-mutated unparseable YAML back to disk.
     """
+    original = md_text
+
     # Strip leading empty frontmatter blocks
     md_text = md_text.lstrip()
     while re.match(r"^---\s*\n(\s*\n)*---\s*\n", md_text):
@@ -321,7 +369,7 @@ def apply_fixes(md_text: str) -> str:
     meta, body = parse_frontmatter(md_text)
 
     if not meta or "__yaml_error__" in meta:
-        return md_text  # Can't parse; return with text fixes only
+        return original  # Refuse to write unparseable output; leave the file untouched
 
     meta = _fix_frontmatter_dict(meta)
 

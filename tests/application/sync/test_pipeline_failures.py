@@ -68,3 +68,50 @@ async def test_pipeline_consumer_error(config):
 
     assert stats.total_errors >= 1
     logger.error.assert_called()
+
+
+@pytest.mark.asyncio
+async def test_pipeline_records_unreadable_files_as_errors_and_runs_prune_at_zero_compatible(
+    tmp_path,
+):
+    """Unreadable Arete files fail normal syncs, and 0 compatible files still run Stage 5 prune."""
+    from arete.application.sync.parser import MarkdownParser
+    from arete.application.sync.vault_service import VaultService
+    from arete.infrastructure.persistence.cache import ContentCache
+
+    vault_dir = tmp_path / "vault"
+    vault_dir.mkdir()
+    (vault_dir / "broken.md").write_text("---\narete: true\ncards: [\n---\n", encoding="utf-8")
+
+    cfg = AppConfig(
+        vault_root=vault_dir,
+        anki_media_dir=tmp_path / "media",
+        root_input=vault_dir,
+        prune=False,
+    )
+    cache = ContentCache(tmp_path / "c.db")
+    vs = VaultService(vault_dir, cache)
+    parser = MarkdownParser(vault_dir, tmp_path / "media")
+    bridge = AsyncMock()
+    logger = MagicMock()
+
+    stats = await run_pipeline(cfg, logger, "r1", vs, parser, bridge, cache)
+    assert stats.total_errors == 1
+
+    # With --prune on an unreadable-only vault, prune must be refused rather than skipped (None).
+    cfg_prune = AppConfig(
+        vault_root=vault_dir,
+        anki_media_dir=tmp_path / "media",
+        root_input=vault_dir,
+        prune=True,
+    )
+    stats_refused = await run_pipeline(cfg_prune, logger, "r2", vs, parser, bridge, cache)
+    assert stats_refused.prune is not None and stats_refused.prune.status == "refused"
+
+    # When the last Arete file is removed cleanly, 0 compatible files still plans/runs prune.
+    (vault_dir / "broken.md").unlink()
+    bridge.get_deck_names = AsyncMock(return_value=["Default"])
+    stats_clean = await run_pipeline(cfg_prune, logger, "r3", vs, parser, bridge, cache)
+    assert stats_clean.total_errors == 0
+    assert stats_clean.prune is not None and stats_clean.prune.status == "clean"
+    cache.close()

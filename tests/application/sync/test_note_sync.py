@@ -800,3 +800,50 @@ async def test_a_dry_run_reports_every_decision_and_writes_nothing():
         )
         == 0
     )
+
+
+@pytest.mark.asyncio
+async def test_omitted_field_on_custom_model_is_cleared_while_rewrite_fields_is_partial():
+    """Invariant 1: removed/omitted custom-model fields clear to '', but rewrite_fields stays partial."""
+    store = FakeNoteStore()
+    nid = store.add(
+        "Basic with Extra",
+        "S::Deck",
+        {"Front": "<p>Q</p>", "Back": "<p>A</p>", "Back Extra": "stale anki edit", SRC: "old"},
+        [ID],
+    )
+    sync = NoteSync(store)
+    item = card(
+        1,
+        model="Basic with Extra",
+        nid=nid,
+        **{"Front": "<p>Q</p>", "Back": "<p>A</p>", SRC: "old"},
+    )
+
+    [res] = await sync.sync_notes([item])
+    assert res.ok and res.changed is True
+    assert store.held(nid).fields["Back Extra"] == ""
+
+    # rewrite_fields must NOT wipe Front/Back when rewriting only `_obsidian_source`.
+    errors = await sync.rewrite_fields([(nid, "Basic with Extra", {SRC: "new-line"})])
+    assert errors == {nid: None}
+    assert store.held(nid).fields["Front"] == "<p>Q</p>"
+    assert store.held(nid).fields["Back"] == "<p>A</p>"
+    assert store.held(nid).fields[SRC] == "new-line"
+
+
+@pytest.mark.asyncio
+async def test_case_mismatched_model_does_no_retype_and_deduplicates_fronts():
+    """`model: basic` matches Anki's `Basic` without retyping and shares duplicate-front tracking."""
+    store = FakeNoteStore()
+    nid = store.add("Basic", "S::Deck", {"Front": "<p>Q</p>", "Back": "<p>A</p>"}, [ID])
+
+    [r1, r2] = await run(
+        store,
+        card(1, model="basic", nid=nid, Front="<p>Q</p>", Back="<p>A</p>"),
+        card(2, arete_id=ID2, model="BASIC", Front="<p>Q</p>", Back="<p>B</p>"),
+    )
+
+    assert r1.ok and r1.changed is False
+    assert not r2.ok and "duplicate first field" in (r2.error or "")
+    assert store.calls["apply_changes"] == 0

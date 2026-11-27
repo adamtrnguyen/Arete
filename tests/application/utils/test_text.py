@@ -198,3 +198,34 @@ def test_a_horizontal_rule_inside_a_block_scalar_does_not_end_the_frontmatter():
     meta, body = parse_frontmatter(text)
     assert meta["cards"][0]["Back"].rstrip("\n") == "part one\n---\npart two"
     assert body.strip() == "body"
+
+
+def test_apply_fixes_preserves_cloze_and_block_scalar_quotes():
+    """Cloze syntax and block scalars starting with quotes or pipes are never corrupted."""
+    cloze = (
+        "---\n"
+        "arete: true\n"
+        "deck: Test\n"
+        "cards:\n"
+        "  - model: Cloze\n"
+        "    Text: |-\n"
+        "      {{c1::Mitochondria}} is {{c2::powerhouse}}\n"
+        "      Label: {{c3::cell}}\n"
+        "  - Front: |\n"
+        "      'quoted first line'\n"
+        '      | "col"\n'
+        "    Back: ok\n"
+        "---\n"
+    )
+    fixed = apply_fixes(cloze)
+    meta, _ = parse_frontmatter(fixed)
+    assert "__yaml_error__" not in meta
+    assert "{{c1::Mitochondria}} is {{c2::powerhouse}}" in meta["cards"][0]["Text"]
+    assert "'quoted first line'" in meta["cards"][1]["Front"]
+    assert '| "col"' in meta["cards"][1]["Front"]
+
+
+def test_apply_fixes_returns_original_unchanged_when_phase2_fails():
+    """Unparseable YAML (even with tabs) is returned untouched rather than partially mutated."""
+    broken = "---\n\tkey: : [unclosed\n---\nbody\n"
+    assert apply_fixes(broken) == broken

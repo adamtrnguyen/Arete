@@ -102,7 +102,7 @@ def format_cmd(
 
     Normalize serialization to use stripped block scalars (|-).
     """
-    from arete.composition.factory import get_vault_service
+    from arete.composition.factory import opened_vault_service
 
     verbose = ctx.obj.get("verbose_bonus", 1) if ctx.obj else 1
     config = _resolve_with_overrides(
@@ -110,10 +110,9 @@ def format_cmd(
         dry_run=dry_run,
         verbose=verbose,
     )
-    vault = get_vault_service(config)
-
-    typer.echo(f"✨ Formatting vault: {config.vault_root}")
-    count = vault.format_vault(dry_run=dry_run)
+    with opened_vault_service(config) as vault:
+        typer.echo(f"✨ Formatting vault: {vault.root}")
+        count = vault.format_vault(dry_run=dry_run)
 
     if dry_run:
         typer.secho(f"\n[DRY RUN] Would have formatted {count} files.", fg="yellow")

@@ -184,6 +184,9 @@ class DirectNoteSession(NoteStoreSession):
             note[name] = value
         note.tags = list(new.tags)
         self.col.add_note(note, did)
+        if not note.card_ids():
+            self.col.remove_notes([note.id])
+            raise ValueError("cannot create note because it is empty")
         return int(note.id)
 
     async def apply_changes(self, changes: Sequence[NoteChange]) -> list[Exception | None]:
@@ -233,6 +236,9 @@ class DirectNoteSession(NoteStoreSession):
         did = self.col.decks.id(deck, create=False)
         if did is None:
             raise ValueError(f"deck was not found: {deck}")
+        deck_dict = self.col.decks.get(did)
+        if deck_dict and deck_dict.get("dyn"):
+            raise ValueError(f"cannot file cards under filtered deck: {deck}")
         loose = []
         for cid in cids:
             card = self.col.get_card(cast(Any, cid))

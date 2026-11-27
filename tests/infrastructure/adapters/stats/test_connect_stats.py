@@ -463,3 +463,30 @@ async def test_get_deck_params_a_failed_multi_raises(repo):
 
     with pytest.raises(RuntimeError, match="down"):
         await repo.get_deck_params(["A", "B"])
+
+
+@pytest.mark.asyncio
+async def test_get_review_history_captures_time_ms_and_fsrs_data(repo):
+    """get_review_history records review duration (time_ms) and optional FSRS data JSON."""
+    repo._invoke = AsyncMock(
+        return_value={
+            "101": [
+                {
+                    "id": 1700000000000,
+                    "ease": 3,
+                    "ivl": 10,
+                    "lastIvl": 4,
+                    "time": 4200,
+                    "data": '{"s": 12.5, "d": 4.0, "r": 0.91}',
+                }
+            ]
+        }
+    )
+
+    entries = await repo.get_review_history([101])
+
+    assert len(entries) == 1
+    assert entries[0].time_ms == 4200
+    assert entries[0].stability == 12.5
+    assert entries[0].difficulty == 4.0
+    assert entries[0].retrievability == 0.91
