@@ -2,7 +2,7 @@
 
 The add-on (`arete_ankiconnect/`) imports `aqt` at module level, so it cannot be imported in a
 test. Its action methods only touch the collection, though. This module compiles the parts it
-needs straight from the add-on's source files (the `AnkiConnect` class, `util.api`,
+needs straight from the add-on's source files (`AnkiConnect`, its action mixins, `util.api`,
 `util.MediaType`, the reply formatters, `arete.get_obsidian_source`) and runs them against an
 `anki.Collection` in `tmp_path`. Nothing is copied: an edit to the add-on is what runs here.
 
@@ -39,6 +39,7 @@ import anki
 import anki._backend
 import anki.collection
 import anki.exporting
+import anki.importing
 import anki.lang
 import anki.notes
 import anki.utils
@@ -49,6 +50,16 @@ from anki.errors import NotFoundError
 from anki.notes import Note
 
 ADDON_DIR = Path(__file__).resolve().parents[2] / "arete_ankiconnect"
+
+_ACTION_MODULES: tuple[tuple[str, str], ...] = (
+    ("actions_arete.py", "AreteActions"),
+    ("actions_decks.py", "DeckActions"),
+    ("actions_notes.py", "NoteActions"),
+    ("actions_cards.py", "CardActions"),
+    ("actions_models.py", "ModelActions"),
+    ("actions_media.py", "MediaActions"),
+    ("actions_gui.py", "GuiActions"),
+)
 
 
 def load_addon_names(filename: str, names: list[str], namespace: dict[str, Any]) -> dict[str, Any]:
@@ -76,16 +87,17 @@ def _addon_class() -> type:
     util = types.SimpleNamespace(
         api=util_ns["api"], MediaType=util_ns["MediaType"], setting=lambda _key: None
     )
-    namespace: dict[str, Any] = {
+    shared: dict[str, Any] = {
         "anki": anki,
-        # Module-level names the class reads, defined as the add-on's module defines them.
         "int_time": anki.utils.int_time,
         "field_checksum": anki.utils.field_checksum,
+        "contextlib": contextlib,
         "threading": threading,
         "util": util,
         "Card": Card,
         "Note": Note,
         "AnkiPackageExporter": anki.exporting.AnkiPackageExporter,
+        "AnkiPackageImporter": anki.importing.AnkiPackageImporter,
         "NotFoundError": NotFoundError,
         "MODEL_CLOZE": MODEL_CLOZE,
         "base64": base64,
@@ -94,15 +106,36 @@ def _addon_class() -> type:
         "inspect": inspect,
         "json": json,
         "logging": logging,
+        "logger": logging.getLogger("arete_ankiconnect"),
         "os": os,
         "Path": Path,
         "re": re,
         "tempfile": tempfile,
         "time": time,
         "unicodedata": unicodedata,
+        "_SENSITIVE_CARD_KEYS": frozenset(
+            {
+                "did",
+                "id",
+                "ivl",
+                "lapses",
+                "left",
+                "mod",
+                "nid",
+                "odid",
+                "odue",
+                "ord",
+                "queue",
+                "reps",
+                "type",
+                "usn",
+            }
+        ),
         **web_ns,
     }
-    return load_addon_names("__init__.py", ["AnkiConnect"], namespace)["AnkiConnect"]
+    for filename, cls_name in _ACTION_MODULES:
+        load_addon_names(filename, [cls_name], shared)
+    return load_addon_names("__init__.py", ["AnkiConnect"], shared)["AnkiConnect"]
 
 
 class _Window:

@@ -1,9 +1,10 @@
+import contextlib
 import json
 import os
 import re
 import tempfile
 import webbrowser
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from urllib.parse import quote
 
 from aqt import gui_hooks, mw
@@ -122,25 +123,26 @@ def copy_obsidian_source():
 REPORTS_PATH = os.path.join(os.path.expanduser("~"), ".config", "arete", "reports.json")
 
 
-def _append_report_atomic(report: dict, reports_path: str = REPORTS_PATH) -> bool:
+def _append_report_atomic(report: dict, reports_path: str | None = None) -> bool:
     """Append a report to reports_path atomically; refuse to overwrite corrupt files."""
-    reports_dir = os.path.dirname(reports_path)
+    target = REPORTS_PATH if reports_path is None else reports_path
+    reports_dir = os.path.dirname(target)
     os.makedirs(reports_dir, exist_ok=True)
 
     reports: list = []
-    if os.path.exists(reports_path):
+    if os.path.exists(target):
         try:
-            with open(reports_path, encoding="utf-8") as f:
+            with open(target, encoding="utf-8") as f:
                 loaded = json.load(f)
         except (json.JSONDecodeError, OSError) as e:
             showWarning(
-                f"Cannot read {reports_path}: {e}\n\n"
+                f"Cannot read {target}: {e}\n\n"
                 "Fix or remove the corrupt reports file before reporting new cards."
             )
             return False
         if not isinstance(loaded, list):
             showWarning(
-                f"{reports_path} does not contain a JSON list.\n\n"
+                f"{target} does not contain a JSON list.\n\n"
                 "Fix or remove the corrupt reports file before reporting new cards."
             )
             return False
@@ -162,18 +164,16 @@ def _append_report_atomic(report: dict, reports_path: str = REPORTS_PATH) -> boo
             json.dump(reports, f, indent=2, ensure_ascii=False)
             f.flush()
             os.fsync(f.fileno())
-        os.replace(tmp_path, reports_path)
+        os.replace(tmp_path, target)
         tmp_path = None
         return True
     except OSError as e:
-        showWarning(f"Failed to save report to {reports_path}: {e}")
+        showWarning(f"Failed to save report to {target}: {e}")
         return False
     finally:
         if tmp_path is not None and os.path.exists(tmp_path):
-            try:
+            with contextlib.suppress(OSError):
                 os.unlink(tmp_path)
-            except OSError:
-                pass
 
 
 def report_current_card():
@@ -210,7 +210,7 @@ def report_current_card():
         "line": card_idx,
         "front": front_text,
         "note": issue_note.strip(),
-        "timestamp": datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds"),
+        "timestamp": datetime.now(UTC).astimezone().isoformat(timespec="seconds"),
     }
 
     if not _append_report_atomic(report):

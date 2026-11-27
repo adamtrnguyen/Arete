@@ -13,10 +13,12 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
+import contextlib
 import json
 import select
 import socket
 import time
+from dataclasses import dataclass
 
 from . import util
 
@@ -56,11 +58,11 @@ def _validate_request(params: object) -> None:
 #
 
 
+@dataclass(frozen=True)
 class WebRequest:
-    def __init__(self, method, headers, body):
-        self.method = method
-        self.headers = headers
-        self.body = body
+    method: bytes | None
+    headers: dict[bytes, bytes]
+    body: bytes
 
 
 #
@@ -158,10 +160,8 @@ class WebClient:
 
     def close(self):
         if self.sock is not None:
-            try:
+            with contextlib.suppress(OSError):
                 self.sock.close()
-            except OSError:
-                pass
             self.sock = None
 
         self.readBuff = b""
@@ -247,7 +247,7 @@ class WebServer:
 
                 clientSock.setblocking(False)
                 self.clients.append(WebClient(clientSock, self.handlerWrapper))
-            except (BlockingIOError, OSError):
+            except OSError:
                 return
 
     def advanceClients(self):
@@ -334,12 +334,12 @@ class WebServer:
             return None
 
     def allowOrigin(self, req):
-        # handle multiple cors origins by checking the 'origin'-header against the allowed origin list from the config
+        # Check the Origin header against the allowed origin list from the config.
         webCorsOriginList = util.setting("webCorsOriginList")
 
         allowed = False
         corsOrigin = "http://localhost"
-        allowAllCors = "*" in webCorsOriginList  # allow CORS for all domains
+        allowAllCors = "*" in webCorsOriginList
 
         if allowAllCors:
             corsOrigin = "*"
@@ -356,7 +356,7 @@ class WebServer:
                 or originStr.startswith("http://localhost:")
                 or originStr.startswith("https://localhost:")
                 or originStr == "http://127.0.0.1"
-                or originStr == "https://127.0.0.1"  # allow 127.0.0.1 if localhost allowed
+                or originStr == "https://127.0.0.1"
                 or originStr.startswith("http://127.0.0.1:")
                 or originStr.startswith("https://127.0.0.1:")
             ):
@@ -394,10 +394,8 @@ class WebServer:
 
     def close(self):
         if self.sock is not None:
-            try:
+            with contextlib.suppress(OSError):
                 self.sock.close()
-            except OSError:
-                pass
             self.sock = None
 
         for client in self.clients:
@@ -409,8 +407,7 @@ class WebServer:
 def format_success_reply(api_version, result):
     if api_version <= 4:
         return result
-    else:
-        return {"result": result, "error": None}
+    return {"result": result, "error": None}
 
 
 def format_exception_reply(_api_version, exception):

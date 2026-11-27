@@ -94,7 +94,7 @@ def setting(key):
         raise Exception(f"setting {key} not found")
 
     # A caller may mutate what it gets (CORS list, permission prompts); keep the cache intact.
-    if isinstance(value, (list, dict, set)):
+    if isinstance(value, list | dict | set):
         return copy.deepcopy(value)
     return value
 

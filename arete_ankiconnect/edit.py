@@ -1,3 +1,5 @@
+from abc import ABC, abstractmethod
+
 import aqt
 import aqt.browser.previewer
 import aqt.editor
@@ -41,21 +43,26 @@ def filter_valid_note_ids(note_ids):
 
 
 class DecentPreviewer(aqt.browser.previewer.MultiCardPreviewer):
-    class Adapter:
+    class Adapter(ABC):
+        @abstractmethod
         def get_current_card(self):
-            raise NotImplementedError
+            pass
 
+        @abstractmethod
         def can_select_previous_card(self):
-            raise NotImplementedError
+            pass
 
+        @abstractmethod
         def can_select_next_card(self):
-            raise NotImplementedError
+            pass
 
+        @abstractmethod
         def select_previous_card(self):
-            raise NotImplementedError
+            pass
 
+        @abstractmethod
         def select_next_card(self):
-            raise NotImplementedError
+            pass
 
     def __init__(self, adapter: Adapter):
         super().__init__(parent=None, mw=aqt.mw, on_close=lambda: None)  # noqa
