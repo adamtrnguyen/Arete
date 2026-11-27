@@ -25,7 +25,7 @@ cards:
     # 1. Sync (Create)
     res = run_arete(tmp_path, anki_url)
     assert res.returncode == 0
-    assert "updated/added=1" in res.stdout
+    assert "updated/added=1" in res.stderr
 
     # 2. Check File content
     content = md_file.read_text(encoding="utf-8")

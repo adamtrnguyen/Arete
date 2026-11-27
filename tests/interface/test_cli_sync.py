@@ -296,8 +296,8 @@ def test_cli_and_sync_logging_do_not_duplicate_output(tmp_path, capsys):
         close_run_log(log)
 
     captured = capsys.readouterr()
-    assert "single-line-check" in captured.out
-    assert "single-line-check" not in captured.err
+    assert captured.err.count("single-line-check") == 1
+    assert captured.out == ""
 
 
 def test_configure_cli_logging_survives_closed_stderr_stream():

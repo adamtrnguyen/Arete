@@ -65,8 +65,8 @@ def setup_logging(log_dir: Path, verbose: int) -> tuple[logging.Logger, Path, st
     logger.setLevel(logging.DEBUG)
     close_run_log(logger)
 
-    # Console handler (Filtered by verbosity)
-    sh = logging.StreamHandler(sys.stdout)
+    # Console handler (Filtered by verbosity; logs go to stderr so stdout stays clean)
+    sh = logging.StreamHandler(sys.stderr)
     sh.setLevel(console_level)
     sh.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
 

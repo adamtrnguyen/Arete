@@ -253,7 +253,8 @@ export function normalizeStatsCache(raw: unknown, algorithm: 'fsrs' | 'sm2' = 'f
  * Prepare `statsCache` for `data.json`: store each card once under its `cardId` instead
  * of duplicating every card object under both `cardId` and `noteId`.
  */
-export function serializeStatsCache(cache: StatsCache): StatsCache {
+export function serializeStatsCache(cache: StatsCache | undefined): StatsCache {
+	if (!cache) return { concepts: {}, lastFetched: 0 };
 	const concepts: Record<string, ConceptStats> = {};
 	for (const [filePath, concept] of Object.entries(cache.concepts ?? {})) {
 		if (!concept || !isPlainObject(concept.cardStats)) {

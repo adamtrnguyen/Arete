@@ -11,7 +11,7 @@ jest.mock('@infrastructure/arete/CheckService');
 jest.mock('@application/services/StatsService', () => ({
 	StatsService: jest.fn().mockImplementation(() => ({
 		refreshStats: jest.fn().mockResolvedValue([]),
-		getCache: jest.fn(),
+		getCache: jest.fn().mockReturnValue({ concepts: {}, lastFetched: 0 }),
 		settings: {},
 	})),
 }));
@@ -56,6 +56,7 @@ describe('AretePlugin: what a click in the card gutter does', () => {
 
 	describe('clicking a card marker', () => {
 		beforeEach(() => {
+			app.workspace.trigger.mockClear();
 			plugin.highlightCardLines = jest.fn();
 			plugin.syncYamlEditorToCard = jest.fn();
 			app.workspace.getActiveFile.mockReturnValue({ path: 'N.md' });
