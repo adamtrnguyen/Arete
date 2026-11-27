@@ -54,6 +54,33 @@ class MediaActions:
         self.addMedia(ankiNote, note.get("video"), util.MediaType.Video)
         self.addMedia(ankiNote, note.get("picture"), util.MediaType.Picture)
 
+    def _attachMediaItem(self, ankiNote, media, mediaType):
+        try:
+            mediaFilename = self.storeMediaFile(
+                media["filename"],
+                data=media.get("data"),
+                path=media.get("path"),
+                url=media.get("url"),
+                skipHash=media.get("skipHash"),
+                deleteExisting=media.get("deleteExisting"),
+            )
+            if mediaFilename is None:
+                return
+            if mediaType is util.MediaType.Picture:
+                tag = f'<img src="{mediaFilename}">'
+            elif mediaType in (util.MediaType.Audio, util.MediaType.Video):
+                tag = f"[sound:{mediaFilename}]"
+            else:
+                return
+            for field in media["fields"]:
+                if field in ankiNote:
+                    ankiNote[field] += tag
+        except Exception as e:
+            errorMessage = str(e).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            for field in media["fields"]:
+                if field in ankiNote:
+                    ankiNote[field] += errorMessage
+
     def addMedia(self, ankiNote, mediaObjectOrList, mediaType):
         if mediaObjectOrList is None:
             return
@@ -64,31 +91,7 @@ class MediaActions:
 
         for media in mediaList:
             if media is not None and len(media["fields"]) > 0:
-                try:
-                    mediaFilename = self.storeMediaFile(
-                        media["filename"],
-                        data=media.get("data"),
-                        path=media.get("path"),
-                        url=media.get("url"),
-                        skipHash=media.get("skipHash"),
-                        deleteExisting=media.get("deleteExisting"),
-                    )
-
-                    if mediaFilename is not None:
-                        for field in media["fields"]:
-                            if field in ankiNote:
-                                if mediaType is util.MediaType.Picture:
-                                    ankiNote[field] += f'<img src="{mediaFilename}">'
-                                elif mediaType in (util.MediaType.Audio, util.MediaType.Video):
-                                    ankiNote[field] += f"[sound:{mediaFilename}]"
-
-                except Exception as e:
-                    errorMessage = (
-                        str(e).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-                    )
-                    for field in media["fields"]:
-                        if field in ankiNote:
-                            ankiNote[field] += errorMessage
+                self._attachMediaItem(ankiNote, media, mediaType)
 
     @util.api()
     def storeMediaFile(

@@ -110,7 +110,6 @@ line-length = 100
 target-version = "py312"
 exclude = [
     "docker/anki_data",
-    "arete_ankiconnect",
     "tests/fixtures",
     "obsidian-plugin",
 ]
@@ -141,15 +140,10 @@ convention = "google"
 # entry as soon as its file is under the limit. The debt: `uv run ruff check --select C901
 # --isolated src`. History: docs/history/qa-gate.md.
 "src/arete/application/queue/builder.py" = ["C901"]
-"src/arete/application/queue/graph_resolver.py" = ["C901"]
 "src/arete/application/queue/service.py" = ["C901"]
 "src/arete/application/sync/converter.py" = ["C901"]
 "src/arete/application/sync/parser.py" = ["C901"]
-"src/arete/application/sync/pipeline.py" = ["C901"]
 "src/arete/application/sync/vault_service.py" = ["C901"]
-"src/arete/application/utils/text.py" = ["C901"]
-"src/arete/infrastructure/adapters/stats/connect_stats.py" = ["C901"]
-"src/arete/infrastructure/anki/repository.py" = ["C901"]
 "src/arete/interface/cli.py" = ["C901"]
 
 [tool.ruff.lint.mccabe]

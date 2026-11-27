@@ -67,23 +67,33 @@ DEFAULT_CONFIG = {
 }
 
 
-def setting(key):
-    # Support environment variable overrides for critical settings in Docker/CI
+_UNSET = object()
+
+
+def _env_setting(key):
     if key == "webBindAddress":
         env_val = os.getenv("ANKICONNECT_BIND_ADDRESS")
         if env_val:
             return env_val
-    if key == "webBindPort":
+    elif key == "webBindPort":
         env_val = os.getenv("ANKICONNECT_BIND_PORT")
         if env_val:
             try:
                 return int(env_val)
             except ValueError as e:
                 raise ValueError(f"invalid ANKICONNECT_BIND_PORT: {env_val!r}") from e
-    if key == "apiKey":
+    elif key == "apiKey":
         env_val = os.getenv("ANKICONNECT_API_KEY")
         if env_val:
             return env_val
+    return _UNSET
+
+
+def setting(key):
+    # Support environment variable overrides for critical settings in Docker/CI
+    override = _env_setting(key)
+    if override is not _UNSET:
+        return override
 
     cfg = config()
     if key in cfg:

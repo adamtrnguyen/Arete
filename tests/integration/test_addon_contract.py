@@ -125,14 +125,10 @@ def test_reviews_of_cards_keep_request_order_and_per_card_rows(anki_url, notes):
 
 
 def test_suspend_reply_and_effect(anki_url, notes):
-    """Pins the present reply of suspend and unsuspend, quirk included.
-
-    suspend removes already-suspended cards from the list it is iterating, which skips
-    the next element: two suspended cards in a row still reply True.
-    """
+    """Pins the reply and collection effect of suspend and unsuspend."""
     a, b, c = (cid for _, cid in notes)
     assert call(anki_url, "suspend", cards=[a, b]) == {"result": True, "error": None}
-    assert call(anki_url, "suspend", cards=[a, b]) == {"result": True, "error": None}
+    assert call(anki_url, "suspend", cards=[a, b]) == {"result": False, "error": None}
     assert call(anki_url, "suspend", cards=[a]) == {"result": False, "error": None}
     assert call(anki_url, "areSuspended", cards=[a, b, c])["result"] == [True, True, False]
     assert call(anki_url, "unsuspend", cards=[a, c]) == {"result": None, "error": None}

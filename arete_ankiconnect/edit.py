@@ -44,6 +44,8 @@ def filter_valid_note_ids(note_ids):
 
 class DecentPreviewer(aqt.browser.previewer.MultiCardPreviewer):
     class Adapter(ABC):
+        """Interface supplying cards to DecentPreviewer."""
+
         @abstractmethod
         def get_current_card(self):
             pass
@@ -65,6 +67,7 @@ class DecentPreviewer(aqt.browser.previewer.MultiCardPreviewer):
             pass
 
     def __init__(self, adapter: Adapter):
+        """Initialize the previewer with its card adapter."""
         super().__init__(parent=None, mw=aqt.mw, on_close=lambda: None)  # noqa
         self.adapter = adapter
         self.last_card_id = 0
@@ -114,6 +117,7 @@ class DecentPreviewer(aqt.browser.previewer.MultiCardPreviewer):
 
 class ReadyCardsAdapter(DecentPreviewer.Adapter):
     def __init__(self, cards):
+        """Initialize the adapter with a fixed list of cards."""
         self.cards = cards
         self.current = 0
 
@@ -141,6 +145,7 @@ class History:
     number_of_notes_to_keep_in_history = 25
 
     def __init__(self):
+        """Initialize an empty note history."""
         self.note_ids = []
 
     def append(self, note):
@@ -198,6 +203,7 @@ class Edit(aqt.editcurrent.EditCurrent):
     # upon a request to open the dialog via `aqt.dialogs.open()`,
     # the manager will call either the constructor or the `reopen` method
     def __init__(self, note):
+        """Initialize and display the Edit dialog for a note."""
         QDialog.__init__(self, None, Qt.WindowType.Window)
         aqt.mw.garbage_collect_on_dialog_finish(self)
         self.form = aqt.forms.editcurrent.Ui_Dialog()

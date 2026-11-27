@@ -12,6 +12,80 @@ from . import util
 class NoteActions:
     """Note CRUD, tag editing, and note search actions."""
 
+    @staticmethod
+    def _populateNoteFields(ankiNote, fields):
+        for name, value in fields.items():
+            for ankiName in ankiNote.keys():
+                if name.lower() == ankiName.lower():
+                    ankiNote[ankiName] = value
+                    break
+
+    @staticmethod
+    def _requireBoolOption(options, key, label, default=False):
+        if key not in options:
+            return default
+        value = options[key]
+        if type(value) is not bool:
+            raise Exception(f'option parameter "{label}" must be boolean')
+        return value
+
+    @classmethod
+    def _parseDuplicateOptions(cls, note):
+        if "options" not in note:
+            return False, None, None, False, False
+        options = note["options"]
+        allowDuplicate = cls._requireBoolOption(options, "allowDuplicate", "allowDuplicate")
+        duplicateScope = options.get("duplicateScope")
+        if "duplicateScopeOptions" not in options:
+            return allowDuplicate, duplicateScope, None, False, False
+        scope_opts = options["duplicateScopeOptions"]
+        return (
+            allowDuplicate,
+            duplicateScope,
+            scope_opts.get("deckName"),
+            cls._requireBoolOption(
+                scope_opts, "checkChildren", "duplicateScopeOptions.checkChildren"
+            ),
+            cls._requireBoolOption(
+                scope_opts, "checkAllModels", "duplicateScopeOptions.checkAllModels"
+            ),
+        )
+
+    @staticmethod
+    def _resolveScopeDeckIds(collection, deck, scope_deck_name, check_children):
+        did = deck["id"]
+        if scope_deck_name is not None:
+            deck2 = collection.decks.by_name(scope_deck_name)
+            if deck2 is None:
+                return None
+            did = deck2["id"]
+        dids = {did: True}
+        if check_children:
+            for kv in collection.decks.children(did):
+                dids[kv[1]] = True
+        return dids
+
+    @staticmethod
+    def _hasDuplicateNote(note, csum, dids, check_all_models):
+        query = "select id from notes where csum=?"
+        queryArgs = [csum]
+        if note.id:
+            query += " and id!=?"
+            queryArgs.append(note.id)
+        if not check_all_models:
+            query += " and mid=?"
+            queryArgs.append(note.mid)
+
+        for noteId in note.col.db.list(query, *queryArgs):
+            if dids is None:
+                return True
+            if any(
+                cardDeckId in dids
+                for cardDeckId in note.col.db.list("select did from cards where nid=?", noteId)
+            ):
+                return True
+        return False
+
     def _buildNote(self, note):
         collection = self.collection()
 
@@ -27,45 +101,16 @@ class NoteActions:
         if "tags" in note:
             ankiNote.tags = note["tags"]
 
-        for name, value in note["fields"].items():
-            for ankiName in ankiNote.keys():
-                if name.lower() == ankiName.lower():
-                    ankiNote[ankiName] = value
-                    break
-
+        self._populateNoteFields(ankiNote, note["fields"])
         self.addMediaFromNote(ankiNote, note)
 
-        allowDuplicate = False
-        duplicateScope = None
-        duplicateScopeDeckName = None
-        duplicateScopeCheckChildren = False
-        duplicateScopeCheckAllModels = False
-
-        if "options" in note:
-            options = note["options"]
-            if "allowDuplicate" in options:
-                allowDuplicate = options["allowDuplicate"]
-                if type(allowDuplicate) is not bool:
-                    raise Exception('option parameter "allowDuplicate" must be boolean')
-            if "duplicateScope" in options:
-                duplicateScope = options["duplicateScope"]
-            if "duplicateScopeOptions" in options:
-                duplicateScopeOptions = options["duplicateScopeOptions"]
-                if "deckName" in duplicateScopeOptions:
-                    duplicateScopeDeckName = duplicateScopeOptions["deckName"]
-                if "checkChildren" in duplicateScopeOptions:
-                    duplicateScopeCheckChildren = duplicateScopeOptions["checkChildren"]
-                    if type(duplicateScopeCheckChildren) is not bool:
-                        raise Exception(
-                            'option parameter "duplicateScopeOptions.checkChildren" must be boolean'
-                        )
-                if "checkAllModels" in duplicateScopeOptions:
-                    duplicateScopeCheckAllModels = duplicateScopeOptions["checkAllModels"]
-                    if type(duplicateScopeCheckAllModels) is not bool:
-                        raise Exception(
-                            'option parameter "duplicateScopeOptions.checkAllModels" '
-                            "must be boolean"
-                        )
+        (
+            allowDuplicate,
+            duplicateScope,
+            duplicateScopeDeckName,
+            duplicateScopeCheckChildren,
+            duplicateScopeCheckAllModels,
+        ) = self._parseDuplicateOptions(note)
 
         duplicateOrEmpty = self.isNoteDuplicateOrEmptyInScope(
             ankiNote,
@@ -112,35 +157,13 @@ class NoteActions:
 
         dids = None
         if duplicateScope == "deck":
-            did = deck["id"]
-            if duplicateScopeDeckName is not None:
-                deck2 = collection.decks.by_name(duplicateScopeDeckName)
-                if deck2 is None:
-                    return 0
-                did = deck2["id"]
-
-            dids = {did: True}
-            if duplicateScopeCheckChildren:
-                for kv in collection.decks.children(did):
-                    dids[kv[1]] = True
-
-        query = "select id from notes where csum=?"
-        queryArgs = [csum]
-        if note.id:
-            query += " and id!=?"
-            queryArgs.append(note.id)
-        if not duplicateScopeCheckAllModels:
-            query += " and mid=?"
-            queryArgs.append(note.mid)
-
-        for noteId in note.col.db.list(query, *queryArgs):
+            dids = self._resolveScopeDeckIds(
+                collection, deck, duplicateScopeDeckName, duplicateScopeCheckChildren
+            )
             if dids is None:
-                return 2
-            for cardDeckId in note.col.db.list("select did from cards where nid=?", noteId):
-                if cardDeckId in dids:
-                    return 2
+                return 0
 
-        return 0
+        return 2 if self._hasDuplicateNote(note, csum, dids, duplicateScopeCheckAllModels) else 0
 
     def cardIdsOfNotes(self, notes):
         """{note id: its card ids by ord} for the integer ids in `notes`, in one query.

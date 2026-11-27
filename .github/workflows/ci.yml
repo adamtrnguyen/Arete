@@ -93,12 +93,18 @@ jobs:
     - name: Install Dependencies
       run: |
         cd obsidian-plugin
+        # Required until eslint-plugin-obsidianmd's transitive plugins declare ESLint 10 peers.
         npm ci --legacy-peer-deps
 
     - name: Lint
       run: |
         cd obsidian-plugin
         npm run lint
+
+    - name: Format Check
+      run: |
+        cd obsidian-plugin
+        npm run fmt:check
 
     - name: Lint Imports
       run: |

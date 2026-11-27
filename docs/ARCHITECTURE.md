@@ -17,6 +17,7 @@ src/arete/
 │   ├── anki_commands.py           Anki card management and debugging commands
 │   ├── cli.py                     Arete CLI — root commands and subgroup registration
 │   ├── vault_commands.py          Vault maintenance commands: validate, fix, format
+│   ├── wizard.py                  run_init_wizard
 │
 ├── composition/               The only place that picks an adapter for a port and wires a use-case.
 │   ├── factory.py                 Composition Root
@@ -32,7 +33,6 @@ src/arete/
 │   │   ├── service.py             FsrsStatsService
 │   ├── sync/                     
 │   │   ├── converter.py           Markdown to Anki HTML conversion logic
-│   │   ├── id_service.py          Service for managing stable Arete IDs for cards
 │   │   ├── id_writeback.py        Write card ids into a note's frontmatter as line edits; every other byte stays
 │   │   ├── note_sync.py           Bring Anki's notes to what the vault says: the one copy of the sync decision logic
 │   │   ├── parser.py              MarkdownParser
@@ -41,16 +41,13 @@ src/arete/
 │   │   ├── vault_service.py       VaultService
 │   ├── utils/                    
 │   │   ├── common.py              to_list, sanitize, detect_anki_paths
-│   │   ├── consts.py
 │   │   ├── fs.py                  replace_file, read_text_and_newline, replace_text...
 │   │   ├── logging.py             LogEntry, RunRecorder, setup_logging...
 │   │   ├── media.py               build_filename_index, FilenameIndex, transform_images_in_text...
-│   │   ├── text.py                normalize_filename, parse_frontmatter, UniqueKeyLoader...
-│   │   ├── yaml.py
+│   │   ├── text.py                normalize_filename, frontmatter_slice, split_frontmatter...
 │   ├── config.py                  VaultRootUnknown, find_vault_root, require_vault_root...
 │   ├── report_service.py          Service for reading and managing card issue reports
 │   ├── validation.py              Vault file validation: check YAML frontmatter for arete compatibility
-│   ├── wizard.py                  run_init_wizard
 │
 ├── infrastructure/            One technology each: AnkiConnect over HTTP, the Anki library, SQLite.
 │   ├── adapters/                 
@@ -59,9 +56,9 @@ src/arete/
 │   │   │   ├── deck_config.py     FSRS parameters from a deck config as Anki stores it
 │   │   │   ├── direct_stats.py    Direct Stats Repository — Infrastructure adapter for Anki's SQLite database
 │   │   ├── anki_connect.py        ConnectNoteSession, AnkiConnectAdapter
+│   │   ├── anki_connect_client.py Shared HTTP / WSL transport client for AnkiConnect
 │   │   ├── anki_direct.py         AnkiDirectAdapter
 │   ├── anki/                     
-│   │   ├── fsrs.py                FSRS memory state of an Anki card, in the domain's units
 │   │   ├── note_session.py        The note-store primitives over an open collection, for the direct backend
 │   │   ├── repository.py          Anki Repository
 │   │   ├── search.py              Anki search terms built from a name, so the name matches only itself
@@ -77,7 +74,7 @@ src/arete/
 │   ├── graph.py                   Domain types for dependency graph
 │   ├── identity.py                How a vault card and an Anki note are recognised as the same card
 │   ├── interfaces.py              Ports: what the application layer is allowed to ask of the outside world
-│   ├── models.py                  AnkiDeck, AnkiNote, WorkItem...
+│   ├── models.py                  deck_parents, AnkiNote, WorkItem...
 │   ├── note_types.py              Field mapping for changing a note's type in place
 │   ├── ownership.py               Which Anki notes Arete owns
 │
@@ -86,11 +83,11 @@ src/arete/
 
 | Layer | Modules | Lines | May import |
 |---|---|---|---|
-| `interface` | 4 | 1083 | application, composition |
-| `composition` | 2 | 296 | application, infrastructure, domain |
-| `application` | 24 | 6106 | domain (ports only) |
-| `infrastructure` | 11 | 2208 | domain |
-| `domain` | 9 | 891 | nothing in arete |
+| `interface` | 5 | 1248 | application, composition |
+| `composition` | 2 | 288 | application, infrastructure, domain |
+| `application` | 20 | 6440 | domain (ports only) |
+| `infrastructure` | 11 | 2420 | domain |
+| `domain` | 9 | 913 | nothing in arete |
 
 The import rules in the last column are enforced by `just check-architecture`
 (import-linter), not by convention.

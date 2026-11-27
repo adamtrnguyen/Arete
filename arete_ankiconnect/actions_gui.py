@@ -171,59 +171,62 @@ class GuiActions:
             return []
         return instance.selected_notes()
 
+    def _prepareGuiNote(self, collection, note):
+        deck = collection.decks.by_name(note["deckName"])
+        if deck is None:
+            raise Exception(f"deck was not found: {note['deckName']}")
+
+        collection.decks.select(deck["id"])
+        savedMid = deck.pop("mid", None)
+
+        model = collection.models.by_name(note["modelName"])
+        if model is None:
+            raise Exception(f"model was not found: {note['modelName']}")
+
+        collection.models.set_current(model)
+        collection.models.update_dict(model)
+
+        ankiNote = anki.notes.Note(collection, model)
+
+        if "fields" in note:
+            for name, value in note["fields"].items():
+                if name in ankiNote:
+                    ankiNote[name] = value
+
+        self.addMediaFromNote(ankiNote, note)
+
+        if "tags" in note:
+            ankiNote.tags = note["tags"]
+
+        return ankiNote, deck, savedMid
+
     @util.api()
     def guiAddCards(self, note=None):
-        if note is not None:
-            collection = self.collection()
+        if note is None:
+            addCards = aqt.dialogs.open("AddCards", self.window())
+            addCards.activateWindow()
+            return addCards.editor.note.id
 
-            deck = collection.decks.by_name(note["deckName"])
-            if deck is None:
-                raise Exception(f"deck was not found: {note['deckName']}")
+        ankiNote, deck, savedMid = self._prepareGuiNote(self.collection(), note)
 
-            collection.decks.select(deck["id"])
-            savedMid = deck.pop("mid", None)
+        def openNewWindow():
+            nonlocal ankiNote
 
-            model = collection.models.by_name(note["modelName"])
-            if model is None:
-                raise Exception(f"model was not found: {note['modelName']}")
+            addCards = aqt.dialogs.open("AddCards", self.window())
+            if savedMid:
+                deck["mid"] = savedMid
+            addCards.editor.set_note(ankiNote)
+            addCards.activateWindow()
+            aqt.dialogs.open("AddCards", self.window())
+            addCards.setAndFocusNote(addCards.editor.note)
 
-            collection.models.set_current(model)
-            collection.models.update_dict(model)
+        currentWindow = aqt.dialogs._dialogs["AddCards"][1]
+        if currentWindow is not None:
+            currentWindow.closeWithCallback(openNewWindow)
+        else:
+            openNewWindow()
 
-            ankiNote = anki.notes.Note(collection, model)
-
-            if "fields" in note:
-                for name, value in note["fields"].items():
-                    if name in ankiNote:
-                        ankiNote[name] = value
-
-            self.addMediaFromNote(ankiNote, note)
-
-            if "tags" in note:
-                ankiNote.tags = note["tags"]
-
-            def openNewWindow():
-                nonlocal ankiNote
-
-                addCards = aqt.dialogs.open("AddCards", self.window())
-                if savedMid:
-                    deck["mid"] = savedMid
-                addCards.editor.set_note(ankiNote)
-                addCards.activateWindow()
-                aqt.dialogs.open("AddCards", self.window())
-                addCards.setAndFocusNote(addCards.editor.note)
-
-            currentWindow = aqt.dialogs._dialogs["AddCards"][1]
-            if currentWindow is not None:
-                currentWindow.closeWithCallback(openNewWindow)
-            else:
-                openNewWindow()
-
-            return ankiNote.id
-
-        addCards = aqt.dialogs.open("AddCards", self.window())
-        addCards.activateWindow()
-        return addCards.editor.note.id
+        return ankiNote.id
 
     @util.api()
     def guiReviewActive(self):

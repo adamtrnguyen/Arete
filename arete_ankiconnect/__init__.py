@@ -77,6 +77,7 @@ class AnkiConnect(
     GuiActions,
 ):
     def __init__(self):
+        """Initialize the action dispatch table and HTTP server state."""
         self.log = None
         self.timer = None
         self.refreshTimer = None

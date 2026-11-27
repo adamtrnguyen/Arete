@@ -8,6 +8,7 @@ RUFF       := "uv run ruff"
 NPM        := "npm --prefix obsidian-plugin"
 SRC        := "src"
 TESTS      := "tests"
+ADDON      := "arete_ankiconnect"
 PLUGIN     := "obsidian-plugin"
 RELEASE    := "release_artifacts"
 
@@ -62,20 +63,20 @@ coverage-all *args:
 
 # Lint backend code with Ruff (no fixes)
 lint:
-    {{RUFF}} check --no-fix {{SRC}} {{TESTS}} scripts/
+    {{RUFF}} check --no-fix {{SRC}} {{TESTS}} {{ADDON}} scripts/
 
 # The tree stays formatted (fix with `just format`)
 fmt-check:
-    {{RUFF}} format --check {{SRC}} {{TESTS}} scripts/
+    {{RUFF}} format --check {{SRC}} {{TESTS}} {{ADDON}} scripts/
 
 # Format backend code with Ruff
 @format:
-    {{RUFF}} format {{SRC}} {{TESTS}} scripts/
+    {{RUFF}} format {{SRC}} {{TESTS}} {{ADDON}} scripts/
 
 # Fixers, opt-in and never part of qa: ruff fixes + format, prettier on the plugin
 @fix:
-    {{RUFF}} check --fix {{SRC}} {{TESTS}} scripts/
-    {{RUFF}} format {{SRC}} {{TESTS}} scripts/
+    {{RUFF}} check --fix {{SRC}} {{TESTS}} {{ADDON}} scripts/
+    {{RUFF}} format {{SRC}} {{TESTS}} {{ADDON}} scripts/
     {{NPM}} run format
 
 # Static type checking
@@ -115,6 +116,10 @@ dead:
 # Lint Obsidian plugin
 lint-obsidian:
     {{NPM}} run lint
+
+# Format check Obsidian plugin
+fmt-check-obsidian:
+    {{NPM}} run fmt:check
 
 # Plugin import rules (dependency-cruiser)
 lint-deps-obsidian:
@@ -182,7 +187,7 @@ verify: qa
 qa:
     #!/usr/bin/env bash
     set -uo pipefail
-    names=(lint fmt-check types layers dead test check-docs check-versions lint-obsidian lint-deps-obsidian types-obsidian test-obsidian)
+    names=(lint fmt-check types layers dead test check-docs check-versions lint-obsidian fmt-check-obsidian lint-deps-obsidian types-obsidian test-obsidian)
     logs=$(mktemp -d "${TMPDIR:-/tmp}/qa.XXXXXX")
     trap 'rm -rf "$logs"' EXIT
     echo "== qa: ${#names[@]} checks, concurrent (${names[*]}); output replayed in that order =="

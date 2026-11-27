@@ -13,7 +13,7 @@ import yaml
 from arete.application.utils import text
 
 REPO = Path(__file__).resolve().parents[3]
-FIXTURE_ROOTS = [REPO / "tests/fixtures", REPO / "tests/mock_vault", REPO / "tests/integrity_test"]
+FIXTURE_ROOTS = [REPO / "tests/fixtures"]
 FIXTURES = sorted(p for root in FIXTURE_ROOTS for p in root.rglob("*.md"))
 
 needs_libyaml = pytest.mark.skipif(

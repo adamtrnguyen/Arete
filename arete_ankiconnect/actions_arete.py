@@ -14,18 +14,16 @@ logger = logging.getLogger("arete_ankiconnect")
 class AreteActions:
     """Arete-specific AnkiConnect actions for sync, topological queues, and FSRS stats."""
 
-    @util.api()
-    def createFilteredDeck(self, name, cids, reschedule=True):
-        """Create or rebuild a filtered deck with cards in the specified CID order."""
+    @staticmethod
+    def _validateCardIds(cids):
         if not isinstance(cids, list) or not cids:
             raise Exception("No card IDs provided")
         for cid in cids:
             if type(cid) is not int:
                 raise Exception(f"invalid card id: {cid!r}")
 
-        col = self.collection()
-
-        # 1. Find or create filtered deck
+    @staticmethod
+    def _ensureFilteredDeck(col, name):
         did = col.decks.id(name, create=False)
         if did:
             deck = col.decks.get(did)
@@ -35,22 +33,16 @@ class AreteActions:
         else:
             did = col.decks.new_filtered(name)
 
-        # 2. Configure search terms
         deck = col.decks.get(did)
         if deck is None:
             raise Exception(f"Deck '{name}' could not be loaded")
-        query = " OR ".join(f"cid:{cid}" for cid in cids)
-        deck["terms"] = [[query, len(cids), 0]]  # [query, limit, order=oldest]
-        deck["resched"] = reschedule
-        col.decks.save(deck)
+        return did, deck
 
-        # 3. Rebuild (pull cards into filtered deck)
-        col.sched.rebuild_filtered_deck(did)
-
-        # 4. Enforce topological order via due values.
-        # One update for all cards; a repeated cid keeps its last position.
-        # Intraday learning cards (queue == 1) store a Unix timestamp in `due`,
-        # so leave their `due` untouched.
+    @staticmethod
+    def _applyFilteredDeckOrder(col, did, cids):
+        # Enforce topological order via due values. One update for all cards; a repeated cid
+        # keeps its last position. Intraday learning cards (queue == 1) store a Unix timestamp
+        # in `due`, so leave their `due` untouched.
         pulled: dict[int, Card] = {}
         for i, cid in enumerate(cids):
             try:
@@ -61,21 +53,53 @@ class AreteActions:
                 card.due = i + 1000
                 pulled[card.id] = card
 
-        if pulled:
-            try:
-                col.update_cards(list(pulled.values()), skip_undo_entry=True)
-            except Exception as e:
-                logger.warning("createFilteredDeck batch update_cards failed: %s", e)
-                for card in pulled.values():
-                    try:
-                        col.update_card(card, skip_undo_entry=True)
-                    except Exception as item_err:
-                        logger.warning(
-                            "createFilteredDeck update_card(%s) failed: %s",
-                            card.id,
-                            item_err,
-                        )
+        if not pulled:
+            return
+        try:
+            col.update_cards(list(pulled.values()), skip_undo_entry=True)
+        except Exception as e:
+            logger.warning("createFilteredDeck batch update_cards failed: %s", e)
+            for card in pulled.values():
+                try:
+                    col.update_card(card, skip_undo_entry=True)
+                except Exception as item_err:
+                    logger.warning(
+                        "createFilteredDeck update_card(%s) failed: %s",
+                        card.id,
+                        item_err,
+                    )
 
+    def _classifyHomeDeckCards(self, cards, did):
+        queued: dict[int, Card] = {}
+        loose: list[int] = []
+        seen_loose: set[int] = set()
+        for cid in cards:
+            if type(cid) is not int:
+                raise Exception(f"invalid card id: {cid!r}")
+            card = self.getCard(cid)
+            if card.odid:
+                if card.odid != did and card.id not in queued:
+                    card.odid = did
+                    queued[card.id] = card
+            elif card.did != did and card.id not in seen_loose:
+                seen_loose.add(card.id)
+                loose.append(card.id)
+        return queued, loose
+
+    @util.api()
+    def createFilteredDeck(self, name, cids, reschedule=True):
+        """Create or rebuild a filtered deck with cards in the specified CID order."""
+        self._validateCardIds(cids)
+        col = self.collection()
+        did, deck = self._ensureFilteredDeck(col, name)
+
+        query = " OR ".join(f"cid:{cid}" for cid in cids)
+        deck["terms"] = [[query, len(cids), 0]]  # [query, limit, order=oldest]
+        deck["resched"] = reschedule
+        col.decks.save(deck)
+
+        col.sched.rebuild_filtered_deck(did)
+        self._applyFilteredDeckOrder(col, did, cids)
         self.scheduleRefresh()
         return did
 
@@ -130,20 +154,7 @@ class AreteActions:
         if deck_dict.get("dyn"):
             raise Exception(f"cannot set a filtered deck as home deck: {deck}")
 
-        queued: dict[int, Card] = {}
-        loose: list[int] = []
-        seen_loose: set[int] = set()
-        for cid in cards:
-            if type(cid) is not int:
-                raise Exception(f"invalid card id: {cid!r}")
-            card = self.getCard(cid)
-            if card.odid:
-                if card.odid != did and card.id not in queued:
-                    card.odid = did
-                    queued[card.id] = card
-            elif card.did != did and card.id not in seen_loose:
-                seen_loose.add(card.id)
-                loose.append(card.id)
+        queued, loose = self._classifyHomeDeckCards(cards, did)
 
         if queued:
             col.update_cards(list(queued.values()), skip_undo_entry=True)
