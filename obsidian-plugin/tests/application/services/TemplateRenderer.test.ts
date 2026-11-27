@@ -77,6 +77,25 @@ describe('TemplateRenderer', () => {
 		expect(result?.html).not.toContain('&lt;p&gt;');
 	});
 
+	it('preserves triple-brace Mustache tags and spaced section/unescaped sigils', async () => {
+		renderer.setMode('anki');
+		mockRepo.modelTemplates.mockResolvedValue({
+			'Card 1': {
+				Front: '{{{Front}}}{{ #Flag }}[{{ &Extra }}]{{ /Flag }}',
+				Back: '{{FrontSide}}',
+			},
+		});
+
+		const result = await renderer.render(
+			'Basic',
+			'Front',
+			{ Front: '<b>Bold</b>', Flag: 'yes', Extra: '<em>Hi</em>' },
+			opts,
+		);
+
+		expect(result?.html).toBe('<b>Bold</b>[<em>Hi</em>]');
+	});
+
 	it('surfaces a model-load failure so the UI can explain the fallback', async () => {
 		mockRepo.modelStyling.mockRejectedValue(new Error('Failed'));
 		await expect(renderer.render('NonExistent', 'Front', {}, opts)).rejects.toThrow('Failed');

@@ -25,7 +25,8 @@ export async function renderLeechesTab(
 	}
 
 	const isSm2 = ctx.settings.stats_algorithm === 'sm2';
-	const table = container.createEl('table', { cls: 'arete-leech-table' });
+	const tableWrap = container.createDiv({ cls: 'arete-leech-table-wrap' });
+	const table = tableWrap.createEl('table', { cls: 'arete-leech-table' });
 
 	const thead = table.createEl('thead');
 	const headerRow = thead.createEl('tr');

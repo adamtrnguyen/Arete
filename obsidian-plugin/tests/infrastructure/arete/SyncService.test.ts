@@ -84,7 +84,7 @@ describe('SyncService', () => {
 		prune: null,
 	});
 
-	test('runSync for a specific file', async () => {
+	test('runSync for a specific file passes --force without clearing the vault cache', async () => {
 		const mockChild = createMockChildProcess();
 		(spawn as jest.Mock).mockReturnValue(mockChild);
 
@@ -93,13 +93,56 @@ describe('SyncService', () => {
 		mockChild.emit('close', 0);
 		await syncPromise;
 
+		const argv = (spawn as jest.Mock).mock.calls[0][1] as string[];
 		expect(spawn).toHaveBeenCalledWith(
 			'python3',
-			expect.arrayContaining(['sync', '--force', '--clear-cache', '/mock/path/file.md']),
+			expect.arrayContaining([
+				'sync',
+				'--json',
+				'--no-dry-run',
+				'--no-prune',
+				'--force',
+				'--no-clear-cache',
+				'--backend',
+				'auto',
+				'--anki-connect-url',
+				'http://localhost:8765',
+				'/mock/path/file.md',
+			]),
 			expect.any(Object),
 		);
+		expect(argv).not.toContain('--clear-cache');
 		expect(updateStatusBar).toHaveBeenCalledWith('syncing');
 		expect(updateStatusBar).toHaveBeenCalledWith('success');
+	});
+
+	test('runSync normal vault sync passes explicit --no-prune, --no-dry-run, --no-force, --no-clear-cache', async () => {
+		const mockChild = createMockChildProcess();
+		(spawn as jest.Mock).mockReturnValue(mockChild);
+
+		const syncPromise = service.runSync(false, null, false, updateStatusBar);
+		mockChild.stdout.emit('data', Buffer.from(okReportJson));
+		mockChild.emit('close', 0);
+		await syncPromise;
+
+		const argv = (spawn as jest.Mock).mock.calls[0][1] as string[];
+		expect(argv).toEqual(
+			expect.arrayContaining([
+				'sync',
+				'--json',
+				'--no-dry-run',
+				'--no-prune',
+				'--no-force',
+				'--no-clear-cache',
+				'--backend',
+				'auto',
+				'--anki-connect-url',
+				'http://localhost:8765',
+			]),
+		);
+		expect(argv).not.toContain('--prune');
+		expect(argv).not.toContain('--force');
+		expect(argv).not.toContain('--clear-cache');
 	});
 
 	test('runSync with all flags and custom settings', async () => {
@@ -117,8 +160,10 @@ describe('SyncService', () => {
 		expect(spawn).toHaveBeenCalledWith(
 			'python3',
 			expect.arrayContaining([
+				'--no-dry-run',
 				'--prune',
 				'--force',
+				'--clear-cache',
 				'--backend',
 				'direct',
 				'--anki-connect-url',

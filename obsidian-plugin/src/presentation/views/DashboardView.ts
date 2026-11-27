@@ -89,6 +89,18 @@ export class DashboardView extends ItemView {
 		this.queueBuilderRevision++;
 	}
 
+	syncRenamedFile(oldPath: string, newPath: string): void {
+		if (this.expandedConcepts.delete(oldPath)) {
+			this.expandedConcepts.add(newPath);
+		}
+		void this.render();
+	}
+
+	syncDeletedFile(filePath: string): void {
+		this.expandedConcepts.delete(filePath);
+		void this.render();
+	}
+
 	private thresholdSnapshot(): string {
 		const s = this.plugin.settings;
 		return JSON.stringify([

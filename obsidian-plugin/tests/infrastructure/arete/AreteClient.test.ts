@@ -214,14 +214,14 @@ describe('AreteClient: one `arete` process per call, JSON on stdout', () => {
 			await expect(promise).resolves.toBe(false);
 		});
 
-		it('omits --backend for auto and --anki-connect-url when it is empty', async () => {
+		it('passes --backend auto explicitly and omits --anki-connect-url when empty', async () => {
 			settings.backend = 'auto';
 			settings.anki_connect_url = '';
 			const child = cli();
 			const promise = client.getCardStats([]);
 			reply(child, '[]');
 			await promise;
-			expect(areteArgs()).toEqual(['anki', 'stats', '--nids', '[]']);
+			expect(areteArgs()).toEqual(['anki', 'stats', '--nids', '[]', '--backend', 'auto']);
 		});
 
 		it('spawns in the project root with the interpreter from the settings', async () => {

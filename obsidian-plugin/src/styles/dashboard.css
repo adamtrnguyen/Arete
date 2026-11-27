@@ -2,6 +2,7 @@
 
 .arete-dashboard-container {
 	background: var(--background-primary);
+	container-type: inline-size;
 	display: flex;
 	flex-direction: column;
 	height: 100%;
@@ -19,8 +20,10 @@
 	border-bottom: var(--border-width) solid var(--background-modifier-border);
 	padding: var(--size-4-4);
 	display: flex;
+	flex-wrap: wrap;
 	justify-content: space-between;
 	align-items: center;
+	gap: var(--size-4-2);
 }
 
 .arete-dashboard-title {
@@ -29,7 +32,8 @@
 
 .arete-header-stats {
 	display: flex;
-	gap: var(--size-4-4);
+	flex-wrap: wrap;
+	gap: var(--size-2-2) var(--size-4-3);
 	font-size: var(--font-ui-small);
 	color: var(--text-muted);
 }
@@ -58,6 +62,7 @@
 
 .arete-tab-btn {
 	display: flex;
+	flex-shrink: 0;
 	align-items: center;
 	gap: var(--size-2-3);
 	padding: var(--size-4-2) var(--size-4-4);
@@ -65,6 +70,7 @@
 	font-size: var(--font-ui-small);
 	font-weight: var(--font-medium);
 	color: var(--text-muted);
+	white-space: nowrap;
 	cursor: var(--cursor);
 	transition:
 		color 0.2s ease,
@@ -129,6 +135,7 @@
 .arete-deck-header {
 	display: flex;
 	align-items: center;
+	gap: var(--size-2-2);
 	padding: var(--size-4-2) var(--size-4-4);
 	border-bottom: var(--border-width) solid var(--background-modifier-border);
 	cursor: var(--cursor);
@@ -144,7 +151,8 @@
 }
 
 .arete-deck-icon {
-	margin-right: var(--size-4-2);
+	flex-shrink: 0;
+	margin-right: var(--size-4-1);
 }
 
 .arete-deck-icon.mod-leaf {
@@ -152,6 +160,10 @@
 }
 
 .arete-deck-title {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 	font-weight: var(--font-semibold);
 }
 
@@ -161,6 +173,7 @@
 
 .arete-deck-stats {
 	display: flex;
+	flex-shrink: 0;
 	align-items: center;
 	gap: var(--size-4-5);
 	margin-left: auto;
@@ -210,6 +223,7 @@
 .arete-card-row {
 	display: flex;
 	align-items: center;
+	gap: var(--size-2-2);
 	padding: var(--size-2-2) var(--size-4-2) var(--size-2-2) var(--size-4-3);
 	border-bottom: var(--border-width) solid var(--background-modifier-border);
 }
@@ -230,6 +244,7 @@
 
 .arete-card-question {
 	flex: 1;
+	min-width: 0;
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -285,6 +300,10 @@
 }
 
 /* Leech Table */
+.arete-leech-table-wrap {
+	overflow-x: auto;
+}
+
 .arete-leech-table {
 	width: 100%;
 	border-collapse: collapse;
@@ -365,14 +384,17 @@
 
 .arete-integrity-item {
 	display: flex;
+	flex-wrap: wrap;
 	justify-content: space-between;
 	align-items: center;
+	gap: var(--size-4-2);
 	padding: var(--size-4-2);
 	border-bottom: var(--border-width) solid var(--background-modifier-border);
 }
 
 .arete-integrity-meta {
 	display: flex;
+	flex-wrap: wrap;
 	align-items: center;
 	gap: var(--size-4-2);
 }
@@ -384,6 +406,7 @@
 .arete-integrity-target,
 .arete-integrity-error {
 	color: var(--text-error);
+	overflow-wrap: anywhere;
 }
 
 .arete-integrity-error,
@@ -446,6 +469,65 @@
 
 .arete-queue-title {
 	flex: 1;
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+
+/* Narrow sidebar layout: stack deck stats and card metrics under their titles so
+ * questions and deck names never squish to 0px in Obsidian's default right sidebar. */
+@container (max-width: 34rem) {
+	.arete-deck-header {
+		flex-wrap: wrap;
+	}
+
+	.arete-deck-title {
+		flex: 1 1 0;
+	}
+
+	.arete-deck-stats {
+		width: 100%;
+		margin-left: 0;
+		flex-wrap: wrap;
+		gap: var(--size-2-1) var(--size-4-3);
+	}
+
+	.arete-deck-stat.mod-count,
+	.arete-deck-stat.mod-difficulty,
+	.arete-deck-stat.mod-retrievability,
+	.arete-deck-stat.mod-stability,
+	.arete-deck-stat.mod-lapses {
+		width: auto;
+		text-align: left;
+	}
+
+	.arete-deck-stats .arete-badge {
+		margin-left: 0;
+	}
+
+	.arete-card-list-header,
+	.arete-card-row {
+		flex-wrap: wrap;
+	}
+
+	.arete-card-question {
+		flex: 1 0 100%;
+	}
+
+	.arete-card-stats-group {
+		flex: 1 0 100%;
+		justify-content: space-between;
+	}
+
+	.arete-card-col,
+	.arete-card-col.mod-lapses {
+		width: auto;
+		flex: 1 1 0;
+		text-align: left;
+	}
+
+	.arete-card-col.mod-flags {
+		flex: 0 0 var(--size-4-5);
+	}
 }
 
 /* Card stats modal. Widths are multiples of --size-4-1 (4px). */

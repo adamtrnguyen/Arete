@@ -242,9 +242,26 @@ export default class AretePlugin extends Plugin {
 					this.syncOnSaveTimers.delete(file.path);
 				}
 				this.activeCardContext.delete(file.path);
-				const concepts = this.statsService?.getCache().concepts;
-				if (concepts && file.path in concepts) {
-					delete concepts[file.path];
+				let statsChanged = false;
+				const cache = this.statsService?.getCache();
+				if (cache?.concepts && file.path in cache.concepts) {
+					const nextConcepts = { ...cache.concepts };
+					delete nextConcepts[file.path];
+					cache.concepts = nextConcepts;
+					this.statsCache = cache;
+					statsChanged = true;
+				}
+				const expandedIdx = this.settings.ui_expanded_concepts.indexOf(file.path);
+				if (expandedIdx !== -1) {
+					this.settings.ui_expanded_concepts = this.settings.ui_expanded_concepts.filter(
+						(p) => p !== file.path,
+					);
+					this.requestSaveUiState();
+				}
+				if (statsChanged || expandedIdx !== -1) {
+					for (const leaf of this.app.workspace.getLeavesOfType(DASHBOARD_VIEW_TYPE)) {
+						(leaf.view as DashboardView).syncDeletedFile?.(file.path);
+					}
 				}
 			}),
 		);
@@ -260,12 +277,29 @@ export default class AretePlugin extends Plugin {
 					this.activeCardContext.delete(oldPath);
 					this.activeCardContext.set(file.path, rememberedCard);
 				}
-				const concepts = this.statsService?.getCache().concepts;
-				if (concepts && oldPath in concepts) {
-					const moved = { ...concepts[oldPath], filePath: file.path };
+				let statsChanged = false;
+				const cache = this.statsService?.getCache();
+				if (cache?.concepts && oldPath in cache.concepts) {
+					const nextConcepts = { ...cache.concepts };
+					const moved = { ...nextConcepts[oldPath], filePath: file.path };
 					if (file instanceof TFile) moved.fileName = file.name;
-					concepts[file.path] = moved;
-					delete concepts[oldPath];
+					nextConcepts[file.path] = moved;
+					delete nextConcepts[oldPath];
+					cache.concepts = nextConcepts;
+					this.statsCache = cache;
+					statsChanged = true;
+				}
+				const expandedIdx = this.settings.ui_expanded_concepts.indexOf(oldPath);
+				if (expandedIdx !== -1) {
+					this.settings.ui_expanded_concepts = this.settings.ui_expanded_concepts.map(
+						(p) => (p === oldPath ? file.path : p),
+					);
+					this.requestSaveUiState();
+				}
+				if (statsChanged || expandedIdx !== -1) {
+					for (const leaf of this.app.workspace.getLeavesOfType(DASHBOARD_VIEW_TYPE)) {
+						(leaf.view as DashboardView).syncRenamedFile?.(oldPath, file.path);
+					}
 				}
 				if (!(file instanceof TFile)) return;
 				if (!file.path.endsWith('.md') && !oldPath.endsWith('.md')) return;

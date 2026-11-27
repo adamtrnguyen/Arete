@@ -198,6 +198,37 @@ describe('LocalGraphView events', () => {
 		jest.advanceTimersByTime(150);
 		expect(refresh).toHaveBeenCalledTimes(1);
 	});
+
+	it('tracks renames and deletes of the currently displayed note', async () => {
+		jest.useFakeTimers();
+		const { app, view } = setup();
+		(global as any).ResizeObserver = class {
+			observe() {}
+			disconnect() {}
+		};
+		const vaultHandlers: Record<string, (...args: any[]) => void> = {};
+		app.vault.on = jest.fn((name: string, cb: (...args: any[]) => void) => {
+			vaultHandlers[name] = cb;
+			return {};
+		});
+		app.workspace.on = jest.fn(() => ({}));
+		view.registerEvent = jest.fn();
+		view.contentEl = element('div');
+		await view.onOpen();
+		view.drawnKey = 'prev-key';
+
+		const refresh = jest.spyOn(view, 'refresh').mockResolvedValue(undefined);
+		const renamed = Object.assign(new TFile(), { path: 'LinearAlgebra.md', extension: 'md' });
+		vaultHandlers.rename(renamed, 'Algebra.md');
+		expect(view.currentFilePath).toBe('LinearAlgebra.md');
+		expect(view.drawnKey).toBeNull();
+		jest.advanceTimersByTime(150);
+		expect(refresh).toHaveBeenCalledTimes(1);
+
+		vaultHandlers.delete(renamed);
+		expect(view.currentFilePath).toBeNull();
+		expect(view.centeredCardId).toBeNull();
+	});
 });
 
 describe('LocalGraphView logging', () => {

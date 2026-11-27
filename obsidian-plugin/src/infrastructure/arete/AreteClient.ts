@@ -138,7 +138,7 @@ export class AreteClient
 
 	private backendArgs(): string[] {
 		const args: string[] = [];
-		if (this.settings.backend && this.settings.backend !== 'auto') {
+		if (this.settings.backend) {
 			args.push('--backend', this.settings.backend);
 		}
 		if (this.settings.anki_connect_url) {

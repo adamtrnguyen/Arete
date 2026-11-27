@@ -207,12 +207,19 @@ describe('dependency graph invalidation', () => {
 	test('deleting or renaming a note cancels pending sync timers and cleans/migrates context and stats', async () => {
 		jest.useFakeTimers();
 		try {
-			const { plugin, vaultHandlers } = await setup({});
+			const { app, plugin, vaultHandlers } = await setup({});
 			plugin.settings.sync_on_save = true;
 			plugin.settings.sync_on_save_delay = 1000;
+			plugin.settings.ui_expanded_concepts = ['A.md'];
 			(plugin.syncService.runSync as jest.Mock).mockResolvedValue('success');
+			const syncRenamedFile = jest.fn();
+			const syncDeletedFile = jest.fn();
+			(app.workspace.getLeavesOfType as jest.Mock).mockReturnValue([
+				{ view: { syncRenamedFile, syncDeletedFile } },
+			]);
 			plugin.setCardContext('A.md', 'arete_1');
-			plugin.statsService.getCache().concepts['A.md'] = {
+			const initialConcepts = plugin.statsService.getCache().concepts;
+			initialConcepts['A.md'] = {
 				filePath: 'A.md',
 				fileName: 'A.md',
 			} as any;
@@ -224,16 +231,23 @@ describe('dependency graph invalidation', () => {
 			expect(plugin.syncService.runSync).not.toHaveBeenCalled();
 			expect(plugin.getCardContext('A.md')).toBeUndefined();
 			expect(plugin.getCardContext('B.md')).toBe('arete_1');
+			expect(plugin.statsService.getCache().concepts).not.toBe(initialConcepts);
 			expect(plugin.statsService.getCache().concepts['A.md']).toBeUndefined();
 			expect(plugin.statsService.getCache().concepts['B.md']?.filePath).toBe('B.md');
+			expect(plugin.settings.ui_expanded_concepts).toEqual(['B.md']);
+			expect(syncRenamedFile).toHaveBeenCalledWith('A.md', 'B.md');
 
+			const afterRenameConcepts = plugin.statsService.getCache().concepts;
 			vaultHandlers.modify(tfile('B.md'));
 			vaultHandlers.delete(tfile('B.md'));
 			await jest.advanceTimersByTimeAsync(2000);
 
 			expect(plugin.syncService.runSync).not.toHaveBeenCalled();
 			expect(plugin.getCardContext('B.md')).toBeUndefined();
+			expect(plugin.statsService.getCache().concepts).not.toBe(afterRenameConcepts);
 			expect(plugin.statsService.getCache().concepts['B.md']).toBeUndefined();
+			expect(plugin.settings.ui_expanded_concepts).toEqual([]);
+			expect(syncDeletedFile).toHaveBeenCalledWith('B.md');
 		} finally {
 			jest.useRealTimers();
 		}

@@ -170,7 +170,11 @@ export class SyncService {
 		const resolved = resolvePythonCommand(this.settings, vaultPath);
 		const run = (confirmed: boolean) => {
 			const target = targetPath || vaultPath;
-			const args = [...resolved.args, ...this.syncArgs(prune, force, confirmed), target];
+			const args = [
+				...resolved.args,
+				...this.syncArgs(prune, force, confirmed, targetPath),
+				target,
+			];
 			log(`Spawning: ${resolved.cmd} ${args.join(' ')}`);
 			return this.runProcess(resolved, args, log);
 		};
@@ -198,22 +202,32 @@ export class SyncService {
 	}
 
 	/** The options after `sync`, from the command and the settings. */
-	private syncArgs(prune: boolean, force: boolean, confirmed: boolean): string[] {
+	private syncArgs(
+		prune: boolean,
+		force: boolean,
+		confirmed: boolean,
+		targetPath: string | null,
+	): string[] {
 		const args: string[] = [];
 		if (this.settings.debug_mode) args.push('--verbose');
-		args.push('sync', '--json');
-		if (prune) args.push('--prune');
-		if (prune && confirmed) args.push('--yes');
-		// Forcing re-sends every card, so the content cache is cleared with it.
-		if (force) args.push('--force', '--clear-cache');
-		if (this.settings.backend && this.settings.backend !== 'auto') {
+		args.push('sync', '--json', '--no-dry-run');
+		if (prune) {
+			args.push('--prune');
+			if (confirmed) args.push('--yes');
+		} else {
+			args.push('--no-prune');
+		}
+		// Only a full-vault force sync clears the whole cache; single-file force bypasses it via --force.
+		if (force) {
+			args.push('--force', targetPath ? '--no-clear-cache' : '--clear-cache');
+		} else {
+			args.push('--no-force', '--no-clear-cache');
+		}
+		if (this.settings.backend) {
 			args.push('--backend', this.settings.backend);
 		}
 		if (this.settings.workers) args.push('--workers', this.settings.workers.toString());
-		if (
-			this.settings.anki_connect_url &&
-			this.settings.anki_connect_url !== 'http://localhost:8765'
-		) {
+		if (this.settings.anki_connect_url) {
 			args.push('--anki-connect-url', this.settings.anki_connect_url);
 		}
 		if (this.settings.anki_media_dir) {

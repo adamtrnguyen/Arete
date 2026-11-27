@@ -175,6 +175,28 @@ export class LocalGraphView extends ItemView {
 				this.scheduleRefresh();
 			}),
 		);
+		this.registerEvent(
+			this.app.vault.on('rename', (file, oldPath) => {
+				if (oldPath !== this.currentFilePath) return;
+				if (file instanceof TFile && file.extension === 'md') {
+					this.currentFilePath = file.path;
+				} else {
+					this.currentFilePath = null;
+					this.centeredCardId = null;
+				}
+				this.drawnKey = null;
+				this.scheduleRefresh();
+			}),
+		);
+		this.registerEvent(
+			this.app.vault.on('delete', (file) => {
+				if (file.path !== this.currentFilePath) return;
+				this.currentFilePath = null;
+				this.centeredCardId = null;
+				this.drawnKey = null;
+				this.scheduleRefresh();
+			}),
+		);
 		// The 2D drawing follows the theme through CSS; a 3D one repaints in place, which
 		// neither rebuilds it nor restarts its layout.
 		this.registerEvent(this.app.workspace.on('css-change', () => this.repaint3D?.()));

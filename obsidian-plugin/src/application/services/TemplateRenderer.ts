@@ -240,8 +240,9 @@ export class TemplateRenderer {
 		// Helper to force unescaped variables in template
 		const makeUnescaped = (tmpl: string) => {
 			// Replace {{Var}} with {{{Var}}} to prevent escaping HTML.
-			// Leaves sections (#/^//), unescaped (&/{{{), comments (!), partials (>), and delimiters (=) untouched.
-			return tmpl.replace(/\{\{(?!\{|#|\^|\/|&|!|>|=)(.+?)\}\}/g, '{{{$1}}}');
+			// Leaves triple braces ({{{...}}}), sections (#/^//), unescaped (&), comments (!),
+			// partials (>), and delimiters (=) untouched, even with leading whitespace.
+			return tmpl.replace(/(?<!\{)\{\{(?!\s*[&#^/!>=]|\{)(.+?)\}\}(?!\})/g, '{{{$1}}}');
 		};
 
 		if (templateType === 'Back' && frontTemplate) {
