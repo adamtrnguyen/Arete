@@ -292,9 +292,9 @@ async def test_get_review_history_basic(mock_repo):
             (5, "time", "", 0, None, 0),
             (6, "type", "", 0, None, 0),
         ],  # PRAGMA table_info
-        [  # SELECT query results (id, cid, ease, ivl, lastIvl)
-            (1700000000000, 101, 3, 7, 1),
-            (1690000000000, 101, 2, 1, 0),
+        [  # SELECT query results (id, cid, ease, ivl, lastIvl, time)
+            (1700000000000, 101, 3, 7, 1, 4200),
+            (1690000000000, 101, 2, 1, 0, 1800),
         ],
     ]
 
@@ -306,6 +306,8 @@ async def test_get_review_history_basic(mock_repo):
     assert result[0].rating == 3
     assert result[0].interval == 7
     assert result[0].review_time == 1700000000  # ms to seconds
+    assert result[0].time_ms == 4200
+    assert result[1].time_ms == 1800
 
 
 @pytest.mark.asyncio
@@ -326,8 +328,8 @@ async def test_get_review_history_with_fsrs_data(mock_repo):
             (6, "type", "", 0, None, 0),
             (7, "data", "", 0, None, 0),
         ],  # has 'data' column
-        [  # SELECT results with data column
-            (1700000000000, 101, 3, 7, 1, fsrs_data),
+        [  # SELECT results with time + data column
+            (1700000000000, 101, 3, 7, 1, 3500, fsrs_data),
         ],
     ]
 
@@ -338,6 +340,7 @@ async def test_get_review_history_with_fsrs_data(mock_repo):
     assert result[0].stability == 15.0
     assert result[0].difficulty == 5.0
     assert result[0].retrievability == 0.92
+    assert result[0].time_ms == 3500
 
 
 # ---------- get_deck_params ----------
@@ -407,8 +410,8 @@ async def test_get_review_history_chunks_over_sql_chunk_and_sorts(mock_repo):
     cids = list(range(1, _SQL_CHUNK + 25))
     mock_repo.col.db.execute.side_effect = [
         [(0, "id", "", 0, None, 0), (1, "cid", "", 0, None, 0)],  # PRAGMA
-        [(2000000000000, 1, 3, 7, 1)],  # chunk 1
-        [(1000000000000, _SQL_CHUNK + 1, 2, 1, 0)],  # chunk 2 (older review)
+        [(2000000000000, 1, 3, 7, 1, 2500)],  # chunk 1
+        [(1000000000000, _SQL_CHUNK + 1, 2, 1, 0, 1500)],  # chunk 2 (older review)
     ]
     repo = DirectStatsRepository(anki_base=None)
     result = await repo.get_review_history(cids)

@@ -68,7 +68,7 @@ class DecentPreviewer(aqt.browser.previewer.MultiCardPreviewer):
 
     def __init__(self, adapter: Adapter):
         """Initialize the previewer with its card adapter."""
-        super().__init__(parent=None, mw=aqt.mw, on_close=lambda: None)  # noqa
+        super().__init__(parent=None, mw=aqt.mw, on_close=lambda: None)
         self.adapter = adapter
         self.last_card_id = 0
 
@@ -105,7 +105,7 @@ class DecentPreviewer(aqt.browser.previewer.MultiCardPreviewer):
         return self.showing_question_and_can_show_answer() or self.adapter.can_select_next_card()
 
     def _render_scheduled(self):
-        super()._render_scheduled()  # noqa
+        super()._render_scheduled()
         self._updateButtons()
 
     def showing_answer_and_can_show_question(self):
@@ -322,8 +322,8 @@ class Edit(aqt.editcurrent.EditCurrent):
         gui_hooks.browser_did_change_row.append(search_input_select_all)
         try:
             browser = aqt.dialogs.open("Browser", aqt.mw)
-            browser.table._state.sort_column = self.dialog_search_tag  # noqa
-            browser.table._set_sort_indicator()  # noqa
+            browser.table._state.sort_column = self.dialog_search_tag
+            browser.table._set_sort_indicator()
 
             browser.search_for(f"nid:{self.note.id}")
             browser.table.select_all()
@@ -437,12 +437,12 @@ class Edit(aqt.editcurrent.EditCurrent):
             trigger_search_for_dialog_history_notes(
                 search_context=search_context,
                 use_history_order=cls.dialog_search_tag
-                == search_context.browser.table._state.sort_column,  # noqa
+                == search_context.browser.table._state.sort_column,
             )
 
     @classmethod
     def register_with_anki(cls):
-        if cls.dialog_registry_tag not in aqt.dialogs._dialogs:  # noqa
+        if cls.dialog_registry_tag not in aqt.dialogs._dialogs:
             aqt.dialogs.register_dialog(cls.dialog_registry_tag, cls)
             gui_hooks.browser_will_search.append(cls.browser_will_search)
 

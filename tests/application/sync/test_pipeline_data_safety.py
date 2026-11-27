@@ -340,3 +340,48 @@ async def test_cross_batch_duplicate_front_pre_reserved_by_existing_nid(tmp_path
     assert not res.ok
     assert "duplicate first field" in (res.error or "")
     assert "b_existing.md #1" in (res.error or "")
+
+
+@pytest.mark.asyncio
+async def test_vault_claims_matches_wikilink_fronts_and_null_models(tmp_path):
+    """Wikilinks and explicit `model: null` in YAML resolve identically in vault_claims and parser."""
+    from arete.application.sync.note_sync import NoteSync
+    from arete.application.sync.pipeline import vault_claims, vault_models
+    from arete.application.utils.text import parse_frontmatter
+    from arete.domain.models import WorkItem
+    from tests.fakes.note_store import FakeNoteStore
+
+    store = FakeNoteStore()
+    existing_nid = store.add(
+        model="Basic",
+        deck="Math",
+        fields={"Front": "OldQ", "Back": "OldA"},
+        tags=[ID_A2],
+    )
+    new_md = tmp_path / "a_new.md"
+    existing_md = tmp_path / "b_existing.md"
+    new_md.write_text(
+        f"---\narete: true\ndeck: Math\nmodel:\ncards:\n"
+        f"  - id: {ID_A1}\n    model:\n    Front: See [[Linear Algebra|LA]]\n    Back: A1\n---\n"
+    )
+    existing_md.write_text(
+        f"---\narete: true\ndeck: Math\nmodel:\ncards:\n"
+        f"  - id: {ID_A2}\n    model:\n    Front: See [[Linear Algebra|LA]]\n    Back: A2\n"
+        f"    anki:\n      nid: {existing_nid}\n---\n"
+    )
+    parser = MarkdownParser(tmp_path, tmp_path / "media", ignore_cache=True, logger=LOG)
+    cache = ContentCache(tmp_path / "c.db")
+    meta_new, _ = parse_frontmatter(new_md.read_text())
+    meta_existing, _ = parse_frontmatter(existing_md.read_text())
+    compatible = [(new_md, meta_new, True), (existing_md, meta_existing, True)]
+
+    assert vault_models(compatible) == {"Basic"}
+    claims = vault_claims(compatible, parser)
+    notes_new, _, _ = parser.parse_file(new_md, meta_new, cache)
+    assert notes_new[0].model == "Basic"
+
+    ns = NoteSync(store, claims=claims)
+    [res] = await ns.sync_notes([WorkItem(note=notes_new[0], source_file=new_md, source_index=1)])
+    assert not res.ok
+    assert "duplicate first field" in (res.error or "")
+    assert "b_existing.md #1" in (res.error or "")

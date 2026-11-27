@@ -413,3 +413,24 @@ def test_the_render_key_changes_with_the_markdown_library(tmp_path, monkeypatch)
     there = parser_module.MarkdownParser(tmp_path, tmp_path / "media").render_key
 
     assert here != there
+
+
+def test_parse_null_model_falls_back_to_default_and_file_model(parser_fixture, mock_cache):
+    parser, vault = parser_fixture
+    meta_file_null = {
+        "deck": "Default",
+        "model": None,
+        "cards": [{"model": None, "Front": "Q", "Back": "A"}],
+    }
+    notes, skipped, _ = parser.parse_file(vault / "a.md", meta_file_null, mock_cache)
+    assert not skipped and len(notes) == 1
+    assert notes[0].model == "Basic"
+
+    meta_card_null = {
+        "deck": "Default",
+        "model": "Cloze",
+        "cards": [{"model": None, "Text": "{{c1::Q}}"}],
+    }
+    notes, skipped, _ = parser.parse_file(vault / "b.md", meta_card_null, mock_cache)
+    assert not skipped and len(notes) == 1
+    assert notes[0].model == "Cloze"

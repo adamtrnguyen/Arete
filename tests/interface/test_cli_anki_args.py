@@ -33,6 +33,19 @@ def test_stats_invalid_json_nids_exits_1():
     assert result.stdout == ""
 
 
+def test_stats_rejects_non_list_or_non_int_json_nids():
+    obj = runner.invoke(app, ["anki", "stats", "--nids", '{"a": 1}', *BACKEND])
+    assert obj.exit_code == 1
+    assert "expected a JSON list of integers" in obj.stderr
+    assert obj.stdout == ""
+
+    for bad in ('["abc"]', "[true]", "[1.5]", "[null]"):
+        res = runner.invoke(app, ["anki", "stats", "--nids", bad, *BACKEND])
+        assert res.exit_code == 1, bad
+        assert "all items must be integers" in res.stderr
+        assert res.stdout == ""
+
+
 def test_stats_with_no_valid_nids_prints_an_empty_json_list():
     result = runner.invoke(app, ["anki", "stats", "--nids", "abc,,x", *BACKEND])
     assert result.exit_code == 0

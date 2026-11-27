@@ -7,8 +7,6 @@ import json
 import logging
 from typing import Any
 
-import httpx
-
 from arete.domain.constants import FSRS_DIFFICULTY_SCALE
 from arete.domain.stats.models import (
     CardStatsAggregate,
@@ -82,14 +80,6 @@ class ConnectStatsRepository(StatsRepository):
     @property
     def url(self) -> str:
         return self.client.url
-
-    @property
-    def _client(self) -> httpx.AsyncClient | None:
-        return self.client._client
-
-    @_client.setter
-    def _client(self, value: httpx.AsyncClient | None) -> None:
-        self.client._client = value
 
     async def get_card_stats(self, nids: list[int]) -> list[CardStatsAggregate]:
         """Fetch comprehensive stats for cards belonging to the given note IDs."""

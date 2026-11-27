@@ -5,7 +5,7 @@ It answers the actions the adapter sends, with the reply shapes of the
 a ``multi`` sub-action that names none) gets the bare result, any other gets
 ``{"result", "error"}``, and an error is always ``{"result": None, "error"}``.
 ``requests`` counts HTTP requests by action; ``sub_actions`` counts what ran inside
-``multi``. Plug it in with ``adapter._http_request = fake.http``.
+``multi``. Plug it in with ``adapter.client._http_request = fake.http``.
 
 ``interrupt`` cuts a request off in transit: ``(applied, exc)`` runs the action first
 when ``applied`` is true, then raises ``exc`` where the reply would be. A ``TimeoutError``
@@ -31,6 +31,7 @@ class FakeAnki:
             "Cloze": ["Text", "Back Extra", "_obsidian_source"],
         }
         self.decks: set[str] = {"Default"}
+        self.filtered_decks: set[str] = set()
         self.notes: dict[int, dict[str, Any]] = {}
         self.card_deck: dict[int, str] = {}
         self.requests: Counter[str] = Counter()
@@ -127,6 +128,11 @@ class FakeAnki:
 
     def _a_deckNames(self):
         return sorted(self.decks)
+
+    def _a_getDeckConfig(self, deck):
+        if deck not in self.decks:
+            return False
+        return {"dyn": 1 if deck in self.filtered_decks else 0}
 
     def _a_modelFieldAdd(self, modelName, fieldName):
         if modelName not in self.models:
@@ -255,6 +261,7 @@ class FakeAnki:
     def queue(self, nids, deck="Arete::Queue"):
         """Pull the notes' cards into a filtered deck, as createFilteredDeck does."""
         self.decks.add(deck)
+        self.filtered_decks.add(deck)
         for nid in nids:
             for cid in self.notes[nid]["cards"]:
                 self.card_home.setdefault(cid, self.card_deck[cid])
@@ -300,6 +307,7 @@ class FakeAnki:
     def _a_deleteDecks(self, decks, cardsToo=False):
         for deck in decks:
             self.decks.discard(deck)
+            self.filtered_decks.discard(deck)
 
 
 def _search_term(query: str) -> tuple[str, re.Pattern[str]]:

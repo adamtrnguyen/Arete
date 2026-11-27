@@ -168,9 +168,8 @@ async def test_invoke_invalid_response(adapter):
 @pytest.mark.asyncio
 async def test_invoke_windows_curl_failure():
     """Test the WSL curl execution path returning error."""
-    ac = AnkiConnectAdapter()
-    ac.use_windows_curl = True
-    ac.url = "http://127.0.0.1:8765"
+    ac = AnkiConnectAdapter(url="http://127.0.0.1:8765")
+    ac.client.use_windows_curl = True
 
     with patch("asyncio.create_subprocess_exec") as mock_exec:
         process_mock = MagicMock()
@@ -433,7 +432,7 @@ def test_native_windows_is_not_taken_for_wsl(release):
     ):
         mock_platform.return_value.release = release
         adapter = AnkiConnectAdapter(url="http://localhost:8765")
-    assert (adapter.use_windows_curl, adapter.url) == (False, "http://localhost:8765")
+    assert (adapter.client.use_windows_curl, adapter.url) == (False, "http://localhost:8765")
     m_open.assert_not_called()
 
 
@@ -455,7 +454,7 @@ async def test_wsl_detection_curl_found():
         mock_uname.return_value.release = "microsoft-standard-WSL2"
         with patch("shutil.which", return_value="/mnt/c/Windows/System32/curl.exe"):
             ac = AnkiConnectAdapter(url="http://localhost:8765")
-            assert ac.use_windows_curl is True
+            assert ac.client.use_windows_curl is True
             assert ac.url == "http://127.0.0.1:8765"
 
 
@@ -486,7 +485,7 @@ async def test_curl_bridge_active():
 
         adapter = AnkiConnectAdapter(url="http://localhost:8765")
 
-        assert adapter.use_windows_curl is True
+        assert adapter.client.use_windows_curl is True
         assert adapter.url == "http://127.0.0.1:8765"
 
         res = await adapter._invoke("version")
@@ -513,14 +512,14 @@ async def test_curl_bridge_fallback():
 
         adapter = AnkiConnectAdapter(url="http://localhost:8765")
 
-        assert adapter.use_windows_curl is False
+        assert adapter.client.use_windows_curl is False
 
 
 @pytest.mark.asyncio
 async def test_is_responsive_uses_curl_on_wsl():
     """On WSL with curl.exe bridge, is_responsive must route through _http_request."""
     adapter = AnkiConnectAdapter(url="http://127.0.0.1:8765")
-    adapter.use_windows_curl = True
+    adapter.client.use_windows_curl = True
     with patch.object(adapter.client, "_http_request", new_callable=AsyncMock) as mock_http:
         mock_http.return_value = {"result": 6, "error": None}
         assert await adapter.is_responsive() is True
@@ -533,14 +532,14 @@ async def test_is_responsive_initializes_client_with_limits():
     from arete.domain.constants import SYNC_CONCURRENCY
 
     adapter = AnkiConnectAdapter(url="http://127.0.0.1:8765")
-    adapter.use_windows_curl = False
+    adapter.client.use_windows_curl = False
     with respx.mock:
         respx.post("http://127.0.0.1:8765").mock(
             return_value=httpx.Response(200, json={"result": 6, "error": None})
         )
         assert await adapter.is_responsive() is True
-        assert adapter._client is not None
-        assert adapter._client._transport._pool._max_connections == SYNC_CONCURRENCY
+        assert adapter.client._client is not None
+        assert adapter.client._client._transport._pool._max_connections == SYNC_CONCURRENCY
     await adapter.close()
 
 
@@ -594,14 +593,47 @@ async def test_get_card_ids_sends_version_6_in_multi_subactions(adapter_localhos
 
 
 @pytest.mark.asyncio
-async def test_curl_bridge_uses_fsS_flags():
+async def test_curl_bridge_uses_fsS_and_max_time_flags():
+    from arete.domain.constants import REQUEST_TIMEOUT
+
     adapter = AnkiConnectAdapter(url="http://127.0.0.1:8765")
-    adapter.use_windows_curl = True
+    adapter.client.use_windows_curl = True
     proc = MagicMock(returncode=0, communicate=AsyncMock(return_value=(b'{"result": 6}', b"")))
     with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=proc)) as mock_exec:
-        out = await adapter._http_request({"action": "version", "version": 6})
+        out = await adapter.client._http_request({"action": "version", "version": 6})
     assert out == {"result": 6}
-    assert "-fsS" in mock_exec.await_args.args
+    args = list(mock_exec.await_args.args)
+    assert "-fsS" in args
+    assert args[args.index("--max-time") + 1] == str(REQUEST_TIMEOUT)
+
+    with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=proc)) as mock_exec:
+        await adapter.client._http_request({"action": "version", "version": 6}, timeout=2.0)
+    args = list(mock_exec.await_args.args)
+    assert args[args.index("--max-time") + 1] == "2.0"
+
+
+@pytest.mark.asyncio
+async def test_curl_bridge_kills_subprocess_on_cancellation():
+    adapter = AnkiConnectAdapter(url="http://127.0.0.1:8765")
+    adapter.client.use_windows_curl = True
+
+    async def stall(*_args, **_kwargs):
+        await asyncio.sleep(10)
+
+    proc = MagicMock(returncode=None)
+    proc.communicate = AsyncMock(side_effect=stall)
+    proc.kill = MagicMock()
+    proc.wait = AsyncMock(return_value=-9)
+
+    with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=proc)):
+        with pytest.raises(TimeoutError):
+            await asyncio.wait_for(
+                adapter.client._http_request({"action": "version", "version": 6}),
+                timeout=0.01,
+            )
+
+    proc.kill.assert_called_once()
+    proc.wait.assert_awaited_once()
 
 
 @pytest.mark.asyncio

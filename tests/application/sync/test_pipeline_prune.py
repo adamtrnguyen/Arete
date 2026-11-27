@@ -369,6 +369,9 @@ async def test_over_ankiconnect_only_the_arete_orphan_deck_is_deleted():
         action, params = data["action"], data.get("params", {})
         if action == "deckNames":
             return Response(200, json={"result": ["Default", *decks], "error": None})
+        if action == "multi":
+            replies = [{"result": {"dyn": 0}, "error": None} for _ in params["actions"]]
+            return Response(200, json={"result": replies, "error": None})
         if action == "findNotes":
             deck = params["query"].strip('"').removeprefix("deck:")
             alive = [n for n in decks.get(deck, []) if n not in deleted]

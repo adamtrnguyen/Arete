@@ -6,7 +6,7 @@ needs straight from the add-on's source files (`AnkiConnect`, its action mixins,
 `util.MediaType`, the reply formatters, `arete.get_obsidian_source`) and runs them against an
 `anki.Collection` in `tmp_path`. Nothing is copied: an edit to the add-on is what runs here.
 
-`AddonHost.http` has the signature of `AnkiConnectAdapter._http_request`, so the adapter can
+`AddonHost.http` has the signature of `AnkiConnectClient._http_request`, so the adapter can
 talk to the add-on's real request handler with no socket in between.
 """
 

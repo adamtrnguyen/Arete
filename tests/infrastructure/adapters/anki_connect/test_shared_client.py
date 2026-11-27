@@ -83,7 +83,7 @@ async def served(monkeypatch):
 
 def _time_out_the_add(adapter: AnkiConnectAdapter, server: _Server) -> None:
     """``addNote`` times out as ``asyncio.wait_for`` does: its request is cancelled."""
-    send = adapter._http_request
+    send = adapter.client._http_request
 
     async def http(payload: dict):
         if payload["action"] != "addNote":
@@ -95,7 +95,7 @@ def _time_out_the_add(adapter: AnkiConnectAdapter, server: _Server) -> None:
             await request
         raise TimeoutError
 
-    adapter._http_request = http  # type: ignore[method-assign]
+    adapter.client._http_request = http  # type: ignore[method-assign]
 
 
 @pytest.mark.asyncio
@@ -113,7 +113,7 @@ async def test_a_timeout_does_not_break_the_requests_in_flight_beside_it(served)
     assert results == [["Default"]] * READERS
     # The timed-out request's own connection is dropped, and no client was replaced.
     await asyncio.wait_for(server.add_dropped.wait(), 5)
-    assert len(clients) == 1 and adapter._client is clients[0]
+    assert len(clients) == 1 and adapter.client._client is clients[0]
     assert not clients[0].is_closed
 
 
@@ -129,6 +129,6 @@ async def test_close_releases_the_client_after_a_timeout(served):
     assert await asyncio.wait_for(reader, 5) == ["Default"]
     await adapter.close()
 
-    assert adapter._client is None
+    assert adapter.client._client is None
     assert len(clients) == 1
     assert all(client.is_closed for client in clients)

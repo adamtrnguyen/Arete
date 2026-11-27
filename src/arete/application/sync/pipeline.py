@@ -16,7 +16,7 @@ from arete.application.sync.prune import PruneConfirm, PruneReport, prune_orphan
 from arete.application.sync.vault_service import VaultService
 from arete.application.utils.common import sanitize
 from arete.application.utils.logging import RunRecorder
-from arete.application.utils.media import FilenameIndex
+from arete.application.utils.media import FilenameIndex, transform_wikilinks_to_uri
 from arete.application.utils.text import card_content_hash
 from arete.domain.constants import CONSUMER_BATCH_SIZE
 from arete.domain.identity import first_field_key
@@ -49,7 +49,7 @@ def vault_claims(
     ids: set[str] = set()
     nid_fronts: dict[tuple[str, str, str], list[tuple[str, int, Path, int]]] = {}
     for path, meta, _fresh in compatible:
-        file_model = sanitize(meta.get("model", "Basic"))
+        file_model = sanitize(meta.get("model") or "Basic") or "Basic"
         file_deck = sanitize(meta.get("deck", "")) or default_deck
         for idx, card in enumerate(meta.get("cards") or [], start=1):
             card_id = parser.declared_id(card)
@@ -61,11 +61,15 @@ def vault_claims(
                 nid = int(raw)
                 owners.setdefault(nid, set()).add(key)
                 if isinstance(card, dict):
-                    model = sanitize(card.get("model", file_model))
+                    model = sanitize(card.get("model") or file_model) or file_model
                     deck = sanitize(card.get("deck") or file_deck) or default_deck
                     raw_front = _first_field_value(card, model)
                     if raw_front:
-                        fkey = first_field_key(markdown_to_anki_html(raw_front))
+                        fkey = first_field_key(
+                            markdown_to_anki_html(
+                                transform_wikilinks_to_uri(raw_front, parser.vault_root.name)
+                            )
+                        )
                         if fkey:
                             nid_fronts.setdefault(
                                 (model.casefold(), deck.casefold(), fkey), []
@@ -81,10 +85,10 @@ def vault_models(compatible: list[tuple[Path, dict[str, Any], bool]]) -> set[str
     """The note types the scanned cards name: a card's own, else its file's, else Basic."""
     models: set[str] = set()
     for _path, meta, _fresh in compatible:
-        default = sanitize(meta.get("model", "Basic"))
+        default = sanitize(meta.get("model") or "Basic") or "Basic"
         for card in meta.get("cards") or []:
             if isinstance(card, dict):
-                models.add(sanitize(card.get("model", default)))
+                models.add(sanitize(card.get("model") or default) or default)
     return models
 
 

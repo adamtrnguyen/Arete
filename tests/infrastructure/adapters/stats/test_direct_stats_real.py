@@ -173,3 +173,21 @@ def test_queued_card_in_filtered_deck_resolves_home_deck_and_deck_params_do_not_
     assert enriched.desired_retention == pytest.approx(0.85)
     assert len(enriched.weights) == 21
     assert enriched.weights[20] == pytest.approx(0.35)
+
+
+def test_get_review_history_populates_time_ms_from_real_revlog(tmp_path):
+    base = make_anki_base(tmp_path / "anki")
+    nids = _build(base)
+
+    col = Collection(str(base / PROFILE / "collection.anki2"))
+    try:
+        (cid,) = col.card_ids_of_note(nids[1])
+        expected_times = [
+            int(t) for (t,) in col.db.all("SELECT time FROM revlog WHERE cid = ? ORDER BY id", cid)
+        ]
+    finally:
+        col.close()
+
+    history = asyncio.run(DirectStatsRepository(anki_base=base).get_review_history([cid]))
+    assert expected_times
+    assert [entry.time_ms for entry in history] == expected_times

@@ -62,9 +62,6 @@ class AppConfig(BaseSettings):
 
     model_config = SettingsConfigDict(
         env_prefix="ARETE_",
-        toml_file=[
-            Path.home() / ".config/arete/config.toml",
-        ],
         extra="ignore",
     )
 

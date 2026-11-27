@@ -48,7 +48,7 @@ async def test_one_batch_writes_only_what_differs(anki_url, setup_anki, caplog):
         nids = [int(r.new_nid or 0) for r in created]
 
         sent: Counter[str] = Counter()
-        real_request = adapter._http_request
+        real_request = adapter.client._http_request
 
         async def counting(payload: dict) -> dict:
             sent[payload["action"]] += 1
@@ -56,7 +56,7 @@ async def test_one_batch_writes_only_what_differs(anki_url, setup_anki, caplog):
                 sent[f"multi:{sub['action']}"] += 1
             return await real_request(payload)
 
-        adapter._http_request = counting  # type: ignore[method-assign]
+        adapter.client._http_request = counting  # type: ignore[method-assign]
         results = await NoteSync(adapter).sync_notes(
             [
                 _item(0, deck, nids[0], back="changed"),

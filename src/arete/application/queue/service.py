@@ -93,7 +93,7 @@ class QueueOrchestratorResult:
         return len(self.queue_items)
 
 
-async def build_study_queue(  # noqa: PLR0913
+async def build_study_queue(
     anki: QueuePort,
     vault_root: Path,
     *,

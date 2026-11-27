@@ -176,7 +176,7 @@ class MarkdownParser:
         is_fresh: bool = True,
     ) -> tuple[list[AnkiNote], list[int], list[dict[str, str | None]]]:
         deck_frontmatter = sanitize(meta.get("deck", "")) or None
-        default_model = sanitize(meta.get("model", "Basic"))
+        default_model = sanitize(meta.get("model") or "Basic") or "Basic"
         base_tags = [t.strip() for t in to_list(meta.get("tags", [])) if t and t.strip()]
         cards = meta.get("cards", [])
 
@@ -224,7 +224,7 @@ class MarkdownParser:
                         notes.append(cached)
                         continue
 
-                model = sanitize(card.get("model", default_model))
+                model = sanitize(card.get("model") or default_model) or default_model
                 mlow = model.lower()
                 fields = {}
 

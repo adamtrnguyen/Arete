@@ -50,7 +50,7 @@ def _item(
 
 def _adapter(fake: FakeAnki) -> AnkiConnectAdapter:
     adapter = AnkiConnectAdapter(url="http://fake-anki:8765")
-    adapter._http_request = fake.http  # type: ignore[method-assign]
+    adapter.client._http_request = fake.http  # type: ignore[method-assign]
     return adapter
 
 

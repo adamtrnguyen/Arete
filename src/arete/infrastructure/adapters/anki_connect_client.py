@@ -12,6 +12,7 @@ import json
 import logging
 import platform
 import shutil
+from contextlib import suppress
 from typing import Any
 
 import httpx
@@ -246,7 +247,18 @@ class AnkiConnectClient:
 
     async def _http_request(self, payload: dict, *, timeout: float | None = None) -> dict:
         if self.use_windows_curl:
-            cmd = ["curl.exe", "-fsS", "-X", "POST", self.url, "-d", "@-"]
+            effective_timeout = REQUEST_TIMEOUT if timeout is None else timeout
+            cmd = [
+                "curl.exe",
+                "-fsS",
+                "-X",
+                "POST",
+                self.url,
+                "--max-time",
+                str(effective_timeout),
+                "-d",
+                "@-",
+            ]
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdin=asyncio.subprocess.PIPE,
@@ -254,7 +266,14 @@ class AnkiConnectClient:
                 stderr=asyncio.subprocess.PIPE,
             )
             stdin_data = json.dumps(payload).encode("utf-8")
-            stdout, stderr = await proc.communicate(input=stdin_data)
+            try:
+                stdout, stderr = await proc.communicate(input=stdin_data)
+            except BaseException:
+                if proc.returncode is None:
+                    with suppress(ProcessLookupError):
+                        proc.kill()
+                await proc.wait()
+                raise
             if proc.returncode != 0:
                 raise Exception(f"curl.exe failed: {stderr.decode('utf-8')}")
             return json.loads(stdout.decode("utf-8"))

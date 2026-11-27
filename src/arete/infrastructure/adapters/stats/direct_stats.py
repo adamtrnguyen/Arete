@@ -163,7 +163,7 @@ class DirectStatsRepository(StatsRepository):
                 columns = [c[1] for c in repo.col.db.execute("PRAGMA table_info(revlog)")]
             has_data = "data" in columns
 
-            col_subset = "id, cid, ease, ivl, lastIvl"
+            col_subset = "id, cid, ease, ivl, lastIvl, time"
             if has_data:
                 col_subset += ", data"
 
@@ -181,8 +181,9 @@ class DirectStatsRepository(StatsRepository):
 
                 for row in repo.col.db.execute(query, *chunk):
                     # Indices:
-                    # 0: id, 1: cid, 2: ease, 3: ivl, 4: lastIvl, 5: data (if the column exists)
-                    data_idx = 5
+                    # 0: id, 1: cid, 2: ease, 3: ivl, 4: lastIvl, 5: time,
+                    # 6: data (if the column exists)
+                    data_idx = 6
                     s_at_review = None
                     d_at_review = None
                     r_at_review = None
@@ -208,6 +209,7 @@ class DirectStatsRepository(StatsRepository):
                                 stability=s_at_review,
                                 difficulty=d_at_review,
                                 retrievability=r_at_review,
+                                time_ms=int(row[5] or 0),
                             ),
                         )
                     )

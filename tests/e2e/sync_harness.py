@@ -315,7 +315,7 @@ class AddonBackend(CollectionBackend):
 
     def bridge(self) -> AnkiBridge:
         adapter = AnkiConnectAdapter(url="http://addon-host:8765")
-        adapter._http_request = self.host.http  # type: ignore[method-assign]
+        adapter.client._http_request = self.host.http  # type: ignore[method-assign]
         return adapter
 
     @contextlib.contextmanager
@@ -335,7 +335,7 @@ class FakeBackend(Backend):
 
     def bridge(self) -> AnkiBridge:
         adapter = AnkiConnectAdapter(url="http://fake-anki:8765")
-        adapter._http_request = self.fake.http  # type: ignore[method-assign]
+        adapter.client._http_request = self.fake.http  # type: ignore[method-assign]
         return adapter
 
     def close(self) -> None:

@@ -280,9 +280,9 @@ def validate_arete_file(path: Path) -> ValidationResult:
     except YAMLError as e_raw:
         e: Any = e_raw
         result.ok = False
-        line = e.problem_mark.line + 1 if hasattr(e, "problem_mark") else 1  # type: ignore
-        col = e.problem_mark.column + 1 if hasattr(e, "problem_mark") else 1  # type: ignore
-        tech_msg = f"{e.problem}"  # type: ignore
+        line = e.problem_mark.line + 1 if hasattr(e, "problem_mark") else 1
+        col = e.problem_mark.column + 1 if hasattr(e, "problem_mark") else 1
+        tech_msg = f"{e.problem}"
         if hasattr(e, "context") and e.context:
             tech_msg += f" ({e.context})"
         result.errors.append(

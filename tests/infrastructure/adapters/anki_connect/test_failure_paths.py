@@ -52,7 +52,7 @@ def _item(
 
 def _adapter(fake: FakeAnki) -> AnkiConnectAdapter:
     adapter = AnkiConnectAdapter(url="http://fake-anki:8765")
-    adapter._http_request = fake.http  # type: ignore[method-assign]
+    adapter.client._http_request = fake.http  # type: ignore[method-assign]
     return adapter
 
 
@@ -309,7 +309,7 @@ async def test_a_malformed_reply_to_a_write_may_have_landed_so_it_is_not_resent(
         sent.append(payload["action"])
         return {"result": 1}
 
-    adapter._http_request = http  # type: ignore[method-assign]
+    adapter.client._http_request = http  # type: ignore[method-assign]
     with pytest.raises(OutcomeUnknown):
         await adapter._invoke("addNote", note={})
     assert sent == ["addNote"]
@@ -322,7 +322,7 @@ async def test_a_malformed_reply_to_a_read_is_an_error_not_a_guess():
     async def http(payload):
         return {"result": [], "error": None, "extra": 1}
 
-    adapter._http_request = http  # type: ignore[method-assign]
+    adapter.client._http_request = http  # type: ignore[method-assign]
     with pytest.raises(ValueError, match="unexpected number of fields"):
         await adapter._invoke("deckNames")
 

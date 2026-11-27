@@ -17,23 +17,30 @@ anki_app = typer.Typer(name="anki", help="Anki card management and debugging.")
 # ---------------------------------------------------------------------------
 
 
-def _parse_cids(cids: str) -> list[int]:
-    """Parse comma-separated or JSON list of card IDs."""
-    if cids.startswith("["):
+def _parse_int_list(raw: str, flag: str) -> list[int]:
+    """Parse comma-separated or JSON list of integer IDs."""
+    stripped = raw.strip()
+    if stripped.startswith(("[", "{")):
         try:
-            parsed = json.loads(cids)
+            parsed = json.loads(stripped)
         except json.JSONDecodeError as e:
-            typer.secho("Invalid JSON for --cids", fg="red", err=True)
+            typer.secho(f"Invalid JSON for {flag}", fg="red", err=True)
             raise typer.Exit(1) from e
         if not isinstance(parsed, list):
-            typer.secho("Invalid --cids: expected a JSON list of integers", fg="red", err=True)
+            typer.secho(f"Invalid {flag}: expected a JSON list of integers", fg="red", err=True)
             raise typer.Exit(1)
-        try:
-            return [int(x) for x in parsed if not isinstance(x, bool)]
-        except (TypeError, ValueError) as e:
-            typer.secho("Invalid --cids: all items must be integers", fg="red", err=True)
-            raise typer.Exit(1) from e
-    return [int(n.strip()) for n in cids.split(",") if n.strip().isdigit()]
+        out: list[int] = []
+        for item in parsed:
+            if isinstance(item, bool) or not isinstance(item, (int, str)):
+                typer.secho(f"Invalid {flag}: all items must be integers", fg="red", err=True)
+                raise typer.Exit(1)
+            try:
+                out.append(int(item))
+            except ValueError as e:
+                typer.secho(f"Invalid {flag}: all items must be integers", fg="red", err=True)
+                raise typer.Exit(1) from e
+        return out
+    return [int(n.strip()) for n in raw.split(",") if n.strip().isdigit()]
 
 
 def _parse_ids(ids: str) -> list[str]:
@@ -130,15 +137,7 @@ def anki_stats(
     from dataclasses import asdict
 
     # Parse NIDs
-    nids_list = []
-    if nids.startswith("["):
-        try:
-            nids_list = json.loads(nids)
-        except json.JSONDecodeError as e:
-            typer.secho("Invalid JSON for --nids", fg="red", err=True)
-            raise typer.Exit(1) from e
-    else:
-        nids_list = [int(n.strip()) for n in nids.split(",") if n.strip().isdigit()]
+    nids_list = _parse_int_list(nids, "--nids")
 
     if not nids_list:
         if json_output:
@@ -194,7 +193,7 @@ def suspend_cards(
     anki_base: Annotated[str | None, typer.Option(help="Anki Base Directory Override")] = None,
 ):
     """Suspend cards by CID."""
-    cids_list = _parse_cids(cids)
+    cids_list = _parse_int_list(cids, "--cids")
     _run_admin_action(
         lambda anki: anki.suspend_cards(cids_list),
         backend=backend,
@@ -211,7 +210,7 @@ def unsuspend_cards(
     anki_base: Annotated[str | None, typer.Option(help="Anki Base Directory Override")] = None,
 ):
     """Unsuspend cards by CID."""
-    cids_list = _parse_cids(cids)
+    cids_list = _parse_int_list(cids, "--cids")
     _run_admin_action(
         lambda anki: anki.unsuspend_cards(cids_list),
         backend=backend,

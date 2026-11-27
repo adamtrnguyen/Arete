@@ -405,9 +405,9 @@ async def test_close_without_client(repo):
 @pytest.mark.asyncio
 async def test_close_with_client(repo):
     """Closing after creating client clears it."""
-    repo._client = AsyncMock()
+    repo.client._client = AsyncMock()
     await repo.close()
-    assert repo._client is None
+    assert repo.client._client is None
 
 
 def _deck_config_server(configs: dict, failing: set[str] | None = None):

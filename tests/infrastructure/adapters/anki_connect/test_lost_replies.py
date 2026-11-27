@@ -51,7 +51,7 @@ def _item(tags: list[str] | None = None, nid: int | None = None, model: str = "B
 
 def _adapter(fake: FakeAnki) -> AnkiConnectAdapter:
     adapter = AnkiConnectAdapter(url="http://fake-anki:8765")
-    adapter._http_request = fake.http  # type: ignore[method-assign]
+    adapter.client._http_request = fake.http  # type: ignore[method-assign]
     return adapter
 
 

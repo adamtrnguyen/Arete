@@ -5,8 +5,6 @@ from collections.abc import AsyncIterator, Collection, Sequence
 from contextlib import asynccontextmanager
 from typing import Any
 
-import httpx
-
 from arete.domain.constants import CHUNK_SIZE
 from arete.domain.interfaces import AnkiBridge, NoteStoreSession
 from arete.domain.models import (
@@ -319,34 +317,6 @@ class AnkiConnectAdapter(AnkiBridge):
     @property
     def url(self) -> str:
         return self.client.url
-
-    @url.setter
-    def url(self, value: str) -> None:
-        self.client.url = value
-
-    @property
-    def use_windows_curl(self) -> bool:
-        return self.client.use_windows_curl
-
-    @use_windows_curl.setter
-    def use_windows_curl(self, value: bool) -> None:
-        self.client.use_windows_curl = value
-
-    @property
-    def _client(self) -> httpx.AsyncClient | None:
-        return self.client._client
-
-    @_client.setter
-    def _client(self, value: httpx.AsyncClient | None) -> None:
-        self.client._client = value
-
-    @property
-    def _http_request(self):
-        return self.client._http_request
-
-    @_http_request.setter
-    def _http_request(self, value) -> None:
-        self.client._http_request = value
 
     @asynccontextmanager
     async def session(self) -> AsyncIterator[ConnectNoteSession]:
