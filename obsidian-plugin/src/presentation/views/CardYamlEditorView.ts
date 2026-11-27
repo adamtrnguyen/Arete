@@ -165,6 +165,7 @@ export class CardYamlEditorView extends ItemView {
 		this.setParseError(null);
 		const activeFile = this.app.workspace.getActiveFile();
 		if (!activeFile) {
+			this.cancelPendingSync();
 			this.cards = [];
 			this.loadedSourceCards = null;
 			this.fileModel = 'Basic';
@@ -177,6 +178,9 @@ export class CardYamlEditorView extends ItemView {
 			this.currentCardIndex = 0;
 			this.currentFilePath = activeFile.path;
 			this.ownWrite = null;
+		}
+		if (this.pendingSync && this.pendingSync.file.path !== activeFile.path) {
+			this.cancelPendingSync();
 		}
 
 		const cache = this.app.metadataCache.getFileCache(activeFile);
@@ -565,13 +569,15 @@ export class CardYamlEditorView extends ItemView {
 	 */
 	private hasInvalidSourceYaml(): boolean {
 		if (this.viewMode !== CardEditorViewMode.Source || !this.editorView) return false;
-		if (!this.hasParseError && this.pendingSync?.mode !== CardEditorViewMode.Source) {
+		const hasCurrentPendingSource =
+			this.pendingSync?.mode === CardEditorViewMode.Source &&
+			this.pendingSync.file.path === this.currentFilePath;
+		if (!this.hasParseError && !hasCurrentPendingSource) {
 			return false;
 		}
-		const sourceText =
-			this.pendingSync?.mode === CardEditorViewMode.Source
-				? (this.pendingSync.sourceText ?? '')
-				: this.editorView.state.doc.toString();
+		const sourceText = hasCurrentPendingSource
+			? (this.pendingSync?.sourceText ?? '')
+			: this.editorView.state.doc.toString();
 		if (parseCardYaml(sourceText) === null) {
 			this.setParseError('Invalid YAML: fix syntax errors to save changes.');
 			return true;

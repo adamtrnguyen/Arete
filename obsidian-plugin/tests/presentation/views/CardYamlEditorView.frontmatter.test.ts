@@ -710,6 +710,76 @@ describe('CardYamlEditorView: writing the edited card back', () => {
 		}
 	});
 
+	it('clears invalid Source YAML state when switching to a different valid file', async () => {
+		const errSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+		try {
+			const { view, app } = makeView(cards());
+			const fileB = { path: 'FileB.md', stat: { mtime: 2000 } };
+			const fmB: any = {
+				cards: [
+					{ id: 'x', Front: 'X', Back: 'x' },
+					{ id: 'y', Front: 'Y', Back: 'y' },
+				],
+			};
+			app.metadataCache.getFileCache.mockImplementation((f: any) =>
+				f.path === 'FileB.md' ? { frontmatter: fmB } : { frontmatter: { cards: cards() } },
+			);
+			app.fileManager.processFrontMatter.mockImplementation(async (f: any, fn: any) => {
+				if (f.path === 'FileB.md') fn(fmB);
+			});
+
+			await view.loadCards();
+			view.parseErrorEl = createMockElement('div');
+			view.editorContainer = createMockElement('div');
+			view.fieldEditorContainer = createMockElement('div');
+			view.previewContainer = createMockElement('div');
+			view.renderToolbar = jest.fn();
+			view.renderFieldEditor = jest.fn();
+			view.viewMode = 'source';
+
+			let docText = 'Front: [unclosed';
+			view.editorView = {
+				state: { doc: { toString: () => docText } },
+				dispatch: jest.fn(({ changes }: any) => {
+					docText = changes.insert;
+				}),
+			};
+			view.debouncedSyncToMain();
+
+			// Switch to valid File B via active-leaf-change.
+			app.workspace.getActiveFile.mockReturnValue(fileB);
+			view.handleActiveFileChange();
+			await new Promise((r) => setImmediate(r));
+
+			expect(view.currentFilePath).toBe('FileB.md');
+			expect(view.pendingSync).toBeNull();
+			expect(view.parseErrorEl.hide).toHaveBeenCalled();
+
+			// Card and mode switching and frontmatter mutations work cleanly on File B.
+			view.selectCard(1);
+			expect(view.currentCardIndex).toBe(1);
+			view.setViewMode('fields');
+			expect(view.viewMode).toBe('fields');
+			await view.addCard();
+			expect(fmB.cards).toHaveLength(3);
+
+			// Also verify showCardIndex switching away from invalid File A to File B.
+			view.viewMode = 'source';
+			docText = 'Front: [broken again';
+			app.workspace.getActiveFile.mockReturnValue({ path: 'Note.md', stat: { mtime: 1000 } });
+			await view.loadCards();
+			view.debouncedSyncToMain();
+
+			app.workspace.getActiveFile.mockReturnValue(fileB);
+			await view.showCardIndex(1);
+			expect(view.currentFilePath).toBe('FileB.md');
+			expect(view.currentCardIndex).toBe(1);
+			expect(view.pendingSync).toBeNull();
+		} finally {
+			errSpy.mockRestore();
+		}
+	});
+
 	it('debounces edits: one write, 300 ms after the last keystroke', () => {
 		jest.useFakeTimers();
 		try {
