@@ -409,6 +409,18 @@ async def _await_producers(producer_tasks: list[asyncio.Task[None]], recorder: R
             )
 
 
+async def _feed_queue(
+    producer_tasks: list[asyncio.Task[None]],
+    work_q: asyncio.Queue[WorkItem | None],
+    consumer_count: int,
+    recorder: RunRecorder,
+) -> None:
+    """Await all producers, then enqueue one stop sentinel per consumer."""
+    await _await_producers(producer_tasks, recorder)
+    for _ in range(consumer_count):
+        await work_q.put(None)
+
+
 async def _run_sync_workers(
     compatible: list[tuple[Path, dict[str, Any], bool]],
     unwritten_ids: set[Path],
@@ -470,15 +482,15 @@ async def _run_sync_workers(
         for p, meta, is_fresh in compatible
         if p not in unwritten_ids
     ]
-    all_tasks = [*producer_tasks, *consumers]
+    feeder = asyncio.create_task(
+        _feed_queue(producer_tasks, work_q, max_sync_concurrency, recorder)
+    )
+    all_tasks = [feeder, *producer_tasks, *consumers]
     outdated_error: list[AddonOutdated] = []
     _attach_outdated_abort(consumers, all_tasks, outdated_error)
 
     try:
-        await _await_producers(producer_tasks, recorder)
-        for _ in range(max_sync_concurrency):
-            await work_q.put(None)
-        await asyncio.gather(*consumers)
+        await asyncio.gather(*consumers, feeder)
     except asyncio.CancelledError:
         if outdated_error:
             raise outdated_error[0] from None

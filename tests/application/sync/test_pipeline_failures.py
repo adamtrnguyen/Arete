@@ -232,3 +232,145 @@ async def test_pipeline_cancellation_drains_workers_before_unwinding(config):
     with pytest.raises(asyncio.CancelledError):
         await task
     assert consumer_cleaned is True
+
+
+@pytest.mark.asyncio
+async def test_pipeline_addon_outdated_does_not_deadlock_on_full_sentinel_queue():
+    """AddonOutdated surfaces immediately even when the queue is full waiting to enqueue None."""
+    import asyncio
+    import time
+
+    from arete.domain.models import AddonOutdated
+
+    cfg = AppConfig(
+        vault_root=Path("/v"),
+        anki_media_dir=Path("/m"),
+        root_input=Path("/v"),
+        workers=1,
+        queue_size=1,
+    )
+    logger = MagicMock()
+    vault = MagicMock()
+    vault.unreadable = []
+    parser = MagicMock()
+    parser.declared_id.return_value = None
+    parser.extract_raw_nid.return_value = None
+    bridge = AsyncMock()
+    cache = MagicMock()
+
+    vault.scan_for_compatible_files.return_value = [(Path("/v/test.md"), {}, True)]
+    notes = [
+        AnkiNote(
+            model="Basic",
+            deck="Default",
+            fields={"Front": f"F{i}", "Back": f"B{i}"},
+            tags=[],
+            start_line=i,
+            source_file=Path("/v/test.md"),
+            source_index=i,
+            content_hash=f"h{i}",
+        )
+        for i in (1, 2)
+    ]
+    parser.parse_file.return_value = (notes, [], [])
+
+    async def slow_outdated(_batch):
+        await asyncio.sleep(0.05)
+        raise AddonOutdated("Update arete_ankiconnect")
+
+    bridge.sync_notes.side_effect = slow_outdated
+
+    start = time.monotonic()
+    with pytest.raises(AddonOutdated, match="Update arete_ankiconnect"):
+        await asyncio.wait_for(
+            run_pipeline(
+                cfg,
+                logger,
+                "runid",
+                vault,
+                parser,
+                bridge,
+                cache,
+                note_sync_factory=note_sync_factory_for(bridge),
+            ),
+            timeout=1.0,
+        )
+    elapsed = time.monotonic() - start
+    assert elapsed < 0.3, f"expected prompt AddonOutdated abort, took {elapsed:.3f}s"
+
+
+@pytest.mark.asyncio
+async def test_pipeline_addon_outdated_cancels_blocked_producer_and_sibling_consumer():
+    """AddonOutdated cancels blocked producers and active sibling consumers without hanging."""
+    import asyncio
+    import time
+
+    from arete.domain.models import AddonOutdated
+
+    cfg = AppConfig(
+        vault_root=Path("/v"),
+        anki_media_dir=Path("/m"),
+        root_input=Path("/v"),
+        workers=2,
+        queue_size=1,
+    )
+    logger = MagicMock()
+    vault = MagicMock()
+    vault.unreadable = []
+    parser = MagicMock()
+    parser.declared_id.return_value = None
+    parser.extract_raw_nid.return_value = None
+    bridge = AsyncMock()
+    cache = MagicMock()
+
+    vault.scan_for_compatible_files.return_value = [(Path("/v/test.md"), {}, True)]
+    notes = [
+        AnkiNote(
+            model="Basic",
+            deck="Default",
+            fields={"Front": f"F{i}", "Back": f"B{i}"},
+            tags=[],
+            start_line=i,
+            source_file=Path("/v/test.md"),
+            source_index=i,
+            content_hash=f"h{i}",
+        )
+        for i in range(1, 6)
+    ]
+    parser.parse_file.return_value = (notes, [], [])
+
+    calls = 0
+    sibling_cleaned = False
+
+    async def mixed_sync(_batch):
+        nonlocal calls, sibling_cleaned
+        calls += 1
+        if calls == 1:
+            await asyncio.sleep(0.05)
+            raise AddonOutdated("Update arete_ankiconnect")
+        try:
+            await asyncio.sleep(60)
+        finally:
+            sibling_cleaned = True
+        return []
+
+    bridge.sync_notes.side_effect = mixed_sync
+
+    start = time.monotonic()
+    with pytest.raises(AddonOutdated, match="Update arete_ankiconnect"):
+        await asyncio.wait_for(
+            run_pipeline(
+                cfg,
+                logger,
+                "runid",
+                vault,
+                parser,
+                bridge,
+                cache,
+                note_sync_factory=note_sync_factory_for(bridge),
+            ),
+            timeout=1.0,
+        )
+    elapsed = time.monotonic() - start
+    assert elapsed < 0.3, f"expected prompt AddonOutdated abort, took {elapsed:.3f}s"
+    assert sibling_cleaned is True
