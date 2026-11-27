@@ -1,192 +1,138 @@
+"""Tests for arete.interface.wizard using direct dependency injection."""
+
+import tomllib
 from pathlib import Path
 from unittest.mock import patch
-
-import pytest
 
 from arete.interface.wizard import run_init_wizard
 
 
-@pytest.fixture
-def mock_home(tmp_path):
-    # Mock Path.home() to return a temp dir so we don't mess with real config
-    with patch("pathlib.Path.home", return_value=tmp_path):
-        yield tmp_path
+def _feed(answers: list[str]):
+    it = iter(answers)
+    return lambda _prompt="": next(it)
 
 
-def test_wizard_default_flow(mock_home):
-    # Ensure default paths exist to avoid "path does not exist" prompt
-    (mock_home / "Obsidian Vault").mkdir(parents=True)
+def test_wizard_default_flow(tmp_path: Path):
+    home = tmp_path / "home"
+    (home / "Obsidian Vault").mkdir(parents=True)
+    detected_media = tmp_path / "anki" / "media"
+    detected_media.mkdir(parents=True)
 
-    # Inputs:
-    # 1. Vault Root (default) -> Enter
-    # 2. Anki Media (default) -> Enter
-    # 3. Backend (default 1) -> Enter
-    inputs = ["", "", ""]
+    run_init_wizard(
+        input_fn=_feed(["", "", ""]),
+        detect_paths=lambda: (tmp_path / "anki", detected_media),
+        home_dir=home,
+    )
 
-    with patch("builtins.input", side_effect=inputs):
-        with patch(
-            "arete.interface.wizard.detect_anki_paths",
-            return_value=(Path("/anki/base"), Path("/anki/media")),
-        ):
-            # Smart existence mock
-            original_exists = Path.exists
-
-            def default_exists_side_effect(self):
-                # Config file should NOT exist for this test
-                if self.name == "config.toml":
-                    return False
-                # The detected media path SHOULD exist to avoid prompt
-                # Loose match for "anki/media" regardless of slashes/drives
-                s = str(self).replace("\\", "/")
-                if "anki/media" in s:
-                    return True
-                return original_exists(self)
-
-            with patch(
-                "pathlib.Path.exists", autospec=True, side_effect=default_exists_side_effect
-            ):
-                run_init_wizard()
-
-    config_dir = mock_home / ".config/arete"
-    config_file = config_dir / "config.toml"
+    config_file = home / ".config/arete/config.toml"
     assert config_file.exists()
-
-    content = config_file.read_text()
-    assert 'vault_root = "' in content
-    # Loose assertion for media path
-    assert "anki" in content and "media" in content
-    assert 'backend = "auto"' in content
+    parsed = tomllib.loads(config_file.read_text(encoding="utf-8"))
+    assert parsed["vault_root"] == str((home / "Obsidian Vault").resolve())
+    assert parsed["anki_media_dir"] == str(detected_media.resolve())
+    assert parsed["backend"] == "auto"
 
 
-def test_wizard_custom_flow(mock_home):
-    # Inputs:
-    # 1. Vault Root -> /custom/vault
-    # 2. Anki Media -> /custom/media
-    # 3. Backend -> 2 (ankiconnect)
-    inputs = [str(Path("/custom/vault")), str(Path("/custom/media")), "2"]
+def test_wizard_custom_flow(tmp_path: Path):
+    home = tmp_path / "home"
+    home.mkdir()
+    vault = tmp_path / "custom" / "vault"
+    media = tmp_path / "custom" / "media"
+    vault.mkdir(parents=True)
+    media.mkdir(parents=True)
 
-    # We need to mock Path.exists for custom paths to avoid "does not exist" warning prompt logic
-    original_exists = Path.exists
+    run_init_wizard(
+        input_fn=_feed([str(vault), str(media), "2"]),
+        detect_paths=lambda: (None, None),
+        home_dir=home,
+    )
 
-    def side_effect_exists(self):
-        # Loose matching for cross-platform safety
-        s = str(self).replace("\\", "/")
-        if "custom/vault" in s or "custom/media" in s:
-            return True
-        return original_exists(self)
-
-    with patch("builtins.input", side_effect=inputs):
-        with patch("pathlib.Path.exists", autospec=True, side_effect=side_effect_exists):
-            run_init_wizard()
-
-    config_file = mock_home / ".config/arete/config.toml"
-    content = config_file.read_text()
-
-    # Robust assertion: Check that our custom path fragments are in the file.
-    # We avoid asserting strict full paths due to drive letter/separator variances.
-    assert "custom" in content
-    assert "vault" in content
-    assert "media" in content
-    assert 'backend = "ankiconnect"' in content
+    parsed = tomllib.loads((home / ".config/arete/config.toml").read_text(encoding="utf-8"))
+    assert parsed["vault_root"] == str(vault.resolve())
+    assert parsed["anki_media_dir"] == str(media.resolve())
+    assert parsed["backend"] == "ankiconnect"
 
 
-def test_wizard_overwrite_no(mock_home):
-    # Create existing config
-    config_dir = mock_home / ".config/arete"
+def test_wizard_overwrite_no(tmp_path: Path):
+    home = tmp_path / "home"
+    (home / "Obsidian Vault").mkdir(parents=True)
+    config_dir = home / ".config/arete"
     config_dir.mkdir(parents=True)
-    (config_dir / "config.toml").write_text("old config")
+    (config_dir / "config.toml").write_text("old config", encoding="utf-8")
+    media = tmp_path / "media"
+    media.mkdir()
 
-    # Inputs:
-    # 1. Vault -> Enter (Default OK)
-    # 2. Media -> /fake/media (Explicit because detect returns None)
-    # 3. Backend -> Enter (Default OK)
-    # 4. Overwrite? -> n
-    inputs = ["", str(Path("/fake/media")), "", "n"]
+    run_init_wizard(
+        input_fn=_feed(["", str(media), "", "n"]),
+        detect_paths=lambda: (None, None),
+        home_dir=home,
+    )
 
-    # Ensure default path exists so we don't get prompted
-    (mock_home / "Obsidian Vault").mkdir(parents=True)
-
-    with patch("builtins.input", side_effect=inputs):
-        with patch("arete.interface.wizard.detect_anki_paths", return_value=(None, None)):
-            original_exists = Path.exists
-
-            def overwrite_exists_side_effect(self):
-                s = str(self).replace("\\", "/")
-                if "fake/media" in s:
-                    return True
-                return original_exists(self)
-
-            with patch(
-                "pathlib.Path.exists", autospec=True, side_effect=overwrite_exists_side_effect
-            ):
-                run_init_wizard()
-
-    # Should still satisfy old config
-    assert (config_dir / "config.toml").read_text() == "old config"
+    assert (config_dir / "config.toml").read_text(encoding="utf-8") == "old config"
 
 
-def test_wizard_path_validation_and_reprompt(tmp_path):
-    new_home = tmp_path / "home"
-    new_home.mkdir()
+def test_wizard_path_validation_and_reprompt(tmp_path: Path):
+    home = tmp_path / "home"
+    home.mkdir()
     v_good = tmp_path / "good_v"
     v_good.mkdir()
     m = tmp_path / "m"
     m.mkdir()
 
-    with patch("pathlib.Path.home", return_value=new_home):
-        with patch("arete.interface.wizard.detect_anki_paths", return_value=(None, None)):
-            with patch(
-                "builtins.input",
-                side_effect=[
-                    str(v_good),
-                    "",  # empty for media (no default) -> "Value required"
-                    str(m),
-                    "1",
-                ],
-            ):
-                run_init_wizard()
-    assert (new_home / ".config/arete/config.toml").exists()
+    run_init_wizard(
+        input_fn=_feed([str(v_good), "", str(m), "1"]),
+        detect_paths=lambda: (None, None),
+        home_dir=home,
+    )
+    assert (home / ".config/arete/config.toml").exists()
 
 
-def test_wizard_nonexistent_confirm(tmp_path):
-    new_home = tmp_path / "home"
-    new_home.mkdir()
+def test_wizard_nonexistent_confirm(tmp_path: Path):
+    home = tmp_path / "home"
+    home.mkdir()
     v_bad = tmp_path / "bad_v"
     m_bad = tmp_path / "bad_m"
-    with patch("pathlib.Path.home", return_value=new_home):
-        with patch("arete.interface.wizard.detect_anki_paths", return_value=(None, None)):
-            with patch("builtins.input", side_effect=[str(v_bad), "y", str(m_bad), "y", "1"]):
-                run_init_wizard()
-    assert (new_home / ".config/arete/config.toml").exists()
+
+    run_init_wizard(
+        input_fn=_feed([str(v_bad), "y", str(m_bad), "y", "1"]),
+        detect_paths=lambda: (None, None),
+        home_dir=home,
+    )
+    assert (home / ".config/arete/config.toml").exists()
 
 
-def test_wizard_write_error(tmp_path):
-    new_home = tmp_path / "home"
-    new_home.mkdir()
+def test_wizard_write_error(tmp_path: Path):
+    home = tmp_path / "home"
+    home.mkdir()
     v = tmp_path / "v"
     v.mkdir()
     m = tmp_path / "m"
     m.mkdir()
-    with patch("pathlib.Path.home", return_value=new_home):
-        with patch("arete.interface.wizard.detect_anki_paths", return_value=(None, None)):
-            with patch("builtins.input", side_effect=[str(v), str(m), "1", "y"]):
-                with patch("builtins.open", side_effect=OSError("Permission denied")):
-                    run_init_wizard()
+    # A directory at config.toml makes opening it for writing fail with IsADirectoryError.
+    (home / ".config/arete/config.toml").mkdir(parents=True)
+
+    run_init_wizard(
+        input_fn=_feed([str(v), str(m), "1", "y"]),
+        detect_paths=lambda: (None, None),
+        home_dir=home,
+    )
+    assert (home / ".config/arete/config.toml").is_dir()
 
 
-def test_wizard_escapes_windows_backslashes_as_valid_toml(mock_home):
-    import tomllib
+def test_wizard_escapes_windows_backslashes_as_valid_toml(tmp_path: Path):
+    home = tmp_path / "home"
+    home.mkdir()
 
-    with (
-        patch(
-            "arete.interface.wizard._ask_path",
-            side_effect=[r"C:\Users\adam\Vault", r"C:\Users\adam\Anki\media"],
-        ),
-        patch("builtins.input", return_value="1"),
+    with patch(
+        "arete.interface.wizard._ask_path",
+        side_effect=[r"C:\Users\adam\Vault", r"C:\Users\adam\Anki\media"],
     ):
-        run_init_wizard()
+        run_init_wizard(
+            input_fn=_feed(["1"]),
+            detect_paths=lambda: (None, None),
+            home_dir=home,
+        )
 
-    raw = (mock_home / ".config/arete/config.toml").read_text(encoding="utf-8")
+    raw = (home / ".config/arete/config.toml").read_text(encoding="utf-8")
     parsed = tomllib.loads(raw)
     assert parsed["vault_root"] == r"C:\Users\adam\Vault"
     assert parsed["anki_media_dir"] == r"C:\Users\adam\Anki\media"

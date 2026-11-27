@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import threading
 
 import markdown
 from markdown.extensions import Extension
@@ -260,24 +261,25 @@ class MathPostprocessor(Postprocessor):
         return re.sub(r"MATHPLACEHOLDER\d+END", restore, text)
 
 
-_md_instance: markdown.Markdown | None = None
+_md_local = threading.local()
 
 
 def markdown_to_anki_html(text: str) -> str:
-    """Convert markdown text to Anki-compatible HTML.
+    """Convert markdown text to Anki-compatible HTML (thread-safe).
 
     Includes special handling for MathJax protection.
     """
-    global _md_instance
-    if _md_instance is None:
-        _md_instance = markdown.Markdown(
+    md_instance: markdown.Markdown | None = getattr(_md_local, "instance", None)
+    if md_instance is None:
+        md_instance = markdown.Markdown(
             extensions=[
                 "fenced_code",
                 "tables",
                 MathProtectExtension(),
             ]
         )
+        _md_local.instance = md_instance
     else:
-        _md_instance.reset()
+        md_instance.reset()
 
-    return _md_instance.convert(text)
+    return md_instance.convert(text)

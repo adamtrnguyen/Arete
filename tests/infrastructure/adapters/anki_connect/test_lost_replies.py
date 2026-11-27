@@ -17,8 +17,9 @@ import pytest
 from arete.application.sync.note_sync import NoteSync
 from arete.domain.models import AnkiNote, WorkItem
 from arete.domain.ownership import is_arete_id
-from arete.infrastructure.adapters import anki_connect
+from arete.infrastructure.adapters import anki_connect, anki_connect_client
 from arete.infrastructure.adapters.anki_connect import AnkiConnectAdapter
+from arete.infrastructure.adapters.stats import connect_stats
 
 from .fake_anki import FakeAnki
 
@@ -29,8 +30,8 @@ REFUSED = httpx.ConnectError("[Errno 61] Connection refused")
 
 @pytest.fixture(autouse=True)
 def _no_retry_delay(monkeypatch):
-    monkeypatch.setattr(anki_connect, "_RETRY_DELAY", 0.0, raising=False)
-    monkeypatch.setattr(anki_connect, "_NOT_SENT_DELAY", 0.0, raising=False)
+    monkeypatch.setattr(anki_connect_client, "_RETRY_DELAY", 0.0, raising=False)
+    monkeypatch.setattr(anki_connect_client, "_NOT_SENT_DELAY", 0.0, raising=False)
 
 
 def _item(tags: list[str] | None = None, nid: int | None = None, model: str = "Basic") -> WorkItem:
@@ -310,46 +311,50 @@ async def test_a_read_that_keeps_timing_out_fails_after_three_attempts():
 
 
 def _actions_in_source() -> set[str]:
-    """Action names written in the adapter.
+    """Action names written in AnkiConnect adapters and transport.
 
-    From ``_invoke`` calls, write tuples and multi entries.
+    From ``_invoke``/``invoke`` calls, write tuples and multi entries.
     """
-    tree = ast.parse(inspect.getsource(anki_connect))
     names: set[str] = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Call) and getattr(node.func, "attr", None) == "_invoke":
-            first = node.args[0] if node.args else None
-            if isinstance(first, ast.Constant) and isinstance(first.value, str):
-                names.add(first.value)
-        elif isinstance(node, ast.Tuple) and len(node.elts) == 2:
-            name, params = node.elts
-            if (
-                isinstance(name, ast.Constant)
-                and isinstance(name.value, str)
-                and isinstance(params, (ast.Dict, ast.Name))
+    for mod in (anki_connect, anki_connect_client, connect_stats):
+        tree = ast.parse(inspect.getsource(mod))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call) and getattr(node.func, "attr", None) in (
+                "_invoke",
+                "invoke",
             ):
-                names.add(name.value)
-        elif isinstance(node, ast.Dict):
-            for key, value in zip(node.keys, node.values, strict=True):
+                first = node.args[0] if node.args else None
+                if isinstance(first, ast.Constant) and isinstance(first.value, str):
+                    names.add(first.value)
+            elif isinstance(node, ast.Tuple) and len(node.elts) == 2:
+                name, params = node.elts
                 if (
-                    isinstance(key, ast.Constant)
-                    and key.value == "action"
-                    and isinstance(value, ast.Constant)
+                    isinstance(name, ast.Constant)
+                    and isinstance(name.value, str)
+                    and isinstance(params, (ast.Dict, ast.Name))
                 ):
-                    names.add(value.value)
+                    names.add(name.value)
+            elif isinstance(node, ast.Dict):
+                for key, value in zip(node.keys, node.values, strict=True):
+                    if (
+                        isinstance(key, ast.Constant)
+                        and key.value == "action"
+                        and isinstance(value, ast.Constant)
+                    ):
+                        names.add(value.value)
     return names
 
 
 def test_every_action_the_adapter_sends_is_in_the_retry_table():
     sent = _actions_in_source()
     assert {"addNote", "changeNoteType", "notesInfo", "multi", "setHomeDeck"} <= sent
-    assert sent <= set(anki_connect._RESEND_SAFE) | {"multi"}
+    assert sent <= set(anki_connect_client._RESEND_SAFE) | {"multi"}
 
 
 def test_the_retry_table_names_only_actions_the_adapter_sends():
-    assert set(anki_connect._RESEND_SAFE) <= _actions_in_source()
+    assert set(anki_connect_client._RESEND_SAFE) <= _actions_in_source()
 
 
 def test_the_non_idempotent_actions_are_never_resent():
-    assert anki_connect._RESEND_SAFE["addNote"] is False
-    assert anki_connect._RESEND_SAFE["changeNoteType"] is False
+    assert anki_connect_client._RESEND_SAFE["addNote"] is False
+    assert anki_connect_client._RESEND_SAFE["changeNoteType"] is False

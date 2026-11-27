@@ -20,7 +20,7 @@ from arete.application.sync.vault_service import VaultService
 from arete.domain.interfaces import AnkiBridge
 from arete.infrastructure.persistence.cache import ContentCache
 from tests.application.sync.test_pipeline_data_safety import ID_A1, FakeAnki, card, note_file
-from tests.fakes.pipeline import syncing_through
+from tests.fakes.pipeline import note_sync_factory_for
 
 LOG = logging.getLogger("test-crash-safety")
 
@@ -41,10 +41,19 @@ def run(root: Path, anki: FakeAnki, cache: ContentCache, **overrides) -> RunStat
     vault = VaultService(root, cache, ignore_cache=False)
     parser = MarkdownParser(root, root / "media", ignore_cache=False, logger=LOG)
     bridge = cast(AnkiBridge, anki)
-    with syncing_through(anki):
-        return asyncio.run(
-            run_pipeline(config, LOG, "run", vault, parser, bridge, cache, confirm_prune=True)
+    return asyncio.run(
+        run_pipeline(
+            config,
+            LOG,
+            "run",
+            vault,
+            parser,
+            bridge,
+            cache,
+            confirm_prune=True,
+            note_sync_factory=note_sync_factory_for(anki),
         )
+    )
 
 
 @pytest.fixture

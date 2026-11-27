@@ -1,9 +1,9 @@
-"""Tests for arete.application.utils.yaml — YAML dumper with literal block scalars."""
+"""Tests for _LiteralDumper in arete.application.utils.text — YAML literal block scalars."""
 
 import pytest
 import yaml
 
-from arete.application.utils.yaml import _LiteralDumper
+from arete.application.utils.text import _LiteralDumper
 
 # ---------- _LiteralDumper behavior ----------
 

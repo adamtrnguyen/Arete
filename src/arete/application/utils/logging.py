@@ -93,16 +93,10 @@ def close_run_log(logger: logging.Logger) -> None:
 
 
 def rotate_logs(log_dir: Path, keep: int = 50):
-    """Keep only the latest N run logs and reports."""
+    """Keep only the latest N run logs."""
     try:
-        # Sort by modification time (oldest first)
         logs = sorted(log_dir.glob("run_*.log"), key=os.path.getmtime)
-        reports = sorted(log_dir.glob("report_*.md"), key=os.path.getmtime)
-
-        # Delete excesses
         for f in logs[:-keep]:
-            os.remove(str(f))
-        for f in reports[:-keep]:
             os.remove(str(f))
     except OSError as e:
         logging.getLogger("arete").debug(f"[logs] rotation skipped: {e}")

@@ -235,3 +235,19 @@ def test_the_markdown_library_is_pinned_to_one_version():
 
     assert re.fullmatch(r"markdown==\d+(\.\d+)+", pin)
     assert pin == f"markdown=={markdown.__version__}"
+
+
+def test_markdown_to_anki_html_is_thread_safe():
+    """Concurrent threads converting distinct math formulas do not cross-contaminate."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    def convert(i: int) -> tuple[int, str]:
+        return i, markdown_to_anki_html(f"Formula {i}: $x_{{{i}}} + y_{{{i}}}$")
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(convert, range(200)))
+
+    for i, html in results:
+        assert f"Formula {i}:" in html
+        assert f"\\(x_{{{i}}} + y_{{{i}}}\\)" in html
+        assert "MATHPLACEHOLDER" not in html

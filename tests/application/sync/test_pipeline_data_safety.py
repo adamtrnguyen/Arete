@@ -21,7 +21,7 @@ from arete.application.sync.vault_service import VaultService
 from arete.domain.interfaces import AnkiBridge
 from arete.domain.models import UpdateItem
 from arete.infrastructure.persistence.cache import ContentCache
-from tests.fakes.pipeline import syncing_through
+from tests.fakes.pipeline import note_sync_factory_for
 
 LOG = logging.getLogger("test-data-safety")
 
@@ -136,10 +136,19 @@ def sync(root: Path, anki: FakeAnki, cache: ContentCache, **overrides) -> None:
     parser = MarkdownParser(root, root / "media", ignore_cache=False, logger=LOG)
     bridge = cast(AnkiBridge, anki)
     # Confirmed, so a prune test proves what prune keeps, not that it was never asked.
-    with syncing_through(anki):
-        asyncio.run(
-            run_pipeline(config, LOG, "run", vault, parser, bridge, cache, confirm_prune=True)
+    asyncio.run(
+        run_pipeline(
+            config,
+            LOG,
+            "run",
+            vault,
+            parser,
+            bridge,
+            cache,
+            confirm_prune=True,
+            note_sync_factory=note_sync_factory_for(anki),
         )
+    )
 
 
 @pytest.fixture

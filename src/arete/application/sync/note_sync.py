@@ -199,7 +199,7 @@ def _arete_ids_of(held: HeldNote) -> set[str]:
 
 
 class NoteSync:
-    """The sync use-case: `sync_notes` has the `SyncPort.sync_notes` contract."""
+    """The sync use-case: reconciles vault cards against a `NoteStorePort`."""
 
     def __init__(
         self,

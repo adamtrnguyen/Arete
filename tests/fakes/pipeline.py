@@ -1,34 +1,21 @@
-"""Run the pipeline with its NoteSync replaced, for tests of the pipeline itself.
+"""Run the pipeline with its NoteSync replaced via explicit DI, for tests of the pipeline itself.
 
-`run_pipeline` builds one `NoteSync` per run over the bridge and calls its `prefetch`,
-`sync_notes` and, after the write-back, `rewrite_fields`. A pipeline test that scripts
-what each batch returns hands an object with the first two to `syncing_through` (one
-without `rewrite_fields` gets one that records its calls and writes nothing); the
-bridge then serves prune only.
-The decisions themselves are tested against the real NoteSync elsewhere
-(`tests/application/sync/test_note_sync.py`, `tests/e2e`).
+`run_pipeline` accepts `note_sync_factory` so tests inject a fake NoteSync directly without
+monkeypatching module globals; the bridge then serves prune only.
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterator
-from contextlib import contextmanager
+from collections.abc import Callable
 from typing import Any
-from unittest.mock import MagicMock, patch
 
 
-@contextmanager
-def syncing_through(fake: Any) -> Iterator[MagicMock]:
-    """Every `NoteSync(...)` the pipeline builds is `fake`; yields the patched class.
+def note_sync_factory_for(fake: Any) -> Callable[..., Any]:
+    """Return a `note_sync_factory` for `run_pipeline` that yields `fake`.
 
-    A fake with a `dry_run` attribute gets the run's flag.
+    A fake with a `dry_run` attribute receives the run's `dry_run` flag. A fake lacking
+    `rewrite_fields` gets an async stub recording rewritten field updates.
     """
-
-    def build(_store: Any, _claims: Any = None, _logger: Any = None, dry_run: bool = False):
-        if hasattr(fake, "dry_run"):
-            fake.dry_run = dry_run
-        return fake
-
     if not hasattr(fake, "rewrite_fields"):
         fake.rewritten = []
 
@@ -38,6 +25,9 @@ def syncing_through(fake: Any) -> Iterator[MagicMock]:
 
         fake.rewrite_fields = rewrite_fields
 
-    factory = MagicMock(side_effect=build)
-    with patch("arete.application.sync.pipeline.NoteSync", factory):
-        yield factory
+    def build(_store: Any, _claims: Any = None, _logger: Any = None, dry_run: bool = False) -> Any:
+        if hasattr(fake, "dry_run"):
+            fake.dry_run = dry_run
+        return fake
+
+    return build

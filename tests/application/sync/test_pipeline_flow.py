@@ -9,7 +9,7 @@ from arete.application.config import AppConfig
 from arete.application.sync.pipeline import UpdateItem, run_pipeline
 from arete.domain.models import AnkiNote
 from arete.infrastructure.adapters.anki_direct import AnkiDirectAdapter
-from tests.fakes.pipeline import syncing_through
+from tests.fakes.pipeline import note_sync_factory_for
 
 
 @pytest.fixture
@@ -52,9 +52,7 @@ def mock_components():
     ]
     bridge.get_deck_names.return_value = ["Default"]
 
-    # The bridge stands in for the run's NoteSync too: bridge.sync_notes is what it returns.
-    with syncing_through(bridge):
-        yield logger, vault, parser, bridge, cache
+    yield logger, vault, parser, bridge, cache
 
 
 @pytest.mark.asyncio
@@ -76,6 +74,7 @@ async def test_run_pipeline_success(mock_components, tmp_path):
         parser=parser,
         anki_bridge=bridge,
         cache=cache,
+        note_sync_factory=note_sync_factory_for(bridge),
     )
 
     print(f"DEBUG: logger calls: {logger.method_calls}")
@@ -93,7 +92,16 @@ async def test_run_pipeline_no_files(mock_components, tmp_path):
 
     config = AppConfig.model_construct(vault_root=tmp_path, queue_size=10, workers=1, prune=False)
 
-    stats = await run_pipeline(config, logger, "run", vault, parser, bridge, cache)
+    stats = await run_pipeline(
+        config,
+        logger,
+        "run",
+        vault,
+        parser,
+        bridge,
+        cache,
+        note_sync_factory=note_sync_factory_for(bridge),
+    )
     assert stats.total_generated == 0
 
 
@@ -110,7 +118,16 @@ async def test_run_pipeline_dry_run_never_writes(mock_components, tmp_path):
         vault_root=tmp_path, queue_size=10, workers=1, prune=False, dry_run=True
     )
 
-    stats = await run_pipeline(config, logger, "run", vault, parser, bridge, cache)
+    stats = await run_pipeline(
+        config,
+        logger,
+        "run",
+        vault,
+        parser,
+        bridge,
+        cache,
+        note_sync_factory=note_sync_factory_for(bridge),
+    )
 
     assert stats.total_generated == 1
     assert stats.total_errors == 0
@@ -132,7 +149,16 @@ async def test_run_pipeline_refreshes_hot_cache_with_nid(mock_components, tmp_pa
     note.content_hash = "abc123"
 
     config = AppConfig.model_construct(vault_root=tmp_path, queue_size=10, workers=1, prune=False)
-    await run_pipeline(config, logger, "run", vault, parser, bridge, cache)
+    await run_pipeline(
+        config,
+        logger,
+        "run",
+        vault,
+        parser,
+        bridge,
+        cache,
+        note_sync_factory=note_sync_factory_for(bridge),
+    )
 
     cache.set_notes.assert_called_once()
     [(path, idx, content_hash, note_json)] = cache.set_notes.call_args.args[0]
@@ -152,7 +178,16 @@ async def test_run_pipeline_consumer_error(mock_components, tmp_path):
 
     config = AppConfig.model_construct(vault_root=tmp_path, queue_size=10, workers=1, prune=False)
 
-    stats = await run_pipeline(config, logger, "run", vault, parser, bridge, cache)
+    stats = await run_pipeline(
+        config,
+        logger,
+        "run",
+        vault,
+        parser,
+        bridge,
+        cache,
+        note_sync_factory=note_sync_factory_for(bridge),
+    )
 
     # A raised exception goes to the consumer's error path: it is logged, and no update is
     # recorded, so nothing counts as generated.
@@ -181,7 +216,16 @@ async def test_run_pipeline_partial_sync_failure(mock_components, tmp_path):
 
     config = AppConfig.model_construct(vault_root=tmp_path, queue_size=10, workers=1, prune=False)
 
-    stats = await run_pipeline(config, logger, "run", vault, parser, bridge, cache)
+    stats = await run_pipeline(
+        config,
+        logger,
+        "run",
+        vault,
+        parser,
+        bridge,
+        cache,
+        note_sync_factory=note_sync_factory_for(bridge),
+    )
 
     assert stats.total_generated == 1  # We generated an attempt
     assert stats.total_imported == 0

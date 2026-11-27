@@ -5,7 +5,7 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import Any, cast
 
 from arete.domain.constants import (
     BROWSE_INITIAL_DELAY,
@@ -17,9 +17,6 @@ from arete.domain.ownership import is_arete_id
 from arete.infrastructure.anki.note_session import DirectNoteSession
 from arete.infrastructure.anki.repository import AnkiRepository
 from arete.infrastructure.anki.search import search_term
-
-if TYPE_CHECKING:  # importing these eagerly cycles inside the anki package
-    pass
 
 
 class AnkiDirectAdapter(AnkiBridge):

@@ -1,7 +1,7 @@
 """Which Anki notes Arete owns.
 
 Arete marks every note it creates with the card's Arete id as a tag: `arete_` plus a
-26-character ULID (`application/sync/id_service.generate_arete_id`, sent as a tag by
+26-character ULID (`application/sync/id_writeback.generate_arete_id`, sent as a tag by
 `application/sync/parser`). That tag is the only ownership marker. A note without it was
 made by hand or by another tool, and nothing destructive may touch it.
 

@@ -6,9 +6,9 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
-from arete.application.sync.id_service import generate_arete_id
 from arete.application.sync.id_writeback import (
     CardIds,
+    generate_arete_id,
     read_exact,
     write_card_ids,
     write_exact,

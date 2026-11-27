@@ -6,7 +6,7 @@ import pytest
 from arete.application.config import AppConfig
 from arete.application.sync.pipeline import run_pipeline
 from arete.domain.models import AnkiNote
-from tests.fakes.pipeline import syncing_through
+from tests.fakes.pipeline import note_sync_factory_for
 
 
 @pytest.fixture
@@ -29,8 +29,16 @@ async def test_pipeline_producer_error(config):
     # Parser raises Exception
     parser.parse_file.side_effect = Exception("Parser Boom")
 
-    with syncing_through(bridge):
-        stats = await run_pipeline(config, logger, "runid", vault, parser, bridge, cache)
+    stats = await run_pipeline(
+        config,
+        logger,
+        "runid",
+        vault,
+        parser,
+        bridge,
+        cache,
+        note_sync_factory=note_sync_factory_for(bridge),
+    )
 
     assert stats.total_errors >= 1
     logger.error.assert_called_with(ANY)
@@ -63,8 +71,16 @@ async def test_pipeline_consumer_error(config):
     # Bridge raises Exception
     bridge.sync_notes.side_effect = Exception("Bridge Boom")
 
-    with syncing_through(bridge):
-        stats = await run_pipeline(config, logger, "runid", vault, parser, bridge, cache)
+    stats = await run_pipeline(
+        config,
+        logger,
+        "runid",
+        vault,
+        parser,
+        bridge,
+        cache,
+        note_sync_factory=note_sync_factory_for(bridge),
+    )
 
     assert stats.total_errors >= 1
     logger.error.assert_called()

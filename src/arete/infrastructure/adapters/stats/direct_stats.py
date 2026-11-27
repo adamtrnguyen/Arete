@@ -7,13 +7,30 @@ import logging
 from pathlib import Path
 from typing import Any, cast
 
-from arete.domain.stats.models import CardStatsAggregate, ReviewEntry, revlog_interval_days
+from arete.domain.constants import FSRS_DIFFICULTY_SCALE
+from arete.domain.stats.models import (
+    CardStatsAggregate,
+    FsrsMemoryState,
+    ReviewEntry,
+    revlog_interval_days,
+)
 from arete.domain.stats.ports import StatsRepository
 from arete.infrastructure.adapters.stats.deck_config import deck_params, default_params
-from arete.infrastructure.anki.fsrs import fsrs_state_of
 from arete.infrastructure.anki.repository import AnkiRepository
 
 logger = logging.getLogger(__name__)
+
+
+def fsrs_state_of(card: Any) -> FsrsMemoryState | None:
+    """Return the card's FSRS state in 0-1 difficulty units, or None if unreviewed under FSRS."""
+    ms = card.memory_state  # Optional[FsrsMemoryState protobuf]
+    if not ms:
+        return None
+    return FsrsMemoryState(
+        stability=ms.stability,
+        difficulty=ms.difficulty / FSRS_DIFFICULTY_SCALE,
+        retrievability=None,  # computed by the application layer
+    )
 
 
 def _as_int(nid: Any) -> int | None:

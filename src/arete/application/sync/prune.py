@@ -33,7 +33,7 @@ from typing import Literal
 from arete.application.config import AppConfig
 from arete.application.utils.logging import RunRecorder
 from arete.domain.interfaces import SyncPort
-from arete.domain.models import AnkiDeck
+from arete.domain.models import deck_parents
 from arete.domain.ownership import is_arete_id
 
 PruneStatus = Literal[
@@ -161,9 +161,7 @@ def _decide_decks(
 
     # Delete the top of each deletable subtree; Anki removes the subdecks with it.
     report.decks = sorted(
-        d
-        for d in deletable
-        if not any(p.casefold() in deletable_folded for p in AnkiDeck(name=d).parents)
+        d for d in deletable if not any(p.casefold() in deletable_folded for p in deck_parents(d))
     )
     report.empty_decks_not_deleted.sort()
     report.decks_kept.sort()
@@ -193,9 +191,9 @@ async def plan_prune(
 
     protected = set(valid_decks)
     for d in valid_decks:
-        protected.update(AnkiDeck(name=d).parents)
+        protected.update(deck_parents(d))
     for d in filtered_decks:
-        protected.update(AnkiDeck(name=d).parents)
+        protected.update(deck_parents(d))
 
     default_nids: set[int] = set()
     if any(_is_default(d) for d in anki_decks):

@@ -14,7 +14,7 @@ from anki.collection import Collection
 
 from arete.domain.stats.models import CardStatsAggregate
 from arete.infrastructure.adapters.stats import DirectStatsRepository
-from arete.infrastructure.anki.fsrs import fsrs_state_of
+from arete.infrastructure.adapters.stats.direct_stats import fsrs_state_of
 from tests.e2e.conftest import PROFILE, make_anki_base
 
 

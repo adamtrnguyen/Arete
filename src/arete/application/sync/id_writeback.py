@@ -27,14 +27,21 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from ulid import ULID
 
 from arete.application.utils.common import sanitize
 from arete.application.utils.fs import replace_file
 from arete.application.utils.text import (
-    _split_frontmatter,
     parse_frontmatter,
     scrub_internal_keys,
+    split_frontmatter,
 )
+
+
+def generate_arete_id() -> str:
+    """Generate a stable Arete ID using ULID."""
+    return f"arete_{ULID()}"
+
 
 # A value written without quotes only when YAML reads it back as this same string.
 _PLAIN = re.compile(r"[A-Za-z_][A-Za-z0-9_-]*")
@@ -364,7 +371,7 @@ def _locate(text: str) -> _Located:
     if not isinstance(cards, list):
         raise _Refused("the frontmatter has no readable `cards` list")
     bom = len(text) - len(text.lstrip("\ufeff"))
-    split = _split_frontmatter(text[bom:])
+    split = split_frontmatter(text[bom:])
     lines, end = split if split is not None else ([], None)
     if end is None:
         raise _Refused("the frontmatter has no closing `---`")

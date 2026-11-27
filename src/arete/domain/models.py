@@ -4,21 +4,10 @@ from pathlib import Path
 from .constants import RENDER_VERSION
 
 
-@dataclass
-class AnkiDeck:
-    """Represents an Anki Deck."""
-
-    name: str
-    # Future extensibility: dynamic options, confusion flags, etc.
-
-    @property
-    def parents(self) -> list[str]:
-        """Return all parent deck names in the '::' hierarchy."""
-        parts = self.name.split("::")
-        parents_list = []
-        for i in range(1, len(parts)):
-            parents_list.append("::".join(parts[:i]))
-        return parents_list
+def deck_parents(name: str) -> list[str]:
+    """Return all ancestor deck names in the ``::`` hierarchy, shallowest first."""
+    parts = name.split("::")
+    return ["::".join(parts[:i]) for i in range(1, len(parts))]
 
 
 @dataclass

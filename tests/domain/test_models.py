@@ -5,46 +5,40 @@ from pathlib import Path
 import pytest
 
 from arete.domain.models import (
-    AnkiDeck,
     AnkiNote,
     UpdateItem,
     WorkItem,
+    deck_parents,
 )
 
 # ---------------------------------------------------------------------------
-# AnkiDeck
+# deck_parents
 # ---------------------------------------------------------------------------
 
 
-class TestAnkiDeck:
-    """AnkiDeck.parents returns all ancestor decks in the :: hierarchy."""
+class TestDeckParents:
+    """deck_parents returns all ancestor decks in the :: hierarchy."""
 
     def test_parents_single_level(self):
-        deck = AnkiDeck(name="Math")
-        assert deck.parents == []
+        assert deck_parents("Math") == []
 
     def test_parents_two_levels(self):
-        deck = AnkiDeck(name="Math::Algebra")
-        assert deck.parents == ["Math"]
+        assert deck_parents("Math::Algebra") == ["Math"]
 
     def test_parents_three_levels(self):
-        deck = AnkiDeck(name="A::B::C")
-        assert deck.parents == ["A", "A::B"]
+        assert deck_parents("A::B::C") == ["A", "A::B"]
 
     def test_parents_four_levels(self):
-        deck = AnkiDeck(name="A::B::C::D")
-        assert deck.parents == ["A", "A::B", "A::B::C"]
+        assert deck_parents("A::B::C::D") == ["A", "A::B", "A::B::C"]
 
     def test_parents_order_preserved(self):
         """Parents should be returned shallowest-first."""
-        deck = AnkiDeck(name="X::Y::Z")
-        parents = deck.parents
+        parents = deck_parents("X::Y::Z")
         assert parents[0] == "X"
         assert parents[1] == "X::Y"
 
     def test_parents_does_not_include_self(self):
-        deck = AnkiDeck(name="A::B::C")
-        assert "A::B::C" not in deck.parents
+        assert "A::B::C" not in deck_parents("A::B::C")
 
 
 # ---------------------------------------------------------------------------

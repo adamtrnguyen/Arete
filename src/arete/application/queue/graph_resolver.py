@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any
 
 from arete.application.utils.common import sanitize
 from arete.application.utils.fs import iter_markdown_files
-from arete.application.utils.text import normalize_filename, parse_frontmatter
+from arete.application.utils.text import frontmatter_slice, normalize_filename, parse_frontmatter
 from arete.domain.graph import CardNode, DependencyGraph
 from arete.domain.ownership import id_key
 
@@ -84,6 +84,91 @@ class GraphHealthResult:
 logger = logging.getLogger(__name__)
 
 
+def _parse_graph_file(
+    md_path: Path, graph: DependencyGraph
+) -> tuple[dict[str, Any], list[Any]] | None:
+    """Read and validate frontmatter for one markdown file; record parse failures on `graph`."""
+    try:
+        text = md_path.read_text(encoding="utf-8")
+        if not _may_hold_cards(text):
+            return None
+        meta, _ = parse_frontmatter(text)
+    except Exception as e:
+        logger.warning(f"Failed to parse {md_path}: {e}")
+        graph.skipped_files.append((str(md_path), str(e)))
+        return None
+    if "__yaml_error__" in meta:
+        err = str(meta["__yaml_error__"])
+        logger.warning(f"Failed to parse {md_path}: {err}")
+        graph.skipped_files.append((str(md_path), err))
+        return None
+    if not meta or meta.get("arete") is not True:
+        return None
+    cards = meta.get("cards", [])
+    return (meta, cards) if isinstance(cards, list) else None
+
+
+def _index_card_entry(
+    card: Any,
+    md_path: Path,
+    fkey: str,
+    graph: DependencyGraph,
+    first_by_key: dict[str, str],
+    file_cards: dict[str, list[str]],
+    card_file: dict[str, str],
+    pending_deps: list[tuple[str, list[str], list[str]]],
+) -> None:
+    """Register one card node and its raw dependency lists for pass 2."""
+    if not isinstance(card, dict):
+        return
+    card_id = sanitize(card.get("id", "")).strip()
+    if not card_id:
+        return
+    title = card.get("Front") or card.get("Text") or card_id
+    node = CardNode(
+        id=card_id,
+        title=str(title)[:100],
+        file_path=str(md_path),
+        line_number=card.get("__line__", 1),
+    )
+    first_id = first_by_key.setdefault(id_key(card_id), card_id)
+    if first_id != card_id or card_id in graph.nodes:
+        first = graph.nodes[first_id].file_path
+        files = graph.duplicate_ids.setdefault(first_id, [first])
+        files.append(str(md_path))
+        logger.warning(f"Duplicate Arete id {card_id} in {files}")
+        return
+    graph.add_node(node)
+    file_cards[fkey].append(card_id)
+    card_file[card_id] = fkey
+    deps = card.get("deps", {})
+    if isinstance(deps, dict):
+        requires = _as_refs(deps.get("requires"), card_id, graph)
+        related = _as_refs(deps.get("related"), card_id, graph)
+        if requires or related:
+            pending_deps.append((card_id, requires, related))
+
+
+def _link_pending_deps(
+    pending_deps: list[tuple[str, list[str], list[str]]],
+    card_file: dict[str, str],
+    index: _FileIndex,
+    graph: DependencyGraph,
+) -> None:
+    """Pass 2: resolve every card's dependency references into graph edges."""
+    for card_id, requires, related in pending_deps:
+        own_file = card_file.get(card_id)
+        for refs, add_edge in ((requires, graph.add_requires), (related, graph.add_related)):
+            for ref in refs:
+                is_id_ref = ref.casefold().startswith("arete_")
+                for target_id in _resolve_reference(ref, card_id, index, graph):
+                    if target_id == card_id or (
+                        not is_id_ref and card_file.get(target_id) == own_file
+                    ):
+                        continue
+                    add_edge(card_id, target_id)
+
+
 def build_graph(vault_root: Path) -> DependencyGraph:
     """Build a complete dependency graph from all markdown files in the vault.
 
@@ -94,140 +179,32 @@ def build_graph(vault_root: Path) -> DependencyGraph:
     - basename: All cards in the file with that basename (e.g., "algebra" -> algebra.md)
     """
     graph = DependencyGraph()
-
-    # First pass: collect all cards and index them BY FILE. A basename can name more
-    # than one file (math/Intro.md, bio/Intro.md), so it maps to files, not cards.
-    file_cards: dict[str, list[str]] = {}  # file path -> card ids
-    by_basename: dict[str, list[str]] = {}  # NFC basename -> file paths
-    by_relpath: dict[str, str] = {}  # NFC vault-relative path without .md -> file path
-    card_file: dict[str, str] = {}  # card id -> file path
-    pending_deps: list[tuple[str, list[str], list[str]]] = []  # (card_id, requires, related)
-    # `id_key` -> the id as first written: ids differing only in case are one id, as in
-    # the sync, so the second is a duplicate.
+    file_cards: dict[str, list[str]] = {}
+    by_basename: dict[str, list[str]] = {}
+    by_relpath: dict[str, str] = {}
+    card_file: dict[str, str] = {}
+    pending_deps: list[tuple[str, list[str], list[str]]] = []
     first_by_key: dict[str, str] = {}
 
     for md_path in iter_markdown_files(vault_root):
-        try:
-            text = md_path.read_text(encoding="utf-8")
-            if not _may_hold_cards(text):
-                continue
-            meta, _ = parse_frontmatter(text)
-
-            if "__yaml_error__" in meta:
-                err = str(meta["__yaml_error__"])
-                logger.warning(f"Failed to parse {md_path}: {err}")
-                graph.skipped_files.append((str(md_path), err))
-                continue
-
-            if not meta:
-                continue
-
-            if meta.get("arete") is not True:
-                continue
-
-            cards = meta.get("cards", [])
-            if not isinstance(cards, list):
-                continue
-
-            # Normalize to NFC so user-typed YAML refs (NFC) match macOS filesystem
-            # basenames (NFD).
-            fkey = str(md_path)
-            file_cards.setdefault(fkey, [])
-            by_basename.setdefault(normalize_filename(md_path.stem), []).append(fkey)
-            rel = md_path.relative_to(vault_root).with_suffix("").as_posix()
-            by_relpath[normalize_filename(rel)] = fkey
-            graph.card_decks[fkey] = _card_decks(meta, cards)
-
-            for card in cards:
-                if not isinstance(card, dict):
-                    continue
-
-                card_id = sanitize(card.get("id", "")).strip()  # as the sync reads it
-                if not card_id:
-                    continue  # Skip cards without Arete ID
-
-                title = card.get("Front") or card.get("Text") or card_id
-
-                # Get line number if available
-                line_number = card.get("__line__", 1)
-
-                node = CardNode(
-                    id=card_id,
-                    title=str(title)[:100],  # Truncate long titles
-                    file_path=str(md_path),
-                    line_number=line_number,
-                )
-                first_id = first_by_key.setdefault(id_key(card_id), card_id)
-                if first_id != card_id or card_id in graph.nodes:
-                    # Keep the first card and record the duplicate; never overwrite.
-                    first = graph.nodes[first_id].file_path
-                    files = graph.duplicate_ids.setdefault(first_id, [first])
-                    files.append(str(md_path))
-                    logger.warning(f"Duplicate Arete id {card_id} in {files}")
-                    continue
-                graph.add_node(node)
-                file_cards[fkey].append(card_id)
-                card_file[card_id] = fkey
-
-                # Collect deps for second pass
-                deps = card.get("deps", {})
-                if isinstance(deps, dict):
-                    requires = _as_refs(deps.get("requires"), card_id, graph)
-                    related = _as_refs(deps.get("related"), card_id, graph)
-                    if requires or related:
-                        pending_deps.append((card_id, requires, related))
-
-        except Exception as e:
-            # The file's cards are now absent from the graph: record it so `graph check`
-            # and queue builds can report it instead of silently working on a partial graph.
-            logger.warning(f"Failed to parse {md_path}: {e}")
-            graph.skipped_files.append((str(md_path), str(e)))
+        parsed = _parse_graph_file(md_path, graph)
+        if parsed is None:
             continue
+        meta, cards = parsed
+        fkey = str(md_path)
+        file_cards.setdefault(fkey, [])
+        by_basename.setdefault(normalize_filename(md_path.stem), []).append(fkey)
+        rel = md_path.relative_to(vault_root).with_suffix("").as_posix()
+        by_relpath[normalize_filename(rel)] = fkey
+        graph.card_decks[fkey] = _card_decks(meta, cards)
+        for card in cards:
+            _index_card_entry(
+                card, md_path, fkey, graph, first_by_key, file_cards, card_file, pending_deps
+            )
 
     index = _FileIndex(file_cards, by_basename, by_relpath, vault_root)
-
-    # Second pass: resolve references and add edges
-    for card_id, requires, related in pending_deps:
-        own_file = card_file.get(card_id)
-        for refs, add_edge in ((requires, graph.add_requires), (related, graph.add_related)):
-            for ref in refs:
-                for target_id in _resolve_reference(ref, card_id, index, graph):
-                    # A note-level ref never points at the card's own file. Compared by
-                    # FILE, not basename: bio/Intro requiring math/Intro is a real edge.
-                    if target_id == card_id or (
-                        not ref.casefold().startswith("arete_")
-                        and card_file.get(target_id) == own_file
-                    ):
-                        continue
-                    add_edge(card_id, target_id)
-
+    _link_pending_deps(pending_deps, card_file, index, graph)
     return graph
-
-
-def _frontmatter_slice(text: str) -> str | None:
-    """The text `parse_frontmatter` hands to YAML, found by string search alone.
-
-    Bounds follow `parse_frontmatter`: after a leading BOM, the first line stripped is
-    `---`, and the block ends at the first later line that is `---` once right-stripped.
-    Returns "" when the text has no opening line (the parser reads nothing), and None when
-    the closing line is missing, so the caller leaves that case to the parser.
-    """
-    text = text.lstrip("﻿")
-    first_end = text.find("\n")
-    first_line = text if first_end == -1 else text[:first_end]
-    if first_line.strip() != "---":
-        return ""
-    if first_end == -1:
-        return None
-    # A closing line starts with `---` in column 0, so only those lines are candidates.
-    pos = first_end
-    while (pos := text.find("\n---", pos)) != -1:
-        line_end = text.find("\n", pos + 1)
-        line = text[pos + 1 :] if line_end == -1 else text[pos + 1 : line_end]
-        if line.rstrip() == "---":
-            return text[first_end + 1 : pos]
-        pos += 1
-    return None
 
 
 def _may_hold_cards(text: str) -> bool:
@@ -235,10 +212,9 @@ def _may_hold_cards(text: str) -> bool:
 
     In every YAML spelling of the key (plain, quoted, `arete :`) the word is in the
     frontmatter, except a double-quoted key with escapes, which needs a backslash there.
-    Sync's test, `"arete:" in text`, is narrower: it misses `"arete": true`. Only the
-    frontmatter is searched, so math in a note's body does not force a parse.
+    Only the frontmatter is searched, so math in a note's body does not force a parse.
     """
-    fm = _frontmatter_slice(text)
+    fm = frontmatter_slice(text)
     return fm is None or "arete" in fm or "\\" in fm
 
 
@@ -422,17 +398,9 @@ def _component_depths(g: nx.DiGraph) -> dict[str, int]:
 # ---------------------------------------------------------------------------
 
 
-def filter_graph_by_deck(graph: DependencyGraph, deck: str) -> DependencyGraph:
-    """A new graph holding only the cards in `deck` or one of its subdecks.
-
-    A card's deck is its own ``deck:`` when set, else the file's -- the rule sync uses.
-    It matches when it is ``deck`` or ``deck::...``, as Anki's ``deck:`` search does.
-    Edges and unresolved refs are carried over for matching nodes.
-    """
+def _collect_deck_card_ids(graph: DependencyGraph, deck: str) -> set[str]:
+    """Card IDs belonging to `deck` or any of its subdecks."""
     keep_ids: set[str] = set()
-
-    # Decks come from the build. A file the graph holds no record for (a graph built by
-    # hand) is read and parsed here, once.
     for fpath in sorted({node.file_path for node in graph.nodes.values()}):
         try:
             entries = graph.card_decks.get(fpath)
@@ -440,20 +408,25 @@ def filter_graph_by_deck(graph: DependencyGraph, deck: str) -> DependencyGraph:
                 text = Path(fpath).read_text(encoding="utf-8")
                 meta, _ = parse_frontmatter(text)
                 entries = _card_decks(meta, (meta or {}).get("cards", []))
-            # Exact deck or subdeck, never a substring ("Math" must not keep "Applied
-            # Mathematics"), and the card's own deck wins over the file's, as in sync.
             for cid, effective in entries:
                 if cid in graph.nodes and _in_deck(effective, deck):
                     keep_ids.add(cid)
         except Exception as e:
             logger.warning(f"[deck-filter] skipping {fpath}: {e}")
-            continue
+    return keep_ids
 
-    # Rebuild graph with only matching nodes
+
+def filter_graph_by_deck(graph: DependencyGraph, deck: str) -> DependencyGraph:
+    """A new graph holding only the cards in `deck` or one of its subdecks.
+
+    A card's deck is its own ``deck:`` when set, else the file's -- the rule sync uses.
+    It matches when it is ``deck`` or ``deck::...``, as Anki's ``deck:`` search does.
+    Edges and unresolved refs are carried over for matching nodes.
+    """
+    keep_ids = _collect_deck_card_ids(graph, deck)
     filtered = DependencyGraph()
     for cid in keep_ids:
-        if cid in graph.nodes:
-            filtered.add_node(graph.nodes[cid])
+        filtered.add_node(graph.nodes[cid])
     for cid in keep_ids:
         for prereq in graph.get_prerequisites(cid):
             if prereq in keep_ids:
@@ -461,11 +434,8 @@ def filter_graph_by_deck(graph: DependencyGraph, deck: str) -> DependencyGraph:
         for rel in graph.get_related(cid):
             if rel in keep_ids:
                 filtered.add_related(cid, rel)
-    # Carry over unresolved refs
-    for cid in keep_ids:
         for ref in graph.unresolved_refs.get(cid, []):
             filtered.add_unresolved(cid, ref)
-
     return filtered
 
 

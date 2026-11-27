@@ -10,7 +10,27 @@ import yaml.error
 import yaml.scanner  # type: ignore
 
 from .common import sanitize
-from .yaml import _LiteralDumper
+
+# ---------- YAML dumper that preserves multiline strings & math ----------
+
+
+class _LiteralDumper(yaml.SafeDumper):
+    def ignore_aliases(self, data):
+        return True
+
+
+def _str_representer(dumper, data: str):
+    # Triggers for |- block scalar: matching Obsidian plugin.
+    # Exclude characters common in keys like '_' and '^' to avoid unnecessary quoting.
+    triggers = ("\n", "\t", "$", "\\", "{", "}", "~", "'", '"', ":", "[", "]", "#")
+    if "\n" in data or any(ch in data for ch in triggers):
+        if data.endswith("\n"):
+            data = data.rstrip("\n")
+        return dumper.represent_scalar("tag:yaml.org,2002:str", data, style="|")
+    return dumper.represent_scalar("tag:yaml.org,2002:str", data)
+
+
+_LiteralDumper.add_representer(str, _str_representer)
 
 # ---------- Filename normalization ----------
 
@@ -27,9 +47,6 @@ def normalize_filename(name: str) -> str:
     regardless of the form macOS hands back via pathlib.
     """
     return unicodedata.normalize("NFC", name)
-
-
-# ---------- Math: Normalize to \( \) and \[ \] delimiters ----------
 
 
 # ---------- Frontmatter helpers ----------
@@ -58,7 +75,7 @@ def frontmatter_slice(text: str) -> str | None:
     return None
 
 
-def _split_frontmatter(md_text: str) -> tuple[list[str], int | None] | None:
+def split_frontmatter(md_text: str) -> tuple[list[str], int | None] | None:
     """Split into lines and find the frontmatter's closing `---`, line by line, no regex.
 
     None when the first line is not `---`. Otherwise (lines, end): lines[end] is the
@@ -93,7 +110,7 @@ def parse_frontmatter(md_text: str) -> tuple[dict[str, Any], str]:
     # Handle potential BOM (Byte Order Mark)
     md_text = md_text.lstrip("\ufeff")
 
-    split = _split_frontmatter(md_text)
+    split = split_frontmatter(md_text)
     if split is None:
         return {}, md_text
     lines, yaml_end_line = split
@@ -205,7 +222,7 @@ def validate_frontmatter(md_text: str) -> dict[str, Any]:
     # Handle potential BOM (Byte Order Mark)
     md_text = md_text.lstrip("\ufeff")
 
-    split = _split_frontmatter(md_text)
+    split = split_frontmatter(md_text)
     if split is None:
         return {}
     lines, yaml_end_line = split
@@ -276,7 +293,7 @@ def _extract_frontmatter_bounds(md_text: str) -> tuple[str, int, int] | None:
     Returns (yaml_content, start_index, end_index) or None if no frontmatter.
     Uses line-by-line parsing (no regex).
     """
-    split = _split_frontmatter(md_text)
+    split = split_frontmatter(md_text)
     if split is None:
         return None
     lines, end = split

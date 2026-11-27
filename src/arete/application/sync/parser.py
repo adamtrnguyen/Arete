@@ -50,7 +50,7 @@ class MarkdownParser:
         self.duplicate_ids: dict[str, list[str]] = {}
 
     @staticmethod
-    def _extract_raw_nid(card: dict[str, Any]) -> str | None:
+    def extract_raw_nid(card: dict[str, Any]) -> str | None:
         """Read a card's declared nid from its ``anki`` block."""
         anki_block = card.get("anki") if isinstance(card.get("anki"), dict) else {}
         raw = sanitize((anki_block or {}).get("nid", "")).strip()
@@ -89,7 +89,7 @@ class MarkdownParser:
         except Exception as e:
             self.logger.warning(f"Failed to load hot cache for {md_path}#{idx}: {e}")
             return None
-        nid = self._extract_raw_nid(card)
+        nid = self.extract_raw_nid(card)
         anki_block = card.get("anki") if isinstance(card.get("anki"), dict) else {}
         cid = sanitize((anki_block or {}).get("cid", "")).strip() or None
         if nid and nid in duplicate_nids:
@@ -135,7 +135,7 @@ class MarkdownParser:
         for card in cards:
             if not isinstance(card, dict):
                 continue
-            raw = cls._extract_raw_nid(card)
+            raw = cls.extract_raw_nid(card)
             if raw:
                 counts[raw] = counts.get(raw, 0) + 1
         return {nid for nid, n in counts.items() if n > 1}
@@ -298,7 +298,7 @@ class MarkdownParser:
 
                 # 2) IDs from anki block
                 anki_block = card.get("anki", {}) if isinstance(card.get("anki"), dict) else {}
-                nid = self._extract_raw_nid(card)
+                nid = self.extract_raw_nid(card)
                 cid = sanitize(anki_block.get("cid", "")).strip() or None
                 start_line = int(card.get("__line__", 0))
 
@@ -392,7 +392,7 @@ class MarkdownParser:
         # the user is mid-edit, not deleting it. Protect its nid from --prune.
         for idx in skipped_indices:
             skipped = cards[idx - 1]
-            if isinstance(skipped, dict) and (nid := self._extract_raw_nid(skipped)):
+            if isinstance(skipped, dict) and (nid := self.extract_raw_nid(skipped)):
                 inventory.append({"nid": nid, "deck": None})
 
         self.logger.debug(

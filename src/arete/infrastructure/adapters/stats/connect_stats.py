@@ -17,6 +17,10 @@ from arete.domain.stats.models import (
     revlog_interval_days,
 )
 from arete.domain.stats.ports import StatsRepository
+from arete.infrastructure.adapters.anki_connect_client import (
+    DEFAULT_ANKI_CONNECT_URL,
+    AnkiConnectClient,
+)
 from arete.infrastructure.adapters.stats.deck_config import deck_params, default_params
 
 logger = logging.getLogger(__name__)
@@ -25,13 +29,31 @@ logger = logging.getLogger(__name__)
 class ConnectStatsRepository(StatsRepository):
     """Fetches card statistics via AnkiConnect HTTP API.
 
-    FSRS state comes from the Arete add-on's getFSRSStats action.
+    FSRS state comes from the Arete add-on's getFSRSStats action. Shares
+    `AnkiConnectClient` with `AnkiConnectAdapter` for WSL support, connection limits,
+    and retry semantics.
     """
 
-    def __init__(self, url: str = "http://127.0.0.1:8765"):
-        """Initialize ConnectStatsRepository."""
-        self.url = url
-        self._client: httpx.AsyncClient | None = None
+    def __init__(
+        self,
+        url: str = DEFAULT_ANKI_CONNECT_URL,
+        *,
+        client: AnkiConnectClient | None = None,
+    ):
+        """Initialize ConnectStatsRepository with a URL or shared transport client."""
+        self.client = client or AnkiConnectClient(url=url)
+
+    @property
+    def url(self) -> str:
+        return self.client.url
+
+    @property
+    def _client(self) -> httpx.AsyncClient | None:
+        return self.client._client
+
+    @_client.setter
+    def _client(self, value: httpx.AsyncClient | None) -> None:
+        self.client._client = value
 
     async def get_card_stats(self, nids: list[int]) -> list[CardStatsAggregate]:
         """Fetch comprehensive stats for cards belonging to the given note IDs."""
@@ -154,26 +176,12 @@ class ConnectStatsRepository(StatsRepository):
         return entries
 
     async def _invoke(self, action: str, **params: Any) -> Any:
-        """Invoke an AnkiConnect action."""
-        payload = {"action": action, "version": 6, "params": params}
-
-        if self._client is None:
-            self._client = httpx.AsyncClient(timeout=30.0)
-
-        response = await self._client.post(self.url, json=payload)
-        response.raise_for_status()
-        data = response.json()
-
-        if data.get("error"):
-            raise RuntimeError(f"AnkiConnect error: {data['error']}")
-
-        return data.get("result")
+        """Invoke an AnkiConnect action via the shared transport client."""
+        return await self.client.invoke(action, **params)
 
     async def close(self) -> None:
         """Close the underlying HTTP client."""
-        if self._client:
-            await self._client.aclose()
-            self._client = None
+        await self.client.close()
 
     async def get_deck_params(self, deck_names: list[str]) -> dict[str, dict]:
         """Fetch FSRS parameters for the given decks via AnkiConnect.

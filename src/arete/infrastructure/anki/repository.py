@@ -28,14 +28,10 @@ class AnkiRepository:
         self.base_path = base_path
         self.profile_name = profile_name
         self.col: Collection | None = None
-        self._collection_path: Path | None = None
         self._saved_cwd: str | None = None
 
     def _resolve_collection_path(self) -> Path:
         """Determine the path to collection.anki2 by checking prefs21.db for the active profile."""
-        if self._collection_path:
-            return self._collection_path
-
         # If profile explicitly set, use it without requiring prefs21.db
         if self.profile_name:
             return self.base_path / self.profile_name / "collection.anki2"

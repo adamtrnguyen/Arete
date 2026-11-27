@@ -839,12 +839,12 @@ _FM_LINES = st.sampled_from(
 @settings(max_examples=500, deadline=None)
 def test_the_pre_check_never_skips_a_note_the_parser_would_accept(lines, bom):
     """The slice has the parser's bounds, and a skipped note never parses to `arete: true`."""
-    from arete.application.queue.graph_resolver import _frontmatter_slice, _may_hold_cards
-    from arete.application.utils.text import parse_frontmatter
+    from arete.application.queue.graph_resolver import _may_hold_cards
+    from arete.application.utils.text import frontmatter_slice, parse_frontmatter
 
     text = ("\ufeff" if bom else "") + "\n".join(lines)
     meta, body = parse_frontmatter(text)
-    fm = _frontmatter_slice(text)
+    fm = frontmatter_slice(text)
     split = text.lstrip("﻿").split("\n")
     if split[0].strip() != "---":
         assert fm == "" and meta == {}

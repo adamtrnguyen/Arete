@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from arete.application.config import AppConfig
-from arete.composition.factory import get_anki_bridge, get_stats_repo, get_vault_service
+from arete.composition.factory import get_anki_bridge, get_stats_repo, opened_vault_service
 from arete.infrastructure.adapters.anki_connect import AnkiConnectAdapter
 from arete.infrastructure.adapters.anki_direct import AnkiDirectAdapter
 from arete.infrastructure.adapters.stats import ConnectStatsRepository, DirectStatsRepository
@@ -145,59 +145,53 @@ async def test_the_stats_reach_anki_the_way_the_bridge_does(backend, answers):
 
 @pytest.mark.asyncio
 async def test_get_stats_repo_ankiconnect_none_url_uses_default():
-    """When backend='ankiconnect' and URL is None, uses default localhost."""
+    """When backend='ankiconnect' and URL is None, uses shared 127.0.0.1 default."""
     config = _make_config(backend="ankiconnect", anki_connect_url=None)
     repo = await get_stats_repo(config)
     assert isinstance(repo, ConnectStatsRepository)
-    assert repo.url == "http://localhost:8765"
+    assert repo.url == "http://127.0.0.1:8765"
 
 
-# ---------- get_vault_service ----------
+# ---------- opened_vault_service ----------
 
 
-def test_get_vault_service_success(tmp_path):
-    """VaultService uses the same cache as the sync pipeline.
-
-    config.cache_db, never a vault-local .arete.db: two caches let `vault format`
-    disagree with `sync`.
-    """
+def test_opened_vault_service_success(tmp_path):
+    """VaultService uses the same cache as the sync pipeline."""
     config = _make_config(vault_root=tmp_path, clear_cache=False, cache_db=str(tmp_path / "c.db"))
-    vs = get_vault_service(config)
-    assert vs is not None
-    assert Path(vs.cache.db_path) == tmp_path / "c.db"
-    assert not (tmp_path / ".arete.db").exists()
+    with opened_vault_service(config) as vs:
+        assert vs is not None
+        assert Path(vs.cache.db_path) == tmp_path / "c.db"
+        assert not (tmp_path / ".arete.db").exists()
 
 
-def test_get_vault_service_none_vault_root():
+def test_opened_vault_service_none_vault_root():
     """Raises VaultRootUnknown, a ValueError, when vault_root is None."""
     config = _make_config(vault_root=None)
     with pytest.raises(ValueError, match="Cannot tell which vault"):
-        get_vault_service(config)
+        with opened_vault_service(config):
+            pass
 
 
-def test_get_vault_service_clear_cache(tmp_path):
-    """clear_cache wipes the cache; force (not clear_cache) is what makes the service ignore it.
-
-    Same flag semantics as the sync orchestrator, so `vault format` and `sync` agree.
-    """
+def test_opened_vault_service_clear_cache(tmp_path):
+    """clear_cache wipes the cache; force (not clear_cache) is what makes the service ignore it."""
     db = tmp_path / "c.db"
     seeded = ContentCache(db_path=db)
     seeded.set_notes([(Path("/v/a.md"), 1, "h1", "{}")])
     assert seeded.get_hash(Path("/v/a.md"), 1) == "h1"
+    seeded.close()
 
     config = _make_config(vault_root=tmp_path, clear_cache=True, force=False, cache_db=str(db))
-    vs = get_vault_service(config)
-    assert vs.ignore_cache is False
-    assert vs.cache.get_hash(Path("/v/a.md"), 1) is None  # wiped
+    with opened_vault_service(config) as vs:
+        assert vs.ignore_cache is False
+        assert vs.cache.get_hash(Path("/v/a.md"), 1) is None  # wiped
 
     config = _make_config(vault_root=tmp_path, clear_cache=False, force=True, cache_db=str(db))
-    assert get_vault_service(config).ignore_cache is True
+    with opened_vault_service(config) as vs:
+        assert vs.ignore_cache is True
 
 
 def test_opened_vault_service_uses_root_input_and_closes_cache(tmp_path):
     import sqlite3
-
-    from arete.composition.factory import opened_vault_service
 
     single = tmp_path / "one.md"
     single.write_text("# x\n", encoding="utf-8")
@@ -208,3 +202,20 @@ def test_opened_vault_service_uses_root_input_and_closes_cache(tmp_path):
         cache = vs.cache
     with pytest.raises(sqlite3.ProgrammingError):
         cache.get_hash(single, 1)
+
+
+@pytest.mark.asyncio
+async def test_get_stats_repo_reuses_probed_client_without_double_probe():
+    """Auto mode probes once and hands the same AnkiConnectClient to ConnectStatsRepository."""
+    config = _make_config(backend="auto", anki_connect_url="http://127.0.0.1:8765")
+    with (
+        patch.object(
+            AnkiConnectAdapter, "is_responsive", new_callable=AsyncMock, return_value=True
+        ) as mock_probe,
+        patch.object(AnkiConnectAdapter, "close", new_callable=AsyncMock) as mock_close,
+    ):
+        repo = await get_stats_repo(config)
+    assert isinstance(repo, ConnectStatsRepository)
+    mock_probe.assert_awaited_once()
+    mock_close.assert_not_awaited()
+    await repo.close()

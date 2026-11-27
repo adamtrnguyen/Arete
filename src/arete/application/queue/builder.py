@@ -103,13 +103,12 @@ def build_dynamic_queue(
     due_card_ids: list[str],
     depth: int = DEFAULT_PREREQ_DEPTH,
     max_cards: int = DEFAULT_MAX_QUEUE_SIZE,
-    card_stats: dict[str, dict] | None = None,
     graph: DependencyGraph | None = None,
 ) -> QueueBuildResult:
     """The cards of `build_simple_queue`, reordered by a ready frontier.
 
     Among cards whose prerequisites are placed, the next is the highest score: the due
-    descendants it unlocks, plus its weakness when `card_stats` is given; ties by id.
+    descendants it unlocks, with prerequisite/due priority bonuses; ties break by id.
     `graph` is built from `vault_root` when the caller passes none, once for both passes.
     """
     if graph is None:
@@ -131,7 +130,6 @@ def build_dynamic_queue(
         graph=graph,
         candidate_ids=candidates,
         due_set=due_set,
-        card_stats=card_stats,
     )
 
     prereq_queue = [cid for cid in ordered if cid not in due_set]
@@ -173,7 +171,6 @@ def _dynamic_frontier_order(
     graph: DependencyGraph,
     candidate_ids: list[str],
     due_set: set[str],
-    card_stats: dict[str, dict] | None,
 ) -> list[str]:
     """Produce a deterministic frontier-based order for candidate cards."""
     if not candidate_ids:
@@ -231,10 +228,9 @@ def _dynamic_frontier_order(
 
     def score(card_id: str) -> float:
         unlock_score = float(len(due_reach[card_id]))
-        weak_score = _weakness_score(card_id, card_stats)
         prereq_bonus = 0.5 if (card_id not in due_set and unlock_score > 0) else 0.0
         due_bonus = 0.25 if card_id in due_set else 0.0
-        return (2.0 * unlock_score) + weak_score + prereq_bonus + due_bonus
+        return (2.0 * unlock_score) + prereq_bonus + due_bonus
 
     # A card's score is fixed for the whole walk, so a heap keyed (-score, id) pops the
     # same card a full re-sort of the ready list would put first, ties by id included.
@@ -253,39 +249,3 @@ def _dynamic_frontier_order(
                 heapq.heappush(ready, (-score(dep), dep))
 
     return ordered
-
-
-def _weakness_score(card_id: str, card_stats: dict[str, dict] | None) -> float:
-    """Score card weakness for dynamic frontier prioritization.
-
-    Returns 0.0 when the caller supplies no stats, which is what every interface
-    currently does -- the dynamic order is then purely structural.
-    """
-    if not card_stats:
-        return 0.0
-
-    stats = card_stats.get(card_id)
-    if not isinstance(stats, dict):
-        return 0.0
-
-    score = 0.0
-
-    stability = stats.get("stability")
-    if isinstance(stability, (int, float)):
-        score += 1.0 / (1.0 + max(float(stability), 0.0))
-
-    lapses = stats.get("lapses")
-    if isinstance(lapses, (int, float)):
-        score += max(float(lapses), 0.0) * 0.15
-
-    reps = stats.get("reps")
-    if isinstance(reps, (int, float)):
-        r = max(float(reps), 0.0)
-        if r < 10.0:
-            score += (10.0 - r) * 0.05
-
-    interval = stats.get("interval")
-    if isinstance(interval, (int, float)):
-        score += 1.0 / (1.0 + max(float(interval), 0.0))
-
-    return score

@@ -490,3 +490,18 @@ async def test_get_review_history_captures_time_ms_and_fsrs_data(repo):
     assert entries[0].stability == 12.5
     assert entries[0].difficulty == 4.0
     assert entries[0].retrievability == 0.91
+
+
+@pytest.mark.asyncio
+async def test_connect_stats_shares_ankiconnect_client_transport():
+    """ConnectStatsRepository uses AnkiConnectClient (WSL curl, limits, close)."""
+    from arete.infrastructure.adapters.anki_connect_client import AnkiConnectClient
+
+    client = AnkiConnectClient(url="http://127.0.0.1:8765")
+    client._http_request = AsyncMock(return_value={"result": [], "error": None})  # type: ignore[method-assign]
+    stats_repo = ConnectStatsRepository(client=client)
+
+    assert stats_repo.url == "http://127.0.0.1:8765"
+    assert await stats_repo.get_card_stats([1]) == []
+    client._http_request.assert_awaited_once()
+    await stats_repo.close()

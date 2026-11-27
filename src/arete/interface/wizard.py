@@ -1,22 +1,36 @@
 import json
 import os
+from collections.abc import Callable
 from pathlib import Path
 
 from arete.application.utils.common import detect_anki_paths
 
 
-def run_init_wizard():
+def run_init_wizard(
+    *,
+    input_fn: Callable[[str], str] = input,
+    detect_paths: Callable[[], tuple[Path | None, Path | None]] = detect_anki_paths,
+    home_dir: Path | None = None,
+) -> None:
     print("Welcome to arete Configuration Wizard!")
     print("This will verify your setup and create a ~/.config/arete/config.toml file.")
     print("")
 
+    home = home_dir or Path.home()
+
     # 1. Vault Root
-    vault_root = _ask_path("Obsidian Vault Root", default=str(Path.home() / "Obsidian Vault"))
+    vault_root = _ask_path(
+        "Obsidian Vault Root",
+        default=str(home / "Obsidian Vault"),
+        input_fn=input_fn,
+    )
 
     # 2. Anki Media
-    _, detected_media = detect_anki_paths()
+    _, detected_media = detect_paths()
     anki_media = _ask_path(
-        "Anki Media Directory", default=str(detected_media) if detected_media else None
+        "Anki Media Directory",
+        default=str(detected_media) if detected_media else None,
+        input_fn=input_fn,
     )
 
     # 3. Backend
@@ -24,7 +38,7 @@ def run_init_wizard():
     print("  1. auto (Try AnkiConnect, fall back to direct) [Default]")
     print("  2. ankiconnect (Requires Anki running + AnkiConnect add-on)")
     print("  3. direct (Direct DB access, requires Anki closed)")
-    choice = input("Select backend [1]: ") or "1"
+    choice = input_fn("Select backend [1]: ") or "1"
 
     backend = "auto"
     if choice == "2":
@@ -49,12 +63,12 @@ backend = {json.dumps(backend)}
 verbose = 1
 """
 
-    target_path = Path.home() / ".config/arete/config.toml"
+    target_path = home / ".config/arete/config.toml"
     # Ensure directory exists
     target_path.parent.mkdir(parents=True, exist_ok=True)
 
     if target_path.exists():
-        ovr = input(f"\n{target_path} already exists. Overwrite? [y/N]: ").strip().lower()
+        ovr = input_fn(f"\n{target_path} already exists. Overwrite? [y/N]: ").strip().lower()
         if ovr != "y":
             print("Aborted.")
             return
@@ -68,7 +82,12 @@ verbose = 1
         print(f"Error writing config: {e}")
 
 
-def _ask_path(label: str, default: str | None = None) -> str:
+def _ask_path(
+    label: str,
+    default: str | None = None,
+    *,
+    input_fn: Callable[[str], str] = input,
+) -> str:
     while True:
         prompt = f"{label} "
         if default:
@@ -76,7 +95,7 @@ def _ask_path(label: str, default: str | None = None) -> str:
         else:
             prompt += ": "
 
-        val = input(prompt).strip()
+        val = input_fn(prompt).strip()
         if not val and default:
             val = default
 
@@ -88,7 +107,7 @@ def _ask_path(label: str, default: str | None = None) -> str:
         p = Path(os.path.expanduser(val)).resolve()
         if not p.exists():
             print(f"Warning: Path '{p}' does not exist.")
-            confirm = input("Use anyway? [y/N]: ").strip().lower()
+            confirm = input_fn("Use anyway? [y/N]: ").strip().lower()
             if confirm == "y":
                 return str(p)
         else:

@@ -12,7 +12,7 @@ import pytest
 from arete.application.sync.note_sync import NoteSync
 from arete.domain.models import AnkiNote, OutcomeUnknown, WorkItem
 from arete.domain.ownership import is_arete_id
-from arete.infrastructure.adapters import anki_connect
+from arete.infrastructure.adapters import anki_connect_client
 from arete.infrastructure.adapters.anki_connect import AnkiConnectAdapter
 
 from .fake_anki import FakeAnki
@@ -23,8 +23,8 @@ OTHER_ID = "arete_01J9Z8Y7X6W5V4T3S2R1Q0P9N9"
 
 @pytest.fixture(autouse=True)
 def _no_retry_delay(monkeypatch):
-    monkeypatch.setattr(anki_connect, "_RETRY_DELAY", 0.0, raising=False)
-    monkeypatch.setattr(anki_connect, "_NOT_SENT_DELAY", 0.0, raising=False)
+    monkeypatch.setattr(anki_connect_client, "_RETRY_DELAY", 0.0, raising=False)
+    monkeypatch.setattr(anki_connect_client, "_NOT_SENT_DELAY", 0.0, raising=False)
 
 
 def _item(

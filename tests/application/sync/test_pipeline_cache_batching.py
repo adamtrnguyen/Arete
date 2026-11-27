@@ -22,7 +22,7 @@ from arete.application.sync.vault_service import VaultService
 from arete.domain.interfaces import AnkiBridge
 from arete.infrastructure.persistence.cache import ContentCache
 from tests.application.sync.test_pipeline_data_safety import FakeAnki
-from tests.fakes.pipeline import syncing_through
+from tests.fakes.pipeline import note_sync_factory_for
 
 LOG = logging.getLogger("test-cache-batching")
 
@@ -88,8 +88,18 @@ def sync(root: Path, anki: FakeAnki, cache: ContentCache) -> None:
     config = AppConfig.model_construct(**fields)
     vault = VaultService(root, cache, ignore_cache=False)
     parser = MarkdownParser(root, root / "media", ignore_cache=False, logger=LOG)
-    with syncing_through(anki):
-        asyncio.run(run_pipeline(config, LOG, "run", vault, parser, cast(AnkiBridge, anki), cache))
+    asyncio.run(
+        run_pipeline(
+            config,
+            LOG,
+            "run",
+            vault,
+            parser,
+            cast(AnkiBridge, anki),
+            cache,
+            note_sync_factory=note_sync_factory_for(anki),
+        )
+    )
 
 
 @pytest.fixture

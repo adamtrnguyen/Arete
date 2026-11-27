@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 from hypothesis import assume, given, settings
 from hypothesis import strategies as st
 
-from arete.application.sync.id_service import generate_arete_id
+from arete.application.sync.id_writeback import generate_arete_id
 from arete.application.sync.vault_service import VaultService
 from arete.application.utils.text import parse_frontmatter
 

@@ -15,7 +15,7 @@ import pytest
 import pytest_asyncio
 
 from arete.domain.models import OutcomeUnknown
-from arete.infrastructure.adapters import anki_connect
+from arete.infrastructure.adapters import anki_connect_client
 from arete.infrastructure.adapters.anki_connect import AnkiConnectAdapter
 
 READERS = 4
@@ -69,8 +69,8 @@ async def served(monkeypatch):
             super().__init__(**kwargs)
             clients.append(self)
 
-    monkeypatch.setattr(anki_connect.httpx, "AsyncClient", RecordingClient)
-    monkeypatch.setattr(anki_connect, "_RETRY_DELAY", 0.0)
+    monkeypatch.setattr(anki_connect_client.httpx, "AsyncClient", RecordingClient)
+    monkeypatch.setattr(anki_connect_client, "_RETRY_DELAY", 0.0)
     server = _Server()
     tcp = await asyncio.start_server(server.handle, "127.0.0.1", 0)
     port = tcp.sockets[0].getsockname()[1]

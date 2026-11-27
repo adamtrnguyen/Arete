@@ -15,11 +15,11 @@ import respx
 from httpx import Response
 
 from arete.application.config import AppConfig
-from arete.application.sync.id_service import generate_arete_id
+from arete.application.sync.id_writeback import generate_arete_id
 from arete.application.sync.prune import prune_orphans
 from arete.application.utils.logging import RunRecorder
 from arete.domain.interfaces import SyncPort
-from arete.domain.models import AnkiDeck
+from arete.domain.models import deck_parents
 from arete.domain.ownership import is_arete_id
 from arete.infrastructure.adapters.anki_connect import AnkiConnectAdapter
 
@@ -46,9 +46,9 @@ class FakeAnki(SyncPort):
         self.decks = {"Default"} | set(extra_decks) | self.filtered_decks
         for deck, _ in notes.values():
             self.decks.add(deck)
-            self.decks.update(AnkiDeck(name=deck).parents)
+            self.decks.update(deck_parents(deck))
         for deck in self.filtered_decks:
-            self.decks.update(AnkiDeck(name=deck).parents)
+            self.decks.update(deck_parents(deck))
         self.deleted_notes: list[int] = []
         self.deleted_decks: list[str] = []
         self.fail_delete_notes = False

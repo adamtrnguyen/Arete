@@ -334,12 +334,8 @@ def queue(
     config = _resolve_with_overrides(
         root_input=path, backend=backend, anki_connect_url=anki_connect_url, anki_base=anki_base
     )
+    assert config.root_input is not None
     vault_root = config.root_input
-    if vault_root is None:
-        typer.secho(
-            "No vault root configured. Pass a path or set ARETE_ROOT_INPUT.", fg="red", err=True
-        )
-        raise typer.Exit(1)
 
     async def run():
         anki = await get_anki_bridge(config)
@@ -566,10 +562,8 @@ def graph_check(
     from arete.application.queue.graph_resolver import check_graph_health
 
     config = _resolve_with_overrides(root_input=path)
+    assert config.root_input is not None
     vault_root = config.root_input
-    if vault_root is None:
-        typer.secho("No vault root configured. Pass a path or set ARETE_ROOT_INPUT.", fg="red")
-        raise typer.Exit(1)
 
     result = check_graph_health(vault_root)
 
@@ -643,10 +637,8 @@ def graph_export(
     from arete.application.queue.graph_resolver import export_graph
 
     config = _resolve_with_overrides(root_input=path)
+    assert config.root_input is not None
     vault_root = config.root_input
-    if vault_root is None:
-        typer.secho("No vault root configured. Pass a path or set ARETE_ROOT_INPUT.", fg="red")
-        raise typer.Exit(1)
 
     with stdout_to_stderr():
         graph = asdict(export_graph(vault_root))

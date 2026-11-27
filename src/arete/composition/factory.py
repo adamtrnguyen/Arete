@@ -20,6 +20,7 @@ from arete.application.sync.vault_service import VaultService
 from arete.domain.interfaces import AnkiBridge, ContentCache
 from arete.domain.stats.ports import StatsRepository
 from arete.infrastructure.adapters.anki_connect import AnkiConnectAdapter
+from arete.infrastructure.adapters.anki_connect_client import DEFAULT_ANKI_CONNECT_URL
 from arete.infrastructure.adapters.anki_direct import AnkiDirectAdapter
 from arete.infrastructure.adapters.stats import ConnectStatsRepository, DirectStatsRepository
 from arete.infrastructure.persistence.cache import ContentCache as _CacheImpl
@@ -36,7 +37,7 @@ async def _ankiconnect_for(config: AppConfig) -> AnkiConnectAdapter | None:
     """
     if config.backend == "direct":
         return None
-    ac = AnkiConnectAdapter(url=config.anki_connect_url or "http://127.0.0.1:8765")
+    ac = AnkiConnectAdapter(url=config.anki_connect_url or DEFAULT_ANKI_CONNECT_URL)
     if config.backend == "ankiconnect" or await ac.is_responsive():
         return ac
     await ac.close()
@@ -50,13 +51,8 @@ async def get_anki_bridge(config: AppConfig) -> AnkiBridge:
         logger.info("Backend: %s", "AnkiConnect" if ac else "AnkiDirect")
     return ac or AnkiDirectAdapter(
         anki_base=config.anki_base,
-        anki_connect_url=config.anki_connect_url or "http://127.0.0.1:8765",
+        anki_connect_url=config.anki_connect_url or DEFAULT_ANKI_CONNECT_URL,
     )
-
-
-def get_cache(db_path: Path | None = None) -> ContentCache:
-    """Return a ContentCache implementation."""
-    return _CacheImpl(db_path=db_path)
 
 
 @contextmanager
@@ -67,19 +63,6 @@ def opened_cache(db_path: Path | None = None) -> Iterator[ContentCache]:
         yield cache
     finally:
         cache.close()
-
-
-def get_vault_service(config: AppConfig) -> VaultService:
-    """Return the VaultService instance configured for the given app config."""
-    vault_root = require_vault_root(config)
-    # Same cache as the sync pipeline (orchestrator): config.cache_db or ~/.config/arete/cache.db.
-    # A second, vault-local DB would let `vault format` and the servers disagree with `sync`.
-    cache = get_cache(Path(config.cache_db) if config.cache_db else None)
-    if config.clear_cache:
-        cache.clear()
-    # `force` = ignore the cache; `clear_cache` = wipe it. Same meaning as in orchestrator.
-    # Use `root_input` when given so single-file/subfolder commands do not touch the whole vault.
-    return VaultService(config.root_input or vault_root, cache, ignore_cache=config.force)
 
 
 @contextmanager
@@ -98,8 +81,7 @@ async def get_stats_repo(config: AppConfig) -> StatsRepository:
     ac = await _ankiconnect_for(config)
     if ac is None:
         return DirectStatsRepository(anki_base=config.anki_base)
-    await ac.close()
-    return ConnectStatsRepository(url=config.anki_connect_url or "http://localhost:8765")
+    return ConnectStatsRepository(client=ac.client)
 
 
 async def get_stats_service(config: AppConfig) -> FsrsStatsService:

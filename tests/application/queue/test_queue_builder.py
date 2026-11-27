@@ -1,10 +1,10 @@
+"""Unit tests for queue builder using direct DependencyGraph injection."""
+
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
 from arete.application.queue.builder import (
-    _weakness_score,
     build_dynamic_queue,
     build_simple_queue,
 )
@@ -21,30 +21,18 @@ def mock_graph_deps():
     E <-> F (Cycle).
     """
     graph = DependencyGraph()
-
-    # Nodes
-    graph.nodes["A"] = CardNode(id="A", file_path="a.md", title="A", line_number=1)
-    graph.nodes["B"] = CardNode(id="B", file_path="b.md", title="B", line_number=1)
-    graph.nodes["C"] = CardNode(id="C", file_path="c.md", title="C", line_number=1)
-    graph.nodes["D"] = CardNode(id="D", file_path="d.md", title="D", line_number=1)
-    graph.nodes["E"] = CardNode(id="E", file_path="e.md", title="E", line_number=1)
-    graph.nodes["F"] = CardNode(id="F", file_path="f.md", title="F", line_number=1)
-
-    # Dependencies (requires)
+    for nid in ("A", "B", "C", "D", "E", "F"):
+        graph.add_node(CardNode(id=nid, file_path=f"{nid.lower()}.md", title=nid, line_number=1))
     graph.add_requires("A", "B")
     graph.add_requires("B", "C")
     graph.add_requires("E", "F")
     graph.add_requires("F", "E")
-
     return graph
 
 
-@patch("arete.application.queue.builder.build_graph")
-def test_build_simple_queue_mvp(mock_build_graph, mock_graph_deps):
+def test_build_simple_queue_mvp(mock_graph_deps):
     """Test basic queue building with prerequisites."""
-    mock_build_graph.return_value = mock_graph_deps
-
-    res = build_simple_queue(Path("."), due_card_ids=["A"], depth=5)
+    res = build_simple_queue(Path("."), due_card_ids=["A"], depth=5, graph=mock_graph_deps)
 
     assert "C" in res.prereq_queue
     assert "B" in res.prereq_queue
@@ -52,59 +40,44 @@ def test_build_simple_queue_mvp(mock_build_graph, mock_graph_deps):
     assert res.prereq_queue.index("C") < res.prereq_queue.index("B")
 
 
-@patch("arete.application.queue.builder.build_graph")
-def test_build_simple_queue_depth(mock_build_graph, mock_graph_deps):
+def test_build_simple_queue_depth(mock_graph_deps):
     """Test recursion depth limit."""
-    mock_build_graph.return_value = mock_graph_deps
-
-    res = build_simple_queue(Path("."), due_card_ids=["A"], depth=1)
+    res = build_simple_queue(Path("."), due_card_ids=["A"], depth=1, graph=mock_graph_deps)
 
     assert "B" in res.prereq_queue
     assert "C" not in res.prereq_queue
     assert res.main_queue == ["A"]
 
 
-@patch("arete.application.queue.builder.build_graph")
-def test_build_simple_queue_independent(mock_build_graph, mock_graph_deps):
+def test_build_simple_queue_independent(mock_graph_deps):
     """Test independent cards have no prereqs."""
-    mock_build_graph.return_value = mock_graph_deps
-
-    res = build_simple_queue(Path("."), due_card_ids=["D"])
+    res = build_simple_queue(Path("."), due_card_ids=["D"], graph=mock_graph_deps)
 
     assert res.prereq_queue == []
     assert res.main_queue == ["D"]
 
 
-@patch("arete.application.queue.builder.build_graph")
-def test_build_simple_queue_cycle(mock_build_graph, mock_graph_deps):
+def test_build_simple_queue_cycle(mock_graph_deps):
     """Test cycle detection doesn't crash queue builder."""
-    mock_build_graph.return_value = mock_graph_deps
-
-    res = build_simple_queue(Path("."), due_card_ids=["E"])
+    res = build_simple_queue(Path("."), due_card_ids=["E"], graph=mock_graph_deps)
 
     assert "F" in res.prereq_queue
     assert "E" in res.main_queue
     assert len(res.cycles) > 0
 
 
-@patch("arete.application.queue.builder.build_graph")
-def test_build_simple_queue_max_cards(mock_build_graph, mock_graph_deps):
+def test_build_simple_queue_max_cards(mock_graph_deps):
     """Test constraints on queue size."""
-    mock_build_graph.return_value = mock_graph_deps
-
-    res = build_simple_queue(Path("."), due_card_ids=["A"], max_cards=2)
+    res = build_simple_queue(Path("."), due_card_ids=["A"], max_cards=2, graph=mock_graph_deps)
 
     assert len(res.main_queue) == 1
     assert len(res.prereq_queue) == 1
     assert len(res.prereq_queue) + len(res.main_queue) <= 2
 
 
-@patch("arete.application.queue.builder.build_graph")
-def test_build_dynamic_queue_respects_dependencies(mock_build_graph, mock_graph_deps):
+def test_build_dynamic_queue_respects_dependencies(mock_graph_deps):
     """Dynamic queue should still obey prerequisite ordering constraints."""
-    mock_build_graph.return_value = mock_graph_deps
-
-    res = build_dynamic_queue(Path("."), due_card_ids=["A"], depth=5)
+    res = build_dynamic_queue(Path("."), due_card_ids=["A"], depth=5, graph=mock_graph_deps)
 
     assert res.ordered_queue is not None
     assert res.ordered_queue == res.prereq_queue + res.main_queue
@@ -113,48 +86,9 @@ def test_build_dynamic_queue_respects_dependencies(mock_build_graph, mock_graph_
     assert idx["C"] < idx["B"] < idx["A"]  # C -> B -> A
 
 
-@patch("arete.application.queue.builder.build_graph")
-def test_build_dynamic_queue_uses_weakness_signal(mock_build_graph):
-    """When multiple cards are ready, weaker cards can be prioritized first."""
-    graph = DependencyGraph()
-    graph.add_node(CardNode(id="due", file_path="due.md", title="Due", line_number=1))
-    graph.add_node(CardNode(id="a_strong", file_path="s.md", title="Strong", line_number=1))
-    graph.add_node(CardNode(id="z_weak", file_path="w.md", title="Weak", line_number=1))
-
-    # due requires both prerequisites
-    graph.add_requires("due", "a_strong")
-    graph.add_requires("due", "z_weak")
-    mock_build_graph.return_value = graph
-
-    res = build_dynamic_queue(
-        Path("."),
-        due_card_ids=["due"],
-        depth=2,
-        card_stats={
-            "a_strong": {"stability": 100.0, "lapses": 0, "reps": 100, "interval": 100},
-            "z_weak": {"stability": 0.5, "lapses": 4, "reps": 1, "interval": 1},
-        },
-    )
-
-    assert res.ordered_queue is not None
-    # Both prereqs are ready initially; weak one should win despite lexical tie-break favoring "a_*"
-    assert res.ordered_queue[0] == "z_weak"
-    assert res.ordered_queue[-1] == "due"
-
-
-# ---------------------------------------------------------------------------
-# build_dynamic_queue: disconnected graph components
-# ---------------------------------------------------------------------------
-
-
 @pytest.fixture
 def disconnected_graph():
-    """Graph with two disconnected components.
-
-    Component 1: X -> Y (X requires Y)
-    Component 2: P -> Q (P requires Q)
-    No edges between the two components.
-    """
+    """Graph with two disconnected components: X -> Y and P -> Q."""
     graph = DependencyGraph()
     for nid in ("X", "Y", "P", "Q"):
         graph.add_node(CardNode(id=nid, file_path=f"{nid.lower()}.md", title=nid, line_number=1))
@@ -163,42 +97,26 @@ def disconnected_graph():
     return graph
 
 
-@patch("arete.application.queue.builder.build_graph")
-def test_build_dynamic_queue_disconnected_components(mock_build_graph, disconnected_graph):
-    """Dynamic queue handles disconnected graph components correctly.
-
-    When due cards come from separate components, all prereqs should still
-    appear before their dependents.
-    """
-    mock_build_graph.return_value = disconnected_graph
-
-    res = build_dynamic_queue(Path("."), due_card_ids=["X", "P"], depth=5)
+def test_build_dynamic_queue_disconnected_components(disconnected_graph):
+    """Dynamic queue handles disconnected graph components correctly."""
+    res = build_dynamic_queue(Path("."), due_card_ids=["X", "P"], depth=5, graph=disconnected_graph)
 
     assert res.ordered_queue is not None
     idx = {cid: i for i, cid in enumerate(res.ordered_queue)}
-
-    # Each prereq before its dependent
     assert idx["Y"] < idx["X"]
     assert idx["Q"] < idx["P"]
-
-    # All four cards present
     assert set(res.ordered_queue) == {"X", "Y", "P", "Q"}
 
 
-# ---------------------------------------------------------------------------
-# build_dynamic_queue: isolated due cards (no prereqs)
-# ---------------------------------------------------------------------------
-
-
-@patch("arete.application.queue.builder.build_graph")
-def test_build_dynamic_queue_isolated_due_cards(mock_build_graph):
+def test_build_dynamic_queue_isolated_due_cards():
     """Due cards with zero prerequisites produce an empty prereq queue."""
     graph = DependencyGraph()
     for nid in ("solo1", "solo2", "solo3"):
         graph.add_node(CardNode(id=nid, file_path=f"{nid}.md", title=nid, line_number=1))
-    mock_build_graph.return_value = graph
 
-    res = build_dynamic_queue(Path("."), due_card_ids=["solo1", "solo2", "solo3"], depth=5)
+    res = build_dynamic_queue(
+        Path("."), due_card_ids=["solo1", "solo2", "solo3"], depth=5, graph=graph
+    )
 
     assert res.prereq_queue == []
     assert set(res.main_queue) == {"solo1", "solo2", "solo3"}
@@ -206,22 +124,9 @@ def test_build_dynamic_queue_isolated_due_cards(mock_build_graph):
     assert set(res.ordered_queue) == {"solo1", "solo2", "solo3"}
 
 
-# ---------------------------------------------------------------------------
-# build_dynamic_queue: diamond dependency (A requires B and C, both require D)
-# ---------------------------------------------------------------------------
-
-
 @pytest.fixture
 def diamond_graph():
-    r"""Diamond dependency graph.
-
-         A
-        / \\
-       B   C
-        \\ /
-         D
-    A requires B, A requires C, B requires D, C requires D.
-    """
+    """Diamond dependency graph: A requires B and C, both require D."""
     graph = DependencyGraph()
     for nid in ("A", "B", "C", "D"):
         graph.add_node(CardNode(id=nid, file_path=f"{nid.lower()}.md", title=nid, line_number=1))
@@ -232,152 +137,39 @@ def diamond_graph():
     return graph
 
 
-@patch("arete.application.queue.builder.build_graph")
-def test_build_dynamic_queue_diamond_dependency(mock_build_graph, diamond_graph):
+def test_build_dynamic_queue_diamond_dependency(diamond_graph):
     """Diamond dependency: D must come first, B and C in the middle, A last."""
-    mock_build_graph.return_value = diamond_graph
-
-    res = build_dynamic_queue(Path("."), due_card_ids=["A"], depth=5)
+    res = build_dynamic_queue(Path("."), due_card_ids=["A"], depth=5, graph=diamond_graph)
 
     assert res.ordered_queue is not None
     idx = {cid: i for i, cid in enumerate(res.ordered_queue)}
-
-    # D must precede both B and C
     assert idx["D"] < idx["B"]
     assert idx["D"] < idx["C"]
-
-    # Both B and C must precede A
     assert idx["B"] < idx["A"]
     assert idx["C"] < idx["A"]
-
-    # D is not a due card, so it should be in prereq_queue
     assert "D" in res.prereq_queue
     assert "A" in res.main_queue
 
 
-# ---------------------------------------------------------------------------
-# _is_weak_prereq: missing card_stats -> True (weak)
-# ---------------------------------------------------------------------------
-
-
-# ---------------------------------------------------------------------------
-# _is_weak_prereq: all criteria None -> True (all weak)
-# ---------------------------------------------------------------------------
-
-
-# ---------------------------------------------------------------------------
-# _is_weak_prereq: each criterion independently
-# ---------------------------------------------------------------------------
-
-
-# ---------------------------------------------------------------------------
-# _weakness_score: no stats (returns 0.0)
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.parametrize(
-    "card_stats",
-    [
-        pytest.param(None, id="none"),
-        pytest.param({}, id="empty_dict"),
-        pytest.param({"other": {"stability": 1.0}}, id="missing_card"),
-    ],
-)
-def test_weakness_score_no_stats(card_stats):
-    """Missing or absent card stats produce 0.0 weakness score."""
-    assert _weakness_score("card_1", card_stats) == 0.0
-
-
-# ---------------------------------------------------------------------------
-# _weakness_score: extreme values
-# ---------------------------------------------------------------------------
-
-
-def test_weakness_score_zero_stability():
-    """Zero stability should give maximum stability-based weakness."""
-    stats = {"card_1": {"stability": 0.0}}
-    score = _weakness_score("card_1", stats)
-    # 1/(1+0) = 1.0, plus reps < 10 gives (10-0)*0.05 = 0.0 (no reps key)
-    assert score == pytest.approx(1.0)
-
-
-def test_weakness_score_very_high_stability():
-    """Very high stability approaches zero weakness from stability."""
-    stats = {"card_1": {"stability": 1_000_000.0}}
-    score = _weakness_score("card_1", stats)
-    # 1/(1+1_000_000) ~ 0.000001
-    assert score < 0.001
-
-
-def test_weakness_score_high_lapses():
-    """High lapse count produces proportionally higher weakness."""
-    stats_high = {"card_1": {"lapses": 100}}
-    stats_low = {"card_1": {"lapses": 1}}
-    score_high = _weakness_score("card_1", stats_high)
-    score_low = _weakness_score("card_1", stats_low)
-    assert score_high > score_low
-
-
-def test_weakness_score_zero_reps():
-    """Zero reps gives the maximum reps-based weakness component."""
-    stats = {"card_1": {"reps": 0}}
-    score = _weakness_score("card_1", stats)
-    # (10 - 0) * 0.05 = 0.5
-    assert score == pytest.approx(0.5)
-
-
-def test_weakness_score_many_reps():
-    """Reps >= 10 contribute zero reps-based weakness."""
-    stats = {"card_1": {"reps": 50}}
-    score = _weakness_score("card_1", stats)
-    # reps >= 10 -> no reps contribution
-    assert score == pytest.approx(0.0)
-
-
-def test_weakness_score_zero_interval():
-    """Zero interval gives maximum interval-based weakness."""
-    stats = {"card_1": {"interval": 0}}
-    score = _weakness_score("card_1", stats)
-    # 1/(1+0) = 1.0
-    assert score == pytest.approx(1.0)
-
-
-def test_weakness_score_all_extreme_stats():
-    """Card with all extreme weak stats produces a high aggregate score."""
-    stats = {"card_1": {"stability": 0.0, "lapses": 50, "reps": 0, "interval": 0}}
-    score = _weakness_score("card_1", stats)
-
-    # stability: 1/(1+0) = 1.0
-    # lapses: 50 * 0.15 = 7.5
-    # reps: (10-0) * 0.05 = 0.5
-    # interval: 1/(1+0) = 1.0
-    # total: 10.0
-    assert score == pytest.approx(10.0)
-
-
-# ---------------------------------------------------------------------------
-# build_simple_queue: non-existent card IDs
-# ---------------------------------------------------------------------------
-
-
-@patch("arete.application.queue.builder.build_graph")
-def test_build_simple_queue_nonexistent_card_ids(mock_build_graph, mock_graph_deps):
+def test_build_simple_queue_nonexistent_card_ids(mock_graph_deps):
     """Non-existent card IDs are handled gracefully (no crash, no prereqs)."""
-    mock_build_graph.return_value = mock_graph_deps
-
-    res = build_simple_queue(Path("."), due_card_ids=["NONEXISTENT_1", "NONEXISTENT_2"], depth=5)
+    res = build_simple_queue(
+        Path("."),
+        due_card_ids=["NONEXISTENT_1", "NONEXISTENT_2"],
+        depth=5,
+        graph=mock_graph_deps,
+    )
 
     assert res.prereq_queue == []
     assert "A" not in res.main_queue
     assert "B" not in res.main_queue
 
 
-@patch("arete.application.queue.builder.build_graph")
-def test_build_simple_queue_mix_existing_and_nonexistent(mock_build_graph, mock_graph_deps):
+def test_build_simple_queue_mix_existing_and_nonexistent(mock_graph_deps):
     """Mix of real and non-existent IDs: prereqs only from real cards."""
-    mock_build_graph.return_value = mock_graph_deps
-
-    res = build_simple_queue(Path("."), due_card_ids=["A", "NONEXISTENT"], depth=5)
+    res = build_simple_queue(
+        Path("."), due_card_ids=["A", "NONEXISTENT"], depth=5, graph=mock_graph_deps
+    )
 
     assert "B" in res.prereq_queue or "B" in res.main_queue
     assert "C" in res.prereq_queue
@@ -387,48 +179,35 @@ def test_build_simple_queue_mix_existing_and_nonexistent(mock_build_graph, mock_
 def _chain_graph(edges, nodes):
     graph = DependencyGraph()
     for n in nodes:
-        graph.nodes[n] = CardNode(id=n, file_path=f"{n}.md", title=n, line_number=1)
+        graph.add_node(CardNode(id=n, file_path=f"{n}.md", title=n, line_number=1))
     for dependent, prereq in edges:
         graph.add_requires(dependent, prereq)
     return graph
 
 
-@patch("arete.application.queue.builder.build_graph")
-def test_prereq_within_depth_is_found_by_its_shortest_path(mock_build_graph):
+def test_prereq_within_depth_is_found_by_its_shortest_path():
     """A card reached first by a long path is expanded from its shortest one."""
-    # D requires A and B; A -> B -> C -> E. E is 3 hops from D via D->B->C->E.
-    mock_build_graph.return_value = _chain_graph(
-        [("D", "A"), ("D", "B"), ("A", "B"), ("B", "C"), ("C", "E")], "ABCDE"
-    )
-    res = build_simple_queue(Path("."), due_card_ids=["D"], depth=3, max_cards=50)
+    graph = _chain_graph([("D", "A"), ("D", "B"), ("A", "B"), ("B", "C"), ("C", "E")], "ABCDE")
+    res = build_simple_queue(Path("."), due_card_ids=["D"], depth=3, max_cards=50, graph=graph)
     assert set(res.prereq_queue) == {"A", "B", "C", "E"}
 
 
-@patch("arete.application.queue.builder.build_graph")
-def test_max_cards_keeps_the_nearest_prereqs_and_reports_what_it_dropped(mock_build_graph):
+def test_max_cards_keeps_the_nearest_prereqs_and_reports_what_it_dropped():
     """The cap keeps the nearest prerequisites, not the alphabetically first, and reports the rest."""
-    # Due -> A -> B -> Z ; ids chosen so alphabetical order != distance order
-    mock_build_graph.return_value = _chain_graph(
-        [("Due", "Z"), ("Z", "B"), ("B", "A")], ["Due", "Z", "B", "A"]
-    )
-    res = build_simple_queue(Path("."), due_card_ids=["Due"], depth=5, max_cards=3)
-    assert set(res.prereq_queue) == {"Z", "B"}  # 1 and 2 hops away, not "A" and "B"
+    graph = _chain_graph([("Due", "Z"), ("Z", "B"), ("B", "A")], ["Due", "Z", "B", "A"])
+    res = build_simple_queue(Path("."), due_card_ids=["Due"], depth=5, max_cards=3, graph=graph)
+    assert set(res.prereq_queue) == {"Z", "B"}
     assert res.dropped_prereqs == ["A"]
 
 
-@patch("arete.application.queue.builder.build_graph")
-def test_dynamic_queue_preserves_dropped_prereqs_and_case_insensitive_due_ids(mock_build_graph):
+def test_dynamic_queue_preserves_dropped_prereqs_and_case_insensitive_due_ids():
     """Dynamic queue preserves dropped_prereqs and deduplicates case-folded due IDs for room."""
-    graph = DependencyGraph()
-    for cid in ("arete_Due", "arete_Z", "arete_B", "arete_A"):
-        graph.add_node(CardNode(id=cid, file_path=f"{cid}.md", title=cid, line_number=1))
-    graph.add_requires("arete_Due", "arete_Z")
-    graph.add_requires("arete_Z", "arete_B")
-    graph.add_requires("arete_B", "arete_A")
-    mock_build_graph.return_value = graph
-
+    graph = _chain_graph(
+        [("arete_Due", "arete_Z"), ("arete_Z", "arete_B"), ("arete_B", "arete_A")],
+        ["arete_Due", "arete_Z", "arete_B", "arete_A"],
+    )
     res = build_dynamic_queue(
-        Path("."), due_card_ids=["arete_due", "arete_DUE"], depth=5, max_cards=3
+        Path("."), due_card_ids=["arete_due", "arete_DUE"], depth=5, max_cards=3, graph=graph
     )
     assert res.main_queue == ["arete_Due"]
     assert set(res.prereq_queue) == {"arete_Z", "arete_B"}

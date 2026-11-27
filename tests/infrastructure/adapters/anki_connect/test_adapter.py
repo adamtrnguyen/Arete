@@ -10,7 +10,6 @@ Covers: is_responsive, _invoke, get_model_styling, get_model_templates, gui_brow
 
 import asyncio
 import json
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, mock_open, patch
 
 import httpx
@@ -18,7 +17,6 @@ import pytest
 import respx
 from httpx import Response
 
-from arete.domain.models import AnkiNote
 from arete.infrastructure.adapters.anki_connect import AnkiConnectAdapter
 
 # ---------------------------------------------------------------------------
@@ -36,47 +34,17 @@ def adapter_localhost():
     return AnkiConnectAdapter(url="http://localhost:8765")
 
 
-@pytest.fixture
-def sample_note():
-    return AnkiNote(
-        model="Basic",
-        deck="Default",
-        fields={"Front": r"**bold** and math \(\frac{1}{2}\)", "Back": "A"},
-        tags=["tag1"],
-        start_line=1,
-        source_file=Path("test.md"),
-        source_index=1,
-    )
-
-
-@pytest.fixture
-def simple_note():
-    return AnkiNote(
-        model="Basic",
-        deck="Default",
-        fields={"Front": "Front", "Back": "Back"},
-        tags=["tag1"],
-        start_line=1,
-        source_file=Path("test.md"),
-        source_index=1,
-    )
-
-
 # ---------------------------------------------------------------------------
 # is_responsive
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_is_responsive():
-    adapter = AnkiConnectAdapter()
-    mock_client = AsyncMock()
-    mock_resp = MagicMock()
-    mock_resp.status_code = 200
-    mock_resp.json.return_value = {"result": 6}
-    mock_client.post.return_value = mock_resp
-
-    adapter._client = mock_client
+@respx.mock
+async def test_is_responsive(adapter):
+    respx.post("http://mock-anki:8765").mock(
+        return_value=Response(200, json={"result": 6, "error": None})
+    )
     assert await adapter.is_responsive() is True
 
 
@@ -88,22 +56,17 @@ async def test_is_responsive_failure_respx(adapter):
 
 
 # ---------------------------------------------------------------------------
-# env override
-# ---------------------------------------------------------------------------
-
-
-# ---------------------------------------------------------------------------
-# get_model_styling
+# get_model_styling / get_model_templates / suspend_cards
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_get_model_styling():
-    adapter = AnkiConnectAdapter()
-    with patch.object(adapter, "_invoke", new_callable=AsyncMock) as mock_invoke:
-        mock_invoke.return_value = {"css": "body {}"}
-        css = await adapter.get_model_styling("Basic")
-        assert css == "body {}"
+@respx.mock
+async def test_get_model_styling(adapter):
+    respx.post("http://mock-anki:8765").mock(
+        return_value=Response(200, json={"result": {"css": "body {}"}, "error": None})
+    )
+    assert await adapter.get_model_styling("Basic") == "body {}"
 
 
 @pytest.mark.asyncio
@@ -114,13 +77,14 @@ async def test_get_model_styling():
         pytest.param("get_model_templates", {}, id="templates"),
     ],
 )
-async def test_model_error_exception(method, expected):
+@respx.mock
+async def test_model_error_exception(adapter, method, expected):
     """A failed request raises: an empty answer would pass for the type's own."""
-    adapter = AnkiConnectAdapter()
-    with patch.object(adapter, "_invoke", new_callable=AsyncMock) as mock_invoke:
-        mock_invoke.side_effect = Exception("Fail")
-        with pytest.raises(Exception, match="Fail"):
-            await getattr(adapter, method)("Basic")
+    respx.post("http://mock-anki:8765").mock(
+        return_value=Response(200, json={"result": None, "error": "Fail"})
+    )
+    with pytest.raises(Exception, match="Fail"):
+        await getattr(adapter, method)("Basic")
 
 
 @pytest.mark.asyncio
@@ -143,32 +107,26 @@ async def test_model_error_api(adapter, method, expected):
     assert res == expected
 
 
-# ---------------------------------------------------------------------------
-# get_model_templates
-# ---------------------------------------------------------------------------
+@pytest.mark.asyncio
+@respx.mock
+async def test_get_model_templates(adapter):
+    respx.post("http://mock-anki:8765").mock(
+        return_value=Response(
+            200, json={"result": {"Default": {"qfmt": "Q", "afmt": "A"}}, "error": None}
+        )
+    )
+    temps = await adapter.get_model_templates("Basic")
+    assert "Default" in temps
 
 
 @pytest.mark.asyncio
-async def test_get_model_templates():
-    adapter = AnkiConnectAdapter()
-    with patch.object(adapter, "_invoke", new_callable=AsyncMock) as mock_invoke:
-        mock_invoke.return_value = {"Default": {"qfmt": "Q", "afmt": "A"}}
-        temps = await adapter.get_model_templates("Basic")
-        assert "Default" in temps
-
-
-# ---------------------------------------------------------------------------
-# suspend_cards
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_suspend_cards_fail():
-    adapter = AnkiConnectAdapter()
-    with patch.object(adapter, "_invoke", new_callable=AsyncMock) as mock_invoke:
-        mock_invoke.side_effect = Exception("Fail")
-        with pytest.raises(Exception, match="Fail"):
-            await adapter.suspend_cards([123])
+@respx.mock
+async def test_suspend_cards_fail(adapter):
+    respx.post("http://mock-anki:8765").mock(
+        return_value=Response(200, json={"result": None, "error": "Fail"})
+    )
+    with pytest.raises(Exception, match="Fail"):
+        await adapter.suspend_cards([123])
 
 
 # ---------------------------------------------------------------------------
@@ -177,15 +135,11 @@ async def test_suspend_cards_fail():
 
 
 @pytest.mark.asyncio
-async def test_invoke_error_handling():
-    adapter = AnkiConnectAdapter()
-    with patch("httpx.AsyncClient") as mock_client_cls:
-        mock_client = AsyncMock()
-        mock_client_cls.return_value = mock_client
-        mock_client.post.side_effect = Exception("Network Error")
-
-        with pytest.raises(Exception, match="Network Error"):
-            await adapter._invoke("version")
+@respx.mock
+async def test_invoke_error_handling(adapter):
+    respx.post("http://mock-anki:8765").mock(side_effect=RuntimeError("Network Error"))
+    with pytest.raises(RuntimeError, match="Network Error"):
+        await adapter._invoke("version")
 
 
 @pytest.mark.asyncio
@@ -567,7 +521,7 @@ async def test_is_responsive_uses_curl_on_wsl():
     """On WSL with curl.exe bridge, is_responsive must route through _http_request."""
     adapter = AnkiConnectAdapter(url="http://127.0.0.1:8765")
     adapter.use_windows_curl = True
-    with patch.object(adapter, "_http_request", new_callable=AsyncMock) as mock_http:
+    with patch.object(adapter.client, "_http_request", new_callable=AsyncMock) as mock_http:
         mock_http.return_value = {"result": 6, "error": None}
         assert await adapter.is_responsive() is True
         mock_http.assert_awaited_once()
@@ -654,6 +608,6 @@ async def test_curl_bridge_uses_fsS_flags():
 async def test_invoke_guards_non_dict_reply():
     adapter = AnkiConnectAdapter(url="http://mock:8765")
     for bad in (None, "not-a-dict", [1, 2]):
-        with patch.object(adapter, "_http_request", AsyncMock(return_value=bad)):
+        with patch.object(adapter.client, "_http_request", AsyncMock(return_value=bad)):
             with pytest.raises(ValueError, match="unexpected number of fields"):
                 await adapter._invoke("version")

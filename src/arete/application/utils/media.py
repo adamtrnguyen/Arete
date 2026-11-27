@@ -5,10 +5,14 @@ import shutil
 from pathlib import Path
 from urllib.parse import quote, unquote
 
-from arete.application.utils.consts import MARKDOWN_IMG_RE, WIKILINK_IMG_RE, WIKILINK_RE
 from arete.application.utils.fs import file_md5
 from arete.application.utils.text import normalize_filename
 from arete.domain.constants import MEDIA_DIR_NAMES
+
+# Image and wikilink patterns
+WIKILINK_IMG_RE = re.compile(r"!\[\[([^\]]+)\]\]")  # ![[path|...]]
+MARKDOWN_IMG_RE = re.compile(r"!\[[^\]]*\]\(([^)]+)\)")  # ![](path)
+WIKILINK_RE = re.compile(r"(?<!!)\[\[([^\]]+)\]\]")  # [[Target]] or [[Target|display]]
 
 
 def _media_target(dest_dir: Path, src: Path) -> tuple[str, bool]:
