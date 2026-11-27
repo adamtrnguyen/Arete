@@ -16,10 +16,40 @@
 import json
 import select
 import socket
-
-import jsonschema
+import time
 
 from . import util
+
+MAX_HEADER_SIZE = 64 * 1024  # 64 KiB
+MAX_REQUEST_SIZE = 64 * 1024 * 1024  # 64 MiB
+CLIENT_IDLE_TIMEOUT_S = 10.0
+RECV_SIZE = 65536
+
+
+class _HttpParseError(Exception):
+    def __init__(self, status: str, message: str):
+        super().__init__(message)
+        self.status = status
+        self.message = message
+
+
+def _sanitize_header_value(value: str) -> str:
+    return value.replace("\r", "").replace("\n", "")
+
+
+def _validate_request(params: object) -> None:
+    if not isinstance(params, dict):
+        raise ValueError("request body must be a JSON object")
+    action = params.get("action")
+    if not isinstance(action, str) or len(action) < 1:
+        raise ValueError("'action' must be a non-empty string")
+    if "version" in params:
+        version = params["version"]
+        if type(version) is not int:
+            raise ValueError("'version' must be an integer")
+    if "params" in params and not isinstance(params["params"], dict):
+        raise ValueError("'params' must be an object")
+
 
 #
 # WebRequest
@@ -44,47 +74,94 @@ class WebClient:
         self.handler = handler
         self.readBuff = b""
         self.writeBuff = b""
+        self.lastActivity = time.monotonic()
 
-    def advance(self, recvSize=1024):
+    def advance(self, recvSize=RECV_SIZE):
         if self.sock is None:
             return False
 
-        rlist, wlist = select.select([self.sock], [self.sock], [], 0)[:2]
-        self.sock.settimeout(5.0)
+        now = time.monotonic()
+        if now - self.lastActivity > CLIENT_IDLE_TIMEOUT_S:
+            self.close()
+            return False
 
-        if rlist:
-            while True:
-                try:
-                    msg = self.sock.recv(recvSize)
-                except (TimeoutError, ConnectionResetError):
-                    self.close()
-                    return False
-                if not msg:
-                    self.close()
-                    return False
-                self.readBuff += msg
+        try:
+            watch_write = [self.sock] if self.writeBuff else []
+            rlist, wlist = select.select([self.sock], watch_write, [], 0)[:2]
+        except OSError:
+            self.close()
+            return False
 
-                req, length = self.parseRequest(self.readBuff)
-                if req is not None:
-                    self.readBuff = self.readBuff[length:]
-                    self.writeBuff += self.handler(req)
-                    break
-
-        if wlist and self.writeBuff:
+        if rlist and not self.writeBuff:
             try:
-                length = self.sock.send(self.writeBuff)
-                self.writeBuff = self.writeBuff[length:]
-                if not self.writeBuff:
-                    self.close()
-                    return False
-            except:
+                msg = self.sock.recv(recvSize)
+            except BlockingIOError:
+                return True
+            except OSError:
                 self.close()
                 return False
+
+            if not msg:
+                self.close()
+                return False
+
+            self.lastActivity = now
+            self.readBuff += msg
+
+            try:
+                req, length = self.parseRequest(self.readBuff)
+            except _HttpParseError as e:
+                self.readBuff = b""
+                self.writeBuff = self._errorResponse(e.status, e.message)
+                return self._trySend()
+
+            if req is not None:
+                self.readBuff = self.readBuff[length:]
+                try:
+                    self.writeBuff += self.handler(req)
+                except Exception as e:
+                    self.writeBuff = self._errorResponse("500 Internal Server Error", str(e))
+                return self._trySend()
+
+        if wlist and self.writeBuff:
+            return self._trySend()
+
         return True
+
+    def _trySend(self):
+        if self.sock is None or not self.writeBuff:
+            return False
+        try:
+            length = self.sock.send(self.writeBuff)
+        except BlockingIOError:
+            return True
+        except OSError:
+            self.close()
+            return False
+
+        self.lastActivity = time.monotonic()
+        self.writeBuff = self.writeBuff[length:]
+        if not self.writeBuff:
+            self.close()
+            return False
+        return True
+
+    def _errorResponse(self, status: str, message: str) -> bytes:
+        body = json.dumps({"result": None, "error": message}).encode("utf-8")
+        headers = [
+            [f"HTTP/1.1 {status}", None],
+            ["Content-Type", "application/json"],
+            ["Content-Length", str(len(body))],
+            ["Connection", "close"],
+        ]
+        return WebServer.buildResponse(headers, body)
 
     def close(self):
         if self.sock is not None:
-            self.sock.close()
+            try:
+                self.sock.close()
+            except OSError:
+                pass
             self.sock = None
 
         self.readBuff = b""
@@ -93,23 +170,42 @@ class WebClient:
     def parseRequest(self, data):
         parts = data.split(b"\r\n\r\n", 1)
         if len(parts) == 1:
+            if len(data) > MAX_HEADER_SIZE:
+                raise _HttpParseError("413 Payload Too Large", "HTTP headers too large")
             return None, 0
+
+        if len(parts[0]) > MAX_HEADER_SIZE:
+            raise _HttpParseError("413 Payload Too Large", "HTTP headers too large")
 
         lines = parts[0].split(b"\r\n")
         method = None
 
-        if len(lines) > 0:
+        if lines:
             request_line_parts = lines[0].split(b" ")
-            method = request_line_parts[0].upper() if len(request_line_parts) > 0 else None
+            method = request_line_parts[0].upper() if request_line_parts else None
 
         headers = {}
         for line in lines[1:]:
-            pair = line.split(b": ")
-            headers[pair[0].lower()] = pair[1] if len(pair) > 1 else None
+            if b":" not in line:
+                continue
+            key, value = line.split(b":", 1)
+            headers[key.strip().lower()] = value.strip()
 
         headerLength = len(parts[0]) + 4
-        bodyLength = int(headers.get(b"content-length", 0))
+        raw_cl = headers.get(b"content-length")
+        if raw_cl is None:
+            bodyLength = 0
+        else:
+            try:
+                bodyLength = int(raw_cl)
+            except ValueError as e:
+                raise _HttpParseError("400 Bad Request", "invalid Content-Length") from e
+            if bodyLength < 0:
+                raise _HttpParseError("400 Bad Request", "negative Content-Length")
+
         totalLength = headerLength + bodyLength
+        if totalLength > MAX_REQUEST_SIZE:
+            raise _HttpParseError("413 Payload Too Large", "request body too large")
 
         if totalLength > len(data):
             return None, 0
@@ -155,7 +251,14 @@ class WebServer:
                 return
 
     def advanceClients(self):
-        self.clients = list(filter(lambda c: c.advance(), self.clients))
+        alive = []
+        for client in self.clients:
+            try:
+                if client.advance():
+                    alive.append(client)
+            except Exception:
+                client.close()
+        self.clients = alive
 
     def listen(self):
         self.close()
@@ -168,14 +271,13 @@ class WebServer:
 
     def handlerWrapper(self, req):
         allowed, corsOrigin = self.allowOrigin(req)
+        corsOrigin = _sanitize_header_value(corsOrigin)
 
         if req.method == b"OPTIONS":
             body = b""
             headers = self.buildHeaders(corsOrigin, body)
 
-            if b"access-control-request-private-network" in req.headers and (
-                req.headers[b"access-control-request-private-network"] == b"true"
-            ):
+            if req.headers.get(b"access-control-request-private-network") == b"true":
                 # include this header so that if a public origin is included in the whitelist,
                 # then browsers won't fail requests due to the private network access check
                 headers.append(["Access-Control-Allow-Private-Network", "true"])
@@ -184,8 +286,8 @@ class WebServer:
 
         try:
             params = json.loads(req.body.decode("utf-8"))
-            jsonschema.validate(params, request_schema)
-        except (ValueError, jsonschema.ValidationError) as e:
+            _validate_request(params)
+        except ValueError as e:
             if allowed:
                 if len(req.body) == 0:
                     body = f"AnkiConnect v.{util.setting('apiVersion')}".encode()
@@ -199,13 +301,12 @@ class WebServer:
 
         if allowed or params.get("action", "") == "requestPermission":
             if params.get("action", "") == "requestPermission":
+                origin_str = self._decodeOrigin(req) or ""
                 params["params"] = params.get("params", {})
                 params["params"]["allowed"] = allowed
-                params["params"]["origin"] = (
-                    b"origin" in req.headers and req.headers[b"origin"].decode() or ""
-                )
+                params["params"]["origin"] = origin_str
                 if not allowed:
-                    corsOrigin = params["params"]["origin"]
+                    corsOrigin = _sanitize_header_value(origin_str)
 
             body = json.dumps(self.handler(params)).encode("utf-8")
             headers = self.buildHeaders(corsOrigin, body)
@@ -222,6 +323,16 @@ class WebServer:
 
         return self.buildResponse(headers, body)
 
+    @staticmethod
+    def _decodeOrigin(req) -> str | None:
+        raw = req.headers.get(b"origin")
+        if raw is None:
+            return None
+        try:
+            return raw.decode("utf-8")
+        except UnicodeDecodeError:
+            return None
+
     def allowOrigin(self, req):
         # handle multiple cors origins by checking the 'origin'-header against the allowed origin list from the config
         webCorsOriginList = util.setting("webCorsOriginList")
@@ -234,19 +345,21 @@ class WebServer:
             corsOrigin = "*"
             allowed = True
         elif b"origin" in req.headers:
-            originStr = req.headers[b"origin"].decode()
+            originStr = self._decodeOrigin(req)
+            if originStr is None:
+                return False, corsOrigin
             if originStr in webCorsOriginList:
                 corsOrigin = originStr
                 allowed = True
             elif "http://localhost" in webCorsOriginList and (
-                originStr == "http://127.0.0.1"
+                originStr == "https://localhost"
+                or originStr.startswith("http://localhost:")
+                or originStr.startswith("https://localhost:")
+                or originStr == "http://127.0.0.1"
                 or originStr == "https://127.0.0.1"  # allow 127.0.0.1 if localhost allowed
                 or originStr.startswith("http://127.0.0.1:")
-                or originStr.startswith("http://127.0.0.1:")
-                or originStr.startswith("chrome-extension://")
-                or originStr.startswith("moz-extension://")
-                or originStr.startswith("safari-web-extension://")
-            ):  # allow chrome, firefox and safari extension if localhost allowed
+                or originStr.startswith("https://127.0.0.1:")
+            ):
                 corsOrigin = originStr
                 allowed = True
         else:
@@ -258,7 +371,7 @@ class WebServer:
         return [
             ["HTTP/1.1 200 OK", None],
             ["Content-Type", "application/json"],
-            ["Access-Control-Allow-Origin", corsOrigin],
+            ["Access-Control-Allow-Origin", _sanitize_header_value(corsOrigin)],
             ["Access-Control-Allow-Headers", "*"],
             ["Content-Length", str(len(body))],
             # The server closes every connection after one reply (WebClient.advance);
@@ -266,7 +379,8 @@ class WebServer:
             ["Connection", "close"],
         ]
 
-    def buildResponse(self, headers, body):
+    @staticmethod
+    def buildResponse(headers, body):
         resp = b""
         for key, value in headers:
             if value is None:
@@ -280,7 +394,10 @@ class WebServer:
 
     def close(self):
         if self.sock is not None:
-            self.sock.close()
+            try:
+                self.sock.close()
+            except OSError:
+                pass
             self.sock = None
 
         for client in self.clients:
@@ -298,14 +415,3 @@ def format_success_reply(api_version, result):
 
 def format_exception_reply(_api_version, exception):
     return {"result": None, "error": str(exception)}
-
-
-request_schema = {
-    "type": "object",
-    "properties": {
-        "action": {"type": "string", "minLength": 1},
-        "version": {"type": "integer"},
-        "params": {"type": "object"},
-    },
-    "required": ["action"],
-}

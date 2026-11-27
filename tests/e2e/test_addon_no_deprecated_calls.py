@@ -58,7 +58,9 @@ ALLOWED: dict[tuple[str, str], str] = {
     ("reset", "self.window()"): "aqt's AnkiQt.reset redraws the GUI; Collection.reset is the no-op",
     ("save", "collection.decks"): "DeckManager.save is not deprecated for a deck or a config",
     ("save", "col.decks"): "DeckManager.save is not deprecated for a deck or a config",
+    ("set_deck", "col"): "Collection.set_deck is current; DeckManager.set_deck is the deprecated one",
     ("flush", "self.log"): "a file object",
+    ("flush", "f"): "a file object",
     (
         "stripIllegal",
         "self.media()",

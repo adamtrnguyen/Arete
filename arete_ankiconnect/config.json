@@ -5,5 +5,5 @@
     "webBindPort": 8765,
     "webCorsOriginList": ["http://localhost"],
     "ignoreOriginList": [],
-    "vault_root": "/Users/adam/Obsidian Vault"
+    "vault_root": ""
 }

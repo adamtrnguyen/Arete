@@ -31,9 +31,11 @@ import json
 import os
 import os.path
 import re
+import tempfile
 import threading
 import time
 import unicodedata
+from pathlib import Path
 
 
 import anki
@@ -727,24 +729,39 @@ class AnkiConnect:
         and stays queued; any other card moves to it (`did`). Due dates, queues and the
         rest of the scheduling are untouched.
         """
-        did = self.decks().id(deck, create=False)
-        if not did:
+        col = self.collection()
+        did = col.decks.id(deck, create=False)
+        deck_dict = col.decks.get(did, default=False) if did else None
+        if not did or deck_dict is None:
             raise Exception("deck was not found: {}".format(deck))
-        ids = anki.utils.ids2str([cid for cid in cards if type(cid) is int])
-        mod = int_time()
-        usn = self.collection().usn()
-        db = self.database()
-        db.execute(
-            "update cards set usn=?, mod=?, odid=? where odid != 0 and id in " + ids, usn, mod, did
-        )
-        db.execute(
-            "update cards set usn=?, mod=?, did=? where odid = 0 and id in " + ids, usn, mod, did
-        )
-        self.scheduleRefresh()
+        if deck_dict.get("dyn"):
+            raise Exception(f"cannot set a filtered deck as home deck: {deck}")
+
+        queued: dict[int, Card] = {}
+        loose: list[int] = []
+        seen_loose: set[int] = set()
+        for cid in cards:
+            if type(cid) is not int:
+                raise Exception(f"invalid card id: {cid!r}")
+            card = self.getCard(cid)
+            if card.odid:
+                if card.odid != did and card.id not in queued:
+                    card.odid = did
+                    queued[card.id] = card
+            elif card.did != did and card.id not in seen_loose:
+                seen_loose.add(card.id)
+                loose.append(card.id)
+
+        if queued:
+            col.update_cards(list(queued.values()), skip_undo_entry=True)
+        if loose:
+            col.set_deck(loose, int(did))
+        if queued or loose:
+            self.scheduleRefresh()
 
     @util.api()
     def getModelInfo(self, models):
-        """Per note type name: its kind (0 standard, 1 cloze), field names and template count.
+        """Per note type name: canonical name, kind (0 standard, 1 cloze), fields, template count.
 
         A name the collection does not hold gets None.
         """
@@ -755,6 +772,7 @@ class AnkiConnect:
                 result[modelName] = None
                 continue
             result[modelName] = {
+                "name": model["name"],
                 "type": model["type"],
                 "fields": [field["name"] for field in model["flds"]],
                 "templates": len(model["tmpls"]),
@@ -838,16 +856,53 @@ class AnkiConnect:
                 responseDict[deckId] = self.deckStatsToJson(deckNode)
         return responseDict
 
+    def _validateMediaFilename(self, filename):
+        if (
+            not isinstance(filename, str)
+            or not filename
+            or filename in {".", ".."}
+            or "/" in filename
+            or "\\" in filename
+            or os.path.basename(filename) != filename
+        ):
+            raise Exception(f"invalid media filename: {filename!r}")
+        return filename
+
+    def _validateMediaSourcePath(self, path):
+        if not isinstance(path, str) or not path:
+            raise Exception("invalid media path")
+        raw = Path(path)
+        if ".." in raw.parts:
+            raise Exception("media path must not contain path traversal segments")
+        resolved = raw.resolve()
+        allowed_roots = [
+            Path(self.media().dir()).resolve(),
+            Path(tempfile.gettempdir()).resolve(),
+        ]
+        try:
+            vault_root = util.setting("vault_root")
+        except Exception:
+            vault_root = None
+        if vault_root:
+            allowed_roots.append(Path(vault_root).resolve())
+        if not any(resolved.is_relative_to(root) for root in allowed_roots):
+            raise Exception("media path is outside allowed directories")
+        if not resolved.is_file():
+            raise Exception(f"media file not found: {path}")
+        return resolved
+
     @util.api()
     def storeMediaFile(
         self, filename, data=None, path=None, url=None, skipHash=None, deleteExisting=True
     ):
         if not (data or path or url):
             raise Exception('You must provide a "data", "path", or "url" field.')
+        safe_filename = self._validateMediaFilename(filename)
         if data:
             mediaData = base64.b64decode(data)
         elif path:
-            with open(path, "rb") as f:
+            resolved = self._validateMediaSourcePath(path)
+            with open(resolved, "rb") as f:
                 mediaData = f.read()
         elif url:
             mediaData = util.download(url)
@@ -862,8 +917,8 @@ class AnkiConnect:
         if skip:
             return None
         if deleteExisting:
-            self.deleteMediaFile(filename)
-        return self.media().write_data(os.path.basename(filename), mediaData)
+            self.deleteMediaFile(safe_filename)
+        return self.media().write_data(safe_filename, mediaData)
 
     @util.api()
     def retrieveMediaFile(self, filename):
@@ -880,12 +935,26 @@ class AnkiConnect:
 
     @util.api()
     def getMediaFilesNames(self, pattern="*"):
-        path = os.path.join(self.media().dir(), pattern)
-        return [os.path.basename(p) for p in glob.glob(path)]
+        if (
+            not isinstance(pattern, str)
+            or os.path.isabs(pattern)
+            or "/" in pattern
+            or "\\" in pattern
+            or ".." in pattern
+        ):
+            raise Exception(f"invalid media pattern: {pattern!r}")
+        media_dir = Path(self.media().dir()).resolve()
+        search_path = os.path.join(str(media_dir), pattern)
+        return [
+            os.path.basename(p)
+            for p in glob.glob(search_path)
+            if Path(p).resolve().is_relative_to(media_dir)
+        ]
 
     @util.api()
     def deleteMediaFile(self, filename):
-        self.media().trash_files([filename])
+        safe_filename = self._validateMediaFilename(filename)
+        self.media().trash_files([safe_filename])
 
     @util.api()
     def getMediaDirPath(self):
@@ -906,6 +975,7 @@ class AnkiConnect:
         self.startEditing()
         collection.add_note(ankiNote, deck["id"])
         if len(ankiNote.cards()) < 1:
+            collection.remove_notes([ankiNote.id])
             raise Exception(
                 "The field values you have provided would make an empty question on all cards."
             )
@@ -1162,23 +1232,24 @@ class AnkiConnect:
                 )
             )
 
+        to_change = []
         for card in cards:
             if type(card) is int and card in queues:
                 isSuspended = queues[card] == -1
             else:
                 isSuspended = self.suspended(card)
-            if isSuspended == suspend:
-                cards.remove(card)
+            if isSuspended != suspend:
+                to_change.append(card)
 
-        if len(cards) == 0:
+        if len(to_change) == 0:
             return False
 
         scheduler = self.scheduler()
         self.startEditing()
         if suspend:
-            scheduler.suspend_cards(cards)
+            scheduler.suspend_cards(to_change)
         else:
-            scheduler.unsuspend_cards(cards)
+            scheduler.unsuspend_cards(to_change)
         self.stopEditing()
 
         return True
@@ -1515,19 +1586,24 @@ class AnkiConnect:
         mm = self.collection().models
         model = self.getModel(modelName)
 
+        modified = False
         # only adds the field if it doesn't already exist
         fieldMap = mm.field_map(model)
         if fieldName not in fieldMap:
             field = mm.new_field(fieldName)
-            mm.addField(model, field)
+            mm.add_field(model, field)
+            modified = True
 
         # repositions, even if the field already exists
         if index is not None:
             fieldMap = mm.field_map(model)
             newField = fieldMap[fieldName][1]
             mm.reposition_field(model, newField, index)
+            modified = True
 
-        self.save_model(mm, model)
+        if modified:
+            self.save_model(mm, model)
+            self.scheduleRefresh()
 
     @util.api()
     def modelFieldRemove(self, modelName, fieldName):
@@ -1721,7 +1797,11 @@ class AnkiConnect:
 
     @util.api()
     def getReviewsOfCards(self, cards):
+        db = self.database()
         COLUMNS = ["id", "usn", "ease", "ivl", "lastIvl", "factor", "time", "type"]
+        revlog_cols = {row[1] for row in db.all("pragma table_info(revlog)")}
+        if "data" in revlog_cols:
+            COLUMNS.append("data")
         QUERY = "select {} from revlog where cid = ?".format(", ".join(COLUMNS))
 
         # One query for every integer card id. revlog.id is its rowid, so the per-card
@@ -1732,7 +1812,7 @@ class AnkiConnect:
             batch = "select cid, {} from revlog where cid in {} order by cid, id".format(
                 ", ".join(COLUMNS), anki.utils.ids2str(cardIds)
             )
-            for row in self.database().all(batch):
+            for row in db.all(batch):
                 rows[row[0]].append(row[1:])
 
         result = {}
@@ -1740,7 +1820,7 @@ class AnkiConnect:
             if type(card) is int:
                 query_result = rows[card]
             else:
-                query_result = self.database().all(QUERY, card)
+                query_result = db.all(QUERY, card)
             result[card] = [dict(zip(COLUMNS, row, strict=False)) for row in query_result]
 
         return result
@@ -1763,12 +1843,23 @@ class AnkiConnect:
 
     @util.api()
     def insertReviews(self, reviews):
-        if len(reviews) > 0:
-            sql = "insert into revlog(id,cid,usn,ease,ivl,lastIvl,factor,time,type) values "
-            for row in reviews:
-                sql += "({}),".format(",".join(map(str, row)))
-            sql = sql[:-1]
-            self.database().execute(sql)
+        if not reviews:
+            return
+        validated = []
+        for row in reviews:
+            if not isinstance(row, (list, tuple)) or len(row) != 9:
+                raise Exception("each review row must contain exactly 9 integer fields")
+            if not all(type(val) is int for val in row):
+                raise Exception("each review row field must be an integer")
+            validated.append(tuple(row))
+        sql = (
+            "insert into revlog(id,cid,usn,ease,ivl,lastIvl,factor,time,type) "
+            "values (?,?,?,?,?,?,?,?,?)"
+        )
+        db = self.database()
+        for row in validated:
+            db.execute(sql, *row)
+        self.scheduleRefresh()
 
     @util.api()
     def notesInfo(self, notes):
@@ -1825,10 +1916,8 @@ class AnkiConnect:
 
     @util.api()
     def deleteNotes(self, notes):
-        try:
-            self.collection().remove_notes(notes)
-        finally:
-            self.stopEditing()
+        self.collection().remove_notes(notes)
+        self.scheduleRefresh()
 
     @util.api()
     def removeEmptyNotes(self):
@@ -2172,6 +2261,7 @@ class AnkiConnect:
         request.note_ids.extend(int(nid) for nid in notes)
         request.new_fields[:] = newFields
         col.models.change_notetype_of_notes(request)
+        self.scheduleRefresh()
         return True
 
     @util.api()

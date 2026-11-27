@@ -24,6 +24,7 @@ import inspect
 import json
 import os
 import re
+import tempfile
 import threading
 import time
 import types
@@ -92,7 +93,9 @@ def _addon_class() -> type:
         "inspect": inspect,
         "json": json,
         "os": os,
+        "Path": Path,
         "re": re,
+        "tempfile": tempfile,
         "time": time,
         "unicodedata": unicodedata,
         **web_ns,

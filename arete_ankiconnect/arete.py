@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import tempfile
 import webbrowser
 from datetime import datetime, timezone
 from urllib.parse import quote
@@ -10,31 +11,22 @@ from aqt.browser import Browser
 from aqt.qt import QAction, QApplication, QInputDialog, QKeySequence, QMenu
 from aqt.utils import showWarning, tooltip
 
+from . import util
+
 # ─────────────────────────────────────────────────────────────────────────────
-# Arete Config & Logic
+# Arete Obsidian Integration & Card Reporting
 # ─────────────────────────────────────────────────────────────────────────────
 
-ADDON_PATH = os.path.dirname(__file__)
-CONFIG_PATH = os.path.join(ADDON_PATH, "config.json")
-CONFIG = {}
-
-
-def load_config():
-    global CONFIG
-    if os.path.exists(CONFIG_PATH):
-        try:
-            with open(CONFIG_PATH, encoding="utf-8") as f:
-                CONFIG = json.load(f)
-        except Exception:
-            CONFIG = {}
-
-
-load_config()
+_MISSING_SOURCE_MSG = (
+    "No Obsidian source found for this card.\n\n"
+    "Make sure the card was synced with arete and has the "
+    "'_obsidian_source' field."
+)
 
 
 def get_obsidian_source(note) -> tuple[str, str, int, str] | None:
-    """
-    Extract Obsidian source info from note's _obsidian_source field.
+    """Extract Obsidian source info from note's _obsidian_source field.
+
     Returns (vault_name, file_path, card_index, arete_id) or None if not found.
     """
     for field_name in note.keys():
@@ -53,9 +45,22 @@ def get_obsidian_source(note) -> tuple[str, str, int, str] | None:
     return None
 
 
+def _require_obsidian_source(
+    note, *, use_tooltip: bool = False
+) -> tuple[str, str, int, str] | None:
+    source = get_obsidian_source(note)
+    if not source:
+        if use_tooltip:
+            tooltip("No Obsidian source found for this card.")
+        else:
+            showWarning(_MISSING_SOURCE_MSG)
+        return None
+    return source
+
+
 def open_obsidian_uri(vault: str, file_path: str, card_idx: int = 1) -> bool:
-    """
-    Open Obsidian via URI scheme.
+    """Open Obsidian via URI scheme.
+
     Returns True on success, False on failure.
     """
     encoded_vault = quote(vault)
@@ -63,9 +68,6 @@ def open_obsidian_uri(vault: str, file_path: str, card_idx: int = 1) -> bool:
 
     # Use Advanced URI for line-level navigation (requires Advanced URI plugin in Obsidian)
     uri = f"obsidian://advanced-uri?vault={encoded_vault}&filepath={encoded_path}&line={card_idx}"
-
-    # Fallback: Standard URI (no line navigation, but works without plugins)
-    # uri = f"obsidian://open?vault={encoded_vault}&file={encoded_path}"
 
     try:
         webbrowser.open(uri)
@@ -82,15 +84,8 @@ def open_current_card_in_obsidian():
         showWarning("No card is currently being reviewed.")
         return
 
-    note = reviewer.card.note()
-    source = get_obsidian_source(note)
-
+    source = _require_obsidian_source(reviewer.card.note())
     if not source:
-        showWarning(
-            "No Obsidian source found for this card.\n\n"
-            "Make sure the card was synced with arete and has the "
-            "'_obsidian_source' field."
-        )
         return
 
     vault, file_path, card_idx, _arete_id = source
@@ -104,31 +99,81 @@ def copy_obsidian_source():
     if not reviewer or not reviewer.card:
         return
 
-    note = reviewer.card.note()
-    source = get_obsidian_source(note)
-
+    source = _require_obsidian_source(reviewer.card.note(), use_tooltip=True)
     if not source:
-        tooltip("No Obsidian source found for this card.")
         return
 
-    vault, file_path, card_idx, arete_id = source
+    _vault, file_path, _card_idx, arete_id = source
 
-    vault_root = CONFIG.get("vault_root", "")
-    if vault_root:
-        full_path = os.path.join(vault_root, file_path)
-    else:
-        full_path = file_path
+    try:
+        vault_root = util.setting("vault_root") or ""
+    except Exception:
+        vault_root = ""
 
-    if arete_id:
-        copy_text = f"{full_path} (card: {arete_id})"
-    else:
-        copy_text = full_path
+    full_path = os.path.join(vault_root, file_path) if vault_root else file_path
+    copy_text = f"{full_path} (card: {arete_id})" if arete_id else full_path
 
-    QApplication.clipboard().setText(copy_text)
+    clipboard = QApplication.clipboard()
+    if clipboard is not None:
+        clipboard.setText(copy_text)
     tooltip(f"Copied: {file_path}" + (f" [{arete_id}]" if arete_id else ""))
 
 
 REPORTS_PATH = os.path.join(os.path.expanduser("~"), ".config", "arete", "reports.json")
+
+
+def _append_report_atomic(report: dict, reports_path: str = REPORTS_PATH) -> bool:
+    """Append a report to reports_path atomically; refuse to overwrite corrupt files."""
+    reports_dir = os.path.dirname(reports_path)
+    os.makedirs(reports_dir, exist_ok=True)
+
+    reports: list = []
+    if os.path.exists(reports_path):
+        try:
+            with open(reports_path, encoding="utf-8") as f:
+                loaded = json.load(f)
+        except (json.JSONDecodeError, OSError) as e:
+            showWarning(
+                f"Cannot read {reports_path}: {e}\n\n"
+                "Fix or remove the corrupt reports file before reporting new cards."
+            )
+            return False
+        if not isinstance(loaded, list):
+            showWarning(
+                f"{reports_path} does not contain a JSON list.\n\n"
+                "Fix or remove the corrupt reports file before reporting new cards."
+            )
+            return False
+        reports = loaded
+
+    reports.append(report)
+
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=reports_dir,
+            prefix=".reports.",
+            suffix=".tmp",
+            delete=False,
+        ) as f:
+            tmp_path = f.name
+            json.dump(reports, f, indent=2, ensure_ascii=False)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, reports_path)
+        tmp_path = None
+        return True
+    except OSError as e:
+        showWarning(f"Failed to save report to {reports_path}: {e}")
+        return False
+    finally:
+        if tmp_path is not None and os.path.exists(tmp_path):
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
 
 
 def report_current_card():
@@ -139,22 +184,17 @@ def report_current_card():
         return
 
     card = reviewer.card
+    card_id = card.id
     note = card.note()
-    source = get_obsidian_source(note)
-
+    source = _require_obsidian_source(note)
     if not source:
-        showWarning(
-            "No Obsidian source found for this card.\n\n"
-            "Make sure the card was synced with arete and has the "
-            "'_obsidian_source' field."
-        )
         return
 
     issue_note, ok = QInputDialog.getText(mw, "Report Card Issue", "What's the issue?")
     if not ok or not issue_note.strip():
         return
 
-    vault, file_path, card_idx, arete_id = source
+    _vault, file_path, card_idx, arete_id = source
 
     # Get front text from the note's first field, stripped of HTML
     fields = note.fields
@@ -164,7 +204,7 @@ def report_current_card():
 
     report = {
         "nid": note.id,
-        "cid": card.id,
+        "cid": card_id,
         "arete_id": arete_id,
         "file_path": file_path,
         "line": card_idx,
@@ -173,27 +213,20 @@ def report_current_card():
         "timestamp": datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds"),
     }
 
-    # Append to reports file
-    os.makedirs(os.path.dirname(REPORTS_PATH), exist_ok=True)
-    reports = []
-    if os.path.exists(REPORTS_PATH):
-        try:
-            with open(REPORTS_PATH, encoding="utf-8") as f:
-                reports = json.load(f)
-        except (json.JSONDecodeError, OSError):
-            reports = []
-    reports.append(report)
-    with open(REPORTS_PATH, "w", encoding="utf-8") as f:
-        json.dump(reports, f, indent=2, ensure_ascii=False)
+    if not _append_report_atomic(report):
+        return
 
-    # Suspend the card so it doesn't come up again until fixed
-    card = reviewer.card
-    mw.col.sched.suspend_cards([card.id])
+    if mw.col is None:
+        showWarning("Report saved, but no Anki collection is open to suspend the card.")
+        return
 
+    # Suspend the originally captured card (reviewer.card may have changed during dialog)
+    mw.col.sched.suspend_cards([card_id])
     tooltip(f"Reported & suspended: {issue_note.strip()}")
 
-    # Move to the next card
-    mw.reviewer.nextCard()
+    # Advance only if the reviewer is still showing the reported card
+    if mw.reviewer and mw.reviewer.card and mw.reviewer.card.id == card_id:
+        mw.reviewer.nextCard()
 
 
 def setup_reviewer_shortcut():
@@ -204,9 +237,9 @@ def setup_reviewer_shortcut():
     action.triggered.connect(open_current_card_in_obsidian)
     mw.form.menuTools.addAction(action)
 
-    # Copy source path (Ctrl+C = Cmd+C on Mac, only active during review)
+    # Copy source path (Ctrl+Shift+C = Cmd+Shift+C on Mac, only active during review)
     copy_action = QAction("Copy Obsidian Source", mw)
-    copy_action.setShortcut(QKeySequence("Ctrl+C"))
+    copy_action.setShortcut(QKeySequence("Ctrl+Shift+C"))
     copy_action.triggered.connect(copy_obsidian_source)
     copy_action.setEnabled(False)
     mw.form.menuTools.addAction(copy_action)
@@ -225,7 +258,7 @@ def setup_reviewer_shortcut():
 
 def on_browser_context_menu(browser: Browser, menu: QMenu):
     """Add 'Open in Obsidian' to browser right-click menu."""
-    selected = browser.selectedNotes()
+    selected = browser.selected_notes()
     if not selected:
         return
 
@@ -235,22 +268,21 @@ def on_browser_context_menu(browser: Browser, menu: QMenu):
 
 def open_selected_notes_in_obsidian(browser: Browser):
     """Open selected notes in Obsidian (first one if multiple selected)."""
-    selected = browser.selectedNotes()
+    selected = browser.selected_notes()
     if not selected:
         showWarning("No notes selected.")
+        return
+
+    if mw.col is None:
+        showWarning("No Anki collection is open.")
         return
 
     # Open first selected note
     note_id = selected[0]
     note = mw.col.get_note(note_id)
 
-    source = get_obsidian_source(note)
+    source = _require_obsidian_source(note)
     if not source:
-        showWarning(
-            "No Obsidian source found for this note.\n\n"
-            "Make sure the note was synced with arete and has the "
-            "'_obsidian_source' field."
-        )
         return
 
     vault, file_path, card_idx, _arete_id = source

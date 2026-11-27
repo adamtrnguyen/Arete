@@ -63,6 +63,7 @@ DEFAULT_CONFIG = {
     "webCorsOriginList": ["http://localhost"],
     "ignoreOriginList": [],
     "webTimeout": 10000,
+    "vault_root": "",
 }
 
 
