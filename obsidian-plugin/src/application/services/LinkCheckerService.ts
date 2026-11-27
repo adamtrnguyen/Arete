@@ -9,6 +9,7 @@ export interface BrokenReference {
 	linkPath: string; // The resolved path we tried to find
 	type: 'link' | 'image' | 'invalid-yaml';
 	errorMessage?: string; // Detailed error from CLI
+	errorLine?: number; // 1-based line number from CLI for invalid YAML
 	position: {
 		start: { line: number; col: number; offset: number };
 		end: { line: number; col: number; offset: number };
@@ -222,6 +223,7 @@ export class LinkCheckerService {
 				linkPath: 'Frontmatter',
 				type: 'invalid-yaml',
 				errorMessage: 'Empty Frontmatter. Please add content or remove the block.',
+				errorLine: 1,
 				position: null,
 			};
 		}
@@ -229,6 +231,7 @@ export class LinkCheckerService {
 		if (problem === 'invalid') {
 			// Attempt to get detailed reason from CLI
 			let reason = 'Obsidian failed to parse frontmatter.';
+			let errorLine: number | undefined;
 			try {
 				let fullPath = file.path;
 				const adapter = this.app.vault.adapter;
@@ -241,6 +244,9 @@ export class LinkCheckerService {
 				if (!checkRes.ok && checkRes.errors && checkRes.errors.length > 0) {
 					// Use the first error as the summary
 					const firstErr = checkRes.errors[0];
+					if (typeof firstErr.line === 'number' && firstErr.line > 0) {
+						errorLine = firstErr.line;
+					}
 					reason = `Line ${firstErr.line}: ${firstErr.message}`;
 				}
 			} catch (e: any) {
@@ -254,6 +260,7 @@ export class LinkCheckerService {
 				linkPath: 'Frontmatter',
 				type: 'invalid-yaml',
 				errorMessage: reason,
+				errorLine,
 				position: null,
 			};
 		}

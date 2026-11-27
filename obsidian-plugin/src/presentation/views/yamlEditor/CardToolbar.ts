@@ -60,10 +60,8 @@ export function renderCardToolbar(container: HTMLElement, ctx: CardToolbarContex
 			// The same cut-offs as the gutter, dashboard and card stats modal.
 			const states = metricStates(stats, ctx.settings);
 
-			let badgeAdded = false;
-
-			if (algo === 'fsrs' && stats.difficulty !== undefined) {
-				if (stats.difficulty !== null) {
+			if (algo === 'fsrs') {
+				if (stats.difficulty != null) {
 					// difficulty is stored 0..1; scale only to display it
 					addBadge(
 						statsContainer,
@@ -79,11 +77,24 @@ export function renderCardToolbar(container: HTMLElement, ctx: CardToolbarContex
 						'FSRS difficulty not available',
 					);
 				}
-				badgeAdded = true;
-			} else if (algo === 'sm2' || stats.ease !== undefined) {
-				const ease = Math.round(stats.ease / 10);
-				addBadge(statsContainer, 'arete-stat-badge', `E: ${ease}%`, `SM-2 ease: ${ease}%`);
-				badgeAdded = true;
+			} else {
+				if (stats.ease != null && stats.ease > 0) {
+					const ease = Math.round(stats.ease / 10);
+					const easeFlag = flagClass(states.ease);
+					addBadge(
+						statsContainer,
+						easeFlag ? `arete-stat-badge ${easeFlag}` : 'arete-stat-badge',
+						`E: ${ease}%`,
+						`SM-2 ease: ${ease}%`,
+					);
+				} else {
+					addBadge(
+						statsContainer,
+						'arete-stat-badge mod-muted',
+						'E: ?',
+						'SM-2 ease not available',
+					);
+				}
 			}
 
 			if (stats.lapses > 0) {
@@ -94,7 +105,6 @@ export function renderCardToolbar(container: HTMLElement, ctx: CardToolbarContex
 					`${stats.lapses}L`,
 					`Lapses: ${stats.lapses}`,
 				);
-				badgeAdded = true;
 			}
 
 			const dueEpoch = dueEpochSeconds(stats.due);
@@ -115,14 +125,6 @@ export function renderCardToolbar(container: HTMLElement, ctx: CardToolbarContex
 					dueText,
 					`Due: ${dueDate.toLocaleDateString()}`,
 				);
-				badgeAdded = true;
-			}
-
-			if (!badgeAdded) {
-				statsContainer.createDiv({
-					cls: 'arete-stat-badge mod-muted',
-					text: 'No data',
-				});
 			}
 		} else {
 			leftGroup.createDiv({

@@ -474,13 +474,18 @@ export default class AretePlugin extends Plugin {
 		await this.saveStats();
 
 		if (this.settings.graph_coloring_enabled) {
+			let updated = 0;
 			for (const concept of results) {
 				const file = this.app.vault.getAbstractFileByPath(concept.filePath);
 				if (file instanceof TFile) {
-					await this.graphService.updateGraphTags(file, concept);
+					if (await this.graphService.updateGraphTags(file, concept)) {
+						updated++;
+					}
 				}
 			}
-			new Notice('Graph tags updated.');
+			if (updated > 0) {
+				new Notice('Graph tags updated.');
+			}
 		}
 
 		const yamlLeaf = this.app.workspace.getLeavesOfType(YAML_EDITOR_VIEW_TYPE)[0];

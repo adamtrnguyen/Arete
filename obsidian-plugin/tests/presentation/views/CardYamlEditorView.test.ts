@@ -382,6 +382,33 @@ describe('CardYamlEditorView toolbar', () => {
 				['4L', 'arete-stat-badge mod-error'],
 			]);
 		});
+
+		it('shows D: ? under FSRS when difficulty is undefined instead of falling through to SM-2 ease', () => {
+			expect(badges({ ease: 2500, lapses: 0, due: 0 }, { stats_algorithm: 'fsrs' })).toEqual([
+				['D: ?', 'arete-stat-badge mod-muted'],
+			]);
+		});
+
+		it('flags low SM-2 ease with mod-warning and shows E: ? when ease is missing', () => {
+			expect(
+				badges(
+					{ ease: 1800, lapses: 0, due: 0 },
+					{ stats_algorithm: 'sm2', stats_ease_threshold: 2100 },
+				),
+			).toEqual([['E: 180%', 'arete-stat-badge mod-warning']]);
+			expect(
+				badges(
+					{ ease: 2500, lapses: 0, due: 0 },
+					{ stats_algorithm: 'sm2', stats_ease_threshold: 2100 },
+				),
+			).toEqual([['E: 250%', 'arete-stat-badge']]);
+			expect(
+				badges(
+					{ ease: 0, lapses: 0, due: 0 },
+					{ stats_algorithm: 'sm2', stats_ease_threshold: 2100 },
+				),
+			).toEqual([['E: ?', 'arete-stat-badge mod-muted']]);
+		});
 	});
 });
 

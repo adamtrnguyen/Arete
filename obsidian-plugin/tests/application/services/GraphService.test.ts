@@ -35,7 +35,8 @@ describe('GraphService', () => {
 			expect(fm.tags).toContain('existing');
 		});
 
-		await service.updateGraphTags(file, stats);
+		const changed = await service.updateGraphTags(file, stats);
+		expect(changed).toBe(true);
 		expect(app.fileManager.processFrontMatter).toHaveBeenCalled();
 	});
 
@@ -137,7 +138,8 @@ describe('GraphService', () => {
 			frontmatter: { tags: ['topic', 'arete/retention/high'] },
 		});
 
-		await service.updateGraphTags(file, { score: 0.05 } as any);
+		const changed = await service.updateGraphTags(file, { score: 0.05 } as any);
+		expect(changed).toBe(false);
 		expect(app.fileManager.processFrontMatter).not.toHaveBeenCalled();
 	});
 

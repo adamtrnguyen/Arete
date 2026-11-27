@@ -103,6 +103,7 @@ describe('LinkCheckerService', () => {
 
 			const result = await service.getInvalidFrontmatter({} as any);
 			expect(result?.linkText).toBe('EMPTY YAML');
+			expect(result?.errorLine).toBe(1);
 		});
 
 		test('ignores leading blank line before --- and horizontal rules without closing ---', async () => {
@@ -129,6 +130,7 @@ describe('LinkCheckerService', () => {
 			const result = await service.getInvalidFrontmatter(file);
 			expect(result?.linkText).toBe('INVALID YAML');
 			expect(result?.errorMessage).toContain('Line 2: Unclosed array');
+			expect(result?.errorLine).toBe(2);
 		});
 
 		test('handles CLI check failure gracefully', async () => {

@@ -5,7 +5,6 @@ module.exports = {
 		// Transpile only via esbuild: `tsc --noEmit` (just types-obsidian, part of `just qa`) is the type check.
 		'^.+\\.ts$': '<rootDir>/scripts/jest-esbuild-transform.cjs',
 	},
-	transformIgnorePatterns: ['node_modules/(?!((d3.*)|internmap|delaunator|robust-predicates))'],
 	testMatch: ['**/tests/**/*.test.ts'],
 	// Coverage is opt-in: `npm run test:coverage` (just coverage-obsidian) turns it on and enforces the threshold.
 	coverageProvider: 'v8',

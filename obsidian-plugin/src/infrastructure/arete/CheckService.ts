@@ -41,6 +41,10 @@ export class CheckService implements FileChecker {
 			// `vault check --json` prints its JSON on a failed check too, so any exit code
 			// with JSON on stdout is a result.
 			child.once('close', (_code, signal) => {
+				if (this.processes.didTimeOut(child)) {
+					reject(new Error('arete vault check timed out.'));
+					return;
+				}
 				if (signal) {
 					reject(new Error(`arete vault check was stopped (${signal}).`));
 					return;
@@ -84,7 +88,10 @@ export class CheckService implements FileChecker {
 			});
 
 			child.once('close', (code, signal) => {
-				if (code === 0 && !signal) {
+				if (this.processes.didTimeOut(child)) {
+					console.error('[Arete] Fix timed out:', stderr || signal || `exit ${code}`);
+					new Notice('Fix timed out, check the developer console.');
+				} else if (code === 0 && !signal) {
 					new Notice('File auto-fixed.');
 				} else {
 					console.error('[Arete] Fix failed:', stderr || signal || `exit ${code}`);
@@ -130,14 +137,16 @@ export class CheckService implements FileChecker {
 				resolve();
 			});
 			child.once('close', (code, signal) => {
-				if (code === 0 && !signal) {
+				if (this.processes.didTimeOut(child)) {
+					console.error(
+						'[Arete] Test configuration timed out:',
+						stderr || signal || `exit ${code}`,
+					);
+					new Notice('Command failed: timed out');
+				} else if (code === 0 && !signal) {
 					new Notice(`Arete runs: ${label}`);
 				} else {
-					const reason = this.processes.didTimeOut(child)
-						? 'timed out'
-						: signal
-							? `stopped (${signal})`
-							: `exit ${code}`;
+					const reason = signal ? `stopped (${signal})` : `exit ${code}`;
 					console.error('[Arete] Test configuration failed:', stderr || reason);
 					new Notice(`Command failed: ${(stderr || reason).substring(0, 200)}`);
 				}

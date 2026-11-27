@@ -16,7 +16,7 @@ describe('styles.css', () => {
 			entryPoints: { styles: 'src/styles/index.css' },
 			bundle: true,
 			minify: true, // esbuild.config.mjs: minify: prod
-			target: 'es2018',
+			target: 'es2022',
 			outdir: path.join(root, 'never-written'),
 			write: false,
 			logLevel: 'silent',

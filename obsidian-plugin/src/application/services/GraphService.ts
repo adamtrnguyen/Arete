@@ -36,20 +36,21 @@ export class GraphService {
 		);
 	}
 
-	async updateGraphTags(file: TFile, stats: ConceptStats) {
-		if (!this.settings.graph_coloring_enabled) return;
+	async updateGraphTags(file: TFile, stats: ConceptStats): Promise<boolean> {
+		if (!this.settings.graph_coloring_enabled) return false;
 
 		const prefix = this.normalizedPrefix();
-		if (!prefix) return;
+		if (!prefix) return false;
 
 		const state = this.calculateRetentionState(stats);
 		const tagToAdd = `${prefix}/${state}`;
 
 		const cachedTags = this.app.metadataCache.getFileCache(file)?.frontmatter?.tags;
 		if (cachedTags !== undefined && this.hasExactTag(cachedTags, prefix, tagToAdd)) {
-			return;
+			return false;
 		}
 
+		let changed = false;
 		await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
 			const rawTags = frontmatter['tags'];
 			if (this.hasExactTag(rawTags, prefix, tagToAdd)) return;
@@ -64,7 +65,9 @@ export class GraphService {
 			nextTags.push(tagToAdd);
 
 			frontmatter['tags'] = nextTags;
+			changed = true;
 		});
+		return changed;
 	}
 
 	async clearGraphTags(file: TFile) {

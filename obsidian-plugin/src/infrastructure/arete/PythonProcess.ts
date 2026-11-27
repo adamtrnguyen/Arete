@@ -1,3 +1,4 @@
+import * as os from 'os';
 import * as path from 'path';
 import { existsSync } from 'fs';
 import { ChildProcess, spawn } from 'child_process';
@@ -34,6 +35,14 @@ function appendPaths(current: string | undefined, extra: string[], delimiter: st
 	return [...(current ? [current] : []), ...extra].join(delimiter);
 }
 
+/** Expand a leading `~` (home boundary only) so settings work before a restart. */
+function expandHome(value: string): string {
+	if (value === '~' || value.startsWith('~/') || value.startsWith('~\\')) {
+		return os.homedir() + value.slice(1);
+	}
+	return value;
+}
+
 /**
  * Resolves the Python executable, arguments, environment, and working directory
  * from plugin settings. Shared across AreteClient, CheckService and SyncService, so one
@@ -50,7 +59,7 @@ export function resolvePythonCommand(
 	const win = process.platform === 'win32';
 	const p = win ? path.win32 : path.posix;
 	const pythonSetting = (settings.python_path || '').trim() || 'python3';
-	const projectRoot = settings.project_root || '';
+	const projectRoot = expandHome(settings.project_root || '');
 
 	const parts = splitCommand(pythonSetting);
 	const cmd = win && parts[0] === 'python3' ? 'python' : parts[0];

@@ -216,12 +216,13 @@ describe('DashboardView actions', () => {
 			view.renderQueueBuilder(root);
 			await flush();
 			const [deckSetting, depthSetting, maxSetting] = rec.settings.slice(-3);
+			const btnIndex = rec.buttons.length - 1;
 			return {
 				dropdown: deckSetting.dropdown,
 				depth: depthSetting.text,
 				max: maxSetting.text,
 				get btn() {
-					return rec.buttons[0];
+					return rec.buttons[btnIndex];
 				},
 			};
 		};
@@ -369,6 +370,39 @@ describe('DashboardView actions', () => {
 
 			expect(view.openFile).toHaveBeenCalledWith('B.md');
 		});
+
+		it('disables and guards Send to Anki when the built queue is empty', async () => {
+			plugin.areteClient.buildStudyQueue.mockResolvedValue({
+				deck: 'Math',
+				dueCount: 0,
+				totalWithPrereqs: 0,
+				queue: [],
+			});
+			const root = el('div');
+			const ui = await build(root);
+			await ui.btn.onClick!();
+
+			const send = rec.buttons[1];
+			expect(send.disabled).toBe(true);
+			await send.onClick!();
+			expect(plugin.areteClient.createQueueDeck).not.toHaveBeenCalled();
+		});
+
+		it('ignores a stale buildStudyQueue result after the view closes', async () => {
+			let finish!: (r: typeof result) => void;
+			plugin.areteClient.buildStudyQueue.mockReturnValue(new Promise((r) => (finish = r)));
+			const root = el('div');
+			const ui = await build(root);
+
+			const pending = ui.btn.onClick!();
+			await view.onClose();
+			finish(result);
+			await pending;
+
+			const results = all(root, (n) => n.opts?.cls === 'arete-queue-results')[0];
+			expect(results.children).toHaveLength(0);
+			expect(notices()).toEqual([]);
+		});
 	});
 
 	describe('opening notes', () => {
@@ -452,6 +486,24 @@ describe('DashboardView actions', () => {
 			expect(notices()).toEqual([
 				'Could not automatically find text: "a very long missing ..."',
 			]);
+		});
+
+		it('goToIssue jumps straight to the given line for YAML errors without searching text', async () => {
+			const editor: any = editorFor('---\nbad: [\n---');
+			editor.lineCount = () => 3;
+			await view.goToIssue(file(), 'INVALID YAML', 1);
+
+			expect(editor.setCursor).toHaveBeenCalledWith({ line: 1, ch: 0 });
+			expect(editor.scrollIntoView).toHaveBeenCalledWith(
+				{ from: { line: 1, ch: 0 }, to: { line: 1, ch: 0 } },
+				true,
+			);
+			expect(editor.setSelection).not.toHaveBeenCalled();
+			expect(notices()).toEqual([]);
+
+			// Clamps out-of-range line numbers to the last line in the document.
+			await view.goToIssue(file(), 'INVALID YAML', 99);
+			expect(editor.setCursor).toHaveBeenLastCalledWith({ line: 2, ch: 0 });
 		});
 	});
 });

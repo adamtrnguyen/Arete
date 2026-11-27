@@ -660,6 +660,28 @@ describe('DashboardView integrity', () => {
 		expect(go).toHaveBeenCalledWith({ basename: 'Note' }, '![[pic.png]]');
 	});
 
+	it('passes the parsed 0-based line to goToIssue for invalid-yaml and empty-yaml entries', () => {
+		const { rec, view } = renderIntegrity({
+			refs: [
+				ref({
+					type: 'invalid-yaml',
+					linkText: 'INVALID YAML',
+					errorMessage: 'Line 5: bad indent',
+				}),
+				ref({
+					type: 'invalid-yaml',
+					linkText: 'EMPTY YAML',
+					errorMessage: 'Empty Frontmatter.',
+				}),
+			],
+		});
+		const go = jest.spyOn(view, 'goToIssue').mockResolvedValue(undefined);
+		rec.extraButtons[0].onClick!();
+		rec.extraButtons[1].onClick!();
+		expect(go).toHaveBeenNthCalledWith(1, { basename: 'Note' }, 'INVALID YAML', 4);
+		expect(go).toHaveBeenNthCalledWith(2, { basename: 'Note' }, 'EMPTY YAML', 0);
+	});
+
 	it('shows the success state when nothing is broken', () => {
 		const { el, rec } = renderIntegrity({ refs: [] });
 		expect(walk(el).some((w) => w.classes.includes('arete-success-state'))).toBe(true);

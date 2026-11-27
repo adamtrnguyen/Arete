@@ -8,6 +8,5 @@ package.json
 
 # Build and generated output.
 coverage/
-eslint-suppressions.json
 main.js
 styles.css

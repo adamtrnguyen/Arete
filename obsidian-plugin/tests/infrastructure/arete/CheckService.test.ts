@@ -5,6 +5,7 @@ import { createMockChildProcess, onLinux } from '../../test-setup';
 
 onLinux();
 import { CheckService } from '@infrastructure/arete/CheckService';
+import { DEFAULT_PROCESS_TIMEOUT_MS } from '@infrastructure/arete/PythonProcess';
 
 describe('CheckService', () => {
 	let service: CheckService;
@@ -69,6 +70,38 @@ describe('CheckService', () => {
 			mockChild.emit('error', new Error('Spawn failed'));
 
 			await expect(promise).rejects.toThrow('Spawn failed');
+		});
+
+		test('reports timeout before signal/code in getCheckResult, runFix, and testConfig', async () => {
+			jest.useFakeTimers();
+			const errSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+			try {
+				const c1 = createMockChildProcess();
+				(spawn as jest.Mock).mockReturnValueOnce(c1);
+				const checkPromise = service.getCheckResult('test.md');
+				jest.advanceTimersByTime(DEFAULT_PROCESS_TIMEOUT_MS);
+				c1.emit('close', null, 'SIGTERM');
+				await expect(checkPromise).rejects.toThrow('arete vault check timed out.');
+
+				const c2 = createMockChildProcess();
+				(spawn as jest.Mock).mockReturnValueOnce(c2);
+				const fixPromise = service.runFix('test.md');
+				jest.advanceTimersByTime(DEFAULT_PROCESS_TIMEOUT_MS);
+				c2.emit('close', null, 'SIGTERM');
+				await fixPromise;
+				expect(Notice).toHaveBeenCalledWith('Fix timed out, check the developer console.');
+
+				const c3 = createMockChildProcess();
+				(spawn as jest.Mock).mockReturnValueOnce(c3);
+				const cfgPromise = service.testConfig();
+				jest.advanceTimersByTime(DEFAULT_PROCESS_TIMEOUT_MS);
+				c3.emit('close', 0, null);
+				await cfgPromise;
+				expect(Notice).toHaveBeenCalledWith('Command failed: timed out');
+			} finally {
+				errSpy.mockRestore();
+				jest.useRealTimers();
+			}
 		});
 	});
 

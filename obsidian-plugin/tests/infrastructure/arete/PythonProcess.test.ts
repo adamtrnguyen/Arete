@@ -1,4 +1,5 @@
 import '../../test-setup';
+import * as os from 'os';
 import { AreteProcesses, resolvePythonCommand } from '@infrastructure/arete/PythonProcess';
 import { spawn } from 'child_process';
 import { createMockChildProcess, onLinux } from '../../test-setup';
@@ -59,6 +60,19 @@ describe('resolvePythonCommand', () => {
 		const settings = { ...baseSettings, project_root: '/home/user/project' };
 		const result = resolvePythonCommand(settings);
 		expect(result.cwd).toBe('/home/user/project');
+	});
+
+	test('project_root expands leading ~ immediately without restart', () => {
+		const home = os.homedir();
+		const expanded = resolvePythonCommand({ ...baseSettings, project_root: '~/arete' });
+		expect(expanded.cwd).toBe(`${home}/arete`);
+		expect(expanded.env['PYTHONPATH']).toContain(`${home}/arete/src`);
+
+		const bareHome = resolvePythonCommand({ ...baseSettings, project_root: '~' });
+		expect(bareHome.cwd).toBe(home);
+
+		const nonBoundary = resolvePythonCommand({ ...baseSettings, project_root: '~other/arete' });
+		expect(nonBoundary.cwd).toBe('~other/arete');
 	});
 
 	test('fallbackCwd is used when project_root is empty', () => {

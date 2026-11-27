@@ -1,6 +1,7 @@
 import '../../test-setup';
 import { spawn } from 'child_process';
 import { AreteClient } from '@infrastructure/arete/AreteClient';
+import { DEFAULT_PROCESS_TIMEOUT_MS } from '@infrastructure/arete/PythonProcess';
 import { createMockChildProcess, onLinux } from '../../test-setup';
 
 onLinux();
@@ -293,6 +294,20 @@ describe('AreteClient: one `arete` process per call, JSON on stdout', () => {
 			await expect(promise).rejects.toThrow(
 				'Could not start Arete (python3, project: /project): spawn python3 ENOENT',
 			);
+		});
+
+		it('reports timeout clearly before inspecting signal or exit code', async () => {
+			jest.useFakeTimers();
+			try {
+				const child = cli();
+				const promise = client.getCardStats([1]);
+				jest.advanceTimersByTime(DEFAULT_PROCESS_TIMEOUT_MS);
+				expect(child.kill).toHaveBeenCalledTimes(1);
+				child.emit('close', null, 'SIGTERM');
+				await expect(promise).rejects.toThrow('arete anki stats timed out.');
+			} finally {
+				jest.useRealTimers();
+			}
 		});
 	});
 });

@@ -88,6 +88,7 @@ export function renderQueueBuilderTab(ctx: QueueBuilderTabContext, container: HT
 				parseInt(depthValue, 10) || 2,
 				parseInt(maxCardsValue, 10) || 50,
 			);
+			if (!ctx.isCurrentRevision()) return;
 
 			resultsArea.empty();
 
@@ -97,18 +98,25 @@ export function renderQueueBuilderTab(ctx: QueueBuilderTabContext, container: HT
 				text: ` — ${result.dueCount} due, ${result.totalWithPrereqs} total`,
 			});
 
-			const sendBtn = new ButtonComponent(resultsArea).setButtonText('Send to Anki');
+			const hasCards = result.queue.length > 0;
+			const sendBtn = new ButtonComponent(resultsArea)
+				.setButtonText('Send to Anki')
+				.setDisabled(!hasCards);
 			sendBtn.buttonEl.addClass('arete-queue-send');
 			sendBtn.onClick(async () => {
+				if (!hasCards) return;
 				sendBtn.setButtonText('Sending...').setDisabled(true);
 				try {
 					const ok = await ctx.client.createQueueDeck(result.queue.map((c) => c.id));
+					if (!ctx.isCurrentRevision()) return;
 					new Notice(ok ? 'Queue sent to Anki.' : 'Failed to create deck.');
 				} catch (e) {
 					console.error('[Arete] Failed to send queue to Anki:', e);
-					new Notice('Failed to create deck.');
+					if (ctx.isCurrentRevision()) new Notice('Failed to create deck.');
 				} finally {
-					sendBtn.setButtonText('Send to Anki').setDisabled(false);
+					if (ctx.isCurrentRevision()) {
+						sendBtn.setButtonText('Send to Anki').setDisabled(false);
+					}
 				}
 			});
 
@@ -131,9 +139,11 @@ export function renderQueueBuilderTab(ctx: QueueBuilderTabContext, container: HT
 			new Notice(`Queue built: ${result.totalWithPrereqs} cards`);
 		} catch (e) {
 			console.error('[Arete] Failed to build the queue:', e);
-			new Notice('Failed to build queue.');
+			if (ctx.isCurrentRevision()) new Notice('Failed to build queue.');
 		} finally {
-			buildBtn.setButtonText('Build queue').setDisabled(false);
+			if (ctx.isCurrentRevision()) {
+				buildBtn.setButtonText('Build queue').setDisabled(false);
+			}
 		}
 	});
 }

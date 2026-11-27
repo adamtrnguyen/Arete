@@ -15,8 +15,6 @@ import {
 } from '@/domain/ports';
 import { debugLog } from '@/domain/debugLog';
 
-export type { StudyQueue };
-
 /**
  * The plugin's calls into Python. Each method runs one `arete` command and parses its
  * stdout, which the CLI keeps to a single JSON value.
@@ -172,6 +170,10 @@ export class AreteClient
 			child.stderr?.on('data', (d) => (stderr += d.toString()));
 
 			child.on('close', (code, signal) => {
+				if (this.processes.didTimeOut(child)) {
+					reject(new Error(`${command} timed out.`));
+					return;
+				}
 				if (signal) {
 					reject(new Error(`${command} was stopped (${signal}).`));
 					return;

@@ -179,7 +179,7 @@ describe('AretePlugin commands, views and status bar', () => {
 			const concept = { filePath: 'Concept.md' } as any;
 			const missing = { filePath: 'Gone.md' } as any;
 			(plugin.statsService.refreshStats as jest.Mock).mockResolvedValue([concept, missing]);
-			plugin.graphService.updateGraphTags = jest.fn().mockResolvedValue(undefined);
+			plugin.graphService.updateGraphTags = jest.fn().mockResolvedValue(true);
 			const renderToolbar = jest.fn();
 			app.workspace.getLeavesOfType.mockReturnValue([{ view: { renderToolbar } }]);
 
@@ -193,6 +193,21 @@ describe('AretePlugin commands, views and status bar', () => {
 				'Graph tags updated.',
 				'Stats refreshed.',
 			]);
+		});
+
+		test('does not show Graph tags updated notice when zero notes changed', async () => {
+			plugin.settings.graph_coloring_enabled = true;
+			const file = Object.assign(new TFile(), { path: 'Concept.md' });
+			app.vault.getAbstractFileByPath = jest.fn().mockReturnValue(file);
+			(plugin.statsService.refreshStats as jest.Mock).mockResolvedValue([
+				{ filePath: 'Concept.md' },
+			]);
+			plugin.graphService.updateGraphTags = jest.fn().mockResolvedValue(false);
+
+			await commands['arete-sync-stats'].callback!();
+
+			expect(plugin.graphService.updateGraphTags).toHaveBeenCalledTimes(1);
+			expect(notices()).toEqual(['Refreshing stats...', 'Stats refreshed.']);
 		});
 
 		test('leaves graph tags alone when colouring is off', async () => {

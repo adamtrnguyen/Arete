@@ -16,7 +16,19 @@ export interface IntegrityTabContext {
 	setScanning: (scanning: boolean) => void;
 	rerender: () => void;
 	renderSuccess: (container: HTMLElement, message: string) => void;
-	goToIssue: (file: TFile, searchText: string) => void;
+	goToIssue: (file: TFile, searchText: string, line?: number) => void;
+}
+
+function resolveYamlErrorLine(ref: BrokenReference): number {
+	if (typeof ref.errorLine === 'number' && ref.errorLine > 0) {
+		return ref.errorLine - 1;
+	}
+	const match = ref.errorMessage?.match(/\bLine\s+(\d+):/i);
+	if (match) {
+		const parsed = parseInt(match[1], 10);
+		if (parsed > 0) return parsed - 1;
+	}
+	return 0;
 }
 
 export function renderIntegrityTab(ctx: IntegrityTabContext, container: HTMLElement): void {
@@ -120,6 +132,12 @@ export function renderIntegrityTab(ctx: IntegrityTabContext, container: HTMLElem
 		new ExtraButtonComponent(right)
 			.setIcon('external-link')
 			.setTooltip('Go to location')
-			.onClick(() => ctx.goToIssue(ref.sourceFile, ref.linkText));
+			.onClick(() => {
+				if (ref.type === 'invalid-yaml') {
+					ctx.goToIssue(ref.sourceFile, ref.linkText, resolveYamlErrorLine(ref));
+				} else {
+					ctx.goToIssue(ref.sourceFile, ref.linkText);
+				}
+			});
 	});
 }

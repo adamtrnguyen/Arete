@@ -297,8 +297,12 @@ export class DashboardView extends ItemView {
 					void this.render();
 				},
 				renderSuccess: (el, msg) => this.renderSuccess(el, msg),
-				goToIssue: (file, searchText) => {
-					void this.goToIssue(file, searchText);
+				goToIssue: (file, searchText, line) => {
+					if (line !== undefined) {
+						void this.goToIssue(file, searchText, line);
+					} else {
+						void this.goToIssue(file, searchText);
+					}
 				},
 			},
 			container,
@@ -385,11 +389,23 @@ export class DashboardView extends ItemView {
 		return -1;
 	}
 
-	async goToIssue(file: TFile, searchText: string) {
+	async goToIssue(file: TFile, searchText: string, line?: number) {
 		await this.app.workspace.getLeaf().openFile(file);
 		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
 		if (view) {
 			const editor = view.editor;
+			if (line !== undefined) {
+				const lineCount =
+					typeof editor.lineCount === 'function' ? editor.lineCount() : undefined;
+				const clamped =
+					lineCount !== undefined && lineCount > 0
+						? Math.min(Math.max(0, line), lineCount - 1)
+						: Math.max(0, line);
+				const pos = { line: clamped, ch: 0 };
+				editor.setCursor(pos);
+				editor.scrollIntoView({ from: pos, to: pos }, true);
+				return;
+			}
 			const content = editor.getValue();
 			const cleanText = searchText.replace(/^Card #\d+:\s*/, '');
 			const idx = content.indexOf(cleanText);
