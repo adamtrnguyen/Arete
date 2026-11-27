@@ -131,6 +131,7 @@ export const DEFAULT_PROCESS_TIMEOUT_MS = 60_000;
 export class AreteProcesses {
 	private live = new Set<ChildProcess>();
 	private timers = new Map<ChildProcess, ReturnType<typeof setTimeout>>();
+	private timedOut = new WeakSet<ChildProcess>();
 	private closed = false;
 
 	constructor(
@@ -179,6 +180,7 @@ export class AreteProcesses {
 			const timer = setTimeout(() => {
 				this.timers.delete(child);
 				if (this.live.has(child)) {
+					this.timedOut.add(child);
 					child.kill();
 				}
 			}, timeoutMs);
@@ -186,6 +188,11 @@ export class AreteProcesses {
 			this.timers.set(child, timer);
 		}
 		return child;
+	}
+
+	/** Whether this process was killed because its timeout elapsed. */
+	didTimeOut(child: ChildProcess): boolean {
+		return this.timedOut.has(child);
 	}
 
 	/** Processes still running. */

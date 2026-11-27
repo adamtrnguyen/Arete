@@ -371,6 +371,7 @@ jest.mock('obsidian', () => {
 				(this.constructor as any).instances.push(this);
 			}
 			setButtonText = jest.fn().mockReturnThis();
+			setClass = jest.fn().mockReturnThis();
 			setIcon = jest.fn().mockReturnThis();
 			setCta = jest.fn().mockReturnThis();
 			setWarning = jest.fn().mockReturnThis();

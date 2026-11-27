@@ -129,12 +129,17 @@ export class CheckService implements FileChecker {
 				);
 				resolve();
 			});
-			child.once('close', (code) => {
-				if (code === 0) {
+			child.once('close', (code, signal) => {
+				if (code === 0 && !signal) {
 					new Notice(`Arete runs: ${label}`);
 				} else {
-					console.error('[Arete] Test configuration failed:', stderr);
-					new Notice(`Command failed: ${(stderr || `exit ${code}`).substring(0, 200)}`);
+					const reason = this.processes.didTimeOut(child)
+						? 'timed out'
+						: signal
+							? `stopped (${signal})`
+							: `exit ${code}`;
+					console.error('[Arete] Test configuration failed:', stderr || reason);
+					new Notice(`Command failed: ${(stderr || reason).substring(0, 200)}`);
 				}
 				resolve();
 			});

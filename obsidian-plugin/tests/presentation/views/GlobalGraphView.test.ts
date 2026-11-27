@@ -1,38 +1,6 @@
 import { GlobalGraphView } from '@/presentation/views/GlobalGraphView';
 import { GlobalGraphResult } from '@/domain/graph/types';
-import { createMockElement as baseElement } from '../../test-setup';
-
-/** The shared mock element, plus `setAttribute`, for the toolbar code. */
-function createMockElement(tag?: string, opts?: any): any {
-	const el = baseElement(tag, opts);
-	el.setAttribute = jest.fn();
-	el.toggleClass = jest.fn((cls: string, on: boolean) => {
-		el.classes = new Set(el.classes ?? []);
-		if (on) el.classes.add(cls);
-		else el.classes.delete(cls);
-	});
-	el.createDiv = jest.fn((o?: any) => createMockElement('div', o));
-	el.createEl = jest.fn((t: string, o?: any) => createMockElement(t, o));
-	el.createSpan = jest.fn((o?: any) => createMockElement('span', o));
-	return el;
-}
-
-// The shared obsidian mock has no setTooltip or ButtonComponent; the view calls both.
-beforeAll(() => {
-	const obsidian = jest.requireMock('obsidian');
-	obsidian.setTooltip = jest.fn();
-	obsidian.ButtonComponent = class {
-		setButtonText() {
-			return this;
-		}
-		setClass() {
-			return this;
-		}
-		onClick() {
-			return this;
-		}
-	};
-});
+import { createDomElement as createMockElement } from '../../helpers/domMock';
 
 /** Every element created under `el`, depth first, in creation order. */
 function created(el: any): any[] {
@@ -377,5 +345,35 @@ describe('GlobalGraphView search and resize', () => {
 
 		await view.openFileAtLine('A.md', 0);
 		expect(openFile).toHaveBeenCalledWith(file, { eState: { line: 0 } });
+	});
+
+	it('renderEmpty stops active D3 simulation and destroys active 3D graph before emptying', async () => {
+		const view: any = await makeView(graph());
+		const stop = jest.fn();
+		const destructor = jest.fn();
+		const callOrder: string[] = [];
+		stop.mockImplementation(() => callOrder.push('sim.stop'));
+		destructor.mockImplementation(() => callOrder.push('graph3D._destructor'));
+		view.graphContainer = createMockElement('div');
+		view.graphContainer.empty.mockImplementation(() => {
+			callOrder.push('container.empty');
+			return view.graphContainer;
+		});
+		view.simulation = { stop };
+		view.graph3D = { _destructor: destructor };
+		view.searchTargets = { nodeGroup: {}, link: {}, isFileMode: true };
+		view.resizeViewport = jest.fn();
+		view.fitToView = jest.fn();
+		view.repaint3D = jest.fn();
+
+		view.renderEmpty('Could not load the graph: failed');
+
+		expect(callOrder).toEqual(['sim.stop', 'graph3D._destructor', 'container.empty']);
+		expect(view.simulation).toBeNull();
+		expect(view.graph3D).toBeNull();
+		expect(view.searchTargets).toBeNull();
+		expect(view.resizeViewport).toBeNull();
+		expect(view.fitToView).toBeNull();
+		expect(view.repaint3D).toBeNull();
 	});
 });

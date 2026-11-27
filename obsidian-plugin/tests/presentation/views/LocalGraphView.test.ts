@@ -1,31 +1,7 @@
 import { TFile } from 'obsidian';
 import { LocalGraphView } from '@/presentation/views/LocalGraphView';
 import { LocalGraphResult } from '@/domain/graph/types';
-import { createMockElement as baseElement } from '../../test-setup';
-
-/** The shared mock element, sized, with the DOM methods the view calls. */
-function element(tag?: string, opts?: any): any {
-	const el = baseElement(tag, { clientWidth: 400, clientHeight: 300, ...opts });
-	el.setAttribute = jest.fn();
-	el.toggleClass = jest.fn((cls: string, on: boolean) => {
-		el.classes = new Set(el.classes ?? []);
-		if (on) el.classes.add(cls);
-		else el.classes.delete(cls);
-	});
-	el.createDiv = jest.fn((o?: any) => element('div', o));
-	el.createEl = jest.fn((t: string, o?: any) => element(t, o));
-	el.createSpan = jest.fn((o?: any) => element('span', o));
-	el.querySelector = jest.fn((sel: string) => {
-		const cls = sel.replace(/^\./, '');
-		return el.createDiv.mock.results.map((r: any) => r.value).find((c: any) => c.cls === cls);
-	});
-	return el;
-}
-
-// The shared obsidian mock has no setTooltip; the views call it for toolbar tooltips.
-beforeAll(() => {
-	jest.requireMock('obsidian').setTooltip = jest.fn();
-});
+import { createSizedDomElement as element } from '../../helpers/domMock';
 
 const CENTER = { id: 'arete_A', title: 'algebra', filePath: 'Algebra.md', lineNumber: 5 };
 const LOCAL: LocalGraphResult = {

@@ -97,6 +97,7 @@ export type ConfirmPrune = (preview: PruneReport) => Promise<boolean>;
 interface ProcessResult {
 	code: number | null;
 	signal: NodeJS.Signals | null;
+	timedOut?: boolean;
 	stderr: string;
 	report: SyncReport | null;
 	spawnError?: Error;
@@ -256,8 +257,15 @@ export class SyncService {
 				resolve({ code: null, signal: null, stderr, report: null, spawnError: err });
 			});
 			child.once('close', (code, signal) => {
-				log(signal ? `Process stopped (${signal})` : `Process exited with code ${code}`);
-				resolve({ code, signal, stderr, report: parseSyncReport(stdout) });
+				const timedOut = this.processes.didTimeOut(child);
+				log(
+					timedOut
+						? `Process timed out (${signal ?? code})`
+						: signal
+							? `Process stopped (${signal})`
+							: `Process exited with code ${code}`,
+				);
+				resolve({ code, signal, timedOut, stderr, report: parseSyncReport(stdout) });
 			});
 		});
 	}
@@ -269,7 +277,21 @@ export class SyncService {
 	): SyncOutcome {
 		// Stopped by `dispose` on unload: the plugin that would show it is gone. `uv run`
 		// passes the signal on and exits with a code, so the flag decides, not the signal.
-		if (this.disposed || result.signal) return 'stopped';
+		if (this.disposed) return 'stopped';
+
+		if (result.timedOut) {
+			console.error('[Arete] Sync timed out', result.stderr);
+			new Notice('Sync timed out, check that Anki is responsive and see the log.');
+			updateStatusBar('error', 'Sync timed out');
+			return 'failed';
+		}
+
+		if (result.signal) {
+			console.error(`[Arete] Sync was stopped (${result.signal})`, result.stderr);
+			new Notice(`Sync was stopped (${result.signal}), see the log.`);
+			updateStatusBar('error', `Stopped (${result.signal})`);
+			return 'failed';
+		}
 
 		if (result.spawnError) {
 			const err = result.spawnError as NodeJS.ErrnoException;

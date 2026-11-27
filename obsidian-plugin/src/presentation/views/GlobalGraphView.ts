@@ -956,6 +956,7 @@ export class GlobalGraphView extends ItemView {
 	}
 
 	private renderEmpty(msg: string): void {
+		this.stopSimulation();
 		this.graphContainer.empty();
 		const div = this.graphContainer.createDiv({ cls: 'arete-global-graph-empty' });
 		div.setText(msg);

@@ -176,6 +176,48 @@ describe('SyncService', () => {
 		expect(updateStatusBar).not.toHaveBeenCalled();
 	});
 
+	test('a sync killed by timeout reports failure and resets status bar to error', async () => {
+		jest.useFakeTimers();
+		const errSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+		try {
+			const mockChild = createMockChildProcess();
+			(spawn as jest.Mock).mockReturnValue(mockChild);
+			const run = service.runSync(false, null, false, updateStatusBar);
+
+			jest.advanceTimersByTime(10 * 60_000);
+			expect(mockChild.kill).toHaveBeenCalledTimes(1);
+			mockChild.emit('close', null, 'SIGTERM');
+
+			expect(await run).toBe('failed');
+			expect(updateStatusBar).toHaveBeenCalledWith('error', 'Sync timed out');
+			expect(Notice).toHaveBeenLastCalledWith(
+				'Sync timed out, check that Anki is responsive and see the log.',
+			);
+			expect(errSpy).toHaveBeenCalledWith('[Arete] Sync timed out', '');
+		} finally {
+			errSpy.mockRestore();
+			jest.useRealTimers();
+		}
+	});
+
+	test('a sync stopped by an external signal without dispose reports failure', async () => {
+		const errSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+		try {
+			const mockChild = createMockChildProcess();
+			(spawn as jest.Mock).mockReturnValue(mockChild);
+			const run = service.runSync(false, null, false, updateStatusBar);
+
+			mockChild.emit('close', null, 'SIGTERM');
+
+			expect(await run).toBe('failed');
+			expect(updateStatusBar).toHaveBeenCalledWith('error', 'Stopped (SIGTERM)');
+			expect(Notice).toHaveBeenLastCalledWith('Sync was stopped (SIGTERM), see the log.');
+			expect(errSpy).toHaveBeenCalledWith('[Arete] Sync was stopped (SIGTERM)', '');
+		} finally {
+			errSpy.mockRestore();
+		}
+	});
+
 	describe('the JSON report and prune', () => {
 		const report = (prune: unknown = null, over: Record<string, unknown> = {}) =>
 			JSON.stringify({

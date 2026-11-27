@@ -5,48 +5,10 @@ import { CardStatsModal } from '@/presentation/modals/CardStatsModal';
 import { DEFAULT_SETTINGS } from '@/domain/settings';
 import { installNativeObsidian } from '../../mocks/nativeObsidian';
 import type { NativeRecord } from '../../mocks/nativeObsidian';
+import { createDomElement, MockDomElement } from '../../helpers/domMock';
 
-interface Node {
-	tag: string;
-	opts: any;
-	style: Record<string, string>;
-	children: Node[];
-	[k: string]: any;
-}
-
-function node(tag: string, opts: any = {}): Node {
-	const n: Node = {
-		tag,
-		opts,
-		style: {},
-		children: [],
-		attrs: {},
-		addClass: jest.fn(),
-		empty: jest.fn(() => {
-			n.children.length = 0;
-		}),
-		appendChild(c: Node) {
-			n.children.push(c);
-			return c;
-		},
-		createDiv(o?: any) {
-			const c = node('div', o);
-			n.children.push(c);
-			return c;
-		},
-		createSpan(o?: any) {
-			const c = node('span', o);
-			n.children.push(c);
-			return c;
-		},
-		createEl(t: string, o?: any) {
-			const c = node(t, o);
-			n.children.push(c);
-			return c;
-		},
-	};
-	return n;
-}
+type Node = MockDomElement;
+const node = (tag: string, opts: any = {}): Node => createDomElement(tag, opts);
 
 function svgNode(tag: string): any {
 	const n: any = {

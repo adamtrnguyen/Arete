@@ -1,19 +1,6 @@
 import { LocalGraphView } from '@/presentation/views/LocalGraphView';
 import { GlobalGraphView } from '@/presentation/views/GlobalGraphView';
-import { createMockElement as baseElement } from '../../test-setup';
-
-function element(tag?: string, opts?: any): any {
-	const el = baseElement(tag, { clientWidth: 400, clientHeight: 300, ...opts });
-	el.classes = new Set<string>();
-	el.toggleClass = jest.fn((cls: string, on: boolean) => {
-		if (on) el.classes.add(cls);
-		else el.classes.delete(cls);
-	});
-	el.createDiv = jest.fn((o?: any) => element('div', o));
-	el.createEl = jest.fn((t: string, o?: any) => element(t, o));
-	el.createSpan = jest.fn((o?: any) => element('span', o));
-	return el;
-}
+import { createSizedDomElement as element } from '../../helpers/domMock';
 
 let setTooltip: jest.Mock;
 beforeEach(() => {
@@ -50,7 +37,7 @@ describe('LocalGraphView native look', () => {
 			'Toggle clustering by file',
 		]);
 		const buttons = view.container.createDiv.mock.results[0].value.createDiv.mock.results;
-		for (const r of buttons) expect(r.value.setAttribute).toBeUndefined();
+		for (const r of buttons) expect(r.value.setAttribute).not.toHaveBeenCalled();
 	});
 
 	it('marks a toggle active with is-active and never writes an inline colour', () => {

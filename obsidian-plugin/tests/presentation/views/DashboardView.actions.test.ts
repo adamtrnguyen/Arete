@@ -4,51 +4,10 @@ import { DashboardView } from '@/presentation/views/DashboardView';
 import { DEFAULT_SETTINGS } from '@/domain/settings';
 import { installNativeObsidian } from '../../mocks/nativeObsidian';
 import type { NativeRecord } from '../../mocks/nativeObsidian';
+import { createDomElement, MockDomElement } from '../../helpers/domMock';
 
-/** An element that remembers what was created inside it, with the properties views set. */
-interface El {
-	tag: string;
-	opts: any;
-	style: Record<string, string>;
-	children: El[];
-	textContent: string;
-	title?: string;
-	value: string;
-	disabled?: boolean;
-	onclick?: () => any;
-	[k: string]: any;
-}
-
-function el(tag: string, opts: any = {}): El {
-	const n: El = {
-		tag,
-		opts,
-		style: {},
-		children: [],
-		textContent: opts.text ?? '',
-		value: opts.value ?? '',
-		empty() {
-			n.children.length = 0;
-		},
-		addClass: jest.fn(),
-		createDiv(o?: any) {
-			const c = el('div', o);
-			n.children.push(c);
-			return c;
-		},
-		createSpan(o?: any) {
-			const c = el('span', o);
-			n.children.push(c);
-			return c;
-		},
-		createEl(t: string, o?: any) {
-			const c = el(t, o);
-			n.children.push(c);
-			return c;
-		},
-	};
-	return n;
-}
+type El = MockDomElement;
+const el = (tag: string, opts: any = {}): El => createDomElement(tag, opts);
 
 const all = (root: El, pred: (n: El) => boolean): El[] => {
 	const out: El[] = [];
