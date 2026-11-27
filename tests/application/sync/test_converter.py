@@ -251,3 +251,32 @@ def test_markdown_to_anki_html_is_thread_safe():
         assert f"Formula {i}:" in html
         assert f"\\(x_{{{i}}} + y_{{{i}}}\\)" in html
         assert "MATHPLACEHOLDER" not in html
+
+
+def test_backtick_inline_code_at_line_start_and_closing_fence_trailing_text():
+    """Triple-backtick inline span at line start and non-blank closing lines follow CommonMark."""
+    inline_3 = "```$x$```\n\n$y$"
+    html = markdown_to_anki_html(inline_3)
+    assert "<code>$x$</code>" in html
+    assert r"\(y\)" in html
+
+    nested_fence = "````markdown\n```python\n$inside$\n```\n````\n\n$outside$"
+    html2 = markdown_to_anki_html(nested_fence)
+    assert "$inside$" in html2
+    assert r"\(inside\)" not in html2
+    assert r"\(outside\)" in html2
+
+    bad_close = "```\n$still_code$\n``` trailing\n$also_code$\n```\n\n$after$"
+    html3 = markdown_to_anki_html(bad_close)
+    assert "$still_code$" in html3
+    assert "$also_code$" in html3
+    assert r"\(also_code\)" not in html3
+    assert r"\(after\)" in html3
+
+
+def test_ampersands_in_math_are_html_escaped():
+    """`&` in MathJax is escaped to `&amp;` before `<`/`>` so HTML entities do not corrupt LaTeX."""
+    out = markdown_to_anki_html(r"$a&not$ and $$\begin{pmatrix} 1 & 2 \\ 3 & 4 \end{pmatrix}$$")
+    assert r"\(a&amp;not\)" in out
+    assert r"1 &amp; 2" in out
+    assert "&amp;lt;" not in out

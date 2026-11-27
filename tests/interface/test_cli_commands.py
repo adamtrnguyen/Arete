@@ -308,12 +308,13 @@ def test_queue_root_static_default(
     mock_build_dynamic,
     mock_get_bridge,
     mock_resolve_config,
+    tmp_path,
 ):
     """Root 'queue' command defaults to static algorithm."""
     from arete.application.queue.builder import QueueBuildResult
 
     mock_config = MagicMock()
-    mock_config.root_input = Path("/tmp/vault")
+    mock_config.root_input = tmp_path
     mock_resolve_config.return_value = mock_config
 
     mock_anki = AsyncMock()
@@ -345,12 +346,13 @@ def test_queue_dynamic_algo(
     mock_build_dynamic,
     mock_get_bridge,
     mock_resolve_config,
+    tmp_path,
 ):
     """Queue command can use dynamic algorithm via --algo dynamic."""
     from arete.application.queue.builder import QueueBuildResult
 
     mock_config = MagicMock()
-    mock_config.root_input = Path("/tmp/vault")
+    mock_config.root_input = tmp_path
     mock_resolve_config.return_value = mock_config
 
     mock_anki = AsyncMock()
@@ -405,12 +407,12 @@ def test_humanize_error_scanner():
 
 @patch("arete.application.queue.graph_resolver.build_graph")
 @patch("arete.interface._common.resolve_config")
-def test_graph_check_clean(mock_resolve_config, mock_build_graph):
+def test_graph_check_clean(mock_resolve_config, mock_build_graph, tmp_path):
     """Clean graph exits 0."""
     from arete.domain.graph import CardNode, DependencyGraph
 
     mock_config = MagicMock()
-    mock_config.root_input = Path("/tmp/vault")
+    mock_config.root_input = tmp_path
     mock_resolve_config.return_value = mock_config
 
     graph = DependencyGraph()
@@ -427,12 +429,12 @@ def test_graph_check_clean(mock_resolve_config, mock_build_graph):
 
 @patch("arete.application.queue.graph_resolver.build_graph")
 @patch("arete.interface._common.resolve_config")
-def test_graph_check_with_cycles(mock_resolve_config, mock_build_graph):
+def test_graph_check_with_cycles(mock_resolve_config, mock_build_graph, tmp_path):
     """Graph with cycle exits 1 and reports cycles."""
     from arete.domain.graph import CardNode, DependencyGraph
 
     mock_config = MagicMock()
-    mock_config.root_input = Path("/tmp/vault")
+    mock_config.root_input = tmp_path
     mock_resolve_config.return_value = mock_config
 
     graph = DependencyGraph()
@@ -449,11 +451,13 @@ def test_graph_check_with_cycles(mock_resolve_config, mock_build_graph):
 
 @patch("arete.application.queue.graph_resolver.build_graph")
 @patch("arete.interface._common.resolve_config")
-def test_graph_check_json_redirects_chatter_to_stderr(mock_resolve_config, mock_build_graph):
+def test_graph_check_json_redirects_chatter_to_stderr(
+    mock_resolve_config, mock_build_graph, tmp_path
+):
     from arete.domain.graph import DependencyGraph
 
     mock_config = MagicMock()
-    mock_config.root_input = Path("/tmp/vault")
+    mock_config.root_input = tmp_path
     mock_resolve_config.return_value = mock_config
 
     def noisy_build(_root):
@@ -465,6 +469,18 @@ def test_graph_check_json_redirects_chatter_to_stderr(mock_resolve_config, mock_
     assert result.exit_code == 0
     assert json.loads(result.stdout)["ok"] is True
     assert "library chatter" in result.stderr
+
+
+def test_graph_and_queue_nonexistent_path_exit_1(tmp_path):
+    missing = str(tmp_path / "no-such-vault")
+    for argv in (
+        ["graph", "check", missing],
+        ["graph", "export", missing],
+        ["queue", missing, "--dry-run"],
+    ):
+        result = runner.invoke(app, argv)
+        assert result.exit_code == 1, argv
+        assert "path not found" in result.stderr, argv
 
 
 # --- humanize_error ---

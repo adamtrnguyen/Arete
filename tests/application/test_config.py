@@ -116,3 +116,25 @@ def test_empty_env_vars_for_paths_are_treated_as_none(monkeypatch):
     assert cfg.vault_root is None
     assert cfg.anki_media_dir is None
     assert cfg.anki_base is None
+
+
+def test_tilde_paths_are_expanded_and_resolved(monkeypatch, tmp_path):
+    from arete.application.config import AppConfig
+
+    home = tmp_path / "home"
+    (home / "vault").mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+
+    cfg = AppConfig(
+        root_input=Path("~/vault"),
+        vault_root=Path("~/vault"),
+        anki_media_dir=Path("~/media"),
+        anki_base=Path("~/anki"),
+        log_dir=Path("~/logs"),
+    )
+    assert cfg.root_input == (home / "vault").resolve()
+    assert cfg.vault_root == (home / "vault").resolve()
+    assert cfg.anki_media_dir == (home / "media").resolve()
+    assert cfg.anki_base == (home / "anki").resolve()
+    assert cfg.log_dir == (home / "logs").resolve()

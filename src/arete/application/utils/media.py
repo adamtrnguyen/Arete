@@ -13,11 +13,12 @@ from arete.domain.constants import MEDIA_DIR_NAMES
 WIKILINK_IMG_RE = re.compile(r"!\[\[([^\]]+)\]\]")  # ![[path|...]]
 MARKDOWN_IMG_RE = re.compile(r"!\[[^\]]*\]\(([^)]+)\)")  # ![](path)
 WIKILINK_RE = re.compile(r"(?<!!)\[\[([^\]]+)\]\]")  # [[Target]] or [[Target|display]]
+_MD_IMG_TITLE_RE = re.compile(r'^(.*?)\s+("[^"]*"|\'[^\']*\')$')
 
 
 def _media_target(dest_dir: Path, src: Path) -> tuple[str, bool]:
     """The name `src` gets in `dest_dir`, and whether that file already holds its bytes."""
-    base = src.name
+    base = normalize_filename(src.name)
     cand = dest_dir / base
     if not cand.exists():
         return base, False
@@ -28,7 +29,8 @@ def _media_target(dest_dir: Path, src: Path) -> tuple[str, bool]:
     except Exception as e:
         # Cannot compare -> fall through to a uniquified name (a duplicate copy, not data loss).
         logging.getLogger(__name__).debug(f"[media] could not compare {cand} with {src}: {e}")
-    stem, suf = src.stem, src.suffix
+    norm_path = Path(base)
+    stem, suf = norm_path.stem, norm_path.suffix
     short = file_md5(src)[:8]
     return f"{stem}_{short}{suf}", False
 
@@ -158,6 +160,41 @@ def _resolve_candidate_paths(
     return uniq
 
 
+def _split_markdown_image_target(raw: str) -> tuple[str, str]:
+    """Separate a Markdown image target from an optional trailing title (`"..."` / `'...'`)."""
+    title_match = _MD_IMG_TITLE_RE.match(raw)
+    if title_match:
+        target = title_match.group(1).strip()
+        title_suffix = f" {title_match.group(2)}"
+    else:
+        target = raw
+        title_suffix = ""
+    if len(target) >= 2 and target.startswith("<") and target.endswith(">"):
+        target = target[1:-1].strip()
+    return target, title_suffix
+
+
+def _copy_first_existing(
+    candidates: list[Path],
+    anki_media_dir: Path,
+    logger: logging.Logger,
+    *,
+    warn_on_copy_fail: bool = False,
+) -> str | None:
+    """Copy the first existing file in `candidates` into `anki_media_dir` and return its name."""
+    for cand in candidates:
+        if not (cand.exists() and cand.is_file()):
+            continue
+        media_name = _copy_to_anki_media(cand, anki_media_dir, logger)
+        if media_name:
+            return media_name
+        if warn_on_copy_fail:
+            logger.warning(f"[media] Copy failed for '{cand}'")
+        else:
+            return None
+    return None
+
+
 def transform_images_in_text(
     text: str,
     md_path: Path,
@@ -169,36 +206,36 @@ def transform_images_in_text(
     def repl_wikilink(m: re.Match) -> str:
         raw = m.group(1)
         candidates = _resolve_candidate_paths(md_path, vault_root, raw, name_index=name_index)
-
-        for cand in candidates:
-            if cand.exists() and cand.is_file():
-                media_name = _copy_to_anki_media(cand, anki_media_dir, logger)
-                if media_name:
-                    return f"![]({media_name})"
-                else:
-                    logger.warning(f"[media] Copy failed for '{cand}'")
-
+        media_name = _copy_first_existing(
+            candidates, anki_media_dir, logger, warn_on_copy_fail=True
+        )
+        if media_name:
+            return f"![]({media_name})"
         logger.warning(f"[media] missing file for embed '{raw}' in {md_path}")
         return m.group(0)
 
-    out = WIKILINK_IMG_RE.sub(repl_wikilink, text)
-
     def repl_markdown_img(m: re.Match) -> str:
         raw = m.group(1).strip()
-        if re.match(r"^[a-z]+://", raw, flags=re.I):
+        target_raw, title_suffix = _split_markdown_image_target(raw)
+        if re.match(r"^[a-z]+://", target_raw, flags=re.I):
             return m.group(0)
-        for cand in _resolve_candidate_paths(md_path, vault_root, raw, name_index=name_index):
-            if cand.exists() and cand.is_file():
-                media_name = _copy_to_anki_media(cand, anki_media_dir, logger)
-                if not media_name:
-                    return m.group(0)
-                start = m.start(1) - m.start(0)
-                end = m.end(1) - m.start(0)
-                return m.group(0)[:start] + media_name + m.group(0)[end:]
-        return m.group(0)
+        candidates = _resolve_candidate_paths(
+            md_path, vault_root, target_raw, name_index=name_index
+        )
+        media_name = _copy_first_existing(candidates, anki_media_dir, logger)
+        if not media_name:
+            return m.group(0)
+        start = m.start(1) - m.start(0)
+        end = m.end(1) - m.start(0)
+        return m.group(0)[:start] + media_name + title_suffix + m.group(0)[end:]
 
-    out = MARKDOWN_IMG_RE.sub(repl_markdown_img, out)
-    return out
+    def _transform_plain(segment: str) -> str:
+        out = WIKILINK_IMG_RE.sub(repl_wikilink, segment)
+        return MARKDOWN_IMG_RE.sub(repl_markdown_img, out)
+
+    return "".join(
+        seg if is_code else _transform_plain(seg) for is_code, seg in _split_code_segments(text)
+    )
 
 
 def _fence_spec(line: str) -> tuple[str, int, str] | None:
@@ -257,7 +294,7 @@ def _split_code_segments(text: str) -> list[tuple[bool, str]]:
                     fence = None
                 i = next_i
                 continue
-            if spec is not None:
+            if spec is not None and not (spec[0] == "`" and "`" in spec[2]):
                 flush_plain()
                 fence = (spec[0], spec[1])
                 segments.append((True, text[i:next_i]))

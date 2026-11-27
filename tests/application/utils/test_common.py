@@ -172,3 +172,21 @@ def test_detect_anki_paths_wsl_with_users(tmp_path):
         base, media = detect_anki_paths()
         # Should use the WSL path via /mnt/c/Users
         assert base is not None
+
+
+def test_detect_anki_paths_scans_profiles_sorted_on_macos(tmp_path):
+    """macOS/Linux detection discovers non-'User 1' profiles deterministically (sorted)."""
+    anki_base = tmp_path / "Library" / "Application Support" / "Anki2"
+    for profile in ("Zoe", "Alice"):
+        (anki_base / profile / "collection.media").mkdir(parents=True)
+        (anki_base / profile / "collection.anki2").touch()
+    (anki_base / "addons21").mkdir(parents=True)
+
+    with (
+        patch.object(platform, "system", return_value="Darwin"),
+        patch.object(Path, "home", return_value=tmp_path),
+    ):
+        base, media = detect_anki_paths()
+
+    assert base == anki_base
+    assert media == anki_base / "Alice" / "collection.media"

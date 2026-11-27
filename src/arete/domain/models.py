@@ -1,8 +1,6 @@
 from dataclasses import dataclass
 from pathlib import Path
 
-from .constants import RENDER_VERSION
-
 
 def deck_parents(name: str) -> list[str]:
     """Return all ancestor deck names in the ``::`` hierarchy, shallowest first."""
@@ -50,13 +48,12 @@ class AnkiNote:
     unchanged: bool = False
 
     def to_dict(self) -> dict:
-        """The note as the content cache stores it, stamped with the renderer's version."""
+        """The note as the content cache stores it."""
         from dataclasses import asdict
 
         d = asdict(self)
         d["source_file"] = str(self.source_file)
         d.pop("unchanged")
-        d["render_version"] = RENDER_VERSION
         return d
 
     @classmethod

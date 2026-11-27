@@ -45,6 +45,27 @@ def test_resolve_collection_path_auto(mock_sqlite, repo):
 
     assert path == Path("/tmp/anki") / "UserAuto" / "collection.anki2"
     assert repo.profile_name == "UserAuto"
+    connect_args, connect_kwargs = mock_sqlite.connect.call_args
+    assert connect_args[0].endswith("?mode=ro")
+    assert connect_kwargs.get("uri") is True
+
+
+def test_context_manager_restores_cwd_even_if_close_raises(mock_col, repo, tmp_path):
+    import os
+
+    mock_instance = MagicMock()
+    mock_instance.close.side_effect = RuntimeError("close failed")
+    mock_col.return_value = mock_instance
+
+    original_cwd = Path.cwd()
+    with patch.object(repo, "_resolve_collection_path", return_value=tmp_path / "c.anki2"):
+        with pytest.raises(RuntimeError, match="close failed"):
+            with repo as r:
+                os.chdir(tmp_path)
+                assert r.col is mock_instance
+
+    assert Path.cwd() == original_cwd
+    assert repo.col is None
 
 
 def test_context_manager(mock_col, repo):

@@ -98,6 +98,7 @@ class TestAnkiNote:
         assert d["source_file"] == str(Path("/vault/note.md"))
         assert d["model"] == "Basic"
         assert d["tags"] == ["math", "arithmetic"]
+        assert "render_version" not in d
 
     def test_from_dict_round_trip(self, basic_note: AnkiNote):
         d = basic_note.to_dict()
@@ -180,3 +181,12 @@ class TestUpdateItem:
         )
         assert item.ok is False
         assert item.error == "Model not found"
+
+
+def test_card_stats_aggregate_omits_removed_dead_fields():
+    from dataclasses import fields as dataclass_fields
+
+    from arete.domain.stats.models import CardStatsAggregate
+
+    names = {f.name for f in dataclass_fields(CardStatsAggregate)}
+    assert not (names & {"days_overdue", "volatility", "lapse_rate"})

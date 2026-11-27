@@ -70,6 +70,9 @@ def replace_file(path: Path, data: bytes) -> None:
         dir_fd = os.open(target.parent, os.O_RDONLY)
         try:
             os.fsync(dir_fd)
+        except OSError as e:
+            if e.errno not in (errno.EINVAL, errno.EROFS, errno.EBADF):
+                raise
         finally:
             os.close(dir_fd)
 

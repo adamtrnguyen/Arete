@@ -241,3 +241,12 @@ def test_non_dict_frontmatter_rejected_cleanly(sample):
     with pytest.raises(yaml.YAMLError, match="YAML mapping"):
         validate_frontmatter(sample)
     assert apply_fixes(sample) == sample
+
+
+def test_apply_fixes_handles_and_preserves_utf8_bom():
+    raw = "\ufeff---\nfoo:\tbar\ncards:\n  - Front: Q\n    Back: A\n---\nBody\n"
+    fixed = apply_fixes(raw)
+    assert fixed.startswith("\ufeff---\n")
+    meta, body = parse_frontmatter(fixed)
+    assert meta["foo"] == "bar"
+    assert body.strip() == "Body"

@@ -6,7 +6,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from arete.application.utils.common import sanitize
 from arete.domain.constants import PRIMARY_FIELD_NAMES
+
+_ARETE_CARD_KEYS = frozenset({"model", "deck", "tags", "id", "deps", "anki"})
 
 # ---------------------------------------------------------------------------
 # Result type
@@ -122,7 +125,79 @@ def _check_split_cards(cards: list, result: ValidationResult) -> None:
             )
 
 
-def _check_single_card(card: Any, i: int, cards: list, result: ValidationResult) -> None:
+def _check_card_consistency(
+    keys: set[str], i: int, cards: list, line: int, result: ValidationResult
+) -> bool:
+    """Report missing Front/Text compared to card #1 or lone Back; return True if flagged."""
+    if keys.intersection(PRIMARY_FIELD_NAMES):
+        return False
+
+    if i > 0 and isinstance(cards[0], dict):
+        card0_keys = set(cards[0].keys())
+        for field_name in ("Front", "Text"):
+            if field_name in card0_keys and field_name not in keys:
+                result.ok = False
+                result.errors.append(
+                    {
+                        "line": line,
+                        "message": (
+                            f"Card #{i + 1} is missing '{field_name}' field "
+                            "(present in first card)."
+                        ),
+                    }
+                )
+                return True
+
+    if len(keys) == 1 and "Back" in keys:
+        result.ok = False
+        result.errors.append(
+            {"line": line, "message": f"Card #{i + 1} has only 'Back' field. Missing 'Front'?"}
+        )
+        return True
+    return False
+
+
+def _check_model_fields(
+    card: dict[str, Any],
+    keys: set[str],
+    i: int,
+    line: int,
+    model: str,
+    result: ValidationResult,
+) -> None:
+    """Mirror `MarkdownParser._extract_card_fields` so skipped cards fail validation too."""
+    mlow = model.lower()
+    if mlow == "basic":
+        if not sanitize(card.get("Front") or "") or not sanitize(card.get("Back") or ""):
+            result.ok = False
+            result.errors.append(
+                {
+                    "line": line,
+                    "message": f"Card #{i + 1}: Basic card requires non-empty 'Front' and 'Back'.",
+                }
+            )
+    elif mlow == "cloze":
+        if not sanitize(card.get("Text") or ""):
+            result.ok = False
+            result.errors.append(
+                {
+                    "line": line,
+                    "message": f"Card #{i + 1}: Cloze card requires non-empty 'Text'.",
+                }
+            )
+    elif not (keys - _ARETE_CARD_KEYS):
+        result.ok = False
+        result.errors.append(
+            {
+                "line": line,
+                "message": f"Card #{i + 1}: custom model '{model}' has no content fields.",
+            }
+        )
+
+
+def _check_single_card(
+    card: Any, i: int, cards: list, result: ValidationResult, *, file_model: str = "Basic"
+) -> None:
     """Validate a single card entry within the cards list."""
     if not isinstance(card, dict):
         result.ok = False
@@ -137,7 +212,8 @@ def _check_single_card(card: Any, i: int, cards: list, result: ValidationResult)
         )
         return
 
-    if not {k: v for k, v in card.items() if not k.startswith("__")}:
+    keys = {k for k in card.keys() if not k.startswith("__")}
+    if not keys:
         result.ok = False
         result.errors.append(
             {"line": card.get("__line__", i + 1), "message": f"Card #{i + 1} is empty."}
@@ -145,37 +221,11 @@ def _check_single_card(card: Any, i: int, cards: list, result: ValidationResult)
         return
 
     line = card.get("__line__", i + 1)
-    keys = {k for k in card.keys() if not k.startswith("__")}
-    if keys.intersection(PRIMARY_FIELD_NAMES):
+    if _check_card_consistency(keys, i, cards, line, result):
         return
 
-    # Consistency check against first card
-    if i > 0 and isinstance(cards[0], dict):
-        card0_keys = set(cards[0].keys())
-        if "Front" in card0_keys and "Front" not in keys:
-            result.ok = False
-            result.errors.append(
-                {
-                    "line": line,
-                    "message": f"Card #{i + 1} is missing 'Front' field (present in first card).",
-                }
-            )
-            return
-        if "Text" in card0_keys and "Text" not in keys:
-            result.ok = False
-            result.errors.append(
-                {
-                    "line": line,
-                    "message": f"Card #{i + 1} is missing 'Text' field (present in first card).",
-                }
-            )
-            return
-
-    if len(keys) == 1 and "Back" in keys:
-        result.ok = False
-        result.errors.append(
-            {"line": line, "message": f"Card #{i + 1} has only 'Back' field. Missing 'Front'?"}
-        )
+    model = sanitize(card.get("model") or file_model) or file_model
+    _check_model_fields(card, keys, i, line, model, result)
 
 
 def _validate_cards_list(meta: dict, result: ValidationResult) -> None:
@@ -215,8 +265,9 @@ def _validate_cards_list(meta: dict, result: ValidationResult) -> None:
     if len(cards) > 1:
         _check_split_cards(cards, result)
 
+    file_model = sanitize(meta.get("model") or "Basic") or "Basic"
     for i, card in enumerate(cards):
-        _check_single_card(card, i, cards, result)
+        _check_single_card(card, i, cards, result, file_model=file_model)
 
     _check_duplicate_ids(cards, result)
 

@@ -358,7 +358,7 @@ async def test_get_review_history_none_result(repo):
 @pytest.mark.asyncio
 async def test_get_deck_params_success(repo):
     """Deck params are correctly extracted from getDeckConfig response."""
-    repo._invoke = AsyncMock(
+    repo.client.invoke = AsyncMock(
         return_value={
             "desiredRetention": 0.85,
             "sm2Retention": 0.88,
@@ -377,7 +377,7 @@ async def test_get_deck_params_success(repo):
 @pytest.mark.asyncio
 async def test_get_deck_params_raises_when_getdeckconfig_fails(repo):
     """The defaults would pass for the deck's own settings."""
-    repo._invoke = AsyncMock(side_effect=RuntimeError("not available"))
+    repo.client.invoke = AsyncMock(side_effect=RuntimeError("not available"))
 
     with pytest.raises(RuntimeError, match="not available"):
         await repo.get_deck_params(["BadDeck"])
@@ -386,7 +386,7 @@ async def test_get_deck_params_raises_when_getdeckconfig_fails(repo):
 @pytest.mark.asyncio
 async def test_get_deck_params_null_response(repo):
     """When getDeckConfig returns None, defaults are provided."""
-    repo._invoke = AsyncMock(return_value=None)
+    repo.client.invoke = AsyncMock(return_value=None)
 
     result = await repo.get_deck_params(["NullDeck"])
     assert "NullDeck" in result
@@ -438,7 +438,7 @@ def _deck_config_server(configs: dict, failing: set[str] | None = None):
 @pytest.mark.asyncio
 async def test_get_deck_params_reads_every_deck_in_one_request(repo):
     configs = {f"D{i}": {"desiredRetention": (80 + i) / 100, "fsrsParams6": [i]} for i in range(6)}
-    repo._invoke, sent = _deck_config_server(configs)
+    repo.client.invoke, sent = _deck_config_server(configs)
 
     result = await repo.get_deck_params([*configs, "Missing"])
 
@@ -451,7 +451,7 @@ async def test_get_deck_params_reads_every_deck_in_one_request(repo):
 async def test_get_deck_params_a_failing_deck_raises_with_its_name(repo):
     """The defaults would pass for the deck's own settings."""
     configs = {"A": {"desiredRetention": 0.7, "fsrsParams6": [1]}, "B": {}}
-    repo._invoke, _ = _deck_config_server(configs, failing={"B"})
+    repo.client.invoke, _ = _deck_config_server(configs, failing={"B"})
 
     with pytest.raises(RuntimeError, match="deck 'B'"):
         await repo.get_deck_params(["A", "B"])
@@ -459,7 +459,7 @@ async def test_get_deck_params_a_failing_deck_raises_with_its_name(repo):
 
 @pytest.mark.asyncio
 async def test_get_deck_params_a_failed_multi_raises(repo):
-    repo._invoke = AsyncMock(side_effect=RuntimeError("down"))
+    repo.client.invoke = AsyncMock(side_effect=RuntimeError("down"))
 
     with pytest.raises(RuntimeError, match="down"):
         await repo.get_deck_params(["A", "B"])
@@ -585,3 +585,51 @@ async def test_get_card_stats_uses_home_deck_for_queued_cards_and_degrades_on_st
     )
     [fallback] = await repo.get_card_stats([1])
     assert fallback.deck_name == "Arete::Queue"
+
+
+@pytest.mark.asyncio
+async def test_get_card_stats_picks_front_by_field_order(repo):
+    """Front preview picks the field with lowest `order`, not dict insertion order."""
+    repo._invoke = AsyncMock(
+        side_effect=[
+            [101],
+            [
+                {
+                    "cardId": 101,
+                    "note": 1,
+                    "deckName": "Math",
+                    "fields": {
+                        "Back": {"value": "Answer", "order": 1},
+                        "Front": {"value": "Question", "order": 0},
+                    },
+                }
+            ],
+            [],
+        ]
+    )
+    [s] = await repo.get_card_stats([1])
+    assert s.front == "Question"
+
+
+@pytest.mark.asyncio
+async def test_get_review_history_chunks_large_cid_lists_and_sorts_by_ms_id(repo):
+    """Large CID lists are deduplicated and chunked by 500; reviews sort by raw ms id."""
+    calls: list[list[int]] = []
+
+    async def fake_invoke(action: str, **params):
+        assert action == "getReviewsOfCards"
+        cids = params["cards"]
+        calls.append(cids)
+        if 1 in cids:
+            return {
+                "1": [
+                    {"id": 1700000000900, "ease": 4, "ivl": 5, "lastIvl": 1, "time": 1000},
+                    {"id": 1700000000100, "ease": 1, "ivl": 1, "lastIvl": 1, "time": 2000},
+                ]
+            }
+        return {"501": [{"id": 1700000000500, "ease": 3, "ivl": 2, "lastIvl": 1, "time": 1500}]}
+
+    repo._invoke = fake_invoke  # type: ignore[method-assign]
+    entries = await repo.get_review_history([*range(1, 502), 1, 2])
+    assert [len(c) for c in calls] == [500, 1]
+    assert [(e.card_id, e.rating) for e in entries] == [(1, 1), (501, 3), (1, 4)]

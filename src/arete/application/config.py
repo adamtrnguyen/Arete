@@ -115,26 +115,17 @@ class AppConfig(BaseSettings):
                 env_settings,
             )
 
-    @field_validator("vault_root", mode="before")
+    @field_validator("root_input", "vault_root", "anki_media_dir", "anki_base", mode="before")
     @classmethod
-    def resolve_vault_root(cls, v: Any) -> Path | None:
+    def resolve_optional_path(cls, v: Any) -> Path | None:
         if v is None or (isinstance(v, str) and not v.strip()):
             return None
-        return Path(v).resolve()
+        return Path(v).expanduser().resolve()
 
-    @field_validator("anki_media_dir", mode="before")
+    @field_validator("log_dir", mode="before")
     @classmethod
-    def resolve_anki_media(cls, v: Any) -> Path | None:
-        if v is None or (isinstance(v, str) and not v.strip()):
-            return None
-        return Path(v).resolve()
-
-    @field_validator("anki_base", mode="before")
-    @classmethod
-    def resolve_anki_base(cls, v: Any) -> Path | None:
-        if v is None or (isinstance(v, str) and not v.strip()):
-            return None
-        return Path(v).resolve()
+    def resolve_log_dir(cls, v: Any) -> Path:
+        return Path(v).expanduser().resolve()
 
 
 def resolve_config(
@@ -180,13 +171,13 @@ def resolve_config(
         config.root_input = config.vault_root if config.vault_root else Path.cwd()
 
     # Ensure root_input is absolute for relative_to checks
-    config.root_input = config.root_input.resolve()
+    config.root_input = config.root_input.expanduser().resolve()
 
     # A configured vault root that holds the path is the vault. Otherwise the vault is
     # found from the path (`_guess_vault_root`); a file in no vault gets None, and a
     # command that needs the root refuses (`require_vault_root`).
     if config.vault_root is not None:
-        config.vault_root = config.vault_root.resolve()
+        config.vault_root = config.vault_root.expanduser().resolve()
         if not config.root_input.is_relative_to(config.vault_root):
             config.vault_root = None
     if config.vault_root is None:

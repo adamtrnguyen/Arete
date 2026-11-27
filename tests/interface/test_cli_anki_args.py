@@ -258,9 +258,9 @@ def test_browse_query_wins_over_nid():
 # --- sync ---
 
 
-def test_sync_that_fails_exits_1():
+def test_sync_that_fails_exits_1(tmp_path):
     failing = AsyncMock(side_effect=SyncFailedError("3 errors during sync"))
     with patch("arete.composition.orchestrator.run_sync_logic", failing):
-        result = runner.invoke(app, ["sync", "/tmp/arete-vault-not-read"])
+        result = runner.invoke(app, ["sync", str(tmp_path)])
     assert result.exit_code == 1
     failing.assert_awaited_once()

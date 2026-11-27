@@ -29,26 +29,25 @@ def test_sync_command_help():
 
 @patch("arete.composition.orchestrator.run_sync_logic")
 @patch("arete.interface._common.resolve_config")
-def test_sync_command_basic(mock_resolve_config, mock_run_sync):
+def test_sync_command_basic(mock_resolve_config, mock_run_sync, tmp_path):
     """Test basic sync command execution."""
     mock_config = MagicMock()
     mock_resolve_config.return_value = mock_config
     mock_run_sync.return_value = None
 
-    result = runner.invoke(app, ["sync", "/tmp/vault"])
+    result = runner.invoke(app, ["sync", str(tmp_path)])
 
     assert result.exit_code == 0
     mock_resolve_config.assert_called_once()
     mock_run_sync.assert_called_once()
 
     call_args = mock_resolve_config.call_args[0][0]
-    expected_path = str(Path("/tmp/vault"))
-    assert str(call_args["root_input"]) == expected_path
+    assert str(call_args["root_input"]) == str(tmp_path)
 
 
 @patch("arete.composition.orchestrator.run_sync_logic")
 @patch("arete.interface._common.resolve_config")
-def test_sync_command_with_flags(mock_resolve_config, mock_run_sync):
+def test_sync_command_with_flags(mock_resolve_config, mock_run_sync, tmp_path):
     """Test sync command with various flags."""
     mock_config = MagicMock()
     mock_resolve_config.return_value = mock_config
@@ -58,7 +57,7 @@ def test_sync_command_with_flags(mock_resolve_config, mock_run_sync):
         app,
         [
             "sync",
-            "/tmp/vault",
+            str(tmp_path),
             "--prune",
             "--force",
             "--dry-run",
@@ -185,19 +184,19 @@ def test_sync_command_clear_cache(mock_resolve_config, mock_run_sync):
 
 @patch("arete.composition.orchestrator.run_sync_logic")
 @patch("arete.interface._common.resolve_config")
-def test_only_yes_confirms_a_prune(mock_resolve_config, mock_run_sync):
+def test_only_yes_confirms_a_prune(mock_resolve_config, mock_run_sync, tmp_path):
     """--force re-sends cards; --yes is the one flag that confirms a prune."""
     from arete.interface.cli import _confirm_prune_at_prompt
 
     mock_resolve_config.return_value = MagicMock()
     mock_run_sync.return_value = None
 
-    runner.invoke(app, ["sync", "/tmp/vault", "--prune", "--force"])
+    runner.invoke(app, ["sync", str(tmp_path), "--prune", "--force"])
     kwargs = mock_run_sync.call_args.kwargs
     assert kwargs["confirm_prune"] is False
     assert kwargs["prompt"] is _confirm_prune_at_prompt
 
-    runner.invoke(app, ["sync", "/tmp/vault", "--prune", "--yes"])
+    runner.invoke(app, ["sync", str(tmp_path), "--prune", "--yes"])
     assert mock_run_sync.call_args.kwargs["confirm_prune"] is True
 
 
@@ -211,7 +210,7 @@ def _json_sync(execute, *args: str, keep_going: bool = False):
         patch("arete.interface.cli._resolve_with_overrides", return_value=config),
         patch("arete.composition.orchestrator.execute_sync", execute),
     ):
-        return runner.invoke(app, ["sync", "/tmp/arete-vault-not-read", "--json", *args])
+        return runner.invoke(app, ["sync", ".", "--json", *args])
 
 
 def test_json_never_prompts_and_passes_yes_through():
@@ -353,3 +352,17 @@ def test_json_a_terminated_sync_exits_143_with_the_line():
     assert report["ok"] is False
     assert report["message"] == SYNC_TERMINATED_MESSAGE
     assert SYNC_TERMINATED_MESSAGE in result.stderr
+
+
+def test_sync_nonexistent_path_exits_1(tmp_path):
+    missing = tmp_path / "does-not-exist"
+    res = runner.invoke(app, ["sync", str(missing)])
+    assert res.exit_code == 1
+    assert "Path not found" in res.stderr
+
+    json_res = runner.invoke(app, ["sync", str(missing), "--json"])
+    assert json_res.exit_code == 1
+    assert "Path not found" in json_res.stderr
+    payload = json.loads(json_res.stdout)
+    assert payload["ok"] is False
+    assert "Path not found" in payload["message"]

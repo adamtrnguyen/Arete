@@ -52,6 +52,8 @@ class FakeAnki(SyncPort):
         self.deleted_notes: list[int] = []
         self.deleted_decks: list[str] = []
         self.fail_delete_notes = False
+        self.delete_notes_returns = True
+        self.delete_decks_returns = True
         self.add_after_delete: tuple[int, str] | None = None  # a note that appears mid-prune
 
     async def get_deck_names(self):
@@ -71,20 +73,26 @@ class FakeAnki(SyncPort):
     async def delete_notes(self, nids):
         if self.fail_delete_notes:
             raise RuntimeError("Anki said no")
+        if not self.delete_notes_returns:
+            return False
         for n in nids:
             self.notes.pop(n)
             self.deleted_notes.append(n)
         if self.add_after_delete:
             nid, deck = self.add_after_delete
             self.notes[nid] = (deck, [])
+        return True
 
     async def delete_decks(self, names):
+        if not self.delete_decks_returns:
+            return False
         for name in names:
             for d in [d for d in self.decks if d == name or d.startswith(name + "::")]:
                 self.decks.discard(d)
             for n in [n for n, (d, _) in self.notes.items() if d == name]:
                 self.notes.pop(n)
             self.deleted_decks.append(name)
+        return True
 
 
 def config(**overrides) -> AppConfig:
@@ -288,6 +296,25 @@ async def test_a_failed_note_delete_deletes_no_deck():
     anki.fail_delete_notes = True
     report = await prune(anki)
     assert report.status == "failed"
+    assert anki.deleted_decks == []
+
+
+@pytest.mark.asyncio
+async def test_delete_notes_returning_false_marks_failed_and_deletes_no_deck():
+    anki = FakeAnki({1: ("Old", [aid(1)])})
+    anki.delete_notes_returns = False
+    report = await prune(anki)
+    assert report.status == "failed"
+    assert anki.deleted_decks == []
+
+
+@pytest.mark.asyncio
+async def test_delete_decks_returning_false_marks_failed():
+    anki = FakeAnki({1: ("Old", [aid(1)])})
+    anki.delete_decks_returns = False
+    report = await prune(anki)
+    assert report.status == "failed"
+    assert anki.deleted_notes == [1]
     assert anki.deleted_decks == []
 
 

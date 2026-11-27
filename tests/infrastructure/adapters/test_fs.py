@@ -318,3 +318,26 @@ def test_a_kill_in_the_middle_of_the_write_leaves_the_note_whole(tmp_path):
         child.wait(timeout=10)
 
     assert note.read_bytes() == NOTE
+
+
+@pytest.mark.parametrize("err_no", [22, 30])  # EINVAL, EROFS
+def test_replace_file_suppresses_einval_and_erofs_on_dir_fsync(tmp_path, monkeypatch, err_no):
+    import errno
+
+    note = tmp_path / "Bayes.md"
+    note.write_bytes(b"old")
+    real_fsync = os.fsync
+    calls = 0
+
+    def selective_fsync(fd):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            real_fsync(fd)
+            return
+        code = errno.EINVAL if err_no == 22 else errno.EROFS
+        raise OSError(code, os.strerror(code))
+
+    monkeypatch.setattr(fs.os, "fsync", selective_fsync)
+    replace_file(note, b"updated")
+    assert note.read_bytes() == b"updated"

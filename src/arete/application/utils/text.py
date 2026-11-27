@@ -379,6 +379,8 @@ def apply_fixes(md_text: str) -> str:
     writing partially-mutated unparseable YAML back to disk.
     """
     original = md_text
+    bom = "\ufeff" if md_text.startswith("\ufeff") else ""
+    md_text = md_text[len(bom) :]
 
     # Strip leading empty frontmatter blocks
     md_text = md_text.lstrip()
@@ -388,7 +390,7 @@ def apply_fixes(md_text: str) -> str:
 
     bounds = _extract_frontmatter_bounds(md_text)
     if bounds is None:
-        return md_text
+        return bom + md_text
 
     original_fm, fm_start, fm_end = bounds
 
@@ -407,7 +409,7 @@ def apply_fixes(md_text: str) -> str:
 
     meta = _fix_frontmatter_dict(meta)
 
-    return rebuild_markdown_with_frontmatter(meta, body)
+    return bom + rebuild_markdown_with_frontmatter(meta, body)
 
 
 def card_content_hash(

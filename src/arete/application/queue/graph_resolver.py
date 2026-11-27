@@ -15,7 +15,7 @@ from arete.application.utils.common import sanitize
 from arete.application.utils.fs import iter_markdown_files
 from arete.application.utils.text import frontmatter_slice, normalize_filename, parse_frontmatter
 from arete.domain.graph import CardNode, DependencyGraph
-from arete.domain.ownership import id_key
+from arete.domain.ownership import id_key, is_arete_id
 
 if TYPE_CHECKING:
     import networkx as nx
@@ -160,7 +160,7 @@ def _link_pending_deps(
         own_file = card_file.get(card_id)
         for refs, add_edge in ((requires, graph.add_requires), (related, graph.add_related)):
             for ref in refs:
-                is_id_ref = ref.casefold().startswith("arete_")
+                is_id_ref = is_arete_id(ref) or graph.canonical_id(ref) is not None
                 for target_id in _resolve_reference(ref, card_id, index, graph):
                     if target_id == card_id or (
                         not is_id_ref and card_file.get(target_id) == own_file
@@ -261,13 +261,16 @@ def _resolve_reference(
 
     Tracks unresolved references in the graph.
     """
-    if ref.casefold().startswith("arete_"):
+    if is_arete_id(ref):
         canon = graph.canonical_id(ref)
         if canon is not None:
             return [canon]
         logger.warning(f"Dependency reference '{ref}' not found in graph")
         graph.add_unresolved(card_id, ref)
         return []
+
+    if (canon := graph.canonical_id(ref)) is not None:
+        return [canon]
 
     ref_normalized = normalize_filename(ref)
     if "/" in ref_normalized:
@@ -440,13 +443,13 @@ def filter_graph_by_deck(graph: DependencyGraph, deck: str) -> DependencyGraph:
     return filtered
 
 
-def _card_decks(meta: Any, cards: Any) -> list[tuple[Any, str]]:
-    """(card id, effective deck) for each card mapping: the card's deck, else the file's."""
+def _card_decks(meta: Any, cards: Any, default_deck: str = "Default") -> list[tuple[Any, str]]:
+    """(card id, effective deck) for each card mapping: card deck, else file deck, else Default."""
     file_deck = sanitize((meta or {}).get("deck") or "")
     return [
         (
             sanitize(card.get("id", "")).strip() or None,
-            sanitize(card.get("deck") or file_deck),
+            sanitize(card.get("deck") or file_deck) or default_deck,
         )
         for card in cards
         if isinstance(card, dict)

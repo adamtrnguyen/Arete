@@ -42,3 +42,52 @@ def test_validate_arete_file_deduplicates_deck_error_and_allows_per_card_decks(t
     )
     res_per_card = validate_arete_file(per_card)
     assert res_per_card.ok, res_per_card.errors
+
+
+def test_validate_arete_file_enforces_model_specific_fields(tmp_path: Path):
+    """Basic requires Front+Back, Cloze requires Text, custom models require a content field."""
+    cases = [
+        (
+            "basic_no_back.md",
+            "---\narete: true\ndeck: D\ncards:\n  - Front: Q\n---\n",
+            False,
+            "Back",
+        ),
+        (
+            "basic_empty_front.md",
+            "---\narete: true\ndeck: D\ncards:\n  - Front: '   '\n    Back: A\n---\n",
+            False,
+            "Front",
+        ),
+        (
+            "cloze_no_text.md",
+            "---\narete: true\ndeck: D\nmodel: Cloze\ncards:\n  - Back Extra: note\n---\n",
+            False,
+            "Text",
+        ),
+        (
+            "cloze_valid.md",
+            "---\narete: true\ndeck: D\nmodel: Cloze\ncards:\n  - Text: '{{c1::ans}}'\n---\n",
+            True,
+            "",
+        ),
+        (
+            "custom_meta_only.md",
+            "---\narete: true\ndeck: D\nmodel: CustomType\ncards:\n  - id: arete_1\n    tags: [t]\n---\n",
+            False,
+            "no content fields",
+        ),
+        (
+            "custom_valid.md",
+            "---\narete: true\ndeck: D\nmodel: CustomType\ncards:\n  - Prompt: P\n    Response: R\n---\n",
+            True,
+            "",
+        ),
+    ]
+    for name, content, expected_ok, needle in cases:
+        p = tmp_path / name
+        p.write_text(content, encoding="utf-8")
+        res = validate_arete_file(p)
+        assert res.ok is expected_ok, (name, res.errors)
+        if needle:
+            assert any(needle in e["message"] for e in res.errors), (name, res.errors)

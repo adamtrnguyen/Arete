@@ -26,7 +26,7 @@ runner = CliRunner()
             "Valid arete file",
         ),
         (
-            "---\narete: true\ndeck: Default\ncards: [{Front: Q}]\n---\nContent",
+            "---\narete: true\ndeck: Default\ncards: [{Front: Q, Back: A}]\n---\nContent",
             0,
             "Valid arete file",
         ),

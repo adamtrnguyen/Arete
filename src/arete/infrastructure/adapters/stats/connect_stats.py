@@ -7,7 +7,7 @@ import json
 import logging
 from typing import Any
 
-from arete.domain.constants import FSRS_DIFFICULTY_SCALE
+from arete.domain.constants import CHUNK_SIZE, FSRS_DIFFICULTY_SCALE
 from arete.domain.stats.models import (
     CardStatsAggregate,
     FsrsMemoryState,
@@ -87,7 +87,6 @@ class ConnectStatsRepository(StatsRepository):
             return []
 
         stats_list: list[CardStatsAggregate] = []
-        CHUNK_SIZE = 500
 
         # A failed read raises: stats with a chunk missing would look complete.
         for i in range(0, len(nids), CHUNK_SIZE):
@@ -122,12 +121,12 @@ class ConnectStatsRepository(StatsRepository):
 
                 fsrs_state = fsrs_map.get(cid)
 
-                # Extract front from fields
+                # Extract front from fields ordered by Anki's field order
                 front = None
-                fields = info.get("fields", {})
+                fields = info.get("fields") or {}
                 if fields:
-                    first_key = list(fields.keys())[0]
-                    front = fields[first_key].get("value")
+                    first_key = min(fields, key=lambda n: (fields[n] or {}).get("order", 0))
+                    front = (fields[first_key] or {}).get("value")
 
                 stats_list.append(
                     CardStatsAggregate(
@@ -149,6 +148,36 @@ class ConnectStatsRepository(StatsRepository):
 
         return stats_list
 
+    @staticmethod
+    def _parse_review_entry(cid: int, rev: dict[str, Any]) -> tuple[int, ReviewEntry]:
+        """Parse one AnkiConnect revlog dict into `(ms_id, ReviewEntry)`."""
+        s_at_review = None
+        d_at_review = None
+        r_at_review = None
+        raw_data = rev.get("data")
+        if raw_data:
+            try:
+                parsed = json.loads(raw_data) if isinstance(raw_data, str) else raw_data
+                if isinstance(parsed, dict):
+                    s_at_review = parsed.get("s")
+                    d_at_review = parsed.get("d")
+                    r_at_review = parsed.get("r")
+            except Exception as e:
+                logger.debug(f"[stats] unreadable revlog data: {e}")
+        rev_id = int(rev.get("id") or 0)
+        entry = ReviewEntry(
+            card_id=cid,
+            review_time=rev_id // 1000,
+            rating=rev.get("ease", 0),
+            interval=revlog_interval_days(rev.get("ivl", 0)),
+            last_interval=revlog_interval_days(rev.get("lastIvl", 0)),
+            stability=s_at_review,
+            difficulty=d_at_review,
+            retrievability=r_at_review,
+            time_ms=int(rev.get("time") or 0),
+        )
+        return rev_id, entry
+
     async def get_review_history(self, cids: list[int]) -> list[ReviewEntry]:
         """Fetch review history via AnkiConnect's getReviewsOfCards action.
 
@@ -157,44 +186,23 @@ class ConnectStatsRepository(StatsRepository):
         if not cids:
             return []
 
-        entries: list[ReviewEntry] = []
+        unique_cids = list(dict.fromkeys(cids))
+        ordered_entries: list[tuple[int, ReviewEntry]] = []
 
-        # getReviewsOfCards returns { cardId: [reviews...] }
-        result = await self._invoke("getReviewsOfCards", cards=cids)
-        if result and isinstance(result, dict):
+        for i in range(0, len(unique_cids), CHUNK_SIZE):
+            chunk = unique_cids[i : i + CHUNK_SIZE]
+            # getReviewsOfCards returns { cardId: [reviews...] }
+            result = await self._invoke("getReviewsOfCards", cards=chunk)
+            if not result or not isinstance(result, dict):
+                continue
             for cid_str, reviews in result.items():
                 cid = int(cid_str)
                 for rev in reviews:
-                    s_at_review = None
-                    d_at_review = None
-                    r_at_review = None
-                    raw_data = rev.get("data")
-                    if raw_data:
-                        try:
-                            parsed = json.loads(raw_data) if isinstance(raw_data, str) else raw_data
-                            if isinstance(parsed, dict):
-                                s_at_review = parsed.get("s")
-                                d_at_review = parsed.get("d")
-                                r_at_review = parsed.get("r")
-                        except Exception as e:
-                            logger.debug(f"[stats] unreadable revlog data: {e}")
-                    entries.append(
-                        ReviewEntry(
-                            card_id=cid,
-                            review_time=rev.get("id", 0) // 1000,
-                            rating=rev.get("ease", 0),
-                            interval=revlog_interval_days(rev.get("ivl", 0)),
-                            last_interval=revlog_interval_days(rev.get("lastIvl", 0)),
-                            stability=s_at_review,
-                            difficulty=d_at_review,
-                            retrievability=r_at_review,
-                            time_ms=int(rev.get("time") or 0),
-                        )
-                    )
+                    ordered_entries.append(self._parse_review_entry(cid, rev))
 
-        # Sort by review time
-        entries.sort(key=lambda r: r.review_time)
-        return entries
+        # Sort by raw millisecond review ID (matches DirectStatsRepository ORDER BY id ASC)
+        ordered_entries.sort(key=lambda item: item[0])
+        return [entry for _, entry in ordered_entries]
 
     async def _fetch_home_decks(self, card_ids: list[int]) -> dict[int, str]:
         """Resolve each card's home deck via `getHomeDecks`, degrading to `{}` on failure."""
@@ -225,25 +233,17 @@ class ConnectStatsRepository(StatsRepository):
         pass for the deck's own settings.
         """
         names = list(dict.fromkeys(deck_names))
-        replies: list[Any] = []
-        if len(names) == 1:
-            replies = [await self._invoke("getDeckConfig", deck=names[0])]
-        elif names:
-            actions = [
-                {"action": "getDeckConfig", "version": 6, "params": {"deck": name}}
-                for name in names
-            ]
-            multi = await self._invoke("multi", actions=actions)
-            if not isinstance(multi, list) or len(multi) != len(names):
-                raise RuntimeError(f"multi answered {multi!r:.80} for {len(names)} decks")
-            for name, reply in zip(names, multi, strict=True):
-                error = reply.get("error") if isinstance(reply, dict) else "malformed reply"
-                if error:
-                    raise RuntimeError(f"AnkiConnect error reading deck {name!r}: {error}")
-                replies.append(reply["result"])
-
+        if not names:
+            return {}
+        replies = await self.client.send_writes(
+            [("getDeckConfig", {"deck": name}) for name in names], results=True
+        )
+        out: dict[str, dict] = {}
         # The add-on answers False for a deck Anki does not hold.
-        return {
-            deck_name: deck_params(deck_config) if deck_config else default_params()
-            for deck_name, deck_config in zip(names, replies, strict=True)
-        }
+        for deck_name, deck_config in zip(names, replies, strict=True):
+            if isinstance(deck_config, Exception):
+                raise RuntimeError(
+                    f"AnkiConnect error reading deck {deck_name!r}: {deck_config}"
+                ) from deck_config
+            out[deck_name] = deck_params(deck_config) if deck_config else default_params()
+        return out

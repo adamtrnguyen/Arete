@@ -73,7 +73,12 @@ class MathPreprocessor(Preprocessor):
 
                 fence = self._parse_fence(line)
                 if in_fence:
-                    if fence and fence[0] == fence_char and fence[1] >= fence_len:
+                    if (
+                        fence
+                        and fence[0] == fence_char
+                        and fence[1] >= fence_len
+                        and not fence[2].strip()
+                    ):
                         in_fence = False
                     out.append(line)
                     if line_end < n:
@@ -81,9 +86,9 @@ class MathPreprocessor(Preprocessor):
                     i = line_end + (1 if line_end < n else 0)
                     continue
 
-                if code_span_len == 0 and fence:
+                if code_span_len == 0 and fence and not (fence[0] == "`" and "`" in fence[2]):
                     in_fence = True
-                    fence_char, fence_len = fence
+                    fence_char, fence_len = fence[0], fence[1]
                     out.append(line)
                     if line_end < n:
                         out.append("\n")
@@ -158,7 +163,7 @@ class MathPreprocessor(Preprocessor):
         return "".join(out)
 
     @staticmethod
-    def _parse_fence(line: str) -> tuple[str, int] | None:
+    def _parse_fence(line: str) -> tuple[str, int, str] | None:
         idx = 0
         while idx < len(line) and idx < 3 and line[idx] == " ":
             idx += 1
@@ -177,7 +182,7 @@ class MathPreprocessor(Preprocessor):
         run_len = j - idx
         if run_len < 3:
             return None
-        return ch, run_len
+        return ch, run_len, line[j:]
 
     @staticmethod
     def _backtick_run_length(text: str, start: int) -> int:
@@ -235,9 +240,10 @@ class MathPreprocessor(Preprocessor):
         # and leak a placeholder onto the card ("$n$1").
         placeholder = f"MATHPLACEHOLDER{self.counter}END"
         self.counter += 1
-        # The math goes into HTML verbatim, so `<`/`>` must be escaped or the browser
-        # reads "\(a<b\) and \(c>" as a tag. MathJax reads the unescaped text.
-        content = content.replace("<", "&lt;").replace(">", "&gt;")
+        # The math goes into HTML verbatim, so `&`/`<`/`>` must be escaped or the browser
+        # reads HTML5 legacy entities (`a&not`) or tags (`\(a<b\) and \(c>`). MathJax reads
+        # the unescaped text.
+        content = content.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
         if is_display:
             self.placeholders[placeholder] = self.fmt_display.format(math=content)
         else:

@@ -88,3 +88,24 @@ async def test_the_summary_line_states_the_prune_outcome(
 
     [line] = [str(c) for c in summary_logger.info.call_args_list if "=== summary ===" in str(c)]
     assert f"prune: {said}" in line
+
+
+@pytest.mark.asyncio
+@patch("arete.composition.orchestrator.run_pipeline", new_callable=AsyncMock)
+@patch("arete.composition.orchestrator.setup_logging")
+async def test_memory_cache_db_skips_lockfile(
+    mock_setup_logging, mock_run_pipeline, sync_cfg, tmp_path, monkeypatch
+):
+    """cache_db=':memory:' runs without creating a ':memory:.lock' file in CWD."""
+    from arete.composition.orchestrator import execute_sync
+
+    work = tmp_path / "cwd"
+    work.mkdir()
+    monkeypatch.chdir(work)
+    sync_cfg.cache_db = ":memory:"
+    mock_setup_logging.return_value = (MagicMock(), tmp_path / "log.txt", "run-mem")
+    mock_run_pipeline.return_value = RunStats(0, 0, 0)
+
+    stats = await execute_sync(sync_cfg)
+    assert stats.total_errors == 0
+    assert not (work / ":memory:.lock").exists()

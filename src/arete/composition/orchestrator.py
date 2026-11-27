@@ -59,10 +59,11 @@ async def execute_sync(
     require_vault_root(config)
     cache_file = cache_path(Path(config.cache_db) if config.cache_db else None)
     with ExitStack() as held:
-        try:
-            held.enter_context(exclusive_lock(lock_path_for(cache_file)))
-        except LockHeld as e:
-            raise SyncLocked(e.path) from e
+        if str(cache_file) != ":memory:":
+            try:
+                held.enter_context(exclusive_lock(lock_path_for(cache_file)))
+            except LockHeld as e:
+                raise SyncLocked(e.path) from e
         return await _execute_locked(config, cache_file, confirm_prune, prompt)
 
 

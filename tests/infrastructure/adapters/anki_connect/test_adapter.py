@@ -374,7 +374,17 @@ async def test_create_topo_deck_handles_plugin_error(adapter_localhost):
 @respx.mock
 async def test_get_card_ids_preserves_order(adapter_localhost):
     respx.post("http://localhost:8765").mock(
-        return_value=httpx.Response(200, json={"result": [[300], [100], [200]], "error": None})
+        return_value=httpx.Response(
+            200,
+            json={
+                "result": [
+                    {"result": [300], "error": None},
+                    {"result": [100], "error": None},
+                    {"result": [200], "error": None},
+                ],
+                "error": None,
+            },
+        )
     )
 
     result = await adapter_localhost.get_card_ids_for_arete_ids(["arete_C", "arete_A", "arete_B"])
@@ -385,7 +395,16 @@ async def test_get_card_ids_preserves_order(adapter_localhost):
 @respx.mock
 async def test_get_card_ids_deduplicates(adapter_localhost):
     respx.post("http://localhost:8765").mock(
-        return_value=httpx.Response(200, json={"result": [[100, 200], [200, 300]], "error": None})
+        return_value=httpx.Response(
+            200,
+            json={
+                "result": [
+                    {"result": [100, 200], "error": None},
+                    {"result": [200, 300], "error": None},
+                ],
+                "error": None,
+            },
+        )
     )
 
     result = await adapter_localhost.get_card_ids_for_arete_ids(["arete_A", "arete_B"])
@@ -583,13 +602,74 @@ async def test_get_card_ids_sends_version_6_in_multi_subactions(adapter_localhos
     route = respx.post("http://localhost:8765").mock(
         return_value=httpx.Response(
             200,
-            json={"result": [{"result": [101], "error": None}], "error": None},
+            json={
+                "result": [
+                    {"result": [101], "error": None},
+                    {"result": [202], "error": None},
+                ],
+                "error": None,
+            },
         )
+    )
+    cids = await adapter_localhost.get_card_ids_for_arete_ids(
+        ["arete_01J9Z8Y7X6W5V4T3S2R1Q0P9N1", "arete_01J9Z8Y7X6W5V4T3S2R1Q0P9N2"]
+    )
+    assert cids == [101, 202]
+    body = json.loads(route.calls[0].request.content)
+    assert body["action"] == "multi"
+    assert body["params"]["actions"][0]["version"] == 6
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_get_card_ids_single_id_uses_direct_find_cards(adapter_localhost):
+    route = respx.post("http://localhost:8765").mock(
+        return_value=httpx.Response(200, json={"result": [101], "error": None})
     )
     cids = await adapter_localhost.get_card_ids_for_arete_ids(["arete_01J9Z8Y7X6W5V4T3S2R1Q0P9N1"])
     assert cids == [101]
     body = json.loads(route.calls[0].request.content)
-    assert body["params"]["actions"][0]["version"] == 6
+    assert body["action"] == "findCards"
+
+
+@pytest.mark.asyncio
+async def test_curl_bridge_maps_exit_codes_and_replaces_non_utf8_stderr():
+    """Exit 7 maps to httpx.ConnectError, exit 28 to TimeoutError, and invalid UTF-8 survives."""
+    adapter = AnkiConnectAdapter(url="http://127.0.0.1:8765")
+    adapter.client.use_windows_curl = True
+
+    proc_refused = MagicMock(
+        returncode=7, communicate=AsyncMock(return_value=(b"", b"refused \xff\xfe"))
+    )
+    with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=proc_refused)):
+        with pytest.raises(httpx.ConnectError, match="refused"):
+            await adapter.client._http_request({"action": "version", "version": 6})
+
+    proc_timeout = MagicMock(
+        returncode=28, communicate=AsyncMock(return_value=(b"", b"timed out \x80"))
+    )
+    with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=proc_timeout)):
+        with pytest.raises(TimeoutError, match="timed out"):
+            await adapter.client._http_request({"action": "version", "version": 6})
+
+    # Exit 7 triggers _NOT_SENT retry in invoke()
+    attempts = 0
+
+    async def flaky_exec(*_args, **_kwargs):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            return proc_refused
+        return MagicMock(
+            returncode=0, communicate=AsyncMock(return_value=(b'{"result": 6, "error": null}', b""))
+        )
+
+    with (
+        patch("asyncio.create_subprocess_exec", side_effect=flaky_exec),
+        patch("asyncio.sleep", AsyncMock()),
+    ):
+        assert await adapter.client.invoke("version") == 6
+    assert attempts == 2
 
 
 @pytest.mark.asyncio

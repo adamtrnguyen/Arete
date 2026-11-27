@@ -406,6 +406,29 @@ class TestFormatVault:
         # Either way the file should still be valid YAML
         assert after.startswith("---\n")
 
+    def test_format_vault_uses_fresh_disk_parse_not_stale_cache(self, temp_vault, mock_cache):
+        """format_vault must re-parse from disk rather than writing back stale cached metadata."""
+        md = temp_vault / "fresh.md"
+        md.write_text(
+            '---\narete: true\ndeck: FreshDeck\ncards:\n  - Front: "Fresh Q"\n    Back: "Line1\\nLine2"\n---\nBody',
+            encoding="utf-8",
+        )
+        # Simulate a stale cache entry with an old deck and old question.
+        mock_cache.get_file_meta_by_stat.return_value = {
+            "arete": True,
+            "deck": "StaleDeck",
+            "cards": [{"Front": "Stale Q", "Back": "Stale A"}],
+        }
+
+        service = VaultService(temp_vault, mock_cache)
+        service.format_vault(dry_run=False)
+
+        after = md.read_text(encoding="utf-8")
+        assert "FreshDeck" in after
+        assert "Fresh Q" in after
+        assert "StaleDeck" not in after
+        assert "Stale Q" not in after
+
 
 # ---------------------------------------------------------------------------
 # apply_updates() tests
@@ -603,3 +626,24 @@ class TestCacheBehavior:
         service = VaultService(temp_vault, mock_cache)
         assert list(service.scan_for_compatible_files()) == []
         assert {p for p, _ in service.unreadable} == {scalar, seq}
+
+    def test_record_synced_skips_caching_when_file_changes_mid_read(self, temp_vault, mock_cache):
+        """If a file's stat changes while reading it, record_synced must not cache stale metadata."""
+        md = temp_vault / "racing.md"
+        md.write_text(
+            "---\narete: true\ndeck: D\ncards:\n  - Front: Q\n    Back: A\n---\n",
+            encoding="utf-8",
+        )
+        real_read = md.read_text
+
+        def racing_read(*args, **kwargs):
+            text = real_read(*args, **kwargs)
+            # Mutate the file size/content mid-read so post-read stat differs.
+            md.write_text(text + "\nextra bytes\n", encoding="utf-8")
+            return text
+
+        service = VaultService(temp_vault, mock_cache)
+        with patch("pathlib.Path.read_text", side_effect=racing_read):
+            service.record_synced([md])
+
+        mock_cache.set_file_meta.assert_not_called()

@@ -40,8 +40,8 @@ class AnkiRepository:
         if not prefs_db.exists():
             raise FileNotFoundError(f"Anki prefs not found at {prefs_db}")
 
-        # Otherwise read last loaded profile
-        conn = sqlite3.connect(prefs_db)
+        # Otherwise read last loaded profile (read-only so we never contend on write locks)
+        conn = sqlite3.connect(f"{prefs_db.resolve().as_uri()}?mode=ro", uri=True)
         try:
             res = conn.execute("select cast(data as blob) from profiles where name = '_global'")
             data = res.fetchone()
@@ -88,14 +88,15 @@ class AnkiRepository:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Exit context manager and close the Anki collection."""
-        if self.col:
-            self.col.close()
+        try:
+            if self.col:
+                self.col.close()
+        finally:
             self.col = None
-
-        # Restore CWD
-        if self._saved_cwd is not None:
-            os.chdir(self._saved_cwd)
-            self._saved_cwd = None
+            # Restore CWD even if col.close() raised
+            if self._saved_cwd is not None:
+                os.chdir(self._saved_cwd)
+                self._saved_cwd = None
 
     def find_notes(self, query: str) -> list[int]:
         """Return list of note IDs matching the query."""

@@ -137,7 +137,7 @@ async def test_card_ids_raise_when_the_multi_request_itself_fails():
     fake = Fake()
     fake.fail = lambda action, _p: "locked" if action == "multi" else None
     with pytest.raises(Exception, match="locked"):
-        await _adapter(fake).get_card_ids_for_arete_ids(["arete_a"])
+        await _adapter(fake).get_card_ids_for_arete_ids(["arete_a", "arete_b"])
 
 
 # --- filtered deck ---

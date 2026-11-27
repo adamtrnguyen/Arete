@@ -226,3 +226,49 @@ def test_transform_wikilinks_skips_inline_and_fenced_code():
     assert "``x[[1]]``" in out
     assert "matrix = [[1, 2], [3, 4]]" in out
     assert "[[NotALink]]" in out
+
+
+def test_media_target_nfc_normalizes_nfd_filename(tmp_path):
+    import unicodedata
+
+    dest = tmp_path / "dest"
+    dest.mkdir()
+    nfd_name = unicodedata.normalize("NFD", "Cramér.png")
+    nfc_name = unicodedata.normalize("NFC", "Cramér.png")
+    src = tmp_path / nfd_name
+    src.write_bytes(b"png-bytes")
+
+    target_name, already = _media_target(dest, src)
+    assert target_name == nfc_name
+    assert unicodedata.is_normalized("NFC", target_name)
+    assert not already
+
+
+def test_transform_images_skips_code_and_handles_markdown_titles(tmp_path, logger):
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    md_path = vault / "note.md"
+    anki_media = tmp_path / "anki_media"
+    (vault / "real.png").write_bytes(b"real-img")
+    (vault / "titled.png").write_bytes(b"titled-img")
+
+    src = (
+        "```![[real.png]]```\n"
+        "Inline `![[real.png]]` and `![a](titled.png)`.\n"
+        "```markdown\n"
+        "![[real.png]]\n"
+        "![x](titled.png)\n"
+        "```\n"
+        'Visible: ![[real.png]] and ![cap](titled.png "My Title")'
+    )
+    out = transform_images_in_text(src, md_path, vault, anki_media, logger)
+
+    # Code blocks and inline spans (including 3-backtick span at line start) stay untouched
+    assert "```![[real.png]]```" in out
+    assert "`![[real.png]]`" in out
+    assert "`![a](titled.png)`" in out
+    assert "```markdown\n![[real.png]]\n![x](titled.png)\n```" in out
+    # Outside code, both images are copied and optional title is preserved
+    assert 'Visible: ![](real.png) and ![cap](titled.png "My Title")' in out
+    assert (anki_media / "real.png").exists()
+    assert (anki_media / "titled.png").exists()

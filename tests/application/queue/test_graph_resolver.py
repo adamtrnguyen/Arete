@@ -958,3 +958,32 @@ def test_build_graph_records_yaml_error_and_handles_case_insensitive_ids_and_dec
         "arete_01J9Z8Y7X6W5V4T3S2R1Q0P9N1",
         "arete_01J9Z8Y7X6W5V4T3S2R1Q0P9N2",
     }
+
+
+def test_arete_prefixed_filename_ref_resolves_and_deckless_card_defaults_to_default(tmp_path: Path):
+    """A note named `arete_intro.md` resolves by filename, and a deckless card belongs to Default."""
+    (tmp_path / "arete_intro.md").write_text(
+        "---\narete: true\ncards:\n"
+        "  - id: arete_01J9Z8Y7X6W5V4T3S2R1Q0P9N1\n"
+        "    Front: Intro\n"
+        "    Back: A\n"
+        "---\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "advanced.md").write_text(
+        "---\narete: true\ndeck: Math\ncards:\n"
+        "  - id: arete_01J9Z8Y7X6W5V4T3S2R1Q0P9N2\n"
+        "    Front: Adv\n"
+        "    Back: B\n"
+        "    deps:\n"
+        "      requires: [arete_intro]\n"
+        "---\n",
+        encoding="utf-8",
+    )
+    graph = build_graph(tmp_path)
+    assert graph.get_prerequisites("arete_01J9Z8Y7X6W5V4T3S2R1Q0P9N2") == [
+        "arete_01J9Z8Y7X6W5V4T3S2R1Q0P9N1"
+    ]
+    assert not graph.unresolved_refs.get("arete_01J9Z8Y7X6W5V4T3S2R1Q0P9N2")
+    default_only = filter_graph_by_deck(graph, "Default")
+    assert set(default_only.nodes) == {"arete_01J9Z8Y7X6W5V4T3S2R1Q0P9N1"}

@@ -373,7 +373,7 @@ class AnkiConnectAdapter(AnkiBridge):
             try:
                 infos.extend(await self._invoke("notesInfo", notes=nids[i : i + CHUNK_SIZE]))
             except Exception as e:
-                self.logger.warning(f"Healing notesInfo failed: {e}")
+                self.logger.warning(f"[anki] notesInfo chunk failed: {e}")
         return infos
 
     async def _invoke(self, action: str, **params) -> Any:
@@ -498,29 +498,16 @@ class AnkiConnectAdapter(AnkiBridge):
         CHUNK = 50
         for start in range(0, len(arete_ids), CHUNK):
             chunk = arete_ids[start : start + CHUNK]
-            actions = [
-                {
-                    "action": "findCards",
-                    "version": 6,
-                    "params": {"query": search_term("tag", aid)},
-                }
-                for aid in chunk
-            ]
-            results = await self._invoke("multi", actions=actions)
-            for aid, reply in zip(chunk, results, strict=True):
-                if isinstance(reply, dict) and set(reply) == {"result", "error"}:
-                    if reply["error"] is not None:
-                        err = reply["error"]
-                        raise RuntimeError(f"looking up the cards of {aid} failed: {err}")
-                    cids = reply["result"]
-                elif isinstance(reply, list):
-                    cids = reply
-                else:
-                    error = reply.get("error") if isinstance(reply, dict) else reply
-                    raise RuntimeError(f"looking up the cards of {aid} failed: {error}")
-                if not isinstance(cids, list):
-                    raise RuntimeError(f"looking up the cards of {aid} failed: {cids}")
-                for cid in cids:
+            replies = await self._send_writes(
+                [("findCards", {"query": search_term("tag", aid)}) for aid in chunk],
+                results=True,
+            )
+            for aid, reply in zip(chunk, replies, strict=True):
+                if isinstance(reply, Exception):
+                    raise RuntimeError(f"looking up the cards of {aid} failed: {reply}") from reply
+                if not isinstance(reply, list):
+                    raise RuntimeError(f"looking up the cards of {aid} failed: {reply}")
+                for cid in reply:
                     if cid not in seen:
                         seen.add(cid)
                         cids_ordered.append(cid)

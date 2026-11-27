@@ -95,9 +95,10 @@ class FakeAnki:
     async def delete_notes(self, ids):
         for i in ids:
             self.notes.pop(i, None)
+        return True
 
     async def delete_decks(self, names):
-        pass
+        return True
 
 
 # Well-formed Arete ids (`arete_` + 26 ULID characters): prune acts only on these.

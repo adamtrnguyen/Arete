@@ -201,11 +201,14 @@ class VaultService:
             return
         for md_path in paths:
             try:
+                st = md_path.stat()
                 text = md_path.read_text(encoding="utf-8")
                 meta, _ = self.parse(md_path, text)
                 if not meta or "__yaml_error__" in meta:
                     continue
-                st = md_path.stat()
+                st_after = md_path.stat()
+                if (st_after.st_mtime, st_after.st_size) != (st.st_mtime, st.st_size):
+                    continue
                 file_hash = hashlib.md5(text.encode("utf-8")).hexdigest()
                 self.cache.set_file_meta(
                     md_path, file_hash, meta, mtime=st.st_mtime, size=st.st_size
@@ -220,13 +223,15 @@ class VaultService:
         Return the number of files updated.
         """
         count = 0
-        for md_path, meta, _is_fresh in self.scan_for_compatible_files():
+        for md_path, _cached_meta, _is_fresh in self.scan_for_compatible_files():
             try:
                 text, newline = read_text_and_newline(md_path)
-                _meta, body = self.parse(md_path, text)
+                fresh_meta, body = self.parse(md_path, text)
+                if not fresh_meta or "__yaml_error__" in fresh_meta:
+                    continue
 
                 # Rebuild using our dumper (which now uses |-)
-                new_text = rebuild_markdown_with_frontmatter(meta, body)
+                new_text = rebuild_markdown_with_frontmatter(fresh_meta, body)
 
                 if new_text != text:
                     if dry_run:

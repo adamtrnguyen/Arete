@@ -187,6 +187,13 @@ def sync(
     ] = False,
 ):
     """[bold green]Sync[/bold green] your Obsidian notes to Anki."""
+    if path is not None and not path.expanduser().exists():
+        msg = f"Path not found: {path}"
+        typer.secho(f"Error: {msg}", fg="red", err=True)
+        if json_output:
+            typer.echo(json.dumps(_sync_json(None, msg)))
+        raise typer.Exit(1)
+
     config = _resolve_with_overrides(
         root_input=path,
         backend=backend,
@@ -323,6 +330,9 @@ def _resolve_graph_root(config: AppConfig) -> Path:
     resolves to its enclosing vault root, exiting 1 cleanly when no vault is found.
     """
     assert config.root_input is not None
+    if not config.root_input.exists():
+        typer.secho(f"Error: path not found: {config.root_input}", fg="red", err=True)
+        raise typer.Exit(1)
     if config.root_input.is_file():
         try:
             return require_vault_root(config)

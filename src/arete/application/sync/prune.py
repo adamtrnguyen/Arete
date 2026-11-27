@@ -243,11 +243,16 @@ async def _delete(report: PruneReport, bridge: SyncPort, logger: logging.Logger)
     if report.notes:
         logger.info(f"[prune] Deleting {len(report.notes)} notes...")
         try:
-            await bridge.delete_notes([n.nid for n in report.notes])
+            deleted = await bridge.delete_notes([n.nid for n in report.notes])
         except Exception as e:
             logger.error(f"[prune] Failed to delete notes: {e}")
             report.status = "failed"
             report.message = f"Failed to delete notes: {e}. No deck was deleted."
+            return report
+        if not deleted:
+            logger.error("[prune] Anki refused to delete notes.")
+            report.status = "failed"
+            report.message = "Anki refused to delete notes. No deck was deleted."
             return report
 
     if report.decks:
@@ -260,11 +265,16 @@ async def _delete(report: PruneReport, bridge: SyncPort, logger: logging.Logger)
         if empty:
             logger.info(f"[prune] Deleting {len(empty)} decks...")
             try:
-                await bridge.delete_decks(empty)
+                deleted = await bridge.delete_decks(empty)
             except Exception as e:
                 logger.error(f"[prune] Failed to delete decks: {e}")
                 report.status = "failed"
                 report.message = f"Failed to delete decks: {e}"
+                return report
+            if not deleted:
+                logger.error("[prune] Anki refused to delete decks.")
+                report.status = "failed"
+                report.message = "Anki refused to delete decks."
                 return report
 
     report.status = "deleted"

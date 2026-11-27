@@ -275,7 +275,12 @@ class AnkiConnectClient:
                 await proc.wait()
                 raise
             if proc.returncode != 0:
-                raise Exception(f"curl.exe failed: {stderr.decode('utf-8')}")
+                err_text = stderr.decode("utf-8", errors="replace").strip()
+                if proc.returncode == 7:
+                    raise httpx.ConnectError(f"curl.exe failed to connect: {err_text}")
+                if proc.returncode == 28:
+                    raise TimeoutError(f"curl.exe timed out: {err_text}")
+                raise Exception(f"curl.exe failed: {err_text}")
             return json.loads(stdout.decode("utf-8"))
         client = self._ensure_client()
         if timeout is not None:
