@@ -35,7 +35,7 @@ WSL users often face networking hurdles because WSL 2 uses a virtualized network
 When all else fails, check the logs. They contain detailed stack traces and internal logic transitions.
 
 ```bash
-uv run arete logs
+arete logs   # or `uv run arete logs` inside a checkout
 ```
 
 This will open the directory containing your `run_*.log` files. Attach the latest log to any GitHub issue you open.

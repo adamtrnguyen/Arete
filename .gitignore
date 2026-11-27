@@ -74,3 +74,7 @@ CLAUDE.local.md
 # Obsidian plugin: per-user settings and local build output
 obsidian-plugin/data.json
 obsidian-plugin/build_log.txt
+
+# Anki add-on runtime state (created when symlinked into Anki)
+arete_ankiconnect/meta.json
+arete_ankiconnect/user_files/

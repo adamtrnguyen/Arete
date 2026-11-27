@@ -24,7 +24,7 @@ If applicable, add screenshots to help explain your problem.
 ### Environment
 - **OS**: [e.g. macOS 14.2]
 - **Python Version**: [e.g. 3.12]
-- **Arete Version**: [e.g. 3.0.1]
+- **Arete Version**: [e.g. 4.1.0]
 
 ### Logs
 Paste the relevant part of the latest `run_*.log` (`arete logs` opens the folder) or the Obsidian console.

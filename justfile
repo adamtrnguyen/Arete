@@ -13,7 +13,7 @@ PLUGIN     := "obsidian-plugin"
 RELEASE    := "release_artifacts"
 
 # pytest-xdist workers for the container-free suites. 6 is the fastest inside `just qa`
-# (12 checks share the machine); override with ARETE_TEST_WORKERS.
+# (14 checks share the machine); override with ARETE_TEST_WORKERS.
 WORKERS    := env("ARETE_TEST_WORKERS", "6")
 
 # Every suite that needs no container. `test` and `coverage` both read this, so the
@@ -153,7 +153,7 @@ coverage-obsidian:
 @build-anki:
     rm -rf {{RELEASE}}
     mkdir -p {{RELEASE}}
-    cd arete_ankiconnect && zip -r ../{{RELEASE}}/arete_ankiconnect.zip . -x "__pycache__/*" "*/__pycache__/*" "*.pyc" "*.DS_Store" "meta.json" "startup_error.log"
+    cd arete_ankiconnect && zip -r ../{{RELEASE}}/arete_ankiconnect.zip . -x "__pycache__/*" "*/__pycache__/*" "*.pyc" "*.pyo" "*.DS_Store" "meta.json" "*.log" "user_files/*"
     cp {{RELEASE}}/arete_ankiconnect.zip {{RELEASE}}/arete_ankiconnect.ankiaddon
 
 # Everything a release must satisfy, without changing a single file: the qa gate
@@ -218,8 +218,8 @@ qa:
 @clean:
     @echo "🧹 Cleaning project..."
     rm -rf dist/ {{RELEASE}}/
-    find . -type d -name "__pycache__" -exec rm -rf {} +
-    rm -rf .pytest_cache/ .ruff_cache/ .mypy_cache/
+    find {{SRC}} {{TESTS}} {{ADDON}} scripts -type d -name "__pycache__" -exec rm -rf {} +
+    rm -rf .pytest_cache/ .ruff_cache/ .import_linter_cache/ .hypothesis/
     @echo "✨ Cleaned."
 
 # --- Infrastructure ---

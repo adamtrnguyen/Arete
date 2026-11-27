@@ -15,12 +15,12 @@ nav:
   - Writing cards: format.md
   - CLI: CLI.md
   - Obsidian plugin: PLUGIN.md
+  - Anki add-on: ANKI_PLUGIN.md
   - Troubleshooting: TROUBLESHOOTING.md
 
 exclude_docs: |
   ARCHITECTURE.md
   CONTRIBUTING.md
-  ANKI_PLUGIN.md
   publishing.md
   history/
 

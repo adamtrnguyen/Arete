@@ -2,25 +2,15 @@
 
 This guide is for maintainers of the **Arete** project.
 
-## Part 1: PyPI (The Python Package)
+## Part 1: Python Package Distribution
 
-### 1. Check if it exists
-Go to: [https://pypi.org/project/arete/](https://pypi.org/project/arete/)
-*If you see a 404, it is NOT published yet.*
+End users install Arete directly from GitHub via `uv`:
 
-### 2. How to Publish
-You need to upload the artifacts built in `dist/`.
+```bash
+uv tool install git+https://github.com/adamtrnguyen/Arete
+```
 
-1.  **Create Account**: [Register on PyPI](https://pypi.org/account/register/).
-2.  **Get Token**: [Account Settings](https://pypi.org/manage/account/) -> API Tokens -> Add API Token (Scope: Entire Account).
-3.  **Run Command**:
-    ```bash
-    uv publish
-    ```
-    *   **Username**: `__token__`
-    *   **Password**: `pypi-AgEIpy...` (Your full token)
-
-Once successful, `pip install arete` will work for everyone.
+The GitHub Release workflow also builds and attaches the wheel (`dist/*.whl`) and sdist (`dist/*.tar.gz`). Publishing to PyPI is optional and manual (`uv publish` with a PyPI API token); automated PyPI upload is not enabled.
 
 ---
 
@@ -28,12 +18,11 @@ Once successful, `pip install arete` will work for everyone.
 
 The project uses GitHub Actions to automate testing and releases.
 
--   **CI Workflow** (`ci.yml`): Runs on every PR and push to `main`. Unit tests with coverage on Linux, macOS and Windows; lint, types and import contracts; plugin lint, tests and build; integration tests against Dockerized Anki.
--   **Release Workflow**: Triggered when a new GitHub Tag is pushed (e.g., `v4.0.0`).
-    -   Verifies the tag matches `pyproject.toml`.
-    -   Automatically builds the Python `dist/` artifacts.
-    -   Automatically builds the Obsidian Plugin (`main.js`, `manifest.json`, `styles.css`).
-    -   Attaches all binaries to the GitHub Release.
+-   **CI Workflow** (`ci.yml`): Runs on every PR and push to `main`. Unit tests with coverage on Linux, macOS and Windows; lint, format, types, import contracts, dead code, generated docs, and version agreement; plugin lint, format, import rules, `minAppVersion`, strict type check, tests with coverage, and build (Linux + Windows); integration tests against Dockerized Anki.
+-   **Release Workflow** (`release.yml`): Triggered when a `v*` GitHub Tag is pushed (e.g., `v4.1.0`).
+    -   Verifies the tag (minus `v`) matches `pyproject.toml`.
+    -   Runs `uv run just release` (the full `just qa` gate, Python `dist/` sdist/wheel, Obsidian plugin `main.js`/`manifest.json`/`styles.css`, Anki add-on `arete_ankiconnect.zip` + `arete_ankiconnect.ankiaddon`, and wheel CLI smoke test via `verify-wheel`).
+    -   Attaches all release artifacts to the GitHub Release.
 
 ---
 
@@ -42,8 +31,8 @@ The project uses GitHub Actions to automate testing and releases.
 To get your plugin into the official list inside Obsidian, you must submit a Pull Request to the Obsidian team.
 
 ### Prerequisites
-1.  **GitHub Release**: You must have a published Release with `main.js`, `manifest.json`, and `styles.css` attached.
-2.  **Repo Structure**: `manifest.json` must be at the root of the repo (or root of released files). *Note: We release from `obsidian-plugin/`, but the build process handles the file placement.*
+1.  **GitHub Release**: You must have a published Release with `main.js`, `manifest.json`, and `styles.css` attached. Note that official Obsidian Community Plugins expect the GitHub Release tag to equal `manifest.json`'s `version` without a leading `v` (e.g., `4.1.0`), whereas Arete currently tags `v*` (e.g., `v4.1.0`, which works with BRAT).
+2.  **Repo Structure**: `manifest.json` must be at the root of the repo (kept in sync with `obsidian-plugin/manifest.json` by `scripts/sync_versions.py`). Before submitting to `obsidian-releases`, also mirror `obsidian-plugin/versions.json` at the repo root.
 
 ### Submission Steps
 1.  **Fork** the [obsidian-releases](https://github.com/obsidianmd/obsidian-releases) repository.
@@ -62,7 +51,7 @@ To get your plugin into the official list inside Obsidian, you must submit a Pul
 
 ---
 
-## Part 4: Versioning Strategy
+## Part 4: Versioning Strategy & Release Checklist
 
 We follow **Semantic Versioning (SemVer)**: `MAJOR.MINOR.PATCH`.
 
@@ -70,7 +59,17 @@ We follow **Semantic Versioning (SemVer)**: `MAJOR.MINOR.PATCH`.
 -   **MINOR**: New features (e.g., support for a new Anki field type).
 -   **PATCH**: Bug fixes and documentation updates.
 
-Bump `version` in `pyproject.toml` only, then run `just sync-versions` to write it into every manifest before tagging; `just qa` and `just release` fail when they disagree.
+Before tagging a release (e.g., `v4.1.0`):
+
+1.  Add the release section to `CHANGELOG.md`.
+2.  Bump `version` in `pyproject.toml` only.
+3.  Run `just sync-versions` to write the version into `manifest.json`, `obsidian-plugin/manifest.json`, `obsidian-plugin/package.json`, `obsidian-plugin/versions.json`, `arete_ankiconnect/manifest.json`, and refresh `uv.lock`.
+4.  Sync `obsidian-plugin/package-lock.json`:
+    ```bash
+    npm --prefix obsidian-plugin install --package-lock-only --legacy-peer-deps
+    ```
+5.  Run `just qa` and `just test-integration` (`just qa` and `just release` fail if any manifest version disagrees).
+6.  Commit, push `main`, tag `v<version>`, and push the tag.
 
 ---
 
@@ -78,12 +77,11 @@ Bump `version` in `pyproject.toml` only, then run `just sync-versions` to write 
 
 Publishing to AnkiWeb is currently a **manual process**.
 
-1.  **Download the Artifact**: Go to the GitHub Release you just created (e.g., `v2.0.0`) and download `arete_ankiconnect.zip`.
-2.  **Rename**: Rename the file to `arete_ankiconnect.ankiaddon` if it isn't already (GitHub Actions artifact downloads sometimes strip extensions).
-3.  **Upload**:
+1.  **Download the Artifact**: Go to the GitHub Release you just created (e.g., `v4.1.0`) and download `arete_ankiconnect.ankiaddon` directly.
+2.  **Upload**:
     *   Go to [AnkiWeb Shared Add-ons](https://ankiweb.net/shared/addons/).
     *   Click **Upload**.
-    *   Select the file.
+    *   Select `arete_ankiconnect.ankiaddon`.
     *   Update the description if necessary.
 
 *(Note: Automated publishing is disabled due to the lack of a reliable public uploading tool.)*
@@ -95,7 +93,7 @@ Publishing to AnkiWeb is currently a **manual process**.
 The **BRAT** (Beta Reviewers Auto-update Tool) plugin allows users to install Obsidian plugins directly from GitHub before they are officially published.
 
 ### How it works
-BRAT looks for the released artifacts (`main.js`, `manifest.json`, `styles.css`) in your **GitHub Releases**. Since our CI/CD pipeline already attaches these files to every release, **Arete is native-BRAT compatible out of the box.**
+BRAT looks for the released artifacts (`main.js`, `manifest.json`, `styles.css`) on the **latest GitHub Release** (`/releases/latest`). Since `release.yml` attaches these exact files to every `v*` release, **Arete is BRAT-compatible out of the box.**
 
 ### Instructions for Users
 To test the pre-release version of Arete:
@@ -105,5 +103,5 @@ To test the pre-release version of Arete:
 4.  BRAT will download the latest release and keep it auto-updated.
 
 ### Important for Maintainers
--   Ensure the `manifest.json` version matches the GitHub Release tag.
--   Do **not** change the filenames of the attached binaries (`main.js`, etc.). BRAT expects these exact names.
+-   Ensure the `manifest.json` version matches the GitHub Release tag (without the leading `v` for `v*` tags used by `release.yml`; official Community Plugin submission requires no `v` prefix).
+-   Do **not** change the filenames of the attached binaries (`main.js`, `manifest.json`, `styles.css`). BRAT expects these exact names.

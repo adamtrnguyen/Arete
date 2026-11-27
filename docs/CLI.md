@@ -4,7 +4,14 @@ Commands, options and configuration for the `arete` command-line tool. `arete <c
 
 ## Installation
 
-`arete` uses [uv](https://github.com/astral-sh/uv) for dependencies and isolated environments.
+`arete` uses [uv](https://github.com/astral-sh/uv) for isolated CLI installs and development environments:
+
+```bash
+uv tool install git+https://github.com/adamtrnguyen/Arete
+arete init
+```
+
+From a local checkout (prefix commands with `uv run`):
 
 ```bash
 git clone https://github.com/adamtrnguyen/Arete
@@ -114,26 +121,26 @@ Arete supports dependency-aware study queues. By tagging notes with prerequisite
 
 ```bash
 # Build queue for a specific deck (due cards only)
-uv run arete queue --deck "Research Methodology"
+arete queue --deck "Research Methodology"
 
 # Include new/unreviewed cards
-uv run arete queue --deck "Research Methodology" --include-new
+arete queue --deck "Research Methodology" --include-new
 
 # Pull in prerequisites from other decks
-uv run arete queue --deck "Research Methodology" --include-new --cross-deck
+arete queue --deck "Research Methodology" --include-new --cross-deck
 
 # Preview without creating deck
-uv run arete queue --dry-run
+arete queue --dry-run
 
 # Print the preview as JSON: deck, due_count, total_with_prereqs, queue
 # (each queue item: position, id, title, file as a vault-relative path with "/", is_prereq)
-uv run arete queue PATH --dry-run --json
+arete queue PATH --dry-run --json
 
 # All due cards across all decks
-uv run arete queue
+arete queue
 
 # Use dynamic ready-frontier ordering
-uv run arete queue --algo dynamic
+arete queue --algo dynamic
 ```
 
 ## Configuration (`~/.config/arete/config.toml`)

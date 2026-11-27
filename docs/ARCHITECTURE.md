@@ -154,7 +154,7 @@ Notes go through the Anki backend, but **media is copied on the filesystem**. `a
 The logic holds no state of its own. The state lives in Obsidian (text) and Anki (reviews). `arete` is the bridge. Ids are written back to Obsidian so it holds the link to the card.
 
 ### 3. WSL compatibility
-`anki_connect.py` detects WSL.
+`anki_connect_client.py` detects WSL.
 *   **Problem**: WSL's `localhost` is not Windows' `localhost`.
 *   **Solution**: it uses `curl.exe` (a Windows binary reachable from Linux) as a bridge to Anki on the host. Without `curl.exe` it rewrites the URL with the host address from `/etc/resolv.conf`.
 

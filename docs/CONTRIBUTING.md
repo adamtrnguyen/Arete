@@ -25,7 +25,9 @@ the fixers are `just fix`.
 | Generated docs | `just check-docs` |
 | Version agreement | `just check-versions` |
 | Plugin lint | `just lint-obsidian` |
+| Plugin format | `just fmt-check-obsidian` |
 | Plugin import rules | `just lint-deps-obsidian` |
+| Plugin min app version | `just min-app-version-obsidian` |
 | Plugin types | `just types-obsidian` |
 | Plugin tests | `just test-obsidian` |
 
@@ -41,9 +43,15 @@ just test-integration
 ## Setup
 
 ```bash
+just install
+```
+
+Or step by step:
+
+```bash
 uv sync
 uvx pre-commit install   # pre-commit fixers, `just qa` on pre-push
-cd obsidian-plugin && npm install
+cd obsidian-plugin && npm install --legacy-peer-deps
 ```
 
 ## Individual commands
@@ -76,10 +84,9 @@ Python tests run in parallel, so a test must not share state with another: no fi
 fixed path outside `tmp_path`, no environment change outside `monkeypatch`. The two guards that
 check the real `~/.config/arete` and the real Anki collection run once in the controller, not
 per worker. Hypothesis runs without a wall-clock deadline (`tests/conftest.py`). Plugin tests
-are transpile-only (`obsidian-plugin/tsconfig.jest.json`); `just types-obsidian` is the type check.
+are transpile-only via esbuild (`obsidian-plugin/scripts/jest-esbuild-transform.cjs`); `just types-obsidian` is the type check.
 
-The plugin mocks Obsidian's API at `obsidian-plugin/tests/obsidian-mock.ts`, wired
-through `moduleNameMapper` in `jest.config.js`.
+The plugin mocks Obsidian's API via `jest.mock('obsidian', ...)` in `obsidian-plugin/tests/test-setup.ts` (`obsidian-plugin/tests/obsidian-mock.ts` is the empty `moduleNameMapper` stub in `jest.config.js`).
 
 > [!warning] Never point a test at a collection you study from
 > `tests/conftest.py` gives every test a throwaway `HOME`, and a session guard fails

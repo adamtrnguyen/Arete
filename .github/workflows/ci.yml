@@ -111,6 +111,16 @@ jobs:
         cd obsidian-plugin
         npm run lint:deps
 
+    - name: Min App Version
+      run: |
+        cd obsidian-plugin
+        npm run check:min-app-version
+
+    - name: Type Check
+      run: |
+        cd obsidian-plugin
+        npx tsc --noEmit
+
     - name: Test
       run: |
         cd obsidian-plugin
