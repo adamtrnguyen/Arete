@@ -29,7 +29,8 @@ default:
 # Install dependencies for both Python (uv) and Obsidian (npm)
 @install:
     uv sync
-    {{NPM}} install
+    # Required until eslint-plugin-obsidianmd's transitive plugins declare ESLint 10 peers.
+    {{NPM}} install --legacy-peer-deps
     uv run pre-commit install
 
 # --- Development ---
@@ -125,7 +126,7 @@ fmt-check-obsidian:
 lint-deps-obsidian:
     {{NPM}} run lint:deps
 
-# manifest.json minAppVersion covers every Obsidian API the plugin references (not in qa until the manifest is raised)
+# manifest.json minAppVersion covers every Obsidian API the plugin references
 min-app-version-obsidian:
     {{NPM}} run check:min-app-version
 
@@ -187,7 +188,7 @@ verify: qa
 qa:
     #!/usr/bin/env bash
     set -uo pipefail
-    names=(lint fmt-check types layers dead test check-docs check-versions lint-obsidian fmt-check-obsidian lint-deps-obsidian types-obsidian test-obsidian)
+    names=(lint fmt-check types layers dead test check-docs check-versions lint-obsidian fmt-check-obsidian lint-deps-obsidian min-app-version-obsidian types-obsidian test-obsidian)
     logs=$(mktemp -d "${TMPDIR:-/tmp}/qa.XXXXXX")
     trap 'rm -rf "$logs"' EXIT
     echo "== qa: ${#names[@]} checks, concurrent (${names[*]}); output replayed in that order =="

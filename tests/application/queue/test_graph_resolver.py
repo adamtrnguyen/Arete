@@ -113,6 +113,22 @@ cards:
 
         assert len(graph.nodes) == 0
 
+    def test_build_graph_and_vault_relative_handle_single_file_root(self, tmp_path: Path):
+        """Passing a single markdown file directly does not crash with empty-name ValueError."""
+        md_file = tmp_path / "Single.md"
+        md_file.write_text(
+            "---\narete: true\ndeck: Test\ncards:\n"
+            "  - id: arete_001\n    Front: Q\n    Back: A\n---\n",
+            encoding="utf-8",
+        )
+        graph = build_graph(md_file)
+        assert "arete_001" in graph.nodes
+        assert vault_relative(str(md_file), md_file) == "Single.md"
+        assert vault_relative("/a/Single.md", PurePosixPath("/a/Single.md")) == "Single.md"
+        assert (
+            vault_relative("C:\\a\\Single.md", PureWindowsPath("C:\\a\\Single.md")) == "Single.md"
+        )
+
     def test_build_graph_invalid_frontmatter(self, tmp_path: Path, caplog):
         """Test handling of invalid frontmatter or missing cards field."""
         # Case 1: YAML error

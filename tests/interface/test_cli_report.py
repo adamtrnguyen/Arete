@@ -42,19 +42,20 @@ def _read(path) -> list[dict]:
 
 
 class FakeBridge:
-    """Records unsuspend calls; can be told to fail."""
+    """Records unsuspend calls; can be told to fail or return False."""
 
-    def __init__(self, fail: Exception | None = None):
-        """Start with nothing unsuspended; `fail` is raised by every unsuspend."""
+    def __init__(self, fail: Exception | None = None, ok: bool = True):
+        """Start with nothing unsuspended; `fail` raises, `ok=False` returns False."""
         self.unsuspended: list[list[int]] = []
         self.closed = False
         self.fail = fail
+        self.ok = ok
 
     async def unsuspend_cards(self, cids):
         if self.fail:
             raise self.fail
         self.unsuspended.append(list(cids))
-        return True
+        return self.ok
 
     async def close(self):
         self.closed = True
@@ -248,3 +249,21 @@ async def test_clear_and_reconcile_reports_uses_anki_admin_port(reports_file):
     assert outcome.unsuspended is True
     assert outcome.to_unsuspend == [10]
     assert admin.unsuspended == [[10]]
+
+
+def test_report_clear_unsuspend_returning_false_exits_1(reports_file, bridge):
+    bridge.ok = False
+    _write(reports_file, [_report(1, cid=11), _report(2, cid=22)])
+    result = runner.invoke(app, ["report", "--clear", "0"])
+    assert result.exit_code == 1
+    assert "unsuspending 2 card(s) FAILED" in result.output
+    assert "arete anki unsuspend --cids 11,22" in result.output
+    assert bridge.closed
+
+
+def test_report_clear_all_deduplicates_repeated_cids(reports_file, bridge):
+    _write(reports_file, [_report(1, cid=11), _report(2, cid=11), _report(3, cid=22)])
+    result = runner.invoke(app, ["report", "--clear", "0"])
+    assert result.exit_code == 0
+    assert "Cleared 3 report(s), unsuspended 2 card(s)." in result.stdout
+    assert bridge.unsuspended == [[11, 22]]

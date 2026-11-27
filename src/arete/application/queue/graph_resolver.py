@@ -194,7 +194,8 @@ def build_graph(vault_root: Path) -> DependencyGraph:
         fkey = str(md_path)
         file_cards.setdefault(fkey, [])
         by_basename.setdefault(normalize_filename(md_path.stem), []).append(fkey)
-        rel = md_path.relative_to(vault_root).with_suffix("").as_posix()
+        rel_path = md_path.relative_to(vault_root)
+        rel = md_path.stem if rel_path == Path(".") else rel_path.with_suffix("").as_posix()
         by_relpath[normalize_filename(rel)] = fkey
         graph.card_decks[fkey] = _card_decks(meta, cards)
         for card in cards:
@@ -466,7 +467,9 @@ def vault_relative(path: str, vault_root: PurePath) -> str:
     A path outside the vault is returned as it is.
     """
     try:
-        return type(vault_root)(path).relative_to(vault_root).as_posix()
+        target = type(vault_root)(path)
+        rel = target.relative_to(vault_root)
+        return target.name if rel == type(vault_root)(".") else rel.as_posix()
     except ValueError:
         return path
 

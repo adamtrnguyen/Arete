@@ -122,3 +122,54 @@ def test_grouped_stats_equal_the_per_card_reads(tmp_path, pick):
         for s in got
     )
     assert got == want
+
+
+def test_queued_card_in_filtered_deck_resolves_home_deck_and_deck_params_do_not_crash(tmp_path):
+    """A card sitting in Arete::Queue uses its home deck (odid) and filtered deck params degrade safely."""
+    from arete.application.stats.metrics_calculator import MetricsCalculator
+    from arete.application.stats.service import FsrsStatsService
+
+    base = make_anki_base(tmp_path / "anki")
+    col = Collection(str(base / PROFILE / "collection.anki2"))
+    try:
+        basic = col.models.by_name("Basic")
+        math_did = col.decks.id("Math")
+        cfg_id = col.decks.add_config_returning_id("MathCfg", col.decks.get_config(1))
+        cfg = col.decks.get_config(cfg_id)
+        assert cfg is not None
+        cfg["desiredRetention"] = 0.85
+        cfg["fsrsParams6"] = [0.2] * 20 + [0.35]
+        col.decks.update_config(cfg)
+        math_deck = col.decks.get(math_did)
+        assert math_deck is not None
+        col.decks.set_config_id_for_deck_dict(math_deck, cfg_id)
+
+        note = col.new_note(basic)
+        note["Front"], note["Back"] = "Q", "A"
+        col.add_note(note, math_did)
+        nid = note.id
+        (cid,) = note.card_ids()
+
+        fdid = col.decks.new_filtered("Arete::Queue")
+        fdeck = col.decks.get(fdid)
+        assert fdeck is not None
+        fdeck["terms"] = [[f"cid:{cid}", 1, 0]]
+        col.decks.save(fdeck)
+        col.sched.rebuild_filtered_deck(fdid)
+    finally:
+        col.close()
+
+    async def _run():
+        repo = DirectStatsRepository(anki_base=base)
+        # Direct filtered-deck lookup must never KeyError on missing 'conf'.
+        fparams = await repo.get_deck_params(["Arete::Queue"])
+        assert fparams["Arete::Queue"]["desired_retention"] == 0.9
+
+        service = FsrsStatsService(repo=repo, calculator=MetricsCalculator())
+        return await service.get_enriched_stats([nid])
+
+    [enriched] = asyncio.run(_run())
+    assert enriched.deck_name == "Math"
+    assert enriched.desired_retention == pytest.approx(0.85)
+    assert len(enriched.weights) == 21
+    assert enriched.weights[20] == pytest.approx(0.35)

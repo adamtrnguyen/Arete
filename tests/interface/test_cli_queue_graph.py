@@ -368,3 +368,45 @@ def test_graph_check_json_is_machine_readable_and_still_fails_a_bad_vault(tmp_pa
     data = json.loads(result.stdout)
     assert data["total_nodes"] == 1
     assert data["unresolved_refs"][0]["missing_refs"] == ["arete_gone"]
+
+
+def test_single_md_file_resolves_vault_root_and_preserves_subfolder_scoping(monkeypatch, tmp_path):
+    v = tmp_path / "vault"
+    (v / ".obsidian").mkdir(parents=True)
+    sub = v / "sub"
+    sub.mkdir()
+    _note(v / "Root.md", "Math", [("arete_R", [])])
+    sub_file = sub / "Child.md"
+    _note(sub_file, "Math", [("arete_C", ["arete_R"])])
+
+    # Single file inside an Obsidian vault resolves to vault root cleanly across all 3 commands.
+    check_res = runner.invoke(app, ["graph", "check", str(sub_file), "--json"])
+    assert check_res.exit_code == 0
+    assert json.loads(check_res.stdout)["total_nodes"] == 2
+
+    export_res = runner.invoke(app, ["graph", "export", str(sub_file)])
+    assert export_res.exit_code == 0
+    exported = json.loads(export_res.stdout)
+    assert {n["file"] for n in exported["nodes"]} == {"Root.md", "sub/Child.md"}
+
+    _use(monkeypatch, FakeBridge(1, ["arete_C"]))
+    queue_res = runner.invoke(app, ["queue", str(sub_file), "--dry-run", "--json"])
+    assert queue_res.exit_code == 0
+    assert json.loads(queue_res.stdout)["total_with_prereqs"] == 2
+
+    # Subfolder argument preserves subfolder scoping (does NOT widen to parent vault).
+    sub_res = runner.invoke(app, ["graph", "check", str(sub), "--json"])
+    assert json.loads(sub_res.stdout)["total_nodes"] == 1
+
+    # Standalone file outside any vault exits 1 with clean error (no traceback).
+    orphan = tmp_path / "orphan.md"
+    _note(orphan, "Math", [("arete_O", [])])
+    for args in (
+        ["graph", "check", str(orphan)],
+        ["graph", "export", str(orphan)],
+        ["queue", str(orphan), "--dry-run"],
+    ):
+        err_res = runner.invoke(app, args)
+        assert err_res.exit_code == 1
+        assert "Cannot tell which vault" in err_res.stderr
+        assert err_res.exception is None or isinstance(err_res.exception, SystemExit)

@@ -9,7 +9,7 @@ from typing import Annotated
 
 import typer
 
-from arete.application.config import resolve_config
+from arete.application.config import AppConfig, VaultRootUnknown, require_vault_root, resolve_config
 from arete.application.queue.service import QueueAlgo
 from arete.interface._common import _resolve_with_overrides, stdout_to_stderr, utf8_console
 from arete.interface.anki_commands import anki_app
@@ -264,6 +264,22 @@ def logs():
         subprocess.run(["xdg-open", str(config.log_dir)])
 
 
+def _resolve_graph_root(config: AppConfig) -> Path:
+    """Return the directory root for graph/queue commands.
+
+    Directories (including vault subfolders) stay scoped as given. A single file path
+    resolves to its enclosing vault root, exiting 1 cleanly when no vault is found.
+    """
+    assert config.root_input is not None
+    if config.root_input.is_file():
+        try:
+            return require_vault_root(config)
+        except VaultRootUnknown as e:
+            typer.secho(f"Error: {e}", fg="red", err=True)
+            raise typer.Exit(1) from e
+    return config.root_input
+
+
 @app.command("queue")
 def queue(
     ctx: typer.Context,
@@ -334,8 +350,7 @@ def queue(
     config = _resolve_with_overrides(
         root_input=path, backend=backend, anki_connect_url=anki_connect_url, anki_base=anki_base
     )
-    assert config.root_input is not None
-    vault_root = config.root_input
+    vault_root = _resolve_graph_root(config)
 
     async def run():
         anki = await get_anki_bridge(config)
@@ -562,8 +577,7 @@ def graph_check(
     from arete.application.queue.graph_resolver import check_graph_health
 
     config = _resolve_with_overrides(root_input=path)
-    assert config.root_input is not None
-    vault_root = config.root_input
+    vault_root = _resolve_graph_root(config)
 
     result = check_graph_health(vault_root)
 
@@ -637,8 +651,7 @@ def graph_export(
     from arete.application.queue.graph_resolver import export_graph
 
     config = _resolve_with_overrides(root_input=path)
-    assert config.root_input is not None
-    vault_root = config.root_input
+    vault_root = _resolve_graph_root(config)
 
     with stdout_to_stderr():
         graph = asdict(export_graph(vault_root))

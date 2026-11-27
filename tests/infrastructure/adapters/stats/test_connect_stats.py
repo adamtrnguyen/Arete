@@ -544,3 +544,44 @@ async def test_get_card_stats_extracts_fsrs6_decay_desired_retention_and_last_re
     assert s.fsrs.decay == 0.2
     assert s.fsrs.desired_retention == 0.85
     assert s.last_review == 1700001234
+
+
+@pytest.mark.asyncio
+async def test_get_card_stats_uses_home_deck_for_queued_cards_and_degrades_on_stock_ankiconnect(
+    repo,
+):
+    """Resolve home decks via getHomeDecks for queued cards and degrade cleanly on stock AnkiConnect."""
+    cards_info = [
+        {
+            "cardId": 101,
+            "note": 1,
+            "deckName": "Arete::Queue",
+            "interval": 10,
+            "reps": 3,
+            "fields": {"Front": {"value": "Q"}},
+        }
+    ]
+
+    # 1. With arete_ankiconnect getHomeDecks available
+    repo._invoke = AsyncMock(
+        side_effect=[
+            [101],
+            cards_info,
+            [],
+            [{"homeDeck": "Math::Algebra", "filteredDeck": "Arete::Queue"}],
+        ]
+    )
+    [queued] = await repo.get_card_stats([1])
+    assert queued.deck_name == "Math::Algebra"
+
+    # 2. With stock AnkiConnect lacking getHomeDecks -> falls back to cardsInfo deckName
+    repo._invoke = AsyncMock(
+        side_effect=[
+            [101],
+            cards_info,
+            [],
+            RuntimeError("unsupported action"),
+        ]
+    )
+    [fallback] = await repo.get_card_stats([1])
+    assert fallback.deck_name == "Arete::Queue"

@@ -96,10 +96,11 @@ class DirectStatsRepository(StatsRepository):
                 key = _as_int(nid)
                 for cid in cids_of.get(key, []) if key is not None else []:
                     card = repo.col.get_card(cast(Any, cid))
-                    if card.did not in deck_names:
-                        deck = repo.col.decks.get(card.did)
-                        deck_names[card.did] = deck["name"] if deck else "Unknown"
-                    deck_name = deck_names[card.did]
+                    home_did = _optional_positive_int(getattr(card, "odid", None)) or card.did
+                    if home_did not in deck_names:
+                        deck = repo.col.decks.get(cast(Any, home_did))
+                        deck_names[home_did] = deck["name"] if deck else "Unknown"
+                    deck_name = deck_names[home_did]
 
                     # Extract FSRS memory state
                     fsrs_state = fsrs_state_of(card)
@@ -238,8 +239,9 @@ class DirectStatsRepository(StatsRepository):
                 if not deck:
                     params[deck_name] = default_params()
                     continue
-                # Get deck config (config id is 'conf')
-                config = repo.col.decks.get_config(deck["conf"])
+                # Filtered (dynamic) decks have no 'conf' key; fall back to defaults.
+                conf_id = deck.get("conf")
+                config = repo.col.decks.get_config(conf_id) if conf_id is not None else None
                 params[deck_name] = deck_params(config) if config else default_params()
 
         return params

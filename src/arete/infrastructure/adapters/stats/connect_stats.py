@@ -121,6 +121,10 @@ class ConnectStatsRepository(StatsRepository):
             except Exception as e:
                 logger.warning(f"[fsrs] getFSRSStats unavailable, stats lack FSRS state: {e}")
 
+            # 3b. Resolve home decks so queued cards (e.g. in Arete::Queue) keep their
+            # home deck name and FSRS deck config. Degrades cleanly on stock AnkiConnect.
+            home_deck_map = await self._fetch_home_decks(card_ids)
+
             # 4. Build aggregates
             for info in infos:
                 cid = info.get("cardId")
@@ -139,7 +143,7 @@ class ConnectStatsRepository(StatsRepository):
                     CardStatsAggregate(
                         card_id=cid,
                         note_id=nid,
-                        deck_name=info.get("deckName", "Unknown"),
+                        deck_name=home_deck_map.get(cid) or info.get("deckName", "Unknown"),
                         lapses=info.get("lapses", 0),
                         ease=info.get("factor", 0),
                         interval=info.get("interval", 0),
@@ -201,6 +205,19 @@ class ConnectStatsRepository(StatsRepository):
         # Sort by review time
         entries.sort(key=lambda r: r.review_time)
         return entries
+
+    async def _fetch_home_decks(self, card_ids: list[int]) -> dict[int, str]:
+        """Resolve each card's home deck via `getHomeDecks`, degrading to `{}` on failure."""
+        home_deck_map: dict[int, str] = {}
+        try:
+            home_results = await self._invoke("getHomeDecks", cards=card_ids)
+            if isinstance(home_results, list) and len(home_results) == len(card_ids):
+                for cid, item in zip(card_ids, home_results, strict=True):
+                    if isinstance(item, dict) and item.get("homeDeck"):
+                        home_deck_map[cid] = str(item["homeDeck"])
+        except Exception as e:
+            logger.debug(f"[stats] getHomeDecks unavailable, using cardsInfo deckName: {e}")
+        return home_deck_map
 
     async def _invoke(self, action: str, **params: Any) -> Any:
         """Invoke an AnkiConnect action via the shared transport client."""

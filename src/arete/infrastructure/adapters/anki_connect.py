@@ -420,11 +420,13 @@ class AnkiConnectAdapter(AnkiBridge):
         replies = await self._send_writes(
             [("getDeckConfig", {"deck": d}) for d in decks], results=True
         )
-        return {
-            d
-            for d, cfg in zip(decks, replies, strict=True)
-            if isinstance(cfg, dict) and bool(cfg.get("dyn"))
-        }
+        filtered: set[str] = set()
+        for deck_name, cfg in zip(decks, replies, strict=True):
+            if isinstance(cfg, Exception):
+                raise RuntimeError(f"AnkiConnect error reading deck {deck_name!r}: {cfg}") from cfg
+            if isinstance(cfg, dict) and bool(cfg.get("dyn")):
+                filtered.add(deck_name)
+        return filtered
 
     async def get_due_cards(
         self, deck_name: str | None = None, include_new: bool = False

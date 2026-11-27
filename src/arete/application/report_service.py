@@ -74,18 +74,27 @@ async def clear_and_reconcile_reports(
 
     remaining = load_reports()
     remaining_cids = {r["cid"] for r in remaining if r.get("cid")}
-    to_unsuspend = [r["cid"] for r in cleared if r.get("cid") and r["cid"] not in remaining_cids]
+    to_unsuspend = list(
+        dict.fromkeys(r["cid"] for r in cleared if r.get("cid") and r["cid"] not in remaining_cids)
+    )
     if not to_unsuspend:
         return ClearReportsResult(cleared=cleared, to_unsuspend=[])
 
     try:
         async with open_anki() as anki:
-            await anki.unsuspend_cards(to_unsuspend)
+            ok = await anki.unsuspend_cards(to_unsuspend)
     except Exception as e:
         return ClearReportsResult(
             cleared=cleared,
             to_unsuspend=to_unsuspend,
             unsuspended=False,
             unsuspend_error=str(e),
+        )
+    if not ok:
+        return ClearReportsResult(
+            cleared=cleared,
+            to_unsuspend=to_unsuspend,
+            unsuspended=False,
+            unsuspend_error="Anki failed to unsuspend cards",
         )
     return ClearReportsResult(cleared=cleared, to_unsuspend=to_unsuspend, unsuspended=True)
