@@ -148,16 +148,21 @@ describe('renderCardPreviewFrame', () => {
 			expect(styles).toEqual(['.a{x:1}\n.b{y:2}', '.plain{z:3}', '.css{}']);
 			const baseStyle = dom.head.children.find((c) => c.attrs['data-arete-base'] === 'true');
 			expect(baseStyle.textContent).toContain('html { height: auto; min-height: 0; }');
-			expect(baseStyle.textContent).toContain(':where(body.card.nightMode)');
+			expect(baseStyle.textContent).toContain('body.nightMode {');
 			expect(dom.hostDocument.querySelectorAll).toHaveBeenCalledWith('style[id^="MJX-"]');
 		});
 
 		it('syncs Anki dark mode classes from Obsidian theme-dark and updates on css-change', () => {
 			const dom = makeDom();
 			let dark = true;
+			const htmlClasses = new Set<string>();
 			const bodyClasses = new Set<string>();
 			dom.hostDocument.body = {
 				classList: { contains: (c: string) => c === 'theme-dark' && dark },
+			};
+			(dom.root as any).classList = {
+				toggle: (c: string, on: boolean) =>
+					on ? htmlClasses.add(c) : htmlClasses.delete(c),
 			};
 			dom.body.classList = {
 				toggle: (c: string, on: boolean) =>
@@ -171,10 +176,12 @@ describe('renderCardPreviewFrame', () => {
 			render(dom);
 
 			dom.frameListeners['load']();
+			expect([...htmlClasses].sort()).toEqual(['nightMode', 'night_mode']);
 			expect([...bodyClasses].sort()).toEqual(['nightMode', 'night_mode']);
 
 			dark = false;
 			onCssChange?.();
+			expect([...htmlClasses]).toEqual([]);
 			expect([...bodyClasses]).toEqual([]);
 		});
 

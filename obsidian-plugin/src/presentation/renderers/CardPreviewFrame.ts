@@ -6,14 +6,16 @@ const MAX_FRAME_HEIGHT_PX = 8000;
 const MAX_CONSECUTIVE_GROWTHS = 8;
 
 /**
- * Low-specificity base rules prepended before Anki model CSS. Using `:where(...)` keeps
- * specificity at 0 so any model `.card` rule wins while unstyled cards stay readable in
- * Obsidian dark mode and `html { height: auto }` breaks `100vh` resize feedback loops.
+ * Base rules prepended before Anki model CSS. `html { height: auto }` breaks `100vh`
+ * resize feedback loops, `:where(body.card)` yields to any model margin, and
+ * `body.nightMode` (specificity 0,1,1) mirrors Anki's own night-mode override of the
+ * default `.card { color: black; background-color: white }` (0,1,0) while still letting
+ * model-authored `.card.nightMode`, `.night_mode .card`, or later `body.nightMode` rules win.
  */
 const FRAME_BASE_CSS = [
 	'html { height: auto; min-height: 0; }',
 	':where(body.card) { margin: 8px; }',
-	':where(body.card.nightMode) { color-scheme: dark; color: #f0f0f0; background-color: transparent; }',
+	'body.nightMode { color-scheme: dark; color: #f0f0f0; background-color: transparent; }',
 ].join('\n');
 
 /** Give model CSS its own document; no selector rewriting or Obsidian theme CSS. */
@@ -47,6 +49,8 @@ export function renderCardPreviewFrame(
 		const syncTheme = () => {
 			if (disposed) return;
 			const isDark = hostDocument.body?.classList?.contains('theme-dark') ?? false;
+			doc.documentElement.classList?.toggle('nightMode', isDark);
+			doc.documentElement.classList?.toggle('night_mode', isDark);
 			doc.body.classList?.toggle('nightMode', isDark);
 			doc.body.classList?.toggle('night_mode', isDark);
 		};

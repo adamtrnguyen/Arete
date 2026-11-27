@@ -473,9 +473,10 @@
 	overflow-wrap: anywhere;
 }
 
-/* Narrow sidebar layout: stack deck stats and card metrics under their titles so
- * questions and deck names never squish to 0px in Obsidian's default right sidebar. */
-@container (max-width: 34rem) {
+/* Narrow and medium sidebar layout: the 5 fixed-width deck stat columns plus issue badge
+ * and row padding take ~634px before title space, so below 50rem stack deck stats and card
+ * metrics under their titles so deck names never crush to 1-2 characters. */
+@container (max-width: 50rem) {
 	.arete-deck-header {
 		flex-wrap: wrap;
 	}
