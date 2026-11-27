@@ -787,6 +787,55 @@ def test_fixed_upstream_actions_and_edge_cases(host: AddonHost):
     assert host.col.get_card(cid_b).queue == 0
 
 
+def test_get_fsrs_stats_returns_fsrs6_fields(host: AddonHost):
+    (_, cid_a), (_, cid_b) = _seed(host, count=2)
+    host.col.db.execute(
+        "update cards set data = ? where id = ?",
+        '{"s":5.25,"d":4.5,"dr":0.9,"decay":0.1542,"lrt":1700000000}',
+        cid_a,
+    )
+
+    stats = _ok(host, "getFSRSStats", cards=[cid_a, cid_b, "bad"])
+    assert stats[0]["cardId"] == cid_a
+    assert stats[0]["difficulty"] == pytest.approx(4.5)
+    assert stats[0]["stability"] == pytest.approx(5.25)
+    assert stats[0]["decay"] == pytest.approx(0.1542, rel=1e-4)
+    assert stats[0]["desired_retention"] == pytest.approx(0.9, rel=1e-4)
+    assert stats[0]["last_review_time"] == 1700000000
+
+    assert stats[1] == {
+        "cardId": cid_b,
+        "difficulty": None,
+        "stability": None,
+        "decay": None,
+        "desired_retention": None,
+        "last_review_time": None,
+    }
+    assert "error" in stats[2]
+    assert stats[2]["decay"] is None
+    assert stats[2]["desired_retention"] is None
+    assert stats[2]["last_review_time"] is None
+
+
+def test_export_and_import_package_use_anki_26_native_api(host: AddonHost, tmp_path: Path):
+    _seed(host, count=1, deck="ExportMe")
+    apkg = tmp_path / "export.apkg"
+
+    assert _ok(host, "exportPackage", deck="NoSuchDeck", path=str(apkg)) is False
+    assert _ok(host, "exportPackage", deck="ExportMe", path=str(apkg), includeSched=False) is True
+    assert apkg.is_file() and apkg.stat().st_size > 0
+
+    dest = AddonHost(tmp_path / "dest.anki2")
+    try:
+        refreshes: list[bool] = []
+        dest._addon.scheduleRefresh = lambda: refreshes.append(True)
+        assert _ok(dest, "importPackage", path=str(apkg)) is True
+        assert len(refreshes) == 1
+        assert dest.col.note_count() == 1
+    finally:
+        dest.close()
+
+
 def test_parse_anki_version_handles_prerelease_suffixes():
     import re as re_mod
 

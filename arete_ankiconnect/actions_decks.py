@@ -1,8 +1,11 @@
 """Deck, deck-config, and package import/export AnkiConnect actions."""
 
 import anki.utils
-from anki.exporting import AnkiPackageExporter
-from anki.importing import AnkiPackageImporter
+from anki.collection import (
+    DeckIdLimit,
+    ExportAnkiPackageOptions,
+    ImportAnkiPackageRequest,
+)
 from anki.utils import int_time
 
 from . import util
@@ -190,12 +193,16 @@ class DeckActions:
     def exportPackage(self, deck, path, includeSched=False):
         collection = self.collection()
         if collection is not None:
-            deck = collection.decks.by_name(deck)
-            if deck is not None:
-                exporter = AnkiPackageExporter(collection)
-                exporter.did = deck["id"]
-                exporter.includeSched = includeSched
-                exporter.exportInto(path)
+            deck_dict = collection.decks.by_name(deck)
+            if deck_dict is not None:
+                collection.export_anki_package(
+                    out_path=path,
+                    options=ExportAnkiPackageOptions(
+                        with_scheduling=bool(includeSched),
+                        with_media=True,
+                    ),
+                    limit=DeckIdLimit(deck_dict["id"]),
+                )
                 return True
 
         return False
@@ -204,8 +211,7 @@ class DeckActions:
     def importPackage(self, path):
         collection = self.collection()
         if collection is not None:
-            importer = AnkiPackageImporter(collection, path)
-            importer.run()
+            collection.import_anki_package(ImportAnkiPackageRequest(package_path=path))
             self.scheduleRefresh()
             return True
 

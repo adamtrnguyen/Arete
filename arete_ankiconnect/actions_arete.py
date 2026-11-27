@@ -206,20 +206,33 @@ class AreteActions:
 
     @util.api()
     def getFSRSStats(self, cards=None):
-        """FSRS memory state per card: difficulty (1-10) and stability (days), or None."""
+        """FSRS memory state per card: difficulty, stability, decay, retention, last review."""
         col = self.collection()
         result = []
         for cid in cards or []:
-            item = {"cardId": cid, "difficulty": None, "stability": None}
+            item = {
+                "cardId": cid,
+                "difficulty": None,
+                "stability": None,
+                "decay": None,
+                "desired_retention": None,
+                "last_review_time": None,
+            }
             try:
                 int_cid = int(cid)
                 item["cardId"] = int_cid
-                state = col.get_card(int_cid).memory_state
+                card = col.get_card(int_cid)
+                state = card.memory_state
             except Exception as e:
                 item["error"] = str(e)
+                card = None
                 state = None
             if state:
                 item["difficulty"] = state.difficulty
                 item["stability"] = state.stability
+            if card is not None:
+                item["decay"] = getattr(card, "decay", None)
+                item["desired_retention"] = getattr(card, "desired_retention", None)
+                item["last_review_time"] = getattr(card, "last_review_time", None)
             result.append(item)
         return result

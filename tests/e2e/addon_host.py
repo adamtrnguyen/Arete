@@ -38,13 +38,16 @@ from typing import Any
 import anki
 import anki._backend
 import anki.collection
-import anki.exporting
-import anki.importing
 import anki.lang
 import anki.notes
 import anki.utils
 from anki.cards import Card
-from anki.collection import Collection
+from anki.collection import (
+    Collection,
+    DeckIdLimit,
+    ExportAnkiPackageOptions,
+    ImportAnkiPackageRequest,
+)
 from anki.consts import MODEL_CLOZE
 from anki.errors import NotFoundError
 from anki.notes import Note
@@ -96,8 +99,9 @@ def _addon_class() -> type:
         "util": util,
         "Card": Card,
         "Note": Note,
-        "AnkiPackageExporter": anki.exporting.AnkiPackageExporter,
-        "AnkiPackageImporter": anki.importing.AnkiPackageImporter,
+        "DeckIdLimit": DeckIdLimit,
+        "ExportAnkiPackageOptions": ExportAnkiPackageOptions,
+        "ImportAnkiPackageRequest": ImportAnkiPackageRequest,
         "NotFoundError": NotFoundError,
         "MODEL_CLOZE": MODEL_CLOZE,
         "base64": base64,
