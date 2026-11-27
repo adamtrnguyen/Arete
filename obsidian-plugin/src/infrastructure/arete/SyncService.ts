@@ -33,7 +33,7 @@ const LOG_FLUSH_MS = 250;
  */
 export class SyncLog {
 	private buffer: string[] = [];
-	private timer: ReturnType<typeof setTimeout> | null = null;
+	private timer: number | null = null;
 	private writing: Promise<void>;
 
 	constructor(private logPath: string) {
@@ -42,11 +42,11 @@ export class SyncLog {
 
 	write(msg: string): void {
 		this.buffer.push(`[${new Date().toISOString()}] ${msg}\n`);
-		if (!this.timer) this.timer = setTimeout(() => void this.flush(), LOG_FLUSH_MS);
+		if (!this.timer) this.timer = window.setTimeout(() => void this.flush(), LOG_FLUSH_MS);
 	}
 
 	flush(): Promise<void> {
-		if (this.timer) clearTimeout(this.timer);
+		if (this.timer) window.clearTimeout(this.timer);
 		this.timer = null;
 		if (!this.logPath || this.buffer.length === 0) return this.writing;
 		const chunk = this.buffer.join('');

@@ -87,6 +87,8 @@ if (typeof document === 'undefined') {
 		navigator: { userAgent: 'node' },
 		addEventListener: jest.fn(),
 		removeEventListener: jest.fn(),
+		setTimeout: (...args: any[]) => (globalThis.setTimeout as any)(...args),
+		clearTimeout: (...args: any[]) => (globalThis.clearTimeout as any)(...args),
 		requestAnimationFrame: jest.fn().mockImplementation((cb) => setTimeout(cb, 0)),
 		cancelAnimationFrame: jest.fn().mockImplementation((id) => clearTimeout(id)),
 		history: {},

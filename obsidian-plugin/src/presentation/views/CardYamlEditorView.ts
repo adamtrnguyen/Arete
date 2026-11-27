@@ -81,7 +81,7 @@ export class CardYamlEditorView extends ItemView {
 	private fileModel = 'Basic';
 	private previewRevision = 0;
 	private previewComponent: Component | null = null;
-	private syncDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+	private syncDebounceTimer: number | null = null;
 	private pendingSync: PendingSync | null = null;
 
 	constructor(leaf: WorkspaceLeaf, plugin: YamlEditorHost) {
@@ -102,7 +102,7 @@ export class CardYamlEditorView extends ItemView {
 	}
 
 	async onOpen() {
-		const container = this.containerEl.children[1] as HTMLElement;
+		const container = this.contentEl;
 		container.empty();
 		container.addClass('arete-yaml-editor-container');
 
@@ -434,7 +434,11 @@ export class CardYamlEditorView extends ItemView {
 				modelName,
 				this.previewSide,
 				this.extractCardFields(card),
-				{ sourcePath, component },
+				{
+					sourcePath,
+					component,
+					doc: this.previewContainer.ownerDocument ?? undefined,
+				},
 			);
 		} catch (error) {
 			console.error('[Arete] Preview failed', error);
@@ -567,9 +571,9 @@ export class CardYamlEditorView extends ItemView {
 	}
 
 	private debouncedSyncToMain() {
-		if (this.syncDebounceTimer) clearTimeout(this.syncDebounceTimer);
+		if (this.syncDebounceTimer) window.clearTimeout(this.syncDebounceTimer);
 		this.pendingSync = this.capturePendingSync();
-		this.syncDebounceTimer = setTimeout(() => {
+		this.syncDebounceTimer = window.setTimeout(() => {
 			this.syncDebounceTimer = null;
 			const payload = this.pendingSync;
 			this.pendingSync = null;
@@ -579,7 +583,7 @@ export class CardYamlEditorView extends ItemView {
 
 	private async flushPendingSync(): Promise<void> {
 		if (this.syncDebounceTimer) {
-			clearTimeout(this.syncDebounceTimer);
+			window.clearTimeout(this.syncDebounceTimer);
 			this.syncDebounceTimer = null;
 		}
 		const payload = this.pendingSync;

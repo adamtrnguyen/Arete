@@ -28,7 +28,8 @@ module.exports = {
 		// L1: domain imports only domain (no obsidian, npm package or Node builtin)
 		{
 			name: 'domain-imports-only-domain',
-			comment: 'L1: domain is pure: no obsidian, no npm package, no Node builtin, no outer layer.',
+			comment:
+				'L1: domain is pure: no obsidian, no npm package, no Node builtin, no outer layer.',
 			severity: 'error',
 			from: { path: '^src/domain' },
 			to: { pathNot: '^src/domain' },

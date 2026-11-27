@@ -13,6 +13,7 @@ import { LocalGraphResult } from '@/domain/graph/types';
 import { CardRenderer } from '@/presentation/renderers/CardRenderer';
 import { debugLog } from '@/domain/debugLog';
 import {
+	destroyForceGraph3D,
 	GraphColors,
 	loadForceGraph3D,
 	resolveGraphColors,
@@ -56,7 +57,7 @@ interface GraphLink extends d3.SimulationLinkDatum<GraphNode> {
 export class LocalGraphView extends ItemView {
 	plugin: LocalGraphHost;
 	private resolver: DependencyResolver;
-	private container: HTMLElement;
+	private container!: HTMLElement;
 	private depth = 2;
 	private showRelated = true;
 	private simulation: d3.Simulation<GraphNode, GraphLink> | null = null;
@@ -76,7 +77,7 @@ export class LocalGraphView extends ItemView {
 	private static readonly REFRESH_DEBOUNCE_MS = 100;
 	private static nextMarkerId = 1;
 	private readonly arrowId = `arete-local-arrow-${LocalGraphView.nextMarkerId++}`;
-	private refreshTimer: ReturnType<typeof setTimeout> | null = null;
+	private refreshTimer: number | null = null;
 	/** Bumped by each refresh(); a refresh that is no longer the latest does not draw. */
 	private refreshSeq = 0;
 	/**
@@ -177,8 +178,8 @@ export class LocalGraphView extends ItemView {
 
 	/** Refresh after events settle; refresh() itself skips a picture that is unchanged. */
 	private scheduleRefresh(): void {
-		if (this.refreshTimer) clearTimeout(this.refreshTimer);
-		this.refreshTimer = setTimeout(() => {
+		if (this.refreshTimer) window.clearTimeout(this.refreshTimer);
+		this.refreshTimer = window.setTimeout(() => {
 			this.refreshTimer = null;
 			void this.refresh();
 		}, LocalGraphView.REFRESH_DEBOUNCE_MS);
@@ -481,7 +482,7 @@ export class LocalGraphView extends ItemView {
 		this.drawingComponent = null;
 		this.tooltipCache.clear();
 		if (this.graph3D) {
-			this.graph3D._destructor?.();
+			destroyForceGraph3D(this.graph3D);
 			this.graph3D = null;
 		}
 		this.repaint3D = null;
@@ -799,7 +800,7 @@ export class LocalGraphView extends ItemView {
 	}
 
 	async onClose() {
-		if (this.refreshTimer) clearTimeout(this.refreshTimer);
+		if (this.refreshTimer) window.clearTimeout(this.refreshTimer);
 		this.releaseDrawing();
 		this.tooltipComponent.unload();
 	}

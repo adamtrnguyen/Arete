@@ -13,7 +13,7 @@ export class DependencyField {
 	private dependencies: Dependency[] = [];
 	private onChange: (deps: string[]) => void;
 
-	private listEl: HTMLElement;
+	private listEl!: HTMLElement;
 
 	constructor(
 		container: HTMLElement,

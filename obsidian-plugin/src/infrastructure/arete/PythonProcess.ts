@@ -130,7 +130,7 @@ export const DEFAULT_PROCESS_TIMEOUT_MS = 60_000;
 
 export class AreteProcesses {
 	private live = new Set<ChildProcess>();
-	private timers = new Map<ChildProcess, ReturnType<typeof setTimeout>>();
+	private timers = new Map<ChildProcess, number>();
 	private timedOut = new WeakSet<ChildProcess>();
 	private closed = false;
 
@@ -169,22 +169,22 @@ export class AreteProcesses {
 		const cleanup = () => {
 			this.live.delete(child);
 			const timer = this.timers.get(child);
-			if (timer) {
-				clearTimeout(timer);
+			if (timer !== undefined) {
+				window.clearTimeout(timer);
 				this.timers.delete(child);
 			}
 		};
 		child.once('close', cleanup);
 		child.once('error', cleanup);
 		if (timeoutMs > 0) {
-			const timer = setTimeout(() => {
+			const timer = window.setTimeout(() => {
 				this.timers.delete(child);
 				if (this.live.has(child)) {
 					this.timedOut.add(child);
 					child.kill();
 				}
 			}, timeoutMs);
-			timer.unref?.();
+			(timer as unknown as { unref?: () => void }).unref?.();
 			this.timers.set(child, timer);
 		}
 		return child;
@@ -202,7 +202,7 @@ export class AreteProcesses {
 
 	killAll(): void {
 		this.closed = true;
-		for (const timer of this.timers.values()) clearTimeout(timer);
+		for (const timer of this.timers.values()) window.clearTimeout(timer);
 		this.timers.clear();
 		for (const child of this.live) child.kill();
 		this.live.clear();

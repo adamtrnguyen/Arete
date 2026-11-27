@@ -1,4 +1,8 @@
-import { loadForceGraph3D, resolveGraphColors } from '@/presentation/graph/ForceGraph3D';
+import {
+	destroyForceGraph3D,
+	loadForceGraph3D,
+	resolveGraphColors,
+} from '@/presentation/graph/ForceGraph3D';
 
 /** A host whose probe reports `colors[variable]` as its computed colour. */
 function host(colors: Record<string, string | undefined>) {
@@ -70,5 +74,42 @@ describe('resolveGraphColors', () => {
 		// No canvas in jest: an oklch() result falls back instead of passing through.
 		const colors = resolveGraphColors(host({ '--graph-line': 'oklch(0.5 0.1 200)' }).el);
 		expect(colors.line).not.toContain('oklch');
+	});
+
+	it('resolves non-rgb colours through host.doc.createElement("canvas") for popout safety', () => {
+		const fillRect = jest.fn();
+		const canvas = {
+			width: 0,
+			height: 0,
+			getContext: jest.fn(() => ({
+				fillStyle: '',
+				fillRect,
+				getImageData: jest.fn(() => ({ data: [10, 20, 30, 255] })),
+			})),
+		};
+		const createElement = jest.fn(() => canvas);
+		const h = host({ '--graph-line': 'oklch(0.5 0.1 200)' });
+		h.el.doc = { createElement };
+		const colors = resolveGraphColors(h.el);
+		expect(createElement).toHaveBeenCalledWith('canvas');
+		expect(colors.line).toBe('rgba(10, 20, 30, 1)');
+	});
+});
+
+describe('destroyForceGraph3D', () => {
+	it('calls _destructor, forces WebGL context loss, and removes the canvas', () => {
+		const order: string[] = [];
+		const remove = jest.fn(() => order.push('remove'));
+		const forceContextLoss = jest.fn(() => order.push('forceContextLoss'));
+		const _destructor = jest.fn(() => order.push('destructor'));
+		const graph: any = {
+			_destructor,
+			renderer: () => ({ forceContextLoss, domElement: { remove } }),
+		};
+
+		destroyForceGraph3D(graph);
+
+		expect(order).toEqual(['destructor', 'forceContextLoss', 'remove']);
+		expect(() => destroyForceGraph3D(null)).not.toThrow();
 	});
 });

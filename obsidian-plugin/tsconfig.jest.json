@@ -3,7 +3,7 @@
 	"compilerOptions": {
 		"isolatedModules": true,
 		"rootDir": ".",
-		"strictNullChecks": false,
+		"strict": false,
 		"types": ["node", "jest"]
 	},
 	"include": ["src/**/*.ts", "tests/**/*.ts"]

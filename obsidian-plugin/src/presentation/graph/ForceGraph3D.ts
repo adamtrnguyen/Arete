@@ -27,7 +27,22 @@ export type ForceGraph3DInstance = {
 		| 'onNodeHover'
 		| 'd3Force'
 		| 'zoomToFit']: (...args: any[]) => ForceGraph3DInstance;
-} & { _destructor?: () => void };
+} & {
+	_destructor?: () => void;
+	renderer?: () => { forceContextLoss?: () => void; domElement?: HTMLCanvasElement } | undefined;
+};
+
+/**
+ * Tear down a 3d-force-graph instance and release its WebGL context so repeated 2D/3D
+ * toggles or note switches do not exhaust Chromium's WebGL context cap.
+ */
+export function destroyForceGraph3D(graph: ForceGraph3DInstance | null | undefined): void {
+	if (!graph) return;
+	const renderer = graph.renderer?.();
+	graph._destructor?.();
+	renderer?.forceContextLoss?.();
+	renderer?.domElement?.remove?.();
+}
 
 /**
  * `require('3d-force-graph')`, called on the first 3D render rather than at module top:
@@ -76,9 +91,12 @@ const DIRECT_FORM = /^(rgba?\(|#)/i;
  * Rewrite a computed colour that three.js may not parse (`color(srgb …)`, `oklch(…)`) as
  * `rgba(…)`, by painting it on a one-pixel canvas. Null when no canvas is available.
  */
-function viaCanvas(css: string): string | null {
+function viaCanvas(css: string, doc: Document): string | null {
 	try {
-		const ctx = createEl('canvas', { attr: { width: '1', height: '1' } }).getContext('2d', {
+		const canvas = doc.createElement('canvas');
+		canvas.width = 1;
+		canvas.height = 1;
+		const ctx = canvas.getContext('2d', {
 			willReadFrequently: true,
 		});
 		if (!ctx) return null;
@@ -107,13 +125,16 @@ export function resolveGraphColors(host: HTMLElement): GraphColors {
 	let probe: HTMLElement | null = null;
 	try {
 		probe = host.createSpan();
+		const hostDoc = host.doc ?? host.ownerDocument ?? document;
 		const computed = (host.win ?? window).getComputedStyle.bind(host.win ?? window);
 		for (const key of Object.keys(COLOR_VARS) as (keyof GraphColors)[]) {
 			const [name, fallback] = COLOR_VARS[key];
 			probe.style.color = `var(${name}, ${fallback})`;
 			const resolved = computed(probe).color;
 			if (!resolved) continue;
-			out[key] = DIRECT_FORM.test(resolved) ? resolved : (viaCanvas(resolved) ?? fallback);
+			out[key] = DIRECT_FORM.test(resolved)
+				? resolved
+				: (viaCanvas(resolved, hostDoc) ?? fallback);
 		}
 	} catch {
 		// A host that cannot be measured keeps the fallbacks.

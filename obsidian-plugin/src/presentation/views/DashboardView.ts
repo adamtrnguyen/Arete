@@ -99,7 +99,7 @@ export class DashboardView extends ItemView {
 	}
 
 	async render() {
-		const container = this.containerEl.children[1] as HTMLElement;
+		const container = this.contentEl;
 		container.empty();
 		container.addClass('arete-dashboard-container');
 

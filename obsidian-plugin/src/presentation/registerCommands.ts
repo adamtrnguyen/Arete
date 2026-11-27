@@ -1,4 +1,12 @@
-import { App, Command, Editor, FileSystemAdapter, MarkdownView, Notice } from 'obsidian';
+import {
+	App,
+	Command,
+	Editor,
+	FileSystemAdapter,
+	MarkdownFileInfo,
+	MarkdownView,
+	Notice,
+} from 'obsidian';
 import * as path from 'path';
 import { ConceptStats } from '@/domain/stats';
 import { GraphService } from '@application/services/GraphService';
@@ -45,7 +53,7 @@ export function registerPluginCommands(plugin: CommandHost): void {
 	plugin.addCommand({
 		id: 'arete-check-file',
 		name: 'Check current file',
-		editorCallback: (_editor: Editor, view: MarkdownView) => {
+		editorCallback: (_editor: Editor, view: MarkdownView | MarkdownFileInfo) => {
 			if (view.file) {
 				const vaultAdapter = plugin.app.vault.adapter as FileSystemAdapter;
 				const basePath = vaultAdapter.getBasePath ? vaultAdapter.getBasePath() : null;

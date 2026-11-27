@@ -66,18 +66,18 @@ const STATUS_BAR_RESET_MS = 3000;
 const PARSE_WAIT_MS = 2000;
 
 export default class AretePlugin extends Plugin {
-	settings: AretePluginSettings;
-	statsCache: StatsCache;
-	statusBarItem: HTMLElement;
-	syncService: SyncService;
-	checkService: CheckService;
-	statsService: StatsService;
-	graphService: GraphService;
-	linkCheckerService: LinkCheckerService;
-	leechService: LeechService;
-	dependencyResolver: DependencyResolver;
-	areteClient: AreteClient;
-	templateRenderer: TemplateRenderer;
+	settings!: AretePluginSettings;
+	statsCache!: StatsCache;
+	statusBarItem!: HTMLElement;
+	syncService!: SyncService;
+	checkService!: CheckService;
+	statsService!: StatsService;
+	graphService!: GraphService;
+	linkCheckerService!: LinkCheckerService;
+	leechService!: LeechService;
+	dependencyResolver!: DependencyResolver;
+	areteClient!: AreteClient;
+	templateRenderer!: TemplateRenderer;
 
 	// One sync at a time; saves made during a sync become one follow-up.
 	private syncScheduler = new SyncScheduler({
@@ -90,14 +90,14 @@ export default class AretePlugin extends Plugin {
 	private activeCardContext: Map<string, string> = new Map();
 
 	// One sync-on-save timer per note, so editing B within the delay does not cancel A.
-	private syncOnSaveTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
+	private syncOnSaveTimers: Map<string, number> = new Map();
 
 	// Debounced save of the dashboard's `ui_expanded_*` settings, and what was last written.
-	private uiStateSaveTimer: ReturnType<typeof setTimeout> | null = null;
+	private uiStateSaveTimer: number | null = null;
 	private savedUiState = '';
 
 	// Returns the status bar to idle after a successful sync.
-	private statusBarResetTimer: ReturnType<typeof setTimeout> | null = null;
+	private statusBarResetTimer: number | null = null;
 	// Active waitForParse cleanup callbacks so timers/refs do not outlive plugin unload.
 	private parseWaitCleanups: Set<() => void> = new Set();
 
@@ -235,8 +235,8 @@ export default class AretePlugin extends Plugin {
 		this.registerEvent(
 			this.app.vault.on('delete', (file) => {
 				const pending = this.syncOnSaveTimers.get(file.path);
-				if (pending) {
-					clearTimeout(pending);
+				if (pending !== undefined) {
+					window.clearTimeout(pending);
 					this.syncOnSaveTimers.delete(file.path);
 				}
 				this.activeCardContext.delete(file.path);
@@ -249,8 +249,8 @@ export default class AretePlugin extends Plugin {
 		this.registerEvent(
 			this.app.vault.on('rename', (file, oldPath) => {
 				const pending = this.syncOnSaveTimers.get(oldPath);
-				if (pending) {
-					clearTimeout(pending);
+				if (pending !== undefined) {
+					window.clearTimeout(pending);
 					this.syncOnSaveTimers.delete(oldPath);
 				}
 				const rememberedCard = this.activeCardContext.get(oldPath);
@@ -265,8 +265,9 @@ export default class AretePlugin extends Plugin {
 					concepts[file.path] = moved;
 					delete concepts[oldPath];
 				}
+				if (!(file instanceof TFile)) return;
 				if (!file.path.endsWith('.md') && !oldPath.endsWith('.md')) return;
-				if (mayAffectGraph(this.app.metadataCache.getFileCache(file as TFile))) {
+				if (mayAffectGraph(this.app.metadataCache.getFileCache(file))) {
 					this.dependencyResolver?.invalidate();
 				}
 			}),
@@ -275,9 +276,10 @@ export default class AretePlugin extends Plugin {
 		// 8. Sync on Save (Debounced).
 		this.registerEvent(
 			this.app.vault.on('modify', (file) => {
+				if (!(file instanceof TFile)) return;
 				if (
 					file.path.endsWith('.md') &&
-					mayAffectGraph(this.app.metadataCache.getFileCache(file as TFile))
+					mayAffectGraph(this.app.metadataCache.getFileCache(file))
 				) {
 					this.dependencyResolver?.invalidate();
 				}
@@ -286,9 +288,9 @@ export default class AretePlugin extends Plugin {
 
 				// Debounce per path: a later save of the same note restarts its own timer only.
 				const pending = this.syncOnSaveTimers.get(file.path);
-				if (pending) clearTimeout(pending);
+				if (pending !== undefined) window.clearTimeout(pending);
 
-				const timer = setTimeout(async () => {
+				const timer = window.setTimeout(async () => {
 					this.syncOnSaveTimers.delete(file.path);
 					const vaultAdapter = this.app.vault.adapter as FileSystemAdapter;
 					const basePath = vaultAdapter.getBasePath ? vaultAdapter.getBasePath() : null;
@@ -367,13 +369,13 @@ export default class AretePlugin extends Plugin {
 				settled = true;
 				this.parseWaitCleanups.delete(done);
 				this.app.metadataCache.offref(ref);
-				clearTimeout(timer);
+				window.clearTimeout(timer);
 				resolve();
 			};
 			const ref = this.app.metadataCache.on('changed', (changed) => {
 				if (changed.path === file.path) done();
 			});
-			const timer = setTimeout(done, timeoutMs);
+			const timer = window.setTimeout(done, timeoutMs);
 			this.parseWaitCleanups.add(done);
 		});
 	}
@@ -387,12 +389,12 @@ export default class AretePlugin extends Plugin {
 	}
 
 	onunload() {
-		if (this.statusBarResetTimer) clearTimeout(this.statusBarResetTimer);
-		for (const timer of this.syncOnSaveTimers.values()) clearTimeout(timer);
+		if (this.statusBarResetTimer !== null) window.clearTimeout(this.statusBarResetTimer);
+		for (const timer of this.syncOnSaveTimers.values()) window.clearTimeout(timer);
 		this.syncOnSaveTimers.clear();
 		for (const cleanup of [...this.parseWaitCleanups]) cleanup();
 		this.parseWaitCleanups.clear();
-		if (this.uiStateSaveTimer) void this.flushUiState();
+		if (this.uiStateSaveTimer !== null) void this.flushUiState();
 		if (this.statusBarItem) {
 			this.statusBarItem.empty();
 		}
@@ -406,8 +408,8 @@ export default class AretePlugin extends Plugin {
 	updateStatusBar(state: SyncStatus, msg?: string) {
 		if (!this.statusBarItem) return;
 		this.statusBarItem.empty();
-		if (this.statusBarResetTimer) {
-			clearTimeout(this.statusBarResetTimer);
+		if (this.statusBarResetTimer !== null) {
+			window.clearTimeout(this.statusBarResetTimer);
 			this.statusBarResetTimer = null;
 		}
 
@@ -434,7 +436,7 @@ export default class AretePlugin extends Plugin {
 		} else if (state === 'success') {
 			this.setStatusBar('check', 'Synced');
 			setTooltip(this.statusBarItem, 'Click to sync to Anki');
-			this.statusBarResetTimer = setTimeout(() => {
+			this.statusBarResetTimer = window.setTimeout(() => {
 				this.statusBarResetTimer = null;
 				this.updateStatusBar('idle');
 			}, STATUS_BAR_RESET_MS);
@@ -594,12 +596,15 @@ export default class AretePlugin extends Plugin {
 	 * toggles writes `data.json` once, and not at all if it ends where it started.
 	 */
 	requestSaveUiState(): void {
-		if (this.uiStateSaveTimer) clearTimeout(this.uiStateSaveTimer);
-		this.uiStateSaveTimer = setTimeout(() => void this.flushUiState(), UI_STATE_SAVE_DELAY_MS);
+		if (this.uiStateSaveTimer !== null) window.clearTimeout(this.uiStateSaveTimer);
+		this.uiStateSaveTimer = window.setTimeout(
+			() => void this.flushUiState(),
+			UI_STATE_SAVE_DELAY_MS,
+		);
 	}
 
 	private async flushUiState(): Promise<void> {
-		if (this.uiStateSaveTimer) clearTimeout(this.uiStateSaveTimer);
+		if (this.uiStateSaveTimer !== null) window.clearTimeout(this.uiStateSaveTimer);
 		this.uiStateSaveTimer = null;
 		const state = this.uiStateKey();
 		if (state === this.savedUiState) return;

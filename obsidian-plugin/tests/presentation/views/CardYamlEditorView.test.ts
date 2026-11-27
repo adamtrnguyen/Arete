@@ -399,7 +399,7 @@ describe('CardYamlEditorView styling', () => {
 			} as any,
 		);
 		view.app = app;
-		view.containerEl = { children: [null, container] };
+		view.contentEl = container;
 		view.registerEvent = jest.fn();
 		for (const draw of ['renderIndex', 'renderToolbar', 'createEditor', 'setViewMode']) {
 			view[draw] = jest.fn();

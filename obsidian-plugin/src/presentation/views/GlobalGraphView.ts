@@ -14,6 +14,7 @@ import * as d3 from 'd3';
 import { DependencyResolver } from '@/application/services/DependencyResolver';
 import { CardNode, GlobalGraphResult, DependencyEdge } from '@/domain/graph/types';
 import {
+	destroyForceGraph3D,
 	GraphColors,
 	loadForceGraph3D,
 	resolveGraphColors,
@@ -53,7 +54,7 @@ interface GlobalLink extends d3.SimulationLinkDatum<GlobalNode> {
 export class GlobalGraphView extends ItemView {
 	plugin: GlobalGraphHost;
 	private resolver: DependencyResolver;
-	private container: HTMLElement;
+	private container!: HTMLElement;
 	private simulation: d3.Simulation<any, any> | null = null;
 	private graph3D: any = null;
 
@@ -77,8 +78,8 @@ export class GlobalGraphView extends ItemView {
 	private static readonly FILE_LABEL_CLASS = 'arete-global-graph-node-label';
 	private static nextMarkerId = 1;
 	private readonly arrowId = `arete-global-arrow-${GlobalGraphView.nextMarkerId++}`;
-	private searchTimer: ReturnType<typeof setTimeout> | null = null;
-	private resizeTimer: ReturnType<typeof setTimeout> | null = null;
+	private searchTimer: number | null = null;
+	private resizeTimer: number | null = null;
 	/** The current 2D drawing's elements the search restyles; null when none is drawn. */
 	private searchTargets: {
 		nodeGroup: d3.Selection<any, GlobalNode, any, any>;
@@ -92,9 +93,9 @@ export class GlobalGraphView extends ItemView {
 	private repaint3D: (() => void) | null = null;
 
 	// Layout elements
-	private toolbarEl: HTMLElement;
-	private graphContainer: HTMLElement;
-	private detailPanel: HTMLElement;
+	private toolbarEl!: HTMLElement;
+	private graphContainer!: HTMLElement;
+	private detailPanel!: HTMLElement;
 
 	constructor(leaf: WorkspaceLeaf, plugin: GlobalGraphHost) {
 		super(leaf);
@@ -183,8 +184,8 @@ export class GlobalGraphView extends ItemView {
 		searchInput.value = this.searchQuery;
 		searchInput.addEventListener('input', () => {
 			this.searchQuery = searchInput.value.toLowerCase();
-			if (this.searchTimer) clearTimeout(this.searchTimer);
-			this.searchTimer = setTimeout(() => {
+			if (this.searchTimer) window.clearTimeout(this.searchTimer);
+			this.searchTimer = window.setTimeout(() => {
 				this.searchTimer = null;
 				this.applySearch();
 			}, GlobalGraphView.INPUT_DEBOUNCE_MS);
@@ -278,8 +279,8 @@ export class GlobalGraphView extends ItemView {
 			this.render();
 			return;
 		}
-		if (this.resizeTimer) clearTimeout(this.resizeTimer);
-		this.resizeTimer = setTimeout(() => {
+		if (this.resizeTimer) window.clearTimeout(this.resizeTimer);
+		this.resizeTimer = window.setTimeout(() => {
 			this.resizeTimer = null;
 			this.resizeViewport?.();
 		}, GlobalGraphView.INPUT_DEBOUNCE_MS);
@@ -972,7 +973,7 @@ export class GlobalGraphView extends ItemView {
 			this.simulation = null;
 		}
 		if (this.graph3D) {
-			this.graph3D._destructor?.();
+			destroyForceGraph3D(this.graph3D);
 			this.graph3D = null;
 		}
 	}
@@ -988,8 +989,8 @@ export class GlobalGraphView extends ItemView {
 	}
 
 	async onClose(): Promise<void> {
-		if (this.searchTimer) clearTimeout(this.searchTimer);
-		if (this.resizeTimer) clearTimeout(this.resizeTimer);
+		if (this.searchTimer) window.clearTimeout(this.searchTimer);
+		if (this.resizeTimer) window.clearTimeout(this.resizeTimer);
 		this.stopSimulation();
 	}
 }

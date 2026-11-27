@@ -122,7 +122,7 @@ function mount(over: { concepts?: Record<string, any>; plugin?: Record<string, a
 	};
 	const view: any = new DashboardView({} as any, plugin);
 	const container = createMockElement('div');
-	view.containerEl = { children: [null, container] };
+	view.contentEl = container;
 	return { view, container, plugin, rec, cache };
 }
 

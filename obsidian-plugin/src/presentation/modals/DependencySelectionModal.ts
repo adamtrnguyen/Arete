@@ -46,14 +46,14 @@ export class DependencySelectionModal extends Modal {
 	private currentFile: TFile | null = null; // Context for 'cards' mode
 
 	// UI Elements
-	private searchContainer: HTMLElement;
-	private resultsContainer: HTMLElement;
-	private previewContainer: HTMLElement;
-	private searchInput: SearchComponent;
+	private searchContainer!: HTMLElement;
+	private resultsContainer!: HTMLElement;
+	private previewContainer!: HTMLElement;
+	private searchInput!: SearchComponent;
 
 	private _component = new Component();
 	private previewComponent: Component | null = null;
-	private previewTimer: ReturnType<typeof setTimeout> | null = null;
+	private previewTimer: number | null = null;
 	// Incremented per preview; a render that finds it changed has been superseded.
 	private previewRevision = 0;
 
@@ -113,7 +113,7 @@ export class DependencySelectionModal extends Modal {
 	onClose() {
 		const { contentEl } = this;
 		contentEl.empty();
-		if (this.previewTimer) clearTimeout(this.previewTimer);
+		if (this.previewTimer) window.clearTimeout(this.previewTimer);
 		this.previewRevision++;
 		if (this.previewComponent) {
 			this._component.removeChild(this.previewComponent);
@@ -271,8 +271,8 @@ export class DependencySelectionModal extends Modal {
 
 	/** Preview the selected item once selection has been still for PREVIEW_DELAY_MS. */
 	private schedulePreview() {
-		if (this.previewTimer) clearTimeout(this.previewTimer);
-		this.previewTimer = setTimeout(() => {
+		if (this.previewTimer) window.clearTimeout(this.previewTimer);
+		this.previewTimer = window.setTimeout(() => {
 			this.previewTimer = null;
 			// A note that cannot be read leaves the pane as it is.
 			this.renderPreview().catch((error) =>

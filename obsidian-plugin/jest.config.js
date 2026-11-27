@@ -1,14 +1,15 @@
 module.exports = {
-	preset: 'ts-jest',
 	testEnvironment: 'node',
 	moduleFileExtensions: ['ts', 'js'],
 	transform: {
-		// Transpile only: `tsc --noEmit` (just types-obsidian, part of `just qa`) is the type check.
-		'^.+\\.ts$': ['ts-jest', { tsconfig: '<rootDir>/tsconfig.jest.json' }],
+		// Transpile only via esbuild: `tsc --noEmit` (just types-obsidian, part of `just qa`) is the type check.
+		'^.+\\.ts$': '<rootDir>/scripts/jest-esbuild-transform.cjs',
 	},
 	transformIgnorePatterns: ['node_modules/(?!((d3.*)|internmap|delaunator|robust-predicates))'],
 	testMatch: ['**/tests/**/*.test.ts'],
 	// Coverage is opt-in: `npm run test:coverage` (just coverage-obsidian) turns it on and enforces the threshold.
+	coverageProvider: 'v8',
+	collectCoverageFrom: ['src/**/*.ts'],
 	coverageThreshold: {
 		global: {
 			branches: 70,

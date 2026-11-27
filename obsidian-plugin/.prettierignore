@@ -6,6 +6,8 @@ package-lock.json
 # npm rewrites the indentation on each install.
 package.json
 
-# Build output. esbuild emits these minified on one line.
+# Build and generated output.
+coverage/
+eslint-suppressions.json
 main.js
 styles.css

@@ -15,14 +15,14 @@ One-way sync from your vault to Anki. Cards live in a note's frontmatter, and th
 ```yaml
 ---
 arete: true
-deck: "Biology::Anatomy"
+deck: 'Biology::Anatomy'
 cards:
-  - Front: What are the three layers of the skin?
-    Back: |-
-      Epidermis, dermis, hypodermis.
-  - model: Cloze
-    Text: |-
-      The {{c1::epidermis}} is the outermost layer of skin.
+    - Front: What are the three layers of the skin?
+      Back: |-
+          Epidermis, dermis, hypodermis.
+    - model: Cloze
+      Text: |-
+          The {{c1::epidermis}} is the outermost layer of skin.
 ---
 ```
 

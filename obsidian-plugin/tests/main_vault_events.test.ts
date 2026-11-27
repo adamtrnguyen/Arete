@@ -1,12 +1,15 @@
 import './test-setup';
 import * as path from 'path';
-import { App, Notice } from 'obsidian';
+import { App, Notice, TFile } from 'obsidian';
 import AretePlugin from '@/main';
 
 jest.mock('@infrastructure/arete/SyncService');
 jest.mock('@infrastructure/arete/CheckService');
 
 type Handler = (...args: any[]) => void;
+
+const tfile = (filePath: string) =>
+	Object.assign(new TFile(), { path: filePath, name: filePath.split('/').pop() ?? filePath });
 
 /** Load the plugin with every vault and metadata-cache handler captured by event name. */
 async function loadPlugin() {
@@ -50,9 +53,9 @@ describe('sync on save', () => {
 
 	test('saving A then B within the delay syncs both', async () => {
 		const { plugin, vaultHandlers } = await setup();
-		vaultHandlers.modify({ path: 'A.md' });
+		vaultHandlers.modify(tfile('A.md'));
 		await jest.advanceTimersByTimeAsync(500);
-		vaultHandlers.modify({ path: 'B.md' });
+		vaultHandlers.modify(tfile('B.md'));
 		await jest.advanceTimersByTimeAsync(1000);
 
 		expect(started(plugin)).toEqual([
@@ -63,9 +66,9 @@ describe('sync on save', () => {
 
 	test('repeated saves of one note sync it once', async () => {
 		const { plugin, vaultHandlers } = await setup();
-		vaultHandlers.modify({ path: 'A.md' });
+		vaultHandlers.modify(tfile('A.md'));
 		await jest.advanceTimersByTimeAsync(500);
-		vaultHandlers.modify({ path: 'A.md' });
+		vaultHandlers.modify(tfile('A.md'));
 		await jest.advanceTimersByTimeAsync(2000);
 
 		expect(started(plugin)).toHaveLength(1);
@@ -73,8 +76,8 @@ describe('sync on save', () => {
 
 	test('no sync fires after unload', async () => {
 		const { plugin, vaultHandlers } = await setup();
-		vaultHandlers.modify({ path: 'A.md' });
-		vaultHandlers.modify({ path: 'B.md' });
+		vaultHandlers.modify(tfile('A.md'));
+		vaultHandlers.modify(tfile('B.md'));
 		plugin.onunload();
 		await jest.advanceTimersByTimeAsync(5000);
 
@@ -88,8 +91,8 @@ describe('sync on save', () => {
 			() => new Promise((resolve) => (finish = resolve)),
 		);
 		void plugin.runSync();
-		vaultHandlers.modify({ path: 'A.md' });
-		vaultHandlers.modify({ path: 'B.md' });
+		vaultHandlers.modify(tfile('A.md'));
+		vaultHandlers.modify(tfile('B.md'));
 		await jest.advanceTimersByTimeAsync(2000);
 
 		expect(started(plugin)).toEqual([[false, null, false]]);
@@ -136,54 +139,57 @@ describe('dependency graph invalidation', () => {
 			'plain.md': plainNote,
 			'bare.md': noFrontmatter,
 		});
-		vaultHandlers.modify({ path: 'plain.md' });
-		metaHandlers.changed({ path: 'plain.md' }, '', plainNote);
-		vaultHandlers.modify({ path: 'bare.md' });
-		metaHandlers.changed({ path: 'bare.md' }, '', noFrontmatter);
+		vaultHandlers.modify(tfile('plain.md'));
+		metaHandlers.changed(tfile('plain.md'), '', plainNote);
+		vaultHandlers.modify(tfile('bare.md'));
+		metaHandlers.changed(tfile('bare.md'), '', noFrontmatter);
 		expect(plugin.dependencyResolver.invalidate).not.toHaveBeenCalled();
 	});
 
 	test('editing a card note drops the graph', async () => {
 		const { plugin, vaultHandlers } = await setup({ 'cards.md': cardNote });
-		vaultHandlers.modify({ path: 'cards.md' });
+		vaultHandlers.modify(tfile('cards.md'));
 		expect(plugin.dependencyResolver.invalidate).toHaveBeenCalled();
 	});
 
 	test('a note that just lost its cards drops the graph (cache still old at modify)', async () => {
 		const { plugin, vaultHandlers, metaHandlers } = await setup({ 'n.md': cardNote });
-		vaultHandlers.modify({ path: 'n.md' });
+		vaultHandlers.modify(tfile('n.md'));
 		expect(plugin.dependencyResolver.invalidate).toHaveBeenCalledTimes(1);
-		metaHandlers.changed({ path: 'n.md' }, '', plainNote);
+		metaHandlers.changed(tfile('n.md'), '', plainNote);
 		expect(plugin.dependencyResolver.invalidate).toHaveBeenCalledTimes(1);
 	});
 
 	test('a note that just gained cards drops the graph once re-parsed', async () => {
 		const { plugin, vaultHandlers, metaHandlers } = await setup({ 'n.md': plainNote });
-		vaultHandlers.modify({ path: 'n.md' });
+		vaultHandlers.modify(tfile('n.md'));
 		expect(plugin.dependencyResolver.invalidate).not.toHaveBeenCalled();
-		metaHandlers.changed({ path: 'n.md' }, '', cardNote);
+		metaHandlers.changed(tfile('n.md'), '', cardNote);
 		expect(plugin.dependencyResolver.invalidate).toHaveBeenCalledTimes(1);
 	});
 
 	test('an uncached note counts as possibly in the graph', async () => {
 		const { plugin, vaultHandlers } = await setup({});
-		vaultHandlers.modify({ path: 'new.md' });
+		vaultHandlers.modify(tfile('new.md'));
 		expect(plugin.dependencyResolver.invalidate).toHaveBeenCalled();
 	});
 
-	test('non-markdown edits keep the graph', async () => {
-		const { plugin, vaultHandlers } = await setup({});
-		vaultHandlers.modify({ path: 'image.png' });
+	test('non-markdown edits and non-TFile folders keep the graph', async () => {
+		const { app, plugin, vaultHandlers } = await setup({});
+		vaultHandlers.modify(tfile('image.png'));
+		vaultHandlers.modify({ path: 'folder.md' });
+		vaultHandlers.rename({ path: 'folder2.md' }, 'folder.md');
 		expect(plugin.dependencyResolver.invalidate).not.toHaveBeenCalled();
+		expect(app.metadataCache.getFileCache).not.toHaveBeenCalled();
 	});
 
 	test('deleting a card note drops the graph; deleting a plain note does not', async () => {
 		const { plugin, metaHandlers } = await setup({});
-		metaHandlers.deleted({ path: 'plain.md' }, plainNote);
+		metaHandlers.deleted(tfile('plain.md'), plainNote);
 		expect(plugin.dependencyResolver.invalidate).not.toHaveBeenCalled();
-		metaHandlers.deleted({ path: 'cards.md' }, cardNote);
+		metaHandlers.deleted(tfile('cards.md'), cardNote);
 		expect(plugin.dependencyResolver.invalidate).toHaveBeenCalledTimes(1);
-		metaHandlers.deleted({ path: 'unknown.md' }, null);
+		metaHandlers.deleted(tfile('unknown.md'), null);
 		expect(plugin.dependencyResolver.invalidate).toHaveBeenCalledTimes(2);
 	});
 
@@ -192,9 +198,9 @@ describe('dependency graph invalidation', () => {
 			'new-cards.md': cardNote,
 			'new-plain.md': plainNote,
 		});
-		vaultHandlers.rename({ path: 'new-plain.md' }, 'old-plain.md');
+		vaultHandlers.rename(tfile('new-plain.md'), 'old-plain.md');
 		expect(plugin.dependencyResolver.invalidate).not.toHaveBeenCalled();
-		vaultHandlers.rename({ path: 'new-cards.md' }, 'old-cards.md');
+		vaultHandlers.rename(tfile('new-cards.md'), 'old-cards.md');
 		expect(plugin.dependencyResolver.invalidate).toHaveBeenCalledTimes(1);
 	});
 
@@ -211,8 +217,8 @@ describe('dependency graph invalidation', () => {
 				fileName: 'A.md',
 			} as any;
 
-			vaultHandlers.modify({ path: 'A.md' });
-			vaultHandlers.rename({ path: 'B.md', name: 'B.md' }, 'A.md');
+			vaultHandlers.modify(tfile('A.md'));
+			vaultHandlers.rename(tfile('B.md'), 'A.md');
 			await jest.advanceTimersByTimeAsync(2000);
 
 			expect(plugin.syncService.runSync).not.toHaveBeenCalled();
@@ -221,8 +227,8 @@ describe('dependency graph invalidation', () => {
 			expect(plugin.statsService.getCache().concepts['A.md']).toBeUndefined();
 			expect(plugin.statsService.getCache().concepts['B.md']?.filePath).toBe('B.md');
 
-			vaultHandlers.modify({ path: 'B.md' });
-			vaultHandlers.delete({ path: 'B.md' });
+			vaultHandlers.modify(tfile('B.md'));
+			vaultHandlers.delete(tfile('B.md'));
 			await jest.advanceTimersByTimeAsync(2000);
 
 			expect(plugin.syncService.runSync).not.toHaveBeenCalled();

@@ -144,7 +144,7 @@ export class TemplateRenderer {
 		modelName: string,
 		templateType: 'Front' | 'Back',
 		fields: Record<string, string>,
-		opts: { sourcePath: string; component: Component },
+		opts: { sourcePath: string; component: Component; doc?: Document },
 	): Promise<{ html: string; css: string } | null> {
 		debugLog(`[Arete] Render request for ${modelName} (${templateType})`);
 		if (!this.cache.has(modelName)) {
@@ -204,10 +204,13 @@ export class TemplateRenderer {
 						return;
 					}
 
-					// Create a hidden container to render into
-					const dummy = document.createElement('div');
+					// Create a hidden container in the host document to render into
+					const doc =
+						opts.doc ??
+						(typeof activeDocument !== 'undefined' ? activeDocument : document);
+					const dummy = doc.createElement('div');
 					dummy.className = 'arete-hidden';
-					document.body.appendChild(dummy); // Attach to DOM for MathJax measurement
+					doc.body.appendChild(dummy); // Attach to DOM for MathJax measurement
 
 					try {
 						// Use MarkdownRenderer to render the field value (handles MD + LaTeX)
@@ -220,7 +223,7 @@ export class TemplateRenderer {
 						);
 						renderedFields[key] = dummy.innerHTML;
 					} finally {
-						document.body.removeChild(dummy); // Cleanup
+						doc.body.removeChild(dummy); // Cleanup
 					}
 				}),
 			);

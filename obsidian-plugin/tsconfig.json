@@ -1,20 +1,15 @@
 {
 	"compilerOptions": {
-		"baseUrl": ".",
 		"inlineSourceMap": true,
 		"inlineSources": true,
 		"module": "ESNext",
-		"target": "ES2018",
+		"target": "ES2022",
 		"allowJs": true,
-		"noImplicitAny": true,
-		"strictNullChecks": true,
-		"strict": false,
+		"strict": true,
 		"types": ["node"],
 		"moduleResolution": "bundler",
-		"ignoreDeprecations": "6.0",
-		"importHelpers": true,
 		"esModuleInterop": true,
-		"lib": ["dom", "es2018"],
+		"lib": ["dom", "es2022"],
 		"paths": {
 			"@/*": ["./src/*"],
 			"@domain/*": ["./src/domain/*"],

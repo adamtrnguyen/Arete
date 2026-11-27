@@ -25,7 +25,7 @@ const TEXT_SAVE_DELAY_MS = 500;
 
 export class AreteSettingTab extends PluginSettingTab {
 	plugin: SettingsHost;
-	private textSaveTimer: ReturnType<typeof setTimeout> | null = null;
+	private textSaveTimer: number | null = null;
 
 	constructor(app: App, plugin: SettingsHost) {
 		super(app, plugin);
@@ -34,14 +34,14 @@ export class AreteSettingTab extends PluginSettingTab {
 
 	/** Save once typing in a text field has paused; a burst of keystrokes writes once. */
 	private saveSoon(): void {
-		if (this.textSaveTimer) clearTimeout(this.textSaveTimer);
-		this.textSaveTimer = setTimeout(() => void this.flushSave(), TEXT_SAVE_DELAY_MS);
+		if (this.textSaveTimer) window.clearTimeout(this.textSaveTimer);
+		this.textSaveTimer = window.setTimeout(() => void this.flushSave(), TEXT_SAVE_DELAY_MS);
 	}
 
 	/** Write a pending text-field change now. */
 	private async flushSave(): Promise<void> {
 		if (!this.textSaveTimer) return;
-		clearTimeout(this.textSaveTimer);
+		window.clearTimeout(this.textSaveTimer);
 		this.textSaveTimer = null;
 		await this.plugin.saveSettings();
 	}
@@ -174,8 +174,8 @@ export class AreteSettingTab extends PluginSettingTab {
 					.addOption('direct', 'Direct (Anki database, requires Anki closed)')
 					.addOption('ankiconnect', 'AnkiConnect (requires Anki running)')
 					.setValue(this.plugin.settings.backend)
-					.onChange(async (value: 'auto' | 'direct' | 'ankiconnect') => {
-						this.plugin.settings.backend = value;
+					.onChange(async (value: string) => {
+						this.plugin.settings.backend = value as AretePluginSettings['backend'];
 						await this.plugin.saveSettings();
 					}),
 			);
@@ -221,8 +221,9 @@ export class AreteSettingTab extends PluginSettingTab {
 					.addOption('sm2', 'Classic (SM-2)')
 					.addOption('fsrs', 'FSRS (new scheduler)')
 					.setValue(this.plugin.settings.stats_algorithm)
-					.onChange(async (value: 'sm2' | 'fsrs') => {
-						this.plugin.settings.stats_algorithm = value;
+					.onChange(async (value: string) => {
+						this.plugin.settings.stats_algorithm =
+							value as AretePluginSettings['stats_algorithm'];
 						if (this.plugin.statsService) {
 							this.plugin.statsService.clearCache();
 							this.plugin.statsCache = this.plugin.statsService.getCache();

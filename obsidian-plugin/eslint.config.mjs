@@ -1,7 +1,7 @@
 import js from '@eslint/js';
 import { defineConfig } from 'eslint/config';
 import tseslint from 'typescript-eslint';
-import prettierRecommended from 'eslint-plugin-prettier/recommended';
+import eslintConfigPrettier from 'eslint-config-prettier';
 import globals from 'globals';
 
 // Layer and lifecycle rules (docs: obsidian-plugin/CLAUDE.md). Rule ids in parentheses.
@@ -87,7 +87,7 @@ const aretePlugin = {
 			'Settings headings use new Setting(el).setName(…).setHeading(); modal titles use this.setTitle(…).',
 		), // N2, N5
 		'no-literal-delay': ratchet(
-			"CallExpression[callee.name='setTimeout'][arguments.1.type='Literal'][arguments.1.value>0]",
+			":matches(CallExpression[callee.name='setTimeout'], CallExpression[callee.property.name='setTimeout'])[arguments.1.type='Literal'][arguments.1.value>0]",
 			'Name the delay: a *_MS constant.',
 		), // R2
 		'no-keystroke-save': ratchet(
@@ -199,6 +199,6 @@ export default defineConfig([
 	},
 	{ files: ['src/domain/debugLog.ts'], rules: { 'no-console': 'off' } },
 
-	// Prettier integration — must be last (disables conflicting format rules)
-	prettierRecommended,
+	// Prettier compatibility — must be last (disables rules that conflict with Prettier)
+	eslintConfigPrettier,
 ]);

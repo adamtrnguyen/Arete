@@ -52,7 +52,7 @@ export function renderCardFieldEditor(container: HTMLElement, ctx: CardFieldEdit
 			ctx.onFieldChanged();
 		});
 	});
-	setTimeout(() => fitTextareas(inputs), 0);
+	window.setTimeout(() => fitTextareas(inputs), 0);
 
 	const updateDeps = (depKey: 'requires' | 'related', newDeps: string[]) => {
 		const current =
