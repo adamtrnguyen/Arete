@@ -21,6 +21,8 @@ interface RecordedSetting {
 	container: any;
 	name?: string;
 	heading: boolean;
+	dropdown?: any;
+	text?: any;
 }
 
 export interface NativeRecord {
@@ -75,6 +77,8 @@ export function installNativeObsidian(): NativeRecord {
 					container: call[0],
 					name: last(s.setName)?.[0],
 					heading: s.setHeading.mock.calls.length > 0,
+					dropdown: s.mockDropdown,
+					text: s.mockText,
 				};
 			});
 		},

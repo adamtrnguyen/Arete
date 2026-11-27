@@ -41,6 +41,14 @@ module.exports = {
 			from: { path: '^src/application' },
 			to: { path: '^src/infrastructure' },
 		},
+		// Presentation depends on domain ports and application services, not infrastructure
+		{
+			name: 'presentation-no-infrastructure',
+			comment: 'Presentation must not import infrastructure directly; use domain ports.',
+			severity: 'error',
+			from: { path: '^src/presentation' },
+			to: { path: '^src/infrastructure' },
+		},
 		// L3: main.ts is imported by nobody
 		{
 			name: 'nothing-imports-main',

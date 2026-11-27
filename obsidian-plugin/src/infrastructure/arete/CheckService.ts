@@ -35,8 +35,8 @@ export class CheckService implements FileChecker {
 			let stdout = '';
 			let stderr = '';
 
-			child.stdout.on('data', (d) => (stdout += d.toString()));
-			child.stderr.on('data', (d) => (stderr += d.toString()));
+			child.stdout?.on('data', (d) => (stdout += d.toString()));
+			child.stderr?.on('data', (d) => (stderr += d.toString()));
 
 			// `vault check --json` prints its JSON on a failed check too, so any exit code
 			// with JSON on stdout is a result.

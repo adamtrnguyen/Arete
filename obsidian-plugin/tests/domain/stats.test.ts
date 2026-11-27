@@ -1,4 +1,10 @@
-import { cardState, dueEpochSeconds, metricStates, uniqueCardStats } from '@/domain/stats';
+import {
+	cardState,
+	dueEpochSeconds,
+	formatGutterStats,
+	metricStates,
+	uniqueCardStats,
+} from '@/domain/stats';
 import type { CardStateSettings } from '@/domain/stats';
 import { DEFAULT_SETTINGS } from '@/domain/settings';
 import { ankiCardStats } from '../factories';
@@ -236,5 +242,49 @@ describe('cardState', () => {
 		const r = cardState(stats({ intervalGrowth: 0.5, daysOverdue: 99 }), true, settings);
 		expect(r.state).toBe('success');
 		expect(r.metrics.daysOverdue).toBe('error');
+	});
+});
+
+describe('formatGutterStats', () => {
+	it('returns empty labels for unsynced cards or missing stats', () => {
+		expect(formatGutterStats(ankiCardStats({ difficulty: 0.5 }), 'fsrs', false)).toEqual({
+			diffText: '',
+			lapseText: null,
+			tooltip: '',
+		});
+		expect(formatGutterStats(null, 'fsrs', true)).toEqual({
+			diffText: '',
+			lapseText: null,
+			tooltip: '',
+		});
+	});
+
+	it('formats FSRS difficulty and lapses for gutter badges and tooltip', () => {
+		const s = ankiCardStats({ difficulty: 0.5, lapses: 2 });
+		expect(formatGutterStats(s, 'fsrs', true)).toEqual({
+			diffText: '5.0',
+			lapseText: '2L',
+			tooltip: 'Difficulty: 5.0/10\nLapses: 2',
+		});
+		expect(
+			formatGutterStats(ankiCardStats({ difficulty: undefined, lapses: 0 }), 'fsrs', true),
+		).toEqual({
+			diffText: 'D:?',
+			lapseText: null,
+			tooltip: '',
+		});
+	});
+
+	it('formats SM-2 ease and falls back to E:? when ease is zero', () => {
+		expect(formatGutterStats(ankiCardStats({ ease: 2500, lapses: 1 }), 'sm2', true)).toEqual({
+			diffText: 'E:250%',
+			lapseText: '1L',
+			tooltip: 'Ease: 250%\nLapses: 1',
+		});
+		expect(formatGutterStats(ankiCardStats({ ease: 0, lapses: 0 }), 'sm2', true)).toEqual({
+			diffText: 'E:?',
+			lapseText: null,
+			tooltip: '',
+		});
 	});
 });

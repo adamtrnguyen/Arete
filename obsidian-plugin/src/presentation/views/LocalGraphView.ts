@@ -17,6 +17,12 @@ import {
 	loadForceGraph3D,
 	resolveGraphColors,
 } from '@/presentation/graph/ForceGraph3D';
+import {
+	appendArrowMarker,
+	applyFileClusteringForce2D,
+	applyFileClusteringForce3D,
+	createNodeDragBehavior,
+} from '@/presentation/graph/GraphHelpers';
 
 /** What this view needs from the plugin (main.ts satisfies it; no import of main). */
 export interface LocalGraphHost {
@@ -59,6 +65,7 @@ export class LocalGraphView extends ItemView {
 	private tooltipComponent: Component = new Component();
 	private renderCardNodes = false;
 	private currentFilePath: string | null = null;
+	private centeredCardId: string | null = null;
 	private viewMode: '2d' | '3d' = '2d';
 	private clusteringEnabled = false;
 	private graph3D: any = null; // 3d-force-graph instance
@@ -264,10 +271,6 @@ export class LocalGraphView extends ItemView {
 		});
 	}
 
-	// ... inside LocalGraphView class
-	private centeredCardId: string | null = null;
-	// ...
-
 	// Public method to explicitly set context (robustness)
 	async setContext(filePath: string, cardId?: string | null) {
 		debugLog('[Arete] Explicit context set:', filePath, cardId);
@@ -368,11 +371,12 @@ export class LocalGraphView extends ItemView {
 				const firstCard = cards.find((c: any) => c.id);
 				targetCardId = null; // never fall back to another file's card
 				if (firstCard) {
-					targetCardId = firstCard.id;
+					const firstId = String(firstCard.id);
+					targetCardId = firstId;
 					// Update context to match default
-					this.centeredCardId = targetCardId;
-					this.plugin.setCardContext(filePath, targetCardId);
-					debugLog('[Arete] Defaulting to first card:', targetCardId);
+					this.centeredCardId = firstId;
+					this.plugin.setCardContext(filePath, firstId);
+					debugLog('[Arete] Defaulting to first card:', firstId);
 				}
 			}
 		} else {
@@ -619,22 +623,14 @@ export class LocalGraphView extends ItemView {
 
 		// Apply clustering force in 2D mode if enabled
 		if (this.clusteringEnabled) {
-			this.applyClusteringForce(this.simulation, nodes);
+			applyFileClusteringForce2D(this.simulation, nodes, {
+				forceXName: 'cluster',
+				radius: 300,
+			});
 		}
 
 		// Arrows
-		svg.append('defs')
-			.append('marker')
-			.attr('id', this.arrowId)
-			.attr('viewBox', '0 -5 10 10')
-			.attr('refX', 20)
-			.attr('refY', 0)
-			.attr('markerWidth', 6)
-			.attr('markerHeight', 6)
-			.attr('orient', 'auto')
-			.append('path')
-			.attr('d', 'M0,-5L10,0L0,5')
-			.attr('class', 'arete-graph-arrow');
+		appendArrowMarker(svg, this.arrowId, 'arete-graph-arrow');
 
 		// Links
 		const link = g
@@ -646,22 +642,7 @@ export class LocalGraphView extends ItemView {
 			.attr('marker-end', (d) => (d.type === 'requires' ? `url(#${this.arrowId})` : null));
 
 		// Drag
-		const dragBehavior = d3
-			.drag<any, any>()
-			.on('start', (event, d) => {
-				if (!event.active) this.simulation?.alphaTarget(0.3).restart();
-				d.fx = d.x;
-				d.fy = d.y;
-			})
-			.on('drag', (event, d) => {
-				d.fx = event.x;
-				d.fy = event.y;
-			})
-			.on('end', (event, d) => {
-				if (!event.active) this.simulation?.alphaTarget(0);
-				d.fx = null;
-				d.fy = null;
-			});
+		const dragBehavior = createNodeDragBehavior(() => this.simulation);
 
 		// Nodes Group
 		const nodeGroup = g
@@ -819,65 +800,8 @@ export class LocalGraphView extends ItemView {
 
 	async onClose() {
 		if (this.refreshTimer) clearTimeout(this.refreshTimer);
-		if (this.simulation) this.simulation.stop();
 		this.releaseDrawing();
 		this.tooltipComponent.unload();
-	}
-
-	/**
-	 * Compute cluster centroids based on filePath for grouping nodes.
-	 */
-	private getClusterCentroids(
-		nodes: GraphNode[],
-	): Map<string, { x: number; y: number; z: number }> {
-		const clusters = new Map<string, GraphNode[]>();
-		nodes.forEach((n) => {
-			const key = n.filePath || 'unknown';
-			if (!clusters.has(key)) clusters.set(key, []);
-			clusters.get(key)!.push(n);
-		});
-
-		const centroids = new Map<string, { x: number; y: number; z: number }>();
-		let i = 0;
-		const clusterCount = clusters.size;
-		clusters.forEach((_, key) => {
-			// Distribute clusters in a circle for 2D, sphere for 3D
-			const angle = (i / clusterCount) * 2 * Math.PI;
-			const radius = 300;
-			centroids.set(key, {
-				x: Math.cos(angle) * radius,
-				y: Math.sin(angle) * radius,
-				z: (i % 2 === 0 ? 1 : -1) * 100, // Alternate z for 3D depth
-			});
-			i++;
-		});
-		return centroids;
-	}
-
-	/**
-	 * Custom clustering force that pulls nodes toward their cluster centroid.
-	 */
-	private applyClusteringForce(
-		simulation: d3.Simulation<GraphNode, GraphLink>,
-		nodes: GraphNode[],
-		strength = 0.3,
-	) {
-		const centroids = this.getClusterCentroids(nodes);
-
-		simulation.force(
-			'cluster',
-			d3
-				.forceX<GraphNode>()
-				.x((d) => centroids.get(d.filePath)?.x || 0)
-				.strength(strength),
-		);
-		simulation.force(
-			'clusterY',
-			d3
-				.forceY<GraphNode>()
-				.y((d) => centroids.get(d.filePath)?.y || 0)
-				.strength(strength),
-		);
 	}
 
 	/** Colour a 3D drawing from the theme; also the whole of what a theme change redoes. */
@@ -948,23 +872,11 @@ export class LocalGraphView extends ItemView {
 
 		// Apply clustering force in 3D mode if enabled
 		if (this.clusteringEnabled) {
-			const centroids = this.getClusterCentroids(nodes);
-			this.graph3D
-				.d3Force(
-					'clusterX',
-					d3
-						.forceX<any>()
-						.x((d: any) => centroids.get(d.filePath)?.x || 0)
-						.strength(0.3),
-				)
-				.d3Force(
-					'clusterY',
-					d3
-						.forceY<any>()
-						.y((d: any) => centroids.get(d.filePath)?.y || 0)
-						.strength(0.3),
-				);
-			// Note: 3d-force-graph uses d3-force-3d which handles Z via its own simulation
+			applyFileClusteringForce3D(
+				this.graph3D,
+				nodes.map((n) => n.filePath),
+				{ radius: 300 },
+			);
 		}
 
 		// Setup hover tooltip (reuse single container)

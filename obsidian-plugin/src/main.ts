@@ -1,5 +1,4 @@
 import {
-	Editor,
 	MarkdownView,
 	Notice,
 	Plugin,
@@ -22,6 +21,13 @@ import { DashboardView, DASHBOARD_VIEW_TYPE } from '@presentation/views/Dashboar
 import { AreteSettingTab } from '@presentation/settings/SettingTab';
 import { CheckResultModal } from '@presentation/modals/CheckResultModal';
 import { PruneConfirmModal } from '@presentation/modals/PruneConfirmModal';
+import { registerPluginCommands } from '@presentation/registerCommands';
+import {
+	activateLocalGraph,
+	activateSidebarView,
+	activateTabView,
+	syncYamlEditorToCard,
+} from '@presentation/viewActivation';
 import { SyncService, SyncStatus } from '@infrastructure/arete/SyncService';
 import { SyncRequest, SyncScheduler } from '@application/services/SyncScheduler';
 import { CheckService } from '@infrastructure/arete/CheckService';
@@ -155,161 +161,16 @@ export default class AretePlugin extends Plugin {
 		this.statusBarItem.addEventListener('click', () => this.runSync());
 		this.updateStatusBar('idle');
 
-		// 2. Ribbon Icons — only the two daily-driver entry points.
-		// Force sync, graph views, and YAML editor remain accessible via the
-		// command palette; they're context-dependent on being in an Arete file
-		// and don't earn a permanent ribbon slot.
-		this.addRibbonIcon('sheets-in-box', 'Sync to Anki (Arete)', (_evt: MouseEvent) => {
-			this.runSync();
-		});
+		// 2. Ribbon icons and commands
+		registerPluginCommands(this);
 
-		this.addRibbonIcon('layout-dashboard', 'Arete dashboard', (_evt: MouseEvent) => {
-			this.activateDashboardView();
-		});
-
-		// 3. Commands
-		this.addCommand({
-			id: 'arete-sync',
-			name: 'Sync',
-			callback: () => {
-				this.runSync();
-			},
-		});
-
-		this.addCommand({
-			id: 'arete-check-file',
-			name: 'Check current file',
-			editorCallback: (_editor: Editor, view: MarkdownView) => {
-				if (view.file) {
-					const vaultAdapter = this.app.vault.adapter as FileSystemAdapter;
-					const basePath = vaultAdapter.getBasePath ? vaultAdapter.getBasePath() : null;
-					if (basePath) {
-						const fullPath = path.join(basePath, view.file.path);
-						this.runCheck(fullPath);
-					} else {
-						new Notice('Cannot determine the vault path.');
-					}
-				}
-			},
-		});
-
-		this.addCommand({
-			id: 'arete-check-integrity',
-			name: 'Debug: vault integrity check',
-			callback: () => {
-				this.checkVaultIntegrity();
-			},
-		});
-
-		this.addCommand({
-			id: 'arete-sync-current-file',
-			name: 'Sync current file',
-			callback: () => {
-				const activeFile = this.app.workspace.getActiveFile();
-				if (activeFile) {
-					const vaultAdapter = this.app.vault.adapter as FileSystemAdapter;
-					const basePath = vaultAdapter.getBasePath ? vaultAdapter.getBasePath() : null;
-					if (basePath) {
-						const maxPath = path.join(basePath, activeFile.path);
-						this.runSync(false, maxPath, true);
-					} else {
-						new Notice('Cannot resolve the file path.');
-					}
-				} else {
-					new Notice('No active file to sync.');
-				}
-			},
-		});
-
-		this.addCommand({
-			id: 'arete-sync-prune',
-			name: 'Sync (prune deleted cards)',
-			callback: () => {
-				this.runSync(true);
-			},
-		});
-
-		this.addCommand({
-			id: 'arete-sync-force-all',
-			name: 'Sync (force re-upload all)',
-			callback: () => {
-				this.runSync(false, null, true);
-			},
-		});
-
-		this.addCommand({
-			id: 'arete-open-dashboard',
-			name: 'Open dashboard',
-			callback: () => {
-				this.activateDashboardView();
-			},
-		});
-
-		this.addCommand({
-			id: 'arete-graph-clear',
-			name: 'Graph: clear retention tags',
-			callback: async () => {
-				await this.graphService.clearAllTags();
-			},
-		});
-
-		this.addCommand({
-			id: 'arete-open-local-graph',
-			name: 'Open local graph',
-			callback: () => {
-				this.activateLocalGraphView();
-			},
-		});
-
-		this.addCommand({
-			id: 'arete-open-global-graph',
-			name: 'Open global graph',
-			callback: () => {
-				this.activateGlobalGraphView();
-			},
-		});
-
-		this.addCommand({
-			id: 'arete-sync-stats',
-			name: 'Sync stats (refresh Anki data)',
-			callback: async () => {
-				new Notice('Refreshing stats...');
-				try {
-					const results = await this.statsService.refreshStats();
-					await this.onStatsRefreshed(results);
-					new Notice('Stats refreshed.');
-				} catch (err) {
-					console.error('[Arete] Failed to refresh stats:', err);
-					new Notice('Failed to refresh stats, check that Anki is running.');
-				}
-			},
-		});
-
-		this.addCommand({
-			id: 'arete-reload-note-types',
-			name: 'Reload note types (card preview)',
-			callback: () => {
-				this.templateRenderer.clearModelCache();
-				new Notice('Note types will be fetched from Anki on the next preview.');
-			},
-		});
-
-		// 4. Settings
+		// 3. Settings
 		this.addSettingTab(new AreteSettingTab(this.app, this));
 
 		// obsidian://arete?vault=<vault>&file=<path>&card=<arete id | 1-based position>
 		// lets a terminal agent put the card it just wrote in front of the user.
 		this.registerObsidianProtocolHandler('arete', (params) => {
 			void this.showCard(params.file, params.card);
-		});
-
-		// 5. YAML Editor command (no ribbon icon — context-dependent)
-		this.addCommand({
-			id: 'open-yaml-editor',
-			name: 'Open YAML editor',
-			callback: () => {
-				this.activateYamlEditorView();
-			},
 		});
 
 		this.registerEditorExtension(cardYamlHighlight);
@@ -458,60 +319,21 @@ export default class AretePlugin extends Plugin {
 	}
 
 	async activateDashboardView() {
-		const { workspace } = this.app;
-		let leaf = workspace.getLeavesOfType(DASHBOARD_VIEW_TYPE)[0];
-
-		if (!leaf) {
-			const rightLeaf = workspace.getRightLeaf(false);
-			if (rightLeaf) {
-				await rightLeaf.setViewState({
-					type: DASHBOARD_VIEW_TYPE,
-					active: true,
-				});
-			}
-			leaf = workspace.getLeavesOfType(DASHBOARD_VIEW_TYPE)[0];
-		}
-
-		if (leaf) {
-			workspace.revealLeaf(leaf);
-		}
+		await activateSidebarView(this.app.workspace, DASHBOARD_VIEW_TYPE);
 	}
 
 	async activateYamlEditorView(focusCardIndex?: number) {
-		const { workspace } = this.app;
-		let leaf = workspace.getLeavesOfType(YAML_EDITOR_VIEW_TYPE)[0];
-
-		if (!leaf) {
-			const rightLeaf = workspace.getRightLeaf(false);
-			if (rightLeaf) {
-				await rightLeaf.setViewState({
-					type: YAML_EDITOR_VIEW_TYPE,
-					active: true,
-				});
-			}
-			leaf = workspace.getLeavesOfType(YAML_EDITOR_VIEW_TYPE)[0];
-		}
-
-		if (leaf) {
-			workspace.revealLeaf(leaf);
-			if (focusCardIndex !== undefined) {
-				const view = leaf.view as CardYamlEditorView;
-				if (view?.showCardIndex) {
-					await view.showCardIndex(focusCardIndex);
-				}
+		const leaf = await activateSidebarView(this.app.workspace, YAML_EDITOR_VIEW_TYPE);
+		if (leaf && focusCardIndex !== undefined) {
+			const view = leaf.view as CardYamlEditorView;
+			if (view?.showCardIndex) {
+				await view.showCardIndex(focusCardIndex);
 			}
 		}
 	}
 
 	syncYamlEditorToCard(cardIndex: number) {
-		const { workspace } = this.app;
-		const leaf = workspace.getLeavesOfType(YAML_EDITOR_VIEW_TYPE)[0];
-		if (leaf) {
-			const view = leaf.view as CardYamlEditorView;
-			if (view?.focusCard) {
-				view.focusCard(cardIndex);
-			}
-		}
+		syncYamlEditorToCard(this.app.workspace, cardIndex);
 	}
 
 	/** Open a note and show one card in the Card Editor (see the obsidian://arete handler). */
@@ -557,51 +379,11 @@ export default class AretePlugin extends Plugin {
 	}
 
 	async activateLocalGraphView(cardId?: string) {
-		const { workspace } = this.app;
-		let leaf = workspace.getLeavesOfType(LOCAL_GRAPH_VIEW_TYPE)[0];
-
-		if (!leaf) {
-			const rightLeaf = workspace.getRightLeaf(false);
-			if (rightLeaf) {
-				await rightLeaf.setViewState({
-					type: LOCAL_GRAPH_VIEW_TYPE,
-					active: true,
-				});
-			}
-			leaf = workspace.getLeavesOfType(LOCAL_GRAPH_VIEW_TYPE)[0];
-		}
-
-		if (leaf) {
-			workspace.revealLeaf(leaf);
-			const activeFile = this.app.workspace.getActiveFile();
-
-			if (leaf.view instanceof LocalGraphView) {
-				const view = leaf.view as LocalGraphView;
-
-				if (cardId) {
-					// 1. Explicit Card Navigation
-					// Use current file from workspace if available, otherwise just try to set card
-					if (activeFile) {
-						view.setContext(activeFile.path, cardId); // Robust: explicit file + card
-					}
-					// Also update centralized map
-					if (activeFile) this.setCardContext(activeFile.path, cardId);
-				} else if (activeFile) {
-					// 2. Just opening graph for current file
-					view.setContext(activeFile.path, this.getCardContext(activeFile.path));
-				}
-			}
-		}
+		await activateLocalGraph(this.app, this, cardId);
 	}
 
 	async activateGlobalGraphView() {
-		const { workspace } = this.app;
-		let leaf = workspace.getLeavesOfType(GLOBAL_GRAPH_VIEW_TYPE)[0];
-		if (!leaf) {
-			leaf = workspace.getLeaf('tab');
-			await leaf.setViewState({ type: GLOBAL_GRAPH_VIEW_TYPE, active: true });
-		}
-		workspace.revealLeaf(leaf);
+		await activateTabView(this.app.workspace, GLOBAL_GRAPH_VIEW_TYPE);
 	}
 
 	onunload() {
@@ -684,7 +466,7 @@ export default class AretePlugin extends Plugin {
 	/**
 	 * Post-refresh hook: update graph tags and YAML toolbar after stats refresh.
 	 */
-	private async onStatsRefreshed(results: ConceptStats[]): Promise<void> {
+	async onStatsRefreshed(results: ConceptStats[]): Promise<void> {
 		if (this.settings.graph_coloring_enabled) {
 			for (const concept of results) {
 				const file = this.app.vault.getAbstractFileByPath(concept.filePath);

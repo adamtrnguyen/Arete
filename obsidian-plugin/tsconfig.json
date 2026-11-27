@@ -4,17 +4,17 @@
 		"inlineSourceMap": true,
 		"inlineSources": true,
 		"module": "ESNext",
-		"target": "ES6",
+		"target": "ES2018",
 		"allowJs": true,
 		"noImplicitAny": true,
+		"strictNullChecks": true,
 		"strict": false,
-		"types": ["node", "jest"],
+		"types": ["node"],
 		"moduleResolution": "bundler",
 		"ignoreDeprecations": "6.0",
 		"importHelpers": true,
 		"esModuleInterop": true,
-
-		"lib": ["dom", "es5", "scripthost", "es2017"],
+		"lib": ["dom", "es2018"],
 		"paths": {
 			"@/*": ["./src/*"],
 			"@domain/*": ["./src/domain/*"],
@@ -23,5 +23,5 @@
 			"@presentation/*": ["./src/presentation/*"]
 		}
 	},
-	"include": ["**/*.ts"]
+	"include": ["src/**/*.ts"]
 }

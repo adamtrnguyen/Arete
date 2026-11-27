@@ -5,30 +5,31 @@ import {
 	resolvePythonCommand,
 } from '@infrastructure/arete/PythonProcess';
 import { GraphExport, GraphSource } from '@/domain/graph/types';
-import { AnkiModelSource, CardStatsSource, CardSuspender } from '@/domain/ports';
+import {
+	AnkiBrowser,
+	AnkiModelSource,
+	CardStatsSource,
+	CardSuspender,
+	StudyQueue,
+	StudyQueueClient,
+} from '@/domain/ports';
 import { debugLog } from '@/domain/debugLog';
 
-/** One card of a study queue, in study order. */
-interface StudyQueueItem {
-	position: number;
-	id: string;
-	title: string;
-	file: string;
-	isPrereq: boolean;
-}
-
-export interface StudyQueue {
-	deck: string;
-	dueCount: number;
-	totalWithPrereqs: number;
-	queue: StudyQueueItem[];
-}
+export type { StudyQueue };
 
 /**
  * The plugin's calls into Python. Each method runs one `arete` command and parses its
  * stdout, which the CLI keeps to a single JSON value.
  */
-export class AreteClient implements GraphSource, AnkiModelSource, CardStatsSource, CardSuspender {
+export class AreteClient
+	implements
+		GraphSource,
+		AnkiModelSource,
+		CardStatsSource,
+		CardSuspender,
+		AnkiBrowser,
+		StudyQueueClient
+{
 	private static readonly STATS_BATCH_SIZE = 500;
 	private settings: AretePluginSettings;
 	/** The vault's folder on disk; the queue is planned from its notes. */
@@ -172,8 +173,8 @@ export class AreteClient implements GraphSource, AnkiModelSource, CardStatsSourc
 
 			let stdout = '';
 			let stderr = '';
-			child.stdout.on('data', (d) => (stdout += d.toString()));
-			child.stderr.on('data', (d) => (stderr += d.toString()));
+			child.stdout?.on('data', (d) => (stdout += d.toString()));
+			child.stderr?.on('data', (d) => (stderr += d.toString()));
 
 			child.on('close', (code, signal) => {
 				if (signal) {

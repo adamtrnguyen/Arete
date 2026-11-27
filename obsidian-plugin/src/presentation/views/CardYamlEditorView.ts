@@ -8,34 +8,37 @@ import {
 	setIcon,
 	setTooltip,
 	Notice,
-	parseYaml,
-	stringifyYaml,
 	TFile,
 } from 'obsidian';
-import { isReservedCardKey } from '@/domain/cardKeys';
-import { difficultyOutOfTen, dueEpochSeconds, metricStates } from '@/domain/stats';
-import { flagClass } from '@/presentation/cardStateClass';
 import { EditorView, lineNumbers, keymap } from '@codemirror/view';
 import { EditorState, Annotation } from '@codemirror/state';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { yaml } from '@codemirror/lang-yaml';
-import { CardStatsModal } from '@/presentation/modals/CardStatsModal';
+import { AnkiBrowser } from '@/domain/ports';
+import { AretePluginSettings } from '@/domain/settings';
+import { StatsService } from '@application/services/StatsService';
+import { TemplateRenderer } from '@application/services/TemplateRenderer';
 import { DependencyField } from '@/presentation/components/DependencyField';
 import { CardRenderer } from '@/presentation/renderers/CardRenderer';
 import { renderCardPreviewFrame } from '@/presentation/renderers/CardPreviewFrame';
 import { cardRangesField } from '@/presentation/extensions/CardGutterExtension';
-import { AretePluginSettings } from '@/domain/settings';
-import { StatsService } from '@application/services/StatsService';
-import { TemplateRenderer } from '@application/services/TemplateRenderer';
-import { AreteClient } from '@infrastructure/arete/AreteClient';
-import { debugLog } from '@/domain/debugLog';
+import {
+	CardData,
+	CardEditorViewMode,
+	cloneValue,
+	extractCardFields,
+	parseCardYaml,
+	serializeCardYaml,
+} from '@/presentation/views/yamlEditor/cardEditorHelpers';
+import { renderCardToolbar } from '@/presentation/views/yamlEditor/CardToolbar';
+import { renderCardFieldEditor } from '@/presentation/views/yamlEditor/CardFieldEditor';
 
 /** What this view needs from the plugin (main.ts satisfies it; no import of main). */
 export interface YamlEditorHost {
 	settings: AretePluginSettings;
 	statsService: StatsService;
 	templateRenderer: TemplateRenderer;
-	areteClient: AreteClient;
+	areteClient: AnkiBrowser;
 	activateLocalGraphView(cardId?: string): Promise<void>;
 	highlightCardLines(cardIndex: number): void;
 }
@@ -45,54 +48,16 @@ export const YAML_EDITOR_VIEW_TYPE = 'arete-yaml-editor';
 /** Quiet period after an edit before the card is written back to the note. */
 const SYNC_DEBOUNCE_MS = 300;
 
-interface CardData {
-	[key: string]: any;
-}
-
 interface PendingSync {
 	file: TFile;
 	cardIndex: number;
-	mode: ViewMode;
+	mode: CardEditorViewMode;
 	sourceText?: string;
 	cardSnapshot?: CardData;
 }
 
-function cloneValue<T>(value: T): T {
-	if (Array.isArray(value)) {
-		return value.map((item) => cloneValue(item)) as unknown as T;
-	}
-	if (value && typeof value === 'object') {
-		if (value instanceof Date) {
-			return new Date(value.getTime()) as unknown as T;
-		}
-		const copy: Record<string, unknown> = {};
-		for (const [k, v] of Object.entries(value)) {
-			copy[k] = cloneValue(v);
-		}
-		return copy as T;
-	}
-	return value;
-}
-
 // Annotation to prevent infinite sync loops
 const syncAnnotation = Annotation.define<boolean>();
-
-/** Fit textareas to their content: every write, then every read, so layout runs once. */
-function fitTextareas(inputs: HTMLTextAreaElement[]) {
-	for (const input of inputs) input.style.height = 'auto';
-	const heights = inputs.map((input) => input.scrollHeight);
-	inputs.forEach((input, i) => (input.style.height = `${heights[i]}px`));
-}
-
-// ─────────────────────────────────────────────────────────────
-// Enums & Interfaces
-// ─────────────────────────────────────────────────────────────
-
-enum ViewMode {
-	Source = 'source',
-	Fields = 'fields',
-	Preview = 'preview',
-}
 
 export class CardYamlEditorView extends ItemView {
 	plugin: YamlEditorHost;
@@ -111,7 +76,7 @@ export class CardYamlEditorView extends ItemView {
 	private currentFilePath: string | null = null;
 	private isUpdatingFromMain = false;
 	private ownWriteMtime: number | null = null;
-	private viewMode: ViewMode = ViewMode.Fields; // Default to Fields as requested "Card Edit Mode"
+	private viewMode: CardEditorViewMode = CardEditorViewMode.Fields;
 	private previewSide: 'Front' | 'Back' = 'Front';
 	private fileModel = 'Basic';
 	private previewRevision = 0;
@@ -125,7 +90,7 @@ export class CardYamlEditorView extends ItemView {
 	}
 
 	getViewType() {
-		return 'arete-yaml-editor';
+		return YAML_EDITOR_VIEW_TYPE;
 	}
 
 	getDisplayText() {
@@ -141,48 +106,35 @@ export class CardYamlEditorView extends ItemView {
 		container.empty();
 		container.addClass('arete-yaml-editor-container');
 
-		// Create split layout
 		this.indexContainer = container.createDiv({ cls: 'arete-yaml-index' });
 
 		const rightPanel = container.createDiv({ cls: 'arete-yaml-editor-panel' });
-
-		// Toolbar
 		this.toolbarContainer = rightPanel.createDiv({ cls: 'arete-editor-toolbar' });
 
-		// Non-destructive inline YAML error banner
 		this.parseErrorEl = rightPanel.createDiv({ cls: 'arete-yaml-parse-error' });
 		this.parseErrorEl.hide();
 
-		// Containers for different modes
-
-		// 1. Source Mode (CodeMirror)
 		this.editorContainer = rightPanel.createDiv({ cls: 'arete-yaml-editor-wrapper' });
 
-		// 2. Field Mode (Inputs)
 		this.fieldEditorContainer = rightPanel.createDiv({ cls: 'arete-field-editor' });
 		this.fieldEditorContainer.hide();
 
-		// 3. Preview Mode (Rendered)
 		this.previewContainer = rightPanel.createDiv({ cls: 'arete-preview-container' });
 		this.previewContainer.hide();
 
-		// Initial render
 		await this.loadCards();
 		this.renderIndex();
 		this.renderToolbar();
 		this.createEditor();
 		this.setViewMode(this.viewMode);
 
-		// Register events for sync
 		this.registerEvent(
 			this.app.workspace.on('active-leaf-change', () => {
 				this.handleActiveFileChange();
 			}),
 		);
-
 		this.registerEvent(this.app.metadataCache.on('changed', (file) => this.onFileParsed(file)));
 
-		// Keyboard navigation on index
 		this.indexContainer?.addEventListener('keydown', (e) => this.handleKeyNavigation(e));
 	}
 
@@ -217,7 +169,6 @@ export class CardYamlEditorView extends ItemView {
 			return;
 		}
 
-		// Only reset index if file changed
 		if (this.currentFilePath !== activeFile.path) {
 			this.currentCardIndex = 0;
 			this.currentFilePath = activeFile.path;
@@ -233,7 +184,6 @@ export class CardYamlEditorView extends ItemView {
 			this.cards = [];
 		}
 
-		// Ensure currentCardIndex is valid
 		if (this.currentCardIndex >= this.cards.length) {
 			this.currentCardIndex = Math.max(0, this.cards.length - 1);
 		}
@@ -263,11 +213,11 @@ export class CardYamlEditorView extends ItemView {
 
 	private refreshActiveView() {
 		this.renderToolbar();
-		if (this.viewMode === ViewMode.Source) {
+		if (this.viewMode === CardEditorViewMode.Source) {
 			this.updateEditorContent();
-		} else if (this.viewMode === ViewMode.Fields) {
+		} else if (this.viewMode === CardEditorViewMode.Fields) {
 			this.renderFieldEditor();
-		} else if (this.viewMode === ViewMode.Preview) {
+		} else if (this.viewMode === CardEditorViewMode.Preview) {
 			this.renderPreview();
 		}
 	}
@@ -385,199 +335,31 @@ export class CardYamlEditorView extends ItemView {
 
 	renderToolbar() {
 		if (!this.toolbarContainer) return;
-		this.toolbarContainer.empty();
-
-		const leftGroup = this.toolbarContainer.createDiv({ cls: 'arete-toolbar-group' });
-
-		const activeFile = this.app.workspace.getActiveFile();
-		const card = this.cards[this.currentCardIndex];
-		const cid = card?.['anki']?.['cid'];
-		const nid = card?.['anki']?.['nid'];
-
-		if (activeFile && (cid || nid)) {
-			const cache = this.plugin.statsService.getCache().concepts[activeFile.path];
-			const stats =
-				(cid && cache?.cardStats?.[cid]) || (nid && cache?.cardStats?.[nid]) || null;
-			if (stats) {
-				const statsContainer = leftGroup.createDiv({ cls: 'arete-toolbar-stats' });
-				const algo = this.plugin.settings.stats_algorithm;
-				// The same cut-offs as the gutter, dashboard and card stats modal.
-				const states = metricStates(stats, this.plugin.settings);
-
-				let badgeAdded = false;
-
-				if (algo === 'fsrs' && stats.difficulty !== undefined) {
-					if (stats.difficulty !== null) {
-						// difficulty is stored 0..1; scale only to display it
-						this.addBadge(
-							statsContainer,
-							`arete-stat-badge ${flagClass(states.difficulty) ?? 'mod-success'}`,
-							`D: ${difficultyOutOfTen(stats.difficulty).toFixed(1)}`,
-							`FSRS difficulty: ${difficultyOutOfTen(stats.difficulty).toFixed(1)}/10`,
-						);
-					} else {
-						this.addBadge(
-							statsContainer,
-							'arete-stat-badge mod-muted',
-							'D: ?',
-							'FSRS difficulty not available',
-						);
-					}
-					badgeAdded = true;
-				} else if (algo === 'sm2' || stats.ease !== undefined) {
-					const ease = Math.round(stats.ease / 10);
-					this.addBadge(
-						statsContainer,
-						'arete-stat-badge',
-						`E: ${ease}%`,
-						`SM-2 ease: ${ease}%`,
-					);
-					badgeAdded = true;
-				}
-
-				if (stats.lapses > 0) {
-					const lapseFlag = flagClass(states.lapses);
-					this.addBadge(
-						statsContainer,
-						lapseFlag ? `arete-stat-badge ${lapseFlag}` : 'arete-stat-badge',
-						`${stats.lapses}L`,
-						`Lapses: ${stats.lapses}`,
-					);
-					badgeAdded = true;
-				}
-
-				const dueEpoch = dueEpochSeconds(stats.due);
-				if (dueEpoch !== null) {
-					const dueDate = new Date(dueEpoch * 1000);
-					const now = new Date();
-					const diffDays = Math.ceil(
-						(dueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
-					);
-					let dueText = '';
-					if (diffDays < 0) dueText = `${Math.abs(diffDays)}d ago`;
-					else if (diffDays === 0) dueText = 'Today';
-					else dueText = `${diffDays}d`;
-
-					this.addBadge(
-						statsContainer,
-						'arete-stat-badge mod-muted',
-						dueText,
-						`Due: ${dueDate.toLocaleDateString()}`,
-					);
-					badgeAdded = true;
-				}
-
-				if (!badgeAdded) {
-					statsContainer.createDiv({
-						cls: 'arete-stat-badge mod-muted',
-						text: 'No data',
-					});
-				}
-			} else {
-				leftGroup.createDiv({
-					cls: 'arete-stat-badge mod-muted',
-					text: 'No data',
-				});
-			}
-		} else if (activeFile) {
-			this.addBadge(
-				leftGroup,
-				'arete-stat-badge mod-muted',
-				'Unsynced',
-				'Card not yet synced to Anki',
-			);
-		}
-
-		const centerGroup = this.toolbarContainer.createDiv({ cls: 'arete-toolbar-group' });
-
-		this.addToolbarButton(centerGroup, 'file-text', 'Go to YAML in note', () =>
-			this.scrollToCard(this.currentCardIndex),
-		);
-		this.addToolbarButton(centerGroup, 'external-link', 'Open in Anki', () =>
-			this.openInAnki(this.currentCardIndex),
-		);
-		this.addToolbarButton(
-			centerGroup,
-			'bar-chart-2',
-			cid || nid ? 'View card stats' : 'Card not synced (no NID)',
-			() => {
-				if (!cid && !nid) {
-					new Notice('Card not synced to Anki yet (no NID).');
-					return;
-				}
-				debugLog('[Arete] Opening stats modal for card:', cid ?? nid);
-				const activeFile = this.app.workspace.getActiveFile();
-				if (activeFile && (cid || nid)) {
-					const cache = this.plugin.statsService.getCache();
-					const conceptStats = cache.concepts[activeFile.path];
-					if (!conceptStats) {
-						new Notice('No stats synced for this file yet.');
-						return;
-					}
-
-					const cardStats =
-						(cid && conceptStats.cardStats?.[cid]) ||
-						(nid && conceptStats.cardStats?.[nid]);
-
-					if (cardStats) {
-						new CardStatsModal(this.app, cardStats, this.plugin.settings).open();
-					} else {
-						new Notice('No stats data available for this specific card.');
-					}
+		renderCardToolbar(this.toolbarContainer, {
+			app: this.app,
+			activeFile: this.app.workspace.getActiveFile(),
+			card: this.cards[this.currentCardIndex],
+			viewMode: this.viewMode,
+			settings: this.plugin.settings,
+			statsService: this.plugin.statsService,
+			onScrollToCard: () => void this.scrollToCard(this.currentCardIndex),
+			onOpenInAnki: () => void this.openInAnki(this.currentCardIndex),
+			onOpenLocalGraph: () => {
+				const current = this.cards[this.currentCardIndex];
+				if (current && current.id) {
+					void this.plugin.activateLocalGraphView(current.id);
+				} else {
+					void this.plugin.activateLocalGraphView();
 				}
 			},
-			{ disabled: !cid && !nid },
-		);
-		this.addToolbarButton(centerGroup, 'share-2', 'Open local graph', () => {
-			const current = this.cards[this.currentCardIndex];
-			if (current && current.id) {
-				this.plugin.activateLocalGraphView(current.id);
-			} else {
-				this.plugin.activateLocalGraphView();
-			}
+			onSelectMode: (mode) => this.setViewMode(mode),
 		});
-
-		const rightGroup = this.toolbarContainer.createDiv({ cls: 'arete-toolbar-group' });
-
-		const modes: Array<[ViewMode, string, string]> = [
-			[ViewMode.Fields, 'edit-3', 'Card edit mode'],
-			[ViewMode.Source, 'code', 'Source mode'],
-			[ViewMode.Preview, 'eye', 'Preview mode'],
-		];
-		for (const [mode, icon, tooltip] of modes) {
-			this.addToolbarButton(rightGroup, icon, tooltip, () => this.setViewMode(mode), {
-				active: this.viewMode === mode,
-			});
-		}
 	}
 
-	/** An icon button in the card toolbar: Obsidian's extra-button, with a native tooltip. */
-	private addToolbarButton(
-		group: HTMLElement,
-		icon: string,
-		tooltip: string,
-		onClick: () => void,
-		state: { active?: boolean; disabled?: boolean } = {},
-	) {
-		const button = new ExtraButtonComponent(group)
-			.setIcon(icon)
-			.setTooltip(tooltip)
-			.onClick(onClick);
-		button.extraSettingsEl.addClass('arete-toolbar-btn');
-		button.extraSettingsEl.toggleClass('is-active', !!state.active);
-		button.extraSettingsEl.toggleClass('is-disabled', !!state.disabled);
-	}
-
-	/** A small stat badge; its explanation is a native tooltip. */
-	private addBadge(parent: HTMLElement, cls: string, text: string, tooltip?: string) {
-		const badge = parent.createDiv({ cls, text });
-		if (tooltip) setTooltip(badge, tooltip);
-	}
-
-	private setViewMode(mode: ViewMode) {
+	private setViewMode(mode: CardEditorViewMode) {
 		void this.flushPendingSync();
 		this.setParseError(null);
-		if (mode !== ViewMode.Preview) this.clearPreview();
+		if (mode !== CardEditorViewMode.Preview) this.clearPreview();
 		this.viewMode = mode;
 		this.renderToolbar();
 
@@ -585,13 +367,13 @@ export class CardYamlEditorView extends ItemView {
 		this.fieldEditorContainer?.hide();
 		this.previewContainer?.hide();
 
-		if (mode === ViewMode.Source) {
+		if (mode === CardEditorViewMode.Source) {
 			this.editorContainer?.show();
 			this.updateEditorContent();
-		} else if (mode === ViewMode.Fields) {
+		} else if (mode === CardEditorViewMode.Fields) {
 			this.fieldEditorContainer?.show();
 			this.renderFieldEditor();
-		} else if (mode === ViewMode.Preview) {
+		} else if (mode === CardEditorViewMode.Preview) {
 			this.previewContainer?.show();
 			this.renderPreview();
 		}
@@ -599,64 +381,13 @@ export class CardYamlEditorView extends ItemView {
 
 	private renderFieldEditor() {
 		if (!this.fieldEditorContainer) return;
-		this.fieldEditorContainer.empty();
-
 		const card = this.cards[this.currentCardIndex];
-		if (!card || typeof card !== 'object') return;
-
-		const modelName = this.getCardModel(card);
-		this.fieldEditorContainer.createDiv({
-			cls: 'arete-field-model-badge',
-			text: modelName,
-		});
-
-		// Read existing dependencies without mutating the card object on view.
-		const existingDeps =
-			card.deps && typeof card.deps === 'object' && !Array.isArray(card.deps)
-				? (card.deps as { requires?: string[]; related?: string[] })
-				: null;
-		const requires = Array.isArray(existingDeps?.requires) ? existingDeps.requires : [];
-		const related = Array.isArray(existingDeps?.related) ? existingDeps.related : [];
-
-		// Render generic scalar content fields
-		const inputs: HTMLTextAreaElement[] = [];
-		Object.entries(card).forEach(([key, value]) => {
-			if (isReservedCardKey(key)) return;
-			if (value !== null && typeof value === 'object') return;
-
-			const group = this.fieldEditorContainer?.createDiv({ cls: 'arete-field-group' });
-			group?.createEl('label', { cls: 'arete-field-label', text: key });
-
-			const input = group?.createEl('textarea', {
-				cls: 'arete-field-input',
-				text: value == null ? '' : String(value),
-			}) as HTMLTextAreaElement;
-			if (input) inputs.push(input);
-
-			input?.addEventListener('input', () => {
-				card[key] = input.value;
-				fitTextareas([input]);
-				this.debouncedSyncToMain();
-			});
-		});
-		setTimeout(() => fitTextareas(inputs), 0);
-
-		const updateDeps = (depKey: 'requires' | 'related', newDeps: string[]) => {
-			const current =
-				card.deps && typeof card.deps === 'object' && !Array.isArray(card.deps)
-					? (card.deps as Record<string, unknown>)
-					: {};
-			card.deps = { ...current, [depKey]: newDeps };
-			this.debouncedSyncToMain();
-		};
-
-		// Render Dependency Fields
-		this.renderDependencySection('requires', requires, (newDeps) => {
-			updateDeps('requires', newDeps);
-		});
-
-		this.renderDependencySection('related', related, (newDeps) => {
-			updateDeps('related', newDeps);
+		renderCardFieldEditor(this.fieldEditorContainer, {
+			card,
+			modelName: card && typeof card === 'object' ? this.getCardModel(card) : this.fileModel,
+			onFieldChanged: () => this.debouncedSyncToMain(),
+			renderDependencySection: (label, initialValues, onChange) =>
+				this.renderDependencySection(label, initialValues, onChange),
 		});
 	}
 
@@ -752,16 +483,8 @@ export class CardYamlEditorView extends ItemView {
 		});
 	}
 
-	/** Card keys minus structural keys, cast to the string map the renderer wants. */
 	private extractCardFields(card: CardData): Record<string, string> {
-		const fields: Record<string, string> = {};
-		for (const [key, value] of Object.entries(card)) {
-			if (isReservedCardKey(key)) continue;
-			if (value === null || value === undefined) continue;
-			if (typeof value === 'object') continue;
-			fields[key] = String(value);
-		}
-		return fields;
+		return extractCardFields(card);
 	}
 
 	private createEditor() {
@@ -812,22 +535,11 @@ export class CardYamlEditorView extends ItemView {
 
 	private extractCardYaml(index: number): string {
 		if (index < 0 || index >= this.cards.length) return '# No card selected\n';
-		const card = this.cards[index];
-		if (!card || typeof card !== 'object') return '# No card selected\n';
-		return stringifyYaml(card);
+		return serializeCardYaml(this.cards[index]);
 	}
 
 	private parseYamlToCard(yamlStr: string): CardData | null {
-		try {
-			const raw = parseYaml(yamlStr);
-			if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
-				return null;
-			}
-			return raw as CardData;
-		} catch (e) {
-			console.error('[Arete] Failed to parse card YAML:', e);
-			return null;
-		}
+		return parseCardYaml(yamlStr);
 	}
 
 	private capturePendingSync(): PendingSync | null {
@@ -835,7 +547,7 @@ export class CardYamlEditorView extends ItemView {
 		if (!activeFile) return null;
 		const cardIndex = this.currentCardIndex;
 		const mode = this.viewMode;
-		if (mode === ViewMode.Source) {
+		if (mode === CardEditorViewMode.Source) {
 			if (!this.editorView) return null;
 			return {
 				file: activeFile,
@@ -885,7 +597,7 @@ export class CardYamlEditorView extends ItemView {
 		if (!target) return;
 
 		let updatedCard: CardData | null;
-		if (target.mode === ViewMode.Source) {
+		if (target.mode === CardEditorViewMode.Source) {
 			updatedCard = this.parseYamlToCard(target.sourceText ?? '');
 			if (!updatedCard) {
 				this.setParseError('Invalid YAML: fix syntax errors to save changes.');
@@ -966,7 +678,7 @@ export class CardYamlEditorView extends ItemView {
 				if (!success) {
 					new Notice('Failed to open Anki browser.');
 				}
-			} catch (e) {
+			} catch {
 				new Notice('Could not open the Anki browser, check that Anki is running.');
 			}
 		} else {
@@ -1041,7 +753,6 @@ export class CardYamlEditorView extends ItemView {
 
 		await this.flushPendingSync();
 
-		// Insert at current position + 1 (or 0 when the list is empty)
 		const insertIndex = this.cards.length === 0 ? 0 : this.currentCardIndex + 1;
 		let updatedCards: CardData[] | null = null;
 
@@ -1050,14 +761,12 @@ export class CardYamlEditorView extends ItemView {
 			await this.app.fileManager.processFrontMatter(activeFile, (frontmatter) => {
 				if (!Array.isArray(frontmatter.cards)) frontmatter.cards = [];
 
-				// New card with model: Basic
 				const newCard = {
 					model: 'Basic',
 					Front: '',
 					Back: '',
 				};
 
-				// Insert at position after current card
 				frontmatter.cards.splice(insertIndex, 0, newCard);
 				updatedCards = frontmatter.cards.map((c: CardData) => cloneValue(c));
 			});

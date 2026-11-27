@@ -15,11 +15,11 @@ import type {
 	CardStateSettings,
 	MetricState,
 } from '@/domain/stats';
-import { cardState } from '@/domain/stats';
+import { cardState, formatGutterStats } from '@/domain/stats';
 import { debugLog } from '@/domain/debugLog';
 import { DEFAULT_SETTINGS } from '@/domain/settings';
 import { cardStateClass, flagClass } from '@/presentation/cardStateClass';
-import { CardVisualsService } from '@/application/services/CardVisualsService';
+import { CardParserService, ParseResult } from '@/application/services/CardParserService';
 
 // Re-use interfaces from service
 // Effect to trigger card highlight
@@ -164,12 +164,8 @@ class CardGutterMarker extends GutterMarker {
 		const stateClass = cardStateClass(this.state);
 		if (stateClass) marker.classList.add(stateClass);
 
-		// Text and tooltip come from the service; colour comes from the card state.
-		const visuals = CardVisualsService.getGutterVisuals(
-			this.stats,
-			this.algorithm,
-			this.isSynced,
-		);
+		// Text and tooltip come from the domain formatter; colour comes from the card state.
+		const visuals = formatGutterStats(this.stats, this.algorithm, this.isSynced);
 		if (visuals.tooltip) setTooltip(marker, visuals.tooltip);
 
 		if (this.isStart) {
@@ -244,8 +240,6 @@ class CardGutterMarker extends GutterMarker {
 		return marker;
 	}
 }
-
-import { CardParserService, ParseResult } from '@/application/services/CardParserService';
 
 function parseDoc(doc: Text): ParseResult {
 	return (

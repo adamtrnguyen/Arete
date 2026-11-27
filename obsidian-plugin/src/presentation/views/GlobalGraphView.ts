@@ -8,15 +8,7 @@
  * Includes a detail panel, search, and 2D/3D toggle.
  */
 
-import {
-	ButtonComponent,
-	ItemView,
-	WorkspaceLeaf,
-	setIcon,
-	setTooltip,
-	TFile,
-	Component,
-} from 'obsidian';
+import { ItemView, WorkspaceLeaf, setIcon, setTooltip, TFile, Component } from 'obsidian';
 import * as d3 from 'd3';
 
 import { DependencyResolver } from '@/application/services/DependencyResolver';
@@ -26,6 +18,21 @@ import {
 	loadForceGraph3D,
 	resolveGraphColors,
 } from '@/presentation/graph/ForceGraph3D';
+import {
+	appendArrowMarker,
+	applyFileClusteringForce2D,
+	applyFileClusteringForce3D,
+	createNodeDragBehavior,
+	hashToHue,
+} from '@/presentation/graph/GraphHelpers';
+import {
+	CardGraphNode,
+	FileGraphNode,
+	GlobalGraphDetailCallbacks,
+	renderCardDetailPanel,
+	renderDetailEmptyPanel,
+	renderFileDetailPanel,
+} from '@/presentation/graph/GlobalGraphDetailPanel';
 
 /** What this view needs from the plugin (main.ts satisfies it; no import of main). */
 export interface GlobalGraphHost {
@@ -33,27 +40,6 @@ export interface GlobalGraphHost {
 }
 
 export const GLOBAL_GRAPH_VIEW_TYPE = 'arete-global-graph';
-
-// --- D3 node/link interfaces ---
-
-interface FileGraphNode extends d3.SimulationNodeDatum {
-	id: string; // filePath
-	basename: string;
-	cardCount: number;
-	cardIds: string[];
-	radius: number;
-	type: 'file';
-}
-
-interface CardGraphNode extends d3.SimulationNodeDatum {
-	id: string; // card arete ID
-	title: string;
-	filePath: string;
-	lineNumber: number;
-	radius: number;
-	fileHue: number;
-	type: 'card';
-}
 
 type GlobalNode = FileGraphNode | CardGraphNode;
 
@@ -103,6 +89,9 @@ export class GlobalGraphView extends ItemView {
 	} | null = null;
 	/** Fits the current drawing to a new pane size; null when nothing is drawn. */
 	private resizeViewport: (() => void) | null = null;
+	private fitToView: (() => void) | null = null;
+	/** Re-reads the theme colours into the current 3D drawing; null when none is drawn. */
+	private repaint3D: (() => void) | null = null;
 
 	// Layout elements
 	private toolbarEl: HTMLElement;
@@ -132,18 +121,15 @@ export class GlobalGraphView extends ItemView {
 		this.container.empty();
 		this.container.addClass('arete-global-graph');
 
-		// Build toolbar
 		this.toolbarEl = this.container.createDiv({ cls: 'arete-global-graph-toolbar' });
 		this.renderToolbar();
 
-		// Main layout: graph + detail panel
 		const body = this.container.createDiv({ cls: 'arete-global-graph-body' });
 
 		this.graphContainer = body.createDiv({ cls: 'arete-global-graph-canvas' });
 		this.detailPanel = body.createDiv({ cls: 'arete-global-graph-detail' });
 		this.renderDetailEmpty();
 
-		// Load and render (never let load failure skip ResizeObserver or css-change registration)
 		try {
 			await this.loadData();
 			this.render();
@@ -170,20 +156,15 @@ export class GlobalGraphView extends ItemView {
 		this.registerEvent(this.app.workspace.on('css-change', () => this.repaint3D?.()));
 	}
 
-	// --- Data Loading ---
-
 	private async loadData(force = false): Promise<void> {
 		await this.resolver.buildGraph(force);
 		this.graphData = this.resolver.getGlobalGraph();
 		this.cardById = new Map(this.graphData.cards.map((c) => [c.id, c]));
 	}
 
-	// --- Toolbar ---
-
 	private renderToolbar(): void {
 		this.toolbarEl.empty();
 
-		// Refresh
 		const refreshBtn = this.toolbarEl.createDiv({ cls: 'clickable-icon' });
 		setIcon(refreshBtn, 'refresh-cw');
 		setTooltip(refreshBtn, 'Rebuild graph');
@@ -197,7 +178,6 @@ export class GlobalGraphView extends ItemView {
 			}
 		});
 
-		// Search
 		const searchInput = this.toolbarEl.createEl('input', {
 			cls: 'arete-global-graph-search',
 			attr: { type: 'text', placeholder: 'Search nodes…' },
@@ -212,10 +192,8 @@ export class GlobalGraphView extends ItemView {
 			}, GlobalGraphView.INPUT_DEBOUNCE_MS);
 		});
 
-		// Separator
 		this.toolbarEl.createSpan({ text: '|', cls: 'arete-global-graph-sep' });
 
-		// View mode toggle (File / Card)
 		const viewToggle = this.toolbarEl.createDiv({
 			cls: 'clickable-icon' + (this.viewMode === 'card' ? ' is-active' : ''),
 		});
@@ -232,7 +210,6 @@ export class GlobalGraphView extends ItemView {
 			this.renderDetailEmpty();
 		});
 
-		// Related edges toggle
 		const relatedToggle = this.toolbarEl.createDiv({
 			cls: 'clickable-icon' + (this.showRelated ? ' is-active' : ''),
 		});
@@ -244,7 +221,6 @@ export class GlobalGraphView extends ItemView {
 			this.render();
 		});
 
-		// 2D/3D toggle
 		const dimToggle = this.toolbarEl.createDiv({
 			cls: 'clickable-icon' + (this.renderMode === '3d' ? ' is-active' : ''),
 		});
@@ -256,7 +232,6 @@ export class GlobalGraphView extends ItemView {
 			this.render();
 		});
 
-		// Clustering toggle (card mode only)
 		if (this.viewMode === 'card') {
 			const clusterToggle = this.toolbarEl.createDiv({
 				cls: 'clickable-icon' + (this.clusteringEnabled ? ' is-active' : ''),
@@ -270,7 +245,6 @@ export class GlobalGraphView extends ItemView {
 			});
 		}
 
-		// Fit/reset zoom
 		const fitBtn = this.toolbarEl.createDiv({ cls: 'clickable-icon' });
 		setIcon(fitBtn, 'maximize-2');
 		setTooltip(fitBtn, 'Fit to view');
@@ -279,8 +253,6 @@ export class GlobalGraphView extends ItemView {
 			else this.render();
 		});
 	}
-
-	// --- Search and resize ---
 
 	/**
 	 * Dim the 2D nodes and links that do not match the search, in place: the layout and
@@ -316,8 +288,6 @@ export class GlobalGraphView extends ItemView {
 		}, GlobalGraphView.INPUT_DEBOUNCE_MS);
 	}
 
-	// --- Main Render Dispatch ---
-
 	private render(): void {
 		if (!this.graphData) return;
 
@@ -336,41 +306,21 @@ export class GlobalGraphView extends ItemView {
 		}
 	}
 
-	// --- File Mode (2D) ---
-
-	private renderFileMode(): void {
-		this.stopSimulation();
-		this.graphContainer.empty();
-		if (!this.graphData) return;
-
-		const { files, cards, requiresEdges, relatedEdges } = this.graphData;
-		if (files.length === 0) {
-			this.renderEmpty('No Arete cards found in vault.');
-			return;
-		}
-
-		// Build card → file lookup
+	private buildAggregatedFileEdges(
+		cards: CardNode[],
+		requiresEdges: DependencyEdge[],
+		relatedEdges: DependencyEdge[],
+	): Array<{ source: string; target: string; type: 'requires' | 'related'; weight: number }> {
 		const cardToFile = new Map<string, string>();
 		for (const card of cards) {
 			cardToFile.set(card.id, card.filePath);
 		}
 
-		// Build file nodes
-		const fileNodes: FileGraphNode[] = files.map((f) => ({
-			id: f.path,
-			basename: f.basename,
-			cardCount: f.cardCount,
-			cardIds: [...f.cardIds],
-			radius: Math.max(8, Math.sqrt(f.cardCount) * 6),
-			type: 'file' as const,
-		}));
-
-		// Aggregate edges at file level (keyed safely so any filename character works)
 		const fileEdgeMap = new Map<
 			string,
 			{ source: string; target: string; type: 'requires' | 'related'; weight: number }
 		>();
-		const addFileEdge = (edges: DependencyEdge[], type: 'requires' | 'related') => {
+		const addEdge = (edges: DependencyEdge[], type: 'requires' | 'related') => {
 			if (type === 'related' && !this.showRelated) return;
 			for (const e of edges) {
 				const fromFile = cardToFile.get(e.fromId);
@@ -385,10 +335,36 @@ export class GlobalGraphView extends ItemView {
 				}
 			}
 		};
-		addFileEdge(requiresEdges, 'requires');
-		addFileEdge(relatedEdges, 'related');
+		addEdge(requiresEdges, 'requires');
+		addEdge(relatedEdges, 'related');
+		return Array.from(fileEdgeMap.values());
+	}
 
-		const fileLinks: GlobalLink[] = Array.from(fileEdgeMap.values()).map((val) => ({
+	private renderFileMode(): void {
+		this.stopSimulation();
+		this.graphContainer.empty();
+		if (!this.graphData) return;
+
+		const { files, cards, requiresEdges, relatedEdges } = this.graphData;
+		if (files.length === 0) {
+			this.renderEmpty('No Arete cards found in vault.');
+			return;
+		}
+
+		const fileNodes: FileGraphNode[] = files.map((f) => ({
+			id: f.path,
+			basename: f.basename,
+			cardCount: f.cardCount,
+			cardIds: [...f.cardIds],
+			radius: Math.max(8, Math.sqrt(f.cardCount) * 6),
+			type: 'file' as const,
+		}));
+
+		const fileLinks: GlobalLink[] = this.buildAggregatedFileEdges(
+			cards,
+			requiresEdges,
+			relatedEdges,
+		).map((val) => ({
 			source: val.source,
 			target: val.target,
 			edgeType: val.type,
@@ -397,8 +373,6 @@ export class GlobalGraphView extends ItemView {
 
 		this.renderD3(this.graphContainer, fileNodes, fileLinks);
 	}
-
-	// --- Card Mode (2D) ---
 
 	private renderCardMode(): void {
 		this.stopSimulation();
@@ -411,7 +385,6 @@ export class GlobalGraphView extends ItemView {
 			return;
 		}
 
-		// Build card nodes
 		const cardNodeSet = new Set(cards.map((c) => c.id));
 		const cardNodes: CardGraphNode[] = cards.map((c) => ({
 			id: c.id,
@@ -419,39 +392,34 @@ export class GlobalGraphView extends ItemView {
 			filePath: c.filePath,
 			lineNumber: c.lineNumber,
 			radius: 5,
-			fileHue: this.hashToHue(c.filePath),
+			fileHue: hashToHue(c.filePath),
 			type: 'card' as const,
 		}));
 
-		// Card-level edges
-		const edges = requiresEdges.filter(
-			(e) => cardNodeSet.has(e.fromId) && cardNodeSet.has(e.toId),
-		);
-		const cardLinks: GlobalLink[] = edges.map((e) => ({
-			source: e.fromId,
-			target: e.toId,
-			edgeType: 'requires' as const,
-			weight: 1,
-		}));
+		const cardLinks: GlobalLink[] = requiresEdges
+			.filter((e) => cardNodeSet.has(e.fromId) && cardNodeSet.has(e.toId))
+			.map((e) => ({
+				source: e.fromId,
+				target: e.toId,
+				edgeType: 'requires' as const,
+				weight: 1,
+			}));
 
 		if (this.showRelated) {
-			const relEdges = relatedEdges.filter(
-				(e) => cardNodeSet.has(e.fromId) && cardNodeSet.has(e.toId),
-			);
-			for (const e of relEdges) {
-				cardLinks.push({
-					source: e.fromId,
-					target: e.toId,
-					edgeType: 'related',
-					weight: 1,
-				});
+			for (const e of relatedEdges) {
+				if (cardNodeSet.has(e.fromId) && cardNodeSet.has(e.toId)) {
+					cardLinks.push({
+						source: e.fromId,
+						target: e.toId,
+						edgeType: 'related',
+						weight: 1,
+					});
+				}
 			}
 		}
 
 		this.renderD3(this.graphContainer, cardNodes, cardLinks);
 	}
-
-	// --- Unified D3 2D Renderer ---
 
 	private renderD3(container: HTMLElement, nodes: GlobalNode[], links: GlobalLink[]): void {
 		container.empty();
@@ -459,7 +427,6 @@ export class GlobalGraphView extends ItemView {
 		let width = container.clientWidth;
 		let height = container.clientHeight;
 		if (width === 0 || height === 0) {
-			// hidden; the ResizeObserver re-renders once it has a size
 			return;
 		}
 
@@ -470,8 +437,6 @@ export class GlobalGraphView extends ItemView {
 			.attr('height', '100%')
 			.attr('viewBox', [0, 0, width, height]);
 
-		// A pane resize keeps the layout: map the viewport to the new size and fit to it.
-		// While the layout still runs, its end handler does the fit with the new size.
 		this.resizeViewport = () => {
 			if (container.clientWidth === 0 || container.clientHeight === 0) return;
 			width = container.clientWidth;
@@ -484,28 +449,14 @@ export class GlobalGraphView extends ItemView {
 
 		const g = svg.append('g');
 
-		// Zoom
 		const zoom = d3
 			.zoom<SVGSVGElement, unknown>()
 			.scaleExtent([0.05, 6])
 			.on('zoom', (event) => g.attr('transform', event.transform));
 		svg.call(zoom);
 
-		// Arrow marker
-		svg.append('defs')
-			.append('marker')
-			.attr('id', this.arrowId)
-			.attr('viewBox', '0 -5 10 10')
-			.attr('refX', 20)
-			.attr('refY', 0)
-			.attr('markerWidth', 6)
-			.attr('markerHeight', 6)
-			.attr('orient', 'auto')
-			.append('path')
-			.attr('d', 'M0,-5L10,0L0,5')
-			.attr('class', 'arete-global-graph-arrow');
+		appendArrowMarker(svg, this.arrowId, 'arete-global-graph-arrow');
 
-		// Simulation
 		const isFileMode = this.viewMode === 'file';
 		const sim = d3
 			.forceSimulation(nodes as any[])
@@ -525,8 +476,6 @@ export class GlobalGraphView extends ItemView {
 
 		this.simulation = sim;
 
-		// Zoom to the laid-out nodes. A few hundred files spread far past the pane, so an
-		// unfitted graph shows one corner; "Fit to View" zooms to the nodes, it does not re-render.
 		this.fitToView = () => {
 			const placed = (nodes as any[]).filter((n) => Number.isFinite(n.x));
 			if (placed.length === 0) return;
@@ -547,12 +496,10 @@ export class GlobalGraphView extends ItemView {
 		};
 		sim.on('end.fit', () => this.fitToView?.());
 
-		// Clustering for card mode
 		if (!isFileMode && this.clusteringEnabled) {
-			this.applyClusteringForce(sim, nodes as CardGraphNode[]);
+			applyFileClusteringForce2D(sim, nodes as CardGraphNode[]);
 		}
 
-		// Links
 		const link = g
 			.append('g')
 			.selectAll('line')
@@ -567,25 +514,8 @@ export class GlobalGraphView extends ItemView {
 				d.edgeType === 'requires' ? `url(#${this.arrowId})` : null,
 			);
 
-		// Drag
-		const dragBehavior = d3
-			.drag<any, any>()
-			.on('start', (event, d) => {
-				if (!event.active) sim.alphaTarget(0.3).restart();
-				d.fx = d.x;
-				d.fy = d.y;
-			})
-			.on('drag', (event, d) => {
-				d.fx = event.x;
-				d.fy = event.y;
-			})
-			.on('end', (event, d) => {
-				if (!event.active) sim.alphaTarget(0);
-				d.fx = null;
-				d.fy = null;
-			});
+		const dragBehavior = createNodeDragBehavior(() => sim);
 
-		// Node groups
 		const nodeGroup = g
 			.append('g')
 			.selectAll('.arete-global-graph-node')
@@ -594,7 +524,6 @@ export class GlobalGraphView extends ItemView {
 			.attr('class', `arete-global-graph-node mod-${isFileMode ? 'file' : 'card'}`)
 			.call(dragBehavior as any);
 
-		// Render nodes
 		if (isFileMode) {
 			this.renderFileNodes(nodeGroup);
 		} else {
@@ -634,7 +563,6 @@ export class GlobalGraphView extends ItemView {
 			})
 			.on('mouseout', clearHover);
 
-		// Click
 		nodeGroup.on('click', (event, d) => {
 			event.stopPropagation();
 			this._selectedNodeId = d.id;
@@ -645,22 +573,18 @@ export class GlobalGraphView extends ItemView {
 			}
 		});
 
-		// Double-click
 		nodeGroup.on('dblclick', async (event, d) => {
 			event.stopPropagation();
 			if (isFileMode) {
-				// Switch to card mode showing this file's neighborhood
 				this.viewMode = 'card';
 				this.renderToolbar();
 				this.render();
 			} else {
-				// Open file at line
 				const cardNode = d as CardGraphNode;
 				await this.openFileAtLine(cardNode.filePath, cardNode.lineNumber);
 			}
 		});
 
-		// Tick
 		const wantClusterLabels = !isFileMode && this.clusteringEnabled;
 		let tickCount = 0;
 		sim.on('tick', () => {
@@ -690,12 +614,8 @@ export class GlobalGraphView extends ItemView {
 		nodeGroup
 			.append('circle')
 			.attr('r', (d: any) => d.radius)
-			.attr('fill', (d: any) => {
-				const hue = this.hashToHue(d.id);
-				return `hsl(${hue}, 60%, 55%)`;
-			});
+			.attr('fill', (d: any) => `hsl(${hashToHue(d.id)}, 60%, 55%)`);
 
-		// Labels
 		nodeGroup
 			.append('text')
 			.text((d: any) => {
@@ -706,7 +626,6 @@ export class GlobalGraphView extends ItemView {
 			.attr('dy', 3)
 			.attr('class', GlobalGraphView.FILE_LABEL_CLASS);
 
-		// Card count badge
 		nodeGroup
 			.append('text')
 			.text((d: any) => d.cardCount)
@@ -739,16 +658,12 @@ export class GlobalGraphView extends ItemView {
 			});
 	}
 
-	// --- Cluster Labels ---
-
 	private renderClusterLabels(
 		g: d3.Selection<SVGGElement, unknown, null, undefined>,
 		nodes: CardGraphNode[],
 	): void {
-		// Remove existing cluster labels
 		g.selectAll('.arete-global-graph-file-label').remove();
 
-		// Compute centroids per file
 		const fileGroups = new Map<string, { xs: number[]; ys: number[]; basename: string }>();
 		for (const n of nodes) {
 			const simNode = n as any;
@@ -779,8 +694,6 @@ export class GlobalGraphView extends ItemView {
 		}
 	}
 
-	// --- 3D Rendering ---
-
 	private renderFile3D(): void {
 		this.stopSimulation();
 		this.graphContainer.empty();
@@ -795,35 +708,8 @@ export class GlobalGraphView extends ItemView {
 		const width = this.graphContainer.clientWidth;
 		const height = this.graphContainer.clientHeight;
 		if (width === 0 || height === 0) {
-			// hidden; the ResizeObserver re-renders once it has a size
 			return;
 		}
-
-		// Build card → file lookup
-		const cardToFile = new Map<string, string>();
-		for (const card of cards) {
-			cardToFile.set(card.id, card.filePath);
-		}
-
-		// Aggregate edges preserving edge type and safely handling any filename character
-		const fileEdgeMap = new Map<
-			string,
-			{ source: string; target: string; type: 'requires' | 'related'; weight: number }
-		>();
-		const addEdge = (edges: DependencyEdge[], type: 'requires' | 'related') => {
-			if (type === 'related' && !this.showRelated) return;
-			for (const e of edges) {
-				const fromFile = cardToFile.get(e.fromId);
-				const toFile = cardToFile.get(e.toId);
-				if (!fromFile || !toFile || fromFile === toFile) continue;
-				const key = JSON.stringify([fromFile, toFile, type]);
-				const existing = fileEdgeMap.get(key);
-				if (existing) existing.weight++;
-				else fileEdgeMap.set(key, { source: fromFile, target: toFile, type, weight: 1 });
-			}
-		};
-		addEdge(requiresEdges, 'requires');
-		addEdge(relatedEdges, 'related');
 
 		const graphData3D = {
 			nodes: files.map((f) => ({
@@ -832,13 +718,8 @@ export class GlobalGraphView extends ItemView {
 				cardCount: f.cardCount,
 				val: Math.max(1, Math.sqrt(f.cardCount)),
 			})),
-			links: Array.from(fileEdgeMap.values()),
+			links: this.buildAggregatedFileEdges(cards, requiresEdges, relatedEdges),
 		};
-
-		if (this.graph3D) {
-			this.graph3D._destructor?.();
-			this.graph3D = null;
-		}
 
 		const ForceGraph3D = loadForceGraph3D();
 		this.graph3D = ForceGraph3D()(this.graphContainer)
@@ -865,7 +746,7 @@ export class GlobalGraphView extends ItemView {
 		this.paintOnThemeChange((graph, colors) =>
 			graph
 				.backgroundColor(colors.background)
-				.nodeColor((n: any) => `hsl(${this.hashToHue(n.id)}, 60%, 55%)`)
+				.nodeColor((n: any) => `hsl(${hashToHue(n.id)}, 60%, 55%)`)
 				.linkColor(() => colors.line),
 		);
 		this.resizeViewport = () => this.resize3D();
@@ -905,7 +786,6 @@ export class GlobalGraphView extends ItemView {
 		const width = this.graphContainer.clientWidth;
 		const height = this.graphContainer.clientHeight;
 		if (width === 0 || height === 0) {
-			// hidden; the ResizeObserver re-renders once it has a size
 			return;
 		}
 
@@ -927,15 +807,10 @@ export class GlobalGraphView extends ItemView {
 				title: c.title,
 				filePath: c.filePath,
 				lineNumber: c.lineNumber,
-				fileHue: this.hashToHue(c.filePath),
+				fileHue: hashToHue(c.filePath),
 			})),
 			links: allLinks,
 		};
-
-		if (this.graph3D) {
-			this.graph3D._destructor?.();
-			this.graph3D = null;
-		}
 
 		const ForceGraph3D = loadForceGraph3D();
 		this.graph3D = ForceGraph3D()(this.graphContainer)
@@ -969,246 +844,66 @@ export class GlobalGraphView extends ItemView {
 		this.resizeViewport = () => this.resize3D();
 		this.fitToView = () => this.graph3D?.zoomToFit(GlobalGraphView.ZOOM_TO_FIT_MS);
 
-		// Clustering in 3D card mode
 		if (this.clusteringEnabled) {
-			const centroids = this.getClusterCentroids3D(cards);
-			this.graph3D
-				.d3Force(
-					'clusterX',
-					d3
-						.forceX<any>()
-						.x((d: any) => centroids.get(d.filePath)?.x || 0)
-						.strength(0.3),
-				)
-				.d3Force(
-					'clusterY',
-					d3
-						.forceY<any>()
-						.y((d: any) => centroids.get(d.filePath)?.y || 0)
-						.strength(0.3),
-				);
+			applyFileClusteringForce3D(
+				this.graph3D,
+				cards.map((c) => c.filePath),
+			);
 		}
 	}
 
-	// --- Detail Panel ---
+	private detailCallbacks(): GlobalGraphDetailCallbacks {
+		const toCardNode = (card: CardNode): CardGraphNode => ({
+			id: card.id,
+			title: card.title,
+			filePath: card.filePath,
+			lineNumber: card.lineNumber,
+			radius: 5,
+			fileHue: hashToHue(card.filePath),
+			type: 'card',
+		});
+		return {
+			onSelectCardFromFile: (card) => {
+				this.viewMode = 'card';
+				this._selectedNodeId = card.id;
+				this.renderToolbar();
+				this.render();
+				this.renderCardDetail(toCardNode(card));
+			},
+			onSelectCard: (card) => {
+				this._selectedNodeId = card.id;
+				this.renderCardDetail(toCardNode(card));
+			},
+			onOpenFileAtLine: (filePath, lineNumber) => this.openFileAtLine(filePath, lineNumber),
+		};
+	}
 
 	private renderDetailEmpty(): void {
-		this.detailPanel.empty();
-		const placeholder = this.detailPanel.createDiv({ cls: 'arete-global-graph-detail-empty' });
-		placeholder.setText('Click a node to see details');
+		renderDetailEmptyPanel(this.detailPanel);
 	}
 
 	private renderFileDetail(node: FileGraphNode): void {
-		this.detailPanel.empty();
 		if (!this.graphData) return;
-
-		// Find full file node from data
-		const fileData = this.graphData.files.find((f) => f.path === node.id);
-		const cardIds = fileData?.cardIds || node.cardIds;
-		const cardCount = fileData?.cardCount || node.cardCount;
-
-		const section = this.detailPanel.createDiv({ cls: 'arete-global-graph-detail-section' });
-
-		// Title
-		section.createEl('h3', { text: node.basename || node.id });
-
-		// Stats
-		const stats = section.createDiv({ cls: 'arete-global-graph-detail-stats' });
-		stats.createEl('div', { text: `Cards: ${cardCount}` });
-		stats.createEl('div', { text: `Path: ${node.id}` });
-
-		// Count inbound/outbound edges
-		if (this.graphData) {
-			const cardToFile = new Map<string, string>();
-			for (const card of this.graphData.cards) {
-				cardToFile.set(card.id, card.filePath);
-			}
-			let inbound = 0;
-			let outbound = 0;
-			for (const e of this.graphData.requiresEdges) {
-				const fromFile = cardToFile.get(e.fromId);
-				const toFile = cardToFile.get(e.toId);
-				if (toFile === node.id && fromFile !== node.id) inbound++;
-				if (fromFile === node.id && toFile !== node.id) outbound++;
-			}
-			stats.createEl('div', { text: `Inbound deps: ${inbound}` });
-			stats.createEl('div', { text: `Outbound deps: ${outbound}` });
-		}
-
-		// Card list
-		if (cardIds.length > 0) {
-			const listSection = section.createDiv();
-			listSection.createEl('h4', { text: 'Cards' });
-			const list = listSection.createEl('ul', { cls: 'arete-global-graph-detail-list' });
-			for (const cid of cardIds) {
-				const card = this.cardById.get(cid);
-				const li = list.createEl('li');
-				const link = li.createEl('a', {
-					text: card?.title || cid,
-					href: '#',
-				});
-				link.addEventListener('click', (e) => {
-					e.preventDefault();
-					if (card) {
-						// Switch to card mode and select this card
-						this.viewMode = 'card';
-						this._selectedNodeId = cid;
-						this.renderToolbar();
-						this.render();
-						if (card) {
-							this.renderCardDetail({
-								id: card.id,
-								title: card.title,
-								filePath: card.filePath,
-								lineNumber: card.lineNumber,
-								radius: 5,
-								fileHue: this.hashToHue(card.filePath),
-								type: 'card',
-							});
-						}
-					}
-				});
-			}
-		}
-
-		// Open file button
-		new ButtonComponent(section)
-			.setButtonText('Open file')
-			.setClass('arete-global-graph-detail-btn')
-			.onClick(async () => {
-				await this.openFileAtLine(node.id, 1);
-			});
+		renderFileDetailPanel(
+			this.detailPanel,
+			node,
+			this.graphData,
+			this.cardById,
+			this.detailCallbacks(),
+		);
 	}
 
 	private renderCardDetail(node: CardGraphNode): void {
-		this.detailPanel.empty();
 		if (!this.graphData) return;
-
-		const section = this.detailPanel.createDiv({ cls: 'arete-global-graph-detail-section' });
-
-		// Title
-		section.createEl('h3', { text: node.title || node.id });
-
-		// Info
-		const info = section.createDiv({ cls: 'arete-global-graph-detail-stats' });
-		info.createEl('div', { text: `ID: ${node.id}` });
-
-		// Parent file (clickable)
-		const fileLink = info.createEl('div');
-		fileLink.createSpan({ text: 'File: ' });
-		const fLink = fileLink.createEl('a', {
-			text: node.filePath,
-			href: '#',
-		});
-		fLink.addEventListener('click', async (e) => {
-			e.preventDefault();
-			await this.openFileAtLine(node.filePath, 1);
-		});
-
-		info.createEl('div', { text: `Line: ${node.lineNumber}` });
-
-		// Prerequisites
-		const prereqs = this.graphData.requiresEdges
-			.filter((e) => e.fromId === node.id)
-			.map((e) => this.cardById.get(e.toId))
-			.filter(Boolean) as CardNode[];
-
-		if (prereqs.length > 0) {
-			const prereqSection = section.createDiv();
-			prereqSection.createEl('h4', { text: `Prerequisites (${prereqs.length})` });
-			const list = prereqSection.createEl('ul', { cls: 'arete-global-graph-detail-list' });
-			for (const p of prereqs) {
-				const li = list.createEl('li');
-				const link = li.createEl('a', { text: p.title || p.id, href: '#' });
-				link.addEventListener('click', (e) => {
-					e.preventDefault();
-					this._selectedNodeId = p.id;
-					this.renderCardDetail({
-						id: p.id,
-						title: p.title,
-						filePath: p.filePath,
-						lineNumber: p.lineNumber,
-						radius: 5,
-						fileHue: this.hashToHue(p.filePath),
-						type: 'card',
-					});
-				});
-			}
-		}
-
-		// Dependents
-		const dependents = this.graphData.requiresEdges
-			.filter((e) => e.toId === node.id)
-			.map((e) => this.cardById.get(e.fromId))
-			.filter(Boolean) as CardNode[];
-
-		if (dependents.length > 0) {
-			const depSection = section.createDiv();
-			depSection.createEl('h4', { text: `Dependents (${dependents.length})` });
-			const list = depSection.createEl('ul', { cls: 'arete-global-graph-detail-list' });
-			for (const d of dependents) {
-				const li = list.createEl('li');
-				const link = li.createEl('a', { text: d.title || d.id, href: '#' });
-				link.addEventListener('click', (e) => {
-					e.preventDefault();
-					this._selectedNodeId = d.id;
-					this.renderCardDetail({
-						id: d.id,
-						title: d.title,
-						filePath: d.filePath,
-						lineNumber: d.lineNumber,
-						radius: 5,
-						fileHue: this.hashToHue(d.filePath),
-						type: 'card',
-					});
-				});
-			}
-		}
-
-		// Related
-		if (this.showRelated) {
-			const related = this.graphData.relatedEdges
-				.filter((e) => e.fromId === node.id || e.toId === node.id)
-				.map((e) => {
-					const otherId = e.fromId === node.id ? e.toId : e.fromId;
-					return this.cardById.get(otherId);
-				})
-				.filter(Boolean) as CardNode[];
-
-			if (related.length > 0) {
-				const relSection = section.createDiv();
-				relSection.createEl('h4', { text: `Related (${related.length})` });
-				const list = relSection.createEl('ul', { cls: 'arete-global-graph-detail-list' });
-				for (const r of related) {
-					const li = list.createEl('li');
-					const link = li.createEl('a', { text: r.title || r.id, href: '#' });
-					link.addEventListener('click', (e) => {
-						e.preventDefault();
-						this._selectedNodeId = r.id;
-						this.renderCardDetail({
-							id: r.id,
-							title: r.title,
-							filePath: r.filePath,
-							lineNumber: r.lineNumber,
-							radius: 5,
-							fileHue: this.hashToHue(r.filePath),
-							type: 'card',
-						});
-					});
-				}
-			}
-		}
-
-		// Open in Editor button
-		new ButtonComponent(section)
-			.setButtonText('Open in editor')
-			.setClass('arete-global-graph-detail-btn')
-			.onClick(async () => {
-				await this.openFileAtLine(node.filePath, node.lineNumber);
-			});
+		renderCardDetailPanel(
+			this.detailPanel,
+			node,
+			this.graphData,
+			this.cardById,
+			this.showRelated,
+			this.detailCallbacks(),
+		);
 	}
-
-	// --- Helpers ---
 
 	/**
 	 * For each node id: the nodes one link away (either direction) and the indexes in
@@ -1238,73 +933,6 @@ export class GlobalGraphView extends ItemView {
 			}
 		});
 		return { neighbours, incident };
-	}
-
-	private applyClusteringForce(
-		simulation: d3.Simulation<any, any>,
-		nodes: CardGraphNode[],
-		strength = 0.3,
-	): void {
-		const centroids = this.getClusterCentroids2D(nodes);
-		simulation.force(
-			'clusterX',
-			d3
-				.forceX<any>()
-				.x((d: any) => centroids.get(d.filePath)?.x || 0)
-				.strength(strength),
-		);
-		simulation.force(
-			'clusterY',
-			d3
-				.forceY<any>()
-				.y((d: any) => centroids.get(d.filePath)?.y || 0)
-				.strength(strength),
-		);
-	}
-
-	private getClusterCentroids2D(nodes: CardGraphNode[]): Map<string, { x: number; y: number }> {
-		const files = new Set(nodes.map((n) => n.filePath));
-		const centroids = new Map<string, { x: number; y: number }>();
-		let i = 0;
-		const count = files.size;
-		const radius = Math.max(300, count * 30);
-		for (const fp of files) {
-			const angle = (i / count) * 2 * Math.PI;
-			centroids.set(fp, {
-				x: Math.cos(angle) * radius,
-				y: Math.sin(angle) * radius,
-			});
-			i++;
-		}
-		return centroids;
-	}
-
-	private getClusterCentroids3D(
-		cards: CardNode[],
-	): Map<string, { x: number; y: number; z: number }> {
-		const files = new Set(cards.map((c) => c.filePath));
-		const centroids = new Map<string, { x: number; y: number; z: number }>();
-		let i = 0;
-		const count = files.size;
-		const radius = Math.max(300, count * 30);
-		for (const fp of files) {
-			const angle = (i / count) * 2 * Math.PI;
-			centroids.set(fp, {
-				x: Math.cos(angle) * radius,
-				y: Math.sin(angle) * radius,
-				z: (i % 2 === 0 ? 1 : -1) * 100,
-			});
-			i++;
-		}
-		return centroids;
-	}
-
-	private hashToHue(str: string): number {
-		let hash = 0;
-		for (let i = 0; i < str.length; i++) {
-			hash = str.charCodeAt(i) + ((hash << 5) - hash);
-		}
-		return Math.abs(hash) % 360;
 	}
 
 	private getMatchingFileIds(nodes: FileGraphNode[]): Set<string> | null {
@@ -1340,10 +968,6 @@ export class GlobalGraphView extends ItemView {
 		const div = this.graphContainer.createDiv({ cls: 'arete-global-graph-empty' });
 		div.setText(msg);
 	}
-
-	private fitToView: (() => void) | null = null;
-	/** Re-reads the theme colours into the current 3D drawing; null when none is drawn. */
-	private repaint3D: (() => void) | null = null;
 
 	private stopSimulation(): void {
 		this.searchTargets = null;

@@ -64,6 +64,7 @@ export class DependencySelectionModal extends Modal {
 
 	onOpen() {
 		const { contentEl } = this;
+		this.setTitle('Select dependency');
 		this.modalEl.addClass('arete-dependency-modal'); // Apply to parent to control size
 		contentEl.addClass('arete-dependency-modal-content'); // Apply to content for layout
 

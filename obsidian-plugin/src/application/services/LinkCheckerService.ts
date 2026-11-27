@@ -122,12 +122,12 @@ export class LinkCheckerService {
 
 		const broken: BrokenReference[] = [];
 
-		const hasYamlCards =
-			cache.frontmatter?.arete === true && Array.isArray(cache.frontmatter.cards);
+		const frontmatter = cache.frontmatter;
+		const hasYamlCards = frontmatter?.arete === true && Array.isArray(frontmatter.cards);
 
 		if (hasYamlCards) {
 			// 1. Deep Scan YAML Cards (User Request: "Only report inside the card list")
-			const cards = cache.frontmatter.cards;
+			const cards = frontmatter.cards;
 			cards.forEach((card: any, idx: number) => {
 				if (!card || typeof card !== 'object') return;
 				for (const [key, content] of Object.entries(card)) {

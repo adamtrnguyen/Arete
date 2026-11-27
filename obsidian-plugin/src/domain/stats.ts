@@ -302,3 +302,54 @@ export function cardState(
 			: 'success';
 	return { state, metrics };
 }
+
+export interface GutterStatLabels {
+	diffText: string;
+	lapseText: string | null;
+	tooltip: string;
+}
+
+/**
+ * Formats the text badges and tooltip shown in the editor gutter for one card.
+ * Colouring comes exclusively from `cardState()`.
+ */
+export function formatGutterStats(
+	stats: AnkiCardStats | null,
+	algorithm: 'fsrs' | 'sm2',
+	isSynced: boolean,
+): GutterStatLabels {
+	if (!isSynced || !stats) {
+		return { diffText: '', lapseText: null, tooltip: '' };
+	}
+
+	let diffText: string;
+	let lapseText: string | null = null;
+	const tooltipLines: string[] = [];
+
+	if (algorithm === 'fsrs') {
+		if (stats.difficulty != null && stats.difficulty > 0) {
+			const scaled = difficultyOutOfTen(stats.difficulty).toFixed(1);
+			diffText = scaled;
+			tooltipLines.push(`Difficulty: ${scaled}/10`);
+		} else {
+			diffText = 'D:?';
+		}
+	} else if (stats.ease > 0) {
+		const easePct = Math.round(stats.ease / 10);
+		diffText = `E:${easePct}%`;
+		tooltipLines.push(`Ease: ${easePct}%`);
+	} else {
+		diffText = 'E:?';
+	}
+
+	if (stats.lapses > 0) {
+		lapseText = `${stats.lapses}L`;
+		tooltipLines.push(`Lapses: ${stats.lapses}`);
+	}
+
+	return {
+		diffText,
+		lapseText,
+		tooltip: tooltipLines.join('\n'),
+	};
+}

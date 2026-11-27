@@ -686,18 +686,21 @@ describe('DashboardView queue builder', () => {
 		return { ...m, el, build };
 	}
 
-	it('labels the controls in sentence case and styles them with classes', () => {
-		const { el } = renderQueue();
-		expect(texts(el)).toEqual(
-			expect.arrayContaining([
-				'Queue builder',
-				'Deck filter',
-				'Prerequisite depth',
-				'Max cards',
-				'All decks',
-			]),
-		);
-		expect(texts(el).join('|')).not.toMatch(/Queue Builder|Deck Filter|Max Cards|All Decks/);
+	it('labels the controls in sentence case using native Setting rows and styles with classes', () => {
+		const { el, rec } = renderQueue();
+		expect(texts(el)).toEqual(expect.arrayContaining(['Queue builder']));
+		expect(rec.settings.map((s) => s.name)).toEqual([
+			'Deck filter',
+			'Prerequisite depth',
+			'Max cards',
+		]);
+		expect(rec.settings[0].dropdown.options.map((o: any) => o.text)).toContain('All decks');
+		const allLabels = [
+			...texts(el),
+			...rec.settings.map((s) => s.name ?? ''),
+			...rec.settings[0].dropdown.options.map((o: any) => o.text),
+		];
+		expect(allLabels.join('|')).not.toMatch(/Queue Builder|Deck Filter|Max Cards|All Decks/);
 		expect(inlineStyled(el)).toEqual([]);
 	});
 

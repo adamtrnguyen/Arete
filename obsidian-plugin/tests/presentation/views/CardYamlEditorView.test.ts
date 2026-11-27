@@ -181,11 +181,17 @@ describe('CardYamlEditorView leaf changes and field sizing', () => {
 		expect(view.cards).not.toBe(cards);
 	});
 
-	it('sizes every field with all writes before any read (one layout)', async () => {
+	it('sizes every field with all clears before any read (one layout)', async () => {
 		jest.useFakeTimers();
 		const ops: string[] = [];
 		const textarea = (name: string) => {
-			const style: Record<string, string> = {};
+			const style: Record<string, any> = {
+				removeProperty(prop: string) {
+					ops.push(`clear ${name} ${prop}`);
+					delete style[prop];
+					return '';
+				},
+			};
 			return {
 				style: new Proxy(style, {
 					set(target, prop, value) {
@@ -215,8 +221,8 @@ describe('CardYamlEditorView leaf changes and field sizing', () => {
 		jest.useRealTimers();
 
 		expect(ops).toEqual([
-			'write q auto',
-			'write a auto',
+			'clear q height',
+			'clear a height',
 			'read q',
 			'read a',
 			'write q 40px',

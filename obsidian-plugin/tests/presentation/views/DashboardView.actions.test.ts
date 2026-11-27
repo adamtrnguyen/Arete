@@ -229,11 +229,11 @@ describe('DashboardView actions', () => {
 		const build = async (root: El) => {
 			view.renderQueueBuilder(root);
 			await flush();
-			const inputs = all(root, (n) => n.tag === 'input');
+			const [deckSetting, depthSetting, maxSetting] = rec.settings.slice(-3);
 			return {
-				select: all(root, (n) => n.tag === 'select')[0],
-				depth: inputs[0],
-				max: inputs[1],
+				dropdown: deckSetting.dropdown,
+				depth: depthSetting.text,
+				max: maxSetting.text,
 				get btn() {
 					return rec.buttons[0];
 				},
@@ -242,23 +242,28 @@ describe('DashboardView actions', () => {
 
 		it('offers All decks first, then every deck Anki has', async () => {
 			const root = el('div');
-			const { select } = await build(root);
-			expect(select.children.map((o) => o.opts.text)).toEqual(['All decks', 'Math', 'Bio']);
+			const { dropdown } = await build(root);
+			expect(dropdown.options.map((o: any) => o.text)).toEqual(['All decks', 'Math', 'Bio']);
 		});
 
 		it('starts with depth 2 and 50 cards', async () => {
 			const { depth, max } = await build(el('div'));
 			expect([depth.value, max.value]).toEqual(['2', '50']);
-			expect([depth.min, depth.max, max.min, max.max]).toEqual(['1', '5', '10', '200']);
+			expect([
+				depth.inputEl.min,
+				depth.inputEl.max,
+				max.inputEl.min,
+				max.inputEl.max,
+			]).toEqual(['1', '5', '10', '200']);
 		});
 
 		it('builds with the chosen deck, depth and cap, then lists the queue', async () => {
 			plugin.areteClient.buildStudyQueue.mockResolvedValue(result);
 			const root = el('div');
 			const ui = await build(root);
-			ui.select.value = 'Math';
-			ui.depth.value = '3';
-			ui.max.value = '25';
+			ui.dropdown._onChange('Math');
+			ui.depth._onChange('3');
+			ui.max._onChange('25');
 
 			await ui.btn.onClick!();
 
@@ -280,8 +285,8 @@ describe('DashboardView actions', () => {
 		it('an empty deck choice means all decks, and unreadable numbers fall back to 2 and 50', async () => {
 			plugin.areteClient.buildStudyQueue.mockResolvedValue(result);
 			const ui = await build(el('div'));
-			ui.depth.value = 'abc';
-			ui.max.value = '';
+			ui.depth._onChange('abc');
+			ui.max._onChange('');
 
 			await ui.btn.onClick!();
 
@@ -343,10 +348,11 @@ describe('DashboardView actions', () => {
 			);
 			const root1 = el('div');
 			view.renderQueueBuilder(root1);
+			const firstDropdown = rec.settings[0].dropdown;
 			await view.onClose();
 			resolveDecks(['LateDeck']);
 			await flush();
-			expect(all(root1, (n) => n.opts?.text === 'LateDeck')).toHaveLength(0);
+			expect(firstDropdown.options.map((o: any) => o.text)).not.toContain('LateDeck');
 
 			plugin.areteClient.buildStudyQueue.mockResolvedValue(result);
 			let finishSend!: (ok: boolean) => void;

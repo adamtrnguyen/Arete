@@ -141,9 +141,16 @@ export const createMockSetting = (): any => {
 		setDesc: jest.fn().mockReturnThis(),
 		setHeading: jest.fn().mockReturnThis(),
 		addText: jest.fn().mockImplementation((cb: any) => {
+			const inputEl = createMockElement('input');
 			const mockText: any = {
+				inputEl,
+				value: '',
 				setPlaceholder: jest.fn().mockReturnThis(),
-				setValue: jest.fn().mockReturnThis(),
+				setValue: jest.fn().mockImplementation((v: string) => {
+					mockText.value = v;
+					inputEl.value = v;
+					return mockText;
+				}),
 				onChange: jest.fn().mockImplementation((ocb: any) => {
 					mockText._onChange = ocb;
 					return mockText;
@@ -166,9 +173,20 @@ export const createMockSetting = (): any => {
 			return mock;
 		}),
 		addDropdown: jest.fn().mockImplementation((cb: any) => {
+			const selectEl = createMockElement('select');
 			const mockDropdown: any = {
-				addOption: jest.fn().mockReturnThis(),
-				setValue: jest.fn().mockReturnThis(),
+				selectEl,
+				options: [] as Array<{ value: string; text: string }>,
+				value: '',
+				addOption: jest.fn().mockImplementation((value: string, text: string) => {
+					mockDropdown.options.push({ value, text });
+					return mockDropdown;
+				}),
+				setValue: jest.fn().mockImplementation((v: string) => {
+					mockDropdown.value = v;
+					selectEl.value = v;
+					return mockDropdown;
+				}),
 				onChange: jest.fn().mockImplementation((ocb: any) => {
 					mockDropdown._onChange = ocb;
 					return mockDropdown;
