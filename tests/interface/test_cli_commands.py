@@ -37,7 +37,7 @@ def test_cli_help_shows_new_subgroups():
 # --- Init ---
 
 
-@patch("arete.application.wizard.run_init_wizard")
+@patch("arete.interface.wizard.run_init_wizard")
 def test_init_command(mock_wizard):
     """Test init command calls the wizard."""
     result = runner.invoke(app, ["init"])

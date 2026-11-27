@@ -206,3 +206,45 @@ def test_report_clear_unsuspend_failure_exits_1_and_names_the_cards(reports_file
     assert "arete anki unsuspend --cids 11,22" in result.output
     assert _read(reports_file) == []  # the reports are cleared even though the unsuspend failed
     assert bridge.closed
+
+
+@pytest.mark.asyncio
+async def test_clear_and_reconcile_reports_uses_anki_admin_port(reports_file):
+    from contextlib import asynccontextmanager
+
+    from arete.domain.interfaces import AnkiAdminPort
+
+    class _FakeAdmin(AnkiAdminPort):
+        def __init__(self):
+            self.unsuspended: list[list[int]] = []
+
+        async def get_deck_names(self) -> list[str]:
+            return []
+
+        async def gui_browse(self, query: str) -> bool:
+            return True
+
+        async def suspend_cards(self, cids: list[int]) -> bool:
+            return True
+
+        async def unsuspend_cards(self, cids: list[int]) -> bool:
+            self.unsuspended.append(list(cids))
+            return True
+
+        async def get_model_styling(self, model_name: str) -> str:
+            return ""
+
+        async def get_model_templates(self, model_name: str) -> dict[str, dict[str, str]]:
+            return {}
+
+    admin = _FakeAdmin()
+
+    @asynccontextmanager
+    async def open_anki():
+        yield admin
+
+    _write(reports_file, [_report(1, cid=10), _report(2, cid=20)])
+    outcome = await report_service.clear_and_reconcile_reports([1], open_anki)
+    assert outcome.unsuspended is True
+    assert outcome.to_unsuspend == [10]
+    assert admin.unsuspended == [[10]]

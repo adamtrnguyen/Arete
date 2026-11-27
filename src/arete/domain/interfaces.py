@@ -7,18 +7,17 @@ its role and the type checker refuses any call outside it. `AnkiBridge` stays as
 the composite: it is the type of an adapter and of the shared test fake, nothing else.
 """
 
-from abc import abstractmethod
+from abc import ABC, abstractmethod
 from collections.abc import Collection, Sequence
 from contextlib import AbstractAsyncContextManager
 from pathlib import Path
-from typing import Any, Protocol, runtime_checkable
+from typing import Any
 
 from .models import HeldNote, NewNote, NoteChange, NoteTypeInfo
 
 
-@runtime_checkable
-class ContentCache(Protocol):
-    """Protocol for the file-content cache."""
+class ContentCache(ABC):
+    """Abstract port for the file-content cache."""
 
     @abstractmethod
     def get_file_meta_by_stat(
@@ -58,8 +57,7 @@ class ContentCache(Protocol):
     def clear(self) -> None: ...
 
 
-@runtime_checkable
-class SyncPort(Protocol):
+class SyncPort(ABC):
     """What prune needs: deck and note reads, and the deletes. Used by application/sync only.
 
     Cards themselves are synced by `NoteSync` over a `NoteStorePort`.
@@ -102,7 +100,7 @@ class SyncPort(Protocol):
         pass
 
 
-class NoteStoreSession(Protocol):
+class NoteStoreSession(ABC):
     """The primitives the sync decides with, over one open collection.
 
     Every batch method returns one result per input, an exception in place of a result
@@ -174,7 +172,7 @@ class NoteStoreSession(Protocol):
         ...
 
 
-class NoteStorePort(Protocol):
+class NoteStorePort(ABC):
     """A collection the sync reads and writes notes in, one session at a time per caller."""
 
     @abstractmethod
@@ -183,12 +181,11 @@ class NoteStorePort(Protocol):
         ...
 
 
-class SyncBackend(NoteStorePort, SyncPort, Protocol):
+class SyncBackend(NoteStorePort, SyncPort):
     """What the sync pipeline needs: the note store it syncs cards in, and prune's port."""
 
 
-@runtime_checkable
-class QueuePort(Protocol):
+class QueuePort(ABC):
     """What the study-queue builder needs. Used by application/queue only."""
 
     @abstractmethod
@@ -219,9 +216,13 @@ class QueuePort(Protocol):
         pass
 
 
-@runtime_checkable
-class AnkiAdminPort(Protocol):
-    """Direct Anki housekeeping the user asks for by name (suspend, browse, styling)."""
+class AnkiAdminPort(ABC):
+    """Direct Anki housekeeping the user asks for by name (decks, suspend, browse, styling)."""
+
+    @abstractmethod
+    async def get_deck_names(self) -> list[str]:
+        """Return list of all deck names present in Anki."""
+        pass
 
     @abstractmethod
     async def gui_browse(self, query: str) -> bool:

@@ -6,7 +6,7 @@ Composition root: the only package allowed to import infrastructure adapters.
 
 from __future__ import annotations
 
-import sys
+import logging
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -23,6 +23,8 @@ from arete.infrastructure.adapters.anki_connect import AnkiConnectAdapter
 from arete.infrastructure.adapters.anki_direct import AnkiDirectAdapter
 from arete.infrastructure.adapters.stats import ConnectStatsRepository, DirectStatsRepository
 from arete.infrastructure.persistence.cache import ContentCache as _CacheImpl
+
+logger = logging.getLogger(__name__)
 
 
 async def _ankiconnect_for(config: AppConfig) -> AnkiConnectAdapter | None:
@@ -45,7 +47,7 @@ async def get_anki_bridge(config: AppConfig) -> AnkiBridge:
     """Return the appropriate AnkiBridge implementation based on config and responsiveness."""
     ac = await _ankiconnect_for(config)
     if config.backend == "auto":
-        print(f"Backend: {'AnkiConnect' if ac else 'AnkiDirect'}", file=sys.stderr)
+        logger.info("Backend: %s", "AnkiConnect" if ac else "AnkiDirect")
     return ac or AnkiDirectAdapter(
         anki_base=config.anki_base,
         anki_connect_url=config.anki_connect_url or "http://127.0.0.1:8765",

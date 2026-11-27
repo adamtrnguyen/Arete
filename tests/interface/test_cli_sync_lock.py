@@ -73,6 +73,7 @@ TERMINATED_WHILE_RUNNING = """
 import asyncio
 from unittest.mock import patch
 from arete.composition import orchestrator
+from arete.interface.cli import app
 
 async def running(config, **kwargs):
     try:
@@ -82,7 +83,7 @@ async def running(config, **kwargs):
         print("cleaned up", flush=True)
 
 with patch.object(orchestrator, "execute_sync", running):
-    asyncio.run(orchestrator.run_sync_logic(object()))
+    app(["sync", "."], standalone_mode=True)
 """
 
 
@@ -93,7 +94,7 @@ def test_sigterm_stops_the_sync_at_an_await_with_its_cleanup_run(tmp_path: Path)
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
-        env={**os.environ, "HOME": str(tmp_path)},
+        env=_env(tmp_path),
     )
     assert child.stdout is not None and child.stdout.readline().strip() == "running"
     child.send_signal(signal.SIGTERM)
@@ -102,3 +103,23 @@ def test_sigterm_stops_the_sync_at_an_await_with_its_cleanup_run(tmp_path: Path)
     assert child.returncode == EXIT_SYNC_TERMINATED, err
     assert "cleaned up" in out
     assert SYNC_TERMINATED_MESSAGE in err
+
+
+@pytest.mark.asyncio
+async def test_run_sync_logic_raises_sync_locked_instead_of_system_exit(tmp_path: Path):
+    """Composition raises domain/app exceptions rather than calling SystemExit."""
+    from unittest.mock import AsyncMock, patch
+
+    from arete.application.config import AppConfig
+    from arete.composition import orchestrator
+
+    cfg = AppConfig.model_construct(
+        root_input=tmp_path, vault_root=tmp_path, anki_media_dir=tmp_path / "m"
+    )
+    with patch.object(
+        orchestrator,
+        "execute_sync",
+        AsyncMock(side_effect=orchestrator.SyncLocked(tmp_path / "cache.db.lock")),
+    ):
+        with pytest.raises(orchestrator.SyncLocked):
+            await orchestrator.run_sync_logic(cfg)

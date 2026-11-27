@@ -29,12 +29,6 @@ app = typer.Typer(
 # Console and logging
 # ---------------------------------------------------------------------------
 
-utf8_console()
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(levelname)s:%(name)s:%(message)s",
-    stream=sys.stderr,
-)
 logger = logging.getLogger(__name__)
 
 app.add_typer(vault_app, name="vault")
@@ -63,6 +57,12 @@ def main_callback(
     ] = 1,
 ):
     """Global settings for arete."""
+    utf8_console()
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(levelname)s:%(name)s:%(message)s",
+        stream=sys.stderr,
+    )
     ctx.ensure_object(dict)
     ctx.obj["verbose_bonus"] = verbose
 
@@ -146,7 +146,14 @@ def sync(
 
     import asyncio
 
-    from arete.composition.orchestrator import SyncFailedError, run_sync_logic
+    from arete.composition.orchestrator import (
+        EXIT_SYNC_LOCKED,
+        EXIT_SYNC_TERMINATED,
+        SYNC_TERMINATED_MESSAGE,
+        SyncFailedError,
+        SyncLocked,
+        run_sync_logic,
+    )
 
     if json_output:
         _sync_with_json(config, confirm_prune=yes)
@@ -154,6 +161,12 @@ def sync(
 
     try:
         asyncio.run(run_sync_logic(config, confirm_prune=yes, prompt=_confirm_prune_at_prompt))
+    except asyncio.CancelledError as e:
+        print(SYNC_TERMINATED_MESSAGE, file=sys.stderr)
+        raise typer.Exit(EXIT_SYNC_TERMINATED) from e
+    except SyncLocked as e:
+        print(e, file=sys.stderr)
+        raise typer.Exit(EXIT_SYNC_LOCKED) from e
     except SyncFailedError as e:
         raise typer.Exit(1) from e
 
@@ -228,7 +241,7 @@ def _confirm_prune_at_prompt(_report) -> bool:
 @app.command()
 def init():
     """Launch the interactive setup wizard."""
-    from arete.application.wizard import run_init_wizard
+    from arete.interface.wizard import run_init_wizard
 
     run_init_wizard()
     raise typer.Exit()
@@ -434,57 +447,47 @@ def report(
     ] = None,
 ):
     """Show or clear reported card issues from Anki review sessions."""
-    from arete.application.report_service import clear_reports, load_reports
+    from contextlib import asynccontextmanager
+
+    from arete.application.report_service import clear_and_reconcile_reports, load_reports
 
     if clear is not None:
-        if clear == 0:
-            cleared = clear_reports()
-        else:
-            cleared = clear_reports([clear])
+        import asyncio
 
-        if not cleared:
+        from arete.composition.factory import get_anki_bridge
+
+        @asynccontextmanager
+        async def open_anki():
+            config = _resolve_with_overrides()
+            anki = await get_anki_bridge(config)
+            try:
+                yield anki
+            finally:
+                await anki.close()
+
+        indices = None if clear == 0 else [clear]
+        outcome = asyncio.run(clear_and_reconcile_reports(indices, open_anki))
+        if not outcome.cleared:
             typer.secho("No reports to clear.", fg="yellow")
             return
-
-        # Reconcile: unsuspend cards no longer in the report list
-        remaining = load_reports()
-        remaining_cids = {r["cid"] for r in remaining if r.get("cid")}
-        to_unsuspend = [
-            r["cid"] for r in cleared if r.get("cid") and r["cid"] not in remaining_cids
-        ]
-
-        if to_unsuspend:
-            import asyncio
-
-            from arete.composition.factory import get_anki_bridge
-
-            config = _resolve_with_overrides()
-
-            async def unsuspend():
-                anki = await get_anki_bridge(config)
-                try:
-                    return await anki.unsuspend_cards(to_unsuspend)
-                finally:
-                    await anki.close()
-
-            try:
-                asyncio.run(unsuspend())
-            except Exception as e:
-                typer.secho(
-                    f"Cleared {len(cleared)} report(s), but unsuspending "
-                    f"{len(to_unsuspend)} card(s) FAILED: {e}\n"
-                    f"Those cards are still suspended. With Anki open, run: "
-                    f"arete anki unsuspend --cids {','.join(str(c) for c in to_unsuspend)}",
-                    fg="red",
-                    err=True,
-                )
-                raise typer.Exit(code=1) from e
+        if outcome.unsuspend_error is not None:
             typer.secho(
-                f"Cleared {len(cleared)} report(s), unsuspended {len(to_unsuspend)} card(s).",
+                f"Cleared {len(outcome.cleared)} report(s), but unsuspending "
+                f"{len(outcome.to_unsuspend)} card(s) FAILED: {outcome.unsuspend_error}\n"
+                f"Those cards are still suspended. With Anki open, run: "
+                f"arete anki unsuspend --cids {','.join(str(c) for c in outcome.to_unsuspend)}",
+                fg="red",
+                err=True,
+            )
+            raise typer.Exit(code=1)
+        if outcome.unsuspended:
+            typer.secho(
+                f"Cleared {len(outcome.cleared)} report(s), "
+                f"unsuspended {len(outcome.to_unsuspend)} card(s).",
                 fg="green",
             )
         else:
-            typer.secho(f"Cleared {len(cleared)} report(s).", fg="green")
+            typer.secho(f"Cleared {len(outcome.cleared)} report(s).", fg="green")
         return
 
     reports = load_reports()

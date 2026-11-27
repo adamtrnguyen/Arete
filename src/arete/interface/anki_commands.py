@@ -2,10 +2,12 @@
 
 import asyncio
 import json
-from typing import Annotated
+from collections.abc import Awaitable, Callable
+from typing import Annotated, Any
 
 import typer
 
+from arete.domain.interfaces import AnkiAdminPort, QueuePort
 from arete.interface._common import _resolve_with_overrides, stdout_to_stderr
 
 anki_app = typer.Typer(name="anki", help="Anki card management and debugging.")
@@ -62,8 +64,13 @@ def _run_or_exit(coro):
         raise typer.Exit(1) from e
 
 
-def _run_anki_bridge_action(action_fn, *, result_key: str | None = "ok", **config_kwargs) -> None:
-    """Run an async AnkiBridge action with standard config/bridge setup.
+def _run_admin_action(
+    action_fn: Callable[[AnkiAdminPort], Awaitable[Any]],
+    *,
+    result_key: str | None = "ok",
+    **config_kwargs,
+) -> None:
+    """Run an async AnkiAdminPort action with standard config/bridge setup.
 
     If *result_key* is given, the output is ``{result_key: value}``; when
     ``None``, the raw value is printed as JSON.
@@ -80,6 +87,25 @@ def _run_anki_bridge_action(action_fn, *, result_key: str | None = "ok", **confi
 
     result = _run_or_exit(_run())
     print(json.dumps(result if result_key is None else {result_key: result}))
+
+
+def _run_queue_action(
+    action_fn: Callable[[QueuePort], Awaitable[Any]],
+    **config_kwargs,
+) -> None:
+    """Run an async QueuePort action and print its JSON result."""
+    from arete.composition.factory import get_anki_bridge
+
+    async def _run():
+        config = _resolve_with_overrides(**config_kwargs)
+        anki = await get_anki_bridge(config)
+        try:
+            return await action_fn(anki)
+        finally:
+            await anki.close()
+
+    result = _run_or_exit(_run())
+    print(json.dumps(result))
 
 
 # ---------------------------------------------------------------------------
@@ -169,7 +195,7 @@ def suspend_cards(
 ):
     """Suspend cards by CID."""
     cids_list = _parse_cids(cids)
-    _run_anki_bridge_action(
+    _run_admin_action(
         lambda anki: anki.suspend_cards(cids_list),
         backend=backend,
         anki_connect_url=anki_connect_url,
@@ -186,7 +212,7 @@ def unsuspend_cards(
 ):
     """Unsuspend cards by CID."""
     cids_list = _parse_cids(cids)
-    _run_anki_bridge_action(
+    _run_admin_action(
         lambda anki: anki.unsuspend_cards(cids_list),
         backend=backend,
         anki_connect_url=anki_connect_url,
@@ -202,7 +228,7 @@ def model_css(
     anki_base: Annotated[str | None, typer.Option(help="Anki Base Directory Override")] = None,
 ):
     """Get CSS styling for a model."""
-    _run_anki_bridge_action(
+    _run_admin_action(
         lambda anki: anki.get_model_styling(model),
         result_key="css",
         backend=backend,
@@ -219,7 +245,7 @@ def model_templates(
     anki_base: Annotated[str | None, typer.Option(help="Anki Base Directory Override")] = None,
 ):
     """Get templates for a model."""
-    _run_anki_bridge_action(
+    _run_admin_action(
         lambda anki: anki.get_model_templates(model),
         result_key=None,
         backend=backend,
@@ -242,7 +268,7 @@ def anki_browse(
         raise typer.Exit(1)
 
     final_query = query or f"nid:{nid}"
-    _run_anki_bridge_action(
+    _run_admin_action(
         lambda anki: anki.gui_browse(final_query),
         backend=backend,
         anki_connect_url=anki_connect_url,
@@ -257,7 +283,7 @@ def anki_decks(
     anki_base: Annotated[str | None, typer.Option(help="Anki Base Directory Override")] = None,
 ):
     """Print every deck name as JSON: {"decks": [...]}."""
-    _run_anki_bridge_action(
+    _run_admin_action(
         lambda anki: anki.get_deck_names(),
         result_key="decks",
         backend=backend,
@@ -292,13 +318,12 @@ def anki_queue_deck(
 
     arete_ids = _parse_ids(ids)
 
-    async def make(anki):
+    async def make(anki: QueuePort):
         made = await create_queue_deck(anki, arete_ids, deck_name=deck_name, reschedule=reschedule)
         return {"ok": made.ok, "message": made.message}
 
-    _run_anki_bridge_action(
+    _run_queue_action(
         make,
-        result_key=None,
         backend=backend,
         anki_connect_url=anki_connect_url,
         anki_base=anki_base,

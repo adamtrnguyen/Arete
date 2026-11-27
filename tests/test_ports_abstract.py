@@ -36,9 +36,7 @@ def _classes(package: Any) -> list[type]:
 
 
 def _is_interface(cls: type) -> bool:
-    return (
-        bool(getattr(cls, "_is_protocol", False)) or ABC in cls.__bases__ or inspect.isabstract(cls)
-    )
+    return ABC in cls.__bases__ or inspect.isabstract(cls)
 
 
 def _methods(cls: type) -> list[str]:
@@ -62,8 +60,8 @@ def _implements(cls: type, interface: type) -> bool:
 
 
 def _inherits(cls: type, interface: type) -> bool:
-    """`issubclass` refuses a Protocol that is not runtime-checkable; the MRO does not."""
-    return interface in cls.__mro__
+    """Every domain port is an ABC, so nominal inheritance is standard issubclass."""
+    return issubclass(cls, interface)
 
 
 def _by_name(interface: type) -> str:
@@ -82,6 +80,15 @@ def test_the_walk_finds_the_interfaces() -> None:
         "ContentCache",
         "StatsRepository",
     } <= names
+
+
+def test_no_domain_interface_uses_protocol() -> None:
+    protocols = [
+        cls.__name__
+        for cls in _classes(importlib.import_module("arete.domain"))
+        if getattr(cls, "_is_protocol", False)
+    ]
+    assert not protocols, f"domain ports must use abc.ABC, not typing.Protocol: {protocols}"
 
 
 @pytest.mark.parametrize("interface", WITH_METHODS, ids=_by_name)

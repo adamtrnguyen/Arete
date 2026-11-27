@@ -155,21 +155,14 @@ async def run_sync_logic(
 ):
     """Orchestrates the sync process using the provided config.
 
-    A sync refused by the lock prints its one-line message on stderr and exits with
-    `EXIT_SYNC_LOCKED`, so a caller can tell it from a failed sync (exit 1). SIGTERM stops
-    the sync at its next await (`sigterm_cancels`): cleanup runs, the lock is released,
-    and it exits with `EXIT_SYNC_TERMINATED`.
+    Raises domain/application exceptions (`SyncLocked`, `asyncio.CancelledError`,
+    `SyncFailedError`) and leaves terminal presentation and process exit codes to
+    the interface layer.
     """
     logger = logging.getLogger("arete.main")
     try:
         with sigterm_cancels():
             stats = await execute_sync(config, confirm_prune=confirm_prune, prompt=prompt)
-    except asyncio.CancelledError as e:
-        print(SYNC_TERMINATED_MESSAGE, file=sys.stderr)
-        raise SystemExit(EXIT_SYNC_TERMINATED) from e
-    except SyncLocked as e:
-        print(e, file=sys.stderr)
-        raise SystemExit(EXIT_SYNC_LOCKED) from e
     except VaultRootUnknown as e:
         logger.error(f"[sync] {e}")
         raise SyncFailedError(str(e)) from e

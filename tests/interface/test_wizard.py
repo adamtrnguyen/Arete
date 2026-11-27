@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 import pytest
 
-from arete.application.wizard import run_init_wizard
+from arete.interface.wizard import run_init_wizard
 
 
 @pytest.fixture
@@ -25,7 +25,7 @@ def test_wizard_default_flow(mock_home):
 
     with patch("builtins.input", side_effect=inputs):
         with patch(
-            "arete.application.wizard.detect_anki_paths",
+            "arete.interface.wizard.detect_anki_paths",
             return_value=(Path("/anki/base"), Path("/anki/media")),
         ):
             # Smart existence mock
@@ -107,7 +107,7 @@ def test_wizard_overwrite_no(mock_home):
     (mock_home / "Obsidian Vault").mkdir(parents=True)
 
     with patch("builtins.input", side_effect=inputs):
-        with patch("arete.application.wizard.detect_anki_paths", return_value=(None, None)):
+        with patch("arete.interface.wizard.detect_anki_paths", return_value=(None, None)):
             original_exists = Path.exists
 
             def overwrite_exists_side_effect(self):
@@ -134,7 +134,7 @@ def test_wizard_path_validation_and_reprompt(tmp_path):
     m.mkdir()
 
     with patch("pathlib.Path.home", return_value=new_home):
-        with patch("arete.application.wizard.detect_anki_paths", return_value=(None, None)):
+        with patch("arete.interface.wizard.detect_anki_paths", return_value=(None, None)):
             with patch(
                 "builtins.input",
                 side_effect=[
@@ -154,7 +154,7 @@ def test_wizard_nonexistent_confirm(tmp_path):
     v_bad = tmp_path / "bad_v"
     m_bad = tmp_path / "bad_m"
     with patch("pathlib.Path.home", return_value=new_home):
-        with patch("arete.application.wizard.detect_anki_paths", return_value=(None, None)):
+        with patch("arete.interface.wizard.detect_anki_paths", return_value=(None, None)):
             with patch("builtins.input", side_effect=[str(v_bad), "y", str(m_bad), "y", "1"]):
                 run_init_wizard()
     assert (new_home / ".config/arete/config.toml").exists()
@@ -168,7 +168,7 @@ def test_wizard_write_error(tmp_path):
     m = tmp_path / "m"
     m.mkdir()
     with patch("pathlib.Path.home", return_value=new_home):
-        with patch("arete.application.wizard.detect_anki_paths", return_value=(None, None)):
+        with patch("arete.interface.wizard.detect_anki_paths", return_value=(None, None)):
             with patch("builtins.input", side_effect=[str(v), str(m), "1", "y"]):
                 with patch("builtins.open", side_effect=OSError("Permission denied")):
                     run_init_wizard()
@@ -179,7 +179,7 @@ def test_wizard_escapes_windows_backslashes_as_valid_toml(mock_home):
 
     with (
         patch(
-            "arete.application.wizard._ask_path",
+            "arete.interface.wizard._ask_path",
             side_effect=[r"C:\Users\adam\Vault", r"C:\Users\adam\Anki\media"],
         ),
         patch("builtins.input", return_value="1"),

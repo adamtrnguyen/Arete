@@ -53,3 +53,19 @@ def test_a_command_piped_through_cp1252_prints_utf8(tmp_path, args):
     out = done.stdout.decode("utf-8")
     assert done.returncode == 0, done.stderr.decode("utf-8", "replace")
     assert "✅" in out
+
+
+def test_importing_cli_does_not_reconfigure_stdout_or_root_logging():
+    """Importing arete.interface.cli must not mutate console encoding or logging handlers."""
+    code = (
+        "import logging, sys; "
+        "before_enc = sys.stdout.encoding; "
+        "before_handlers = len(logging.getLogger().handlers); "
+        "import arete.interface.cli; "
+        "assert sys.stdout.encoding == before_enc; "
+        "assert len(logging.getLogger().handlers) == before_handlers"
+    )
+    env = {k: v for k, v in os.environ.items() if k not in ("PYTHONUTF8", "PYTHONIOENCODING")}
+    env["PYTHONIOENCODING"] = "cp1252"
+    done = subprocess.run([sys.executable, "-c", code], capture_output=True, env=env, timeout=60)
+    assert done.returncode == 0, done.stderr.decode("utf-8", "replace")
