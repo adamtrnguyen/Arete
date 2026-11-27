@@ -50,7 +50,6 @@ export class StatsService {
 			number,
 			{ file: TFile; index: number; front: string; back: string }
 		>();
-		const filesWithCards: Map<string, TFile> = new Map();
 		const conceptMap: Record<string, ConceptStats> = {};
 		const conceptDeckCounts: Record<string, Record<string, number>> = {}; // filePath -> { deckName: count }
 
@@ -63,7 +62,6 @@ export class StatsService {
 
 				if (Array.isArray(cards) && cards.length > 0) {
 					// Initialize map entry with YAML deck if present
-					filesWithCards.set(file.path, file);
 					conceptMap[file.path] = {
 						filePath: file.path,
 						fileName: file.name,

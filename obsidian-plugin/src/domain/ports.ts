@@ -15,7 +15,6 @@ export interface CardStatsSource {
 
 export interface CardSuspender {
 	suspendCards(cardIds: number[]): Promise<boolean>;
-	unsuspendCards(cardIds: number[]): Promise<boolean>;
 }
 
 export interface FileChecker {

@@ -1,17 +1,2 @@
 {
-  "src/application/services/TemplateRenderer.ts": {
-    "arete/no-literal-inline-style": {
-      "count": 1
-    }
-  },
-  "src/presentation/renderers/CardPreviewFrame.ts": {
-    "arete/no-title-tooltip": {
-      "count": 1
-    }
-  },
-  "src/presentation/views/CardYamlEditorView.ts": {
-    "arete/no-literal-inline-style": {
-      "count": 1
-    }
-  }
 }

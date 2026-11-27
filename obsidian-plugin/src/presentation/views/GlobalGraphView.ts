@@ -8,7 +8,7 @@
  * Includes a detail panel, search, and 2D/3D toggle.
  */
 
-import { ItemView, WorkspaceLeaf, setIcon, setTooltip, TFile, Component } from 'obsidian';
+import { ItemView, WorkspaceLeaf, setIcon, setTooltip, TFile } from 'obsidian';
 import * as d3 from 'd3';
 
 import { DependencyResolver } from '@/application/services/DependencyResolver';
@@ -56,7 +56,6 @@ export class GlobalGraphView extends ItemView {
 	private container: HTMLElement;
 	private simulation: d3.Simulation<any, any> | null = null;
 	private graph3D: any = null;
-	private tooltipComponent: Component = new Component();
 
 	// State
 	private viewMode: 'file' | 'card' = 'file';
@@ -64,7 +63,6 @@ export class GlobalGraphView extends ItemView {
 	private showRelated = false;
 	private clusteringEnabled = true;
 	private searchQuery = '';
-	private _selectedNodeId: string | null = null;
 
 	// Cached data
 	private graphData: GlobalGraphResult | null = null;
@@ -204,7 +202,6 @@ export class GlobalGraphView extends ItemView {
 		);
 		viewToggle.addEventListener('click', () => {
 			this.viewMode = this.viewMode === 'file' ? 'card' : 'file';
-			this._selectedNodeId = null;
 			this.renderToolbar();
 			this.render();
 			this.renderDetailEmpty();
@@ -565,7 +562,6 @@ export class GlobalGraphView extends ItemView {
 
 		nodeGroup.on('click', (event, d) => {
 			event.stopPropagation();
-			this._selectedNodeId = d.id;
 			if (isFileMode) {
 				this.renderFileDetail(d as FileGraphNode);
 			} else {
@@ -732,7 +728,6 @@ export class GlobalGraphView extends ItemView {
 			.linkDirectionalArrowLength((l: any) => (l.type === 'requires' ? 4 : 0))
 			.linkDirectionalArrowRelPos(1)
 			.onNodeClick((node: any) => {
-				this._selectedNodeId = node.id;
 				const fileNode: FileGraphNode = {
 					id: node.id,
 					basename: node.basename,
@@ -823,7 +818,6 @@ export class GlobalGraphView extends ItemView {
 			.linkDirectionalArrowLength((l: any) => (l.type === 'requires' ? 3 : 0))
 			.linkDirectionalArrowRelPos(1)
 			.onNodeClick((node: any) => {
-				this._selectedNodeId = node.id;
 				const cardNode: CardGraphNode = {
 					id: node.id,
 					title: node.title,
@@ -865,13 +859,11 @@ export class GlobalGraphView extends ItemView {
 		return {
 			onSelectCardFromFile: (card) => {
 				this.viewMode = 'card';
-				this._selectedNodeId = card.id;
 				this.renderToolbar();
 				this.render();
 				this.renderCardDetail(toCardNode(card));
 			},
 			onSelectCard: (card) => {
-				this._selectedNodeId = card.id;
 				this.renderCardDetail(toCardNode(card));
 			},
 			onOpenFileAtLine: (filePath, lineNumber) => this.openFileAtLine(filePath, lineNumber),
@@ -998,6 +990,5 @@ export class GlobalGraphView extends ItemView {
 		if (this.searchTimer) clearTimeout(this.searchTimer);
 		if (this.resizeTimer) clearTimeout(this.resizeTimer);
 		this.stopSimulation();
-		this.tooltipComponent.unload();
 	}
 }

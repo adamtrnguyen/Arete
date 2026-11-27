@@ -42,8 +42,4 @@ export class LeechService {
 	async suspendCard(cardId: number): Promise<boolean> {
 		return this.areteClient.suspendCards([cardId]);
 	}
-
-	async unsuspendCard(cardId: number): Promise<boolean> {
-		return this.areteClient.unsuspendCards([cardId]);
-	}
 }

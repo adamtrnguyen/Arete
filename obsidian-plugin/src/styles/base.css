@@ -1,5 +1,9 @@
 /* Arete Plugin - Base & Utility Styles */
 
+.arete-hidden {
+	display: none;
+}
+
 /* Status-bar item: an icon and a label. Obsidian's own icon items carry no label, so
    Obsidian sets no gap between them. */
 .arete-status-bar {

@@ -2,25 +2,13 @@ import '../../test-setup';
 import { App } from 'obsidian';
 import { StatsService } from '@application/services/StatsService';
 import { AretePluginSettings } from '@domain/settings';
-import { AreteClient } from '@infrastructure/arete/AreteClient';
-
-// Mock obsidian
-jest.mock('obsidian', () => ({
-	App: class {},
-	TFile: class {},
-	Notice: jest.fn(),
-	requestUrl: jest.fn(),
-	FileSystemAdapter: class {},
-}));
-
-// Mock AreteClient
-jest.mock('@infrastructure/arete/AreteClient');
+import { CardStatsSource } from '@/domain/ports';
 
 describe('StatsService Integration', () => {
 	let app: App;
 	let settings: AretePluginSettings;
 	let service: StatsService;
-	let mockClient: jest.Mocked<AreteClient>;
+	let source: { getCardStats: jest.Mock };
 
 	beforeEach(() => {
 		app = new App();
@@ -34,84 +22,86 @@ describe('StatsService Integration', () => {
 			stats_difficulty_threshold: 0.9,
 		} as any;
 
-		mockClient = new AreteClient(settings) as jest.Mocked<AreteClient>;
-		service = new StatsService(app, settings, mockClient);
-		mockClient.getCardStats.mockClear();
+		source = { getCardStats: jest.fn() };
+		service = new StatsService(app, settings, source as CardStatsSource);
 	});
 
-	test('fetchAnkiCardStats calls getFSRSStats and merges difficulty', async () => {
+	test('fetchAnkiCardStats maps snake_case CLI rows including FSRS metrics', async () => {
 		const nids = [101, 102];
 
-		// Mock the unified /anki/stats endpoint
-		// The backend returns snake_case
-		mockClient.getCardStats.mockResolvedValue([
+		source.getCardStats.mockResolvedValue([
 			{
 				card_id: 1,
 				note_id: 101,
 				lapses: 0,
-				ease: 250,
+				ease: 2500,
 				difficulty: 0.85,
+				stability: 14.5,
+				current_retrievability: 0.91,
 				deck_name: 'Deck A',
 				interval: 10,
 				due: 0,
 				reps: 5,
-				average_time: 1000,
+				average_time_ms: 1000,
 				front: 'Front 1',
 			},
 			{
 				card_id: 2,
 				note_id: 102,
 				lapses: 0,
-				ease: 250,
+				ease: 2500,
 				difficulty: 0.3,
 				deck_name: 'Deck A',
 				interval: 10,
 				due: 0,
 				reps: 5,
-				average_time: 1000,
+				average_time_ms: 1200,
 				front: 'Front 2',
 			},
 		]);
 
 		const stats = await service.fetchAnkiCardStats(nids);
 
-		expect(stats.length).toBe(2);
-
-		// Verify Card 1 (Mapped correctly to camelCase)
+		expect(stats).toHaveLength(2);
 		expect(stats[0].cardId).toBe(1);
 		expect(stats[0].noteId).toBe(101);
+		expect(stats[0].ease).toBe(2500);
 		expect(stats[0].difficulty).toBe(0.85);
+		expect(stats[0].stability).toBe(14.5);
+		expect(stats[0].retrievability).toBe(0.91);
+		expect(stats[0].averageTime).toBe(1000);
 
-		// Verify Card 2
 		expect(stats[1].cardId).toBe(2);
 		expect(stats[1].difficulty).toBe(0.3);
+		expect(stats[1].averageTime).toBe(1200);
 
-		// Verify client call
-		expect(mockClient.getCardStats).toHaveBeenCalledWith(nids);
+		expect(source.getCardStats).toHaveBeenCalledWith(nids);
 	});
 
-	test('fetchAnkiCardStats handles missing FSRS data gracefully', async () => {
+	test('fetchAnkiCardStats leaves FSRS fields undefined when omitted by backend', async () => {
 		const nids = [101];
 
-		mockClient.getCardStats.mockResolvedValue([
+		source.getCardStats.mockResolvedValue([
 			{
 				card_id: 1,
 				note_id: 101,
-				lapses: 0,
-				ease: 250,
-				difficulty: 0.5,
+				lapses: 2,
+				ease: 2500,
 				deck_name: 'Deck A',
 				interval: 10,
 				due: 0,
 				reps: 5,
-				average_time: 1000,
+				average_time_ms: 1000,
 				front: 'Front 1',
 			},
 		]);
 
 		const stats = await service.fetchAnkiCardStats(nids);
 
-		expect(stats.length).toBe(1);
-		expect(stats[0].difficulty).toBe(0.5);
+		expect(stats).toHaveLength(1);
+		expect(stats[0].ease).toBe(2500);
+		expect(stats[0].difficulty).toBeUndefined();
+		expect(stats[0].stability).toBeUndefined();
+		expect(stats[0].retrievability).toBeUndefined();
 	});
 });

@@ -11,10 +11,10 @@ module.exports = {
 	// Coverage is opt-in: `npm run test:coverage` (just coverage-obsidian) turns it on and enforces the threshold.
 	coverageThreshold: {
 		global: {
-			branches: 5,
-			functions: 5,
-			lines: 5,
-			statements: 5,
+			branches: 70,
+			functions: 70,
+			lines: 80,
+			statements: 80,
 		},
 	},
 	moduleNameMapper: {

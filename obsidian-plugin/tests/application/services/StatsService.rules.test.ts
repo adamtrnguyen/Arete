@@ -2,15 +2,6 @@ import '../../test-setup';
 import { App, TFile } from 'obsidian';
 import { StatsService } from '@application/services/StatsService';
 
-const stat = (o: Record<string, any>) => ({
-	noteId: 1,
-	cardId: 1,
-	lapses: 0,
-	ease: 2500,
-	deckName: 'D',
-	...o,
-});
-
 describe('StatsService.refreshStats: which cards count and when they are flagged', () => {
 	let app: any;
 	let settings: any;

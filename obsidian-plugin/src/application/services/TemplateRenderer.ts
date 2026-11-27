@@ -164,7 +164,7 @@ export class TemplateRenderer {
 		// Default to the first card type found (e.g., "Card 1")
 		// TODO: In the future, allow picking specific card type if needed.
 		const cardTypeName = cardTypeNames[0];
-		const cardTemplates = data.templates[cardTypeName] as any; // Cast to any because TS Record<string, string> doesn't match nested object
+		const cardTemplates = data.templates[cardTypeName];
 
 		debugLog(`[Arete] Using Card Type: ${cardTypeName}`, cardTemplates);
 
@@ -204,9 +204,9 @@ export class TemplateRenderer {
 						return;
 					}
 
-					// Create a dummy container to render into
+					// Create a hidden container to render into
 					const dummy = document.createElement('div');
-					dummy.style.display = 'none'; // Hide it
+					dummy.className = 'arete-hidden';
 					document.body.appendChild(dummy); // Attach to DOM for MathJax measurement
 
 					try {

@@ -4,6 +4,7 @@ import { App, Modal, Notice } from 'obsidian';
 import AretePlugin from '@/main';
 import { SyncService } from '@infrastructure/arete/SyncService';
 import { CheckService } from '@infrastructure/arete/CheckService';
+import { isSentenceCase } from './helpers/sentenceCase';
 
 // Mock Services
 jest.mock('@infrastructure/arete/SyncService');
@@ -131,29 +132,6 @@ describe('AretePlugin.showCard (obsidian://arete)', () => {
 		expect(plugin.activateYamlEditorView).not.toHaveBeenCalled();
 	});
 });
-
-/** Words that keep their capitals in a sentence-case UI string. */
-const PROPER_NOUNS = new Set([
-	'Arete',
-	'Anki',
-	'Obsidian',
-	'FSRS',
-	'AnkiConnect',
-	'YAML',
-	'Debug:',
-	'Graph:',
-]);
-
-/** True when every word after the first is lowercase or a proper noun. */
-function isSentenceCase(text: string): boolean {
-	return text
-		.split(/\s+/)
-		.slice(1)
-		.every((word) => {
-			const bare = word.replace(/^[("]+|[)":.,]+$/g, '');
-			return !/^[A-Z][a-z]/.test(bare) || PROPER_NOUNS.has(bare);
-		});
-}
 
 describe('AretePlugin native look', () => {
 	let ribbon: Array<{ icon: string; title: string }>;

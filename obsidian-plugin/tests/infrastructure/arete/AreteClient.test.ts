@@ -61,7 +61,7 @@ describe('AreteClient: one `arete` process per call, JSON on stdout', () => {
 			expect(JSON.parse(areteArgs(1)[3])).toHaveLength(150);
 		});
 
-		it('suspend and unsuspend pass the card ids and return the verdict', async () => {
+		it('suspendCards passes the card ids and returns the verdict', async () => {
 			let child = cli();
 			let promise = client.suspendCards([4, 5]);
 			reply(child, '{"ok": true}');
@@ -69,10 +69,9 @@ describe('AreteClient: one `arete` process per call, JSON on stdout', () => {
 			expect(areteArgs(0)).toEqual(['anki', 'suspend', '--cids', '[4,5]', ...BACKEND]);
 
 			child = cli();
-			promise = client.unsuspendCards([6]);
+			promise = client.suspendCards([6]);
 			reply(child, '{"ok": false}');
 			await expect(promise).resolves.toBe(false);
-			expect(areteArgs(1)).toEqual(['anki', 'unsuspend', '--cids', '[6]', ...BACKEND]);
 		});
 
 		it('browse passes the query', async () => {

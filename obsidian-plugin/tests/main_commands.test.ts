@@ -1,4 +1,5 @@
 import './test-setup';
+import * as os from 'os';
 import * as path from 'path';
 import { App, Notice, TFile, setIcon, setTooltip } from 'obsidian';
 import AretePlugin from '@/main';
@@ -553,7 +554,7 @@ describe('AretePlugin commands, views and status bar', () => {
 
 	describe('settings persistence', () => {
 		test('project_root round-trips through ~ ', async () => {
-			const home = require('os').homedir();
+			const home = os.homedir();
 			plugin.loadData = jest
 				.fn()
 				.mockResolvedValue({ project_root: '~/arete', removed_key: 1, debug_mode: true });
@@ -571,7 +572,7 @@ describe('AretePlugin commands, views and status bar', () => {
 		});
 
 		test('project_root only expands or collapses at exact home path boundaries', async () => {
-			const home = require('os').homedir();
+			const home = os.homedir();
 			plugin.loadData = jest.fn().mockResolvedValue({ project_root: '~other/arete' });
 			await plugin.loadSettings();
 			expect(plugin.settings.project_root).toBe('~other/arete');

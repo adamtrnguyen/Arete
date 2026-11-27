@@ -56,9 +56,9 @@ const PARSE_ONCE = {
 	message: 'Read parsed cards from cardRangesField; do not parse the note again.',
 }; // R8
 
-// Rules with violations on record. Each has its own rule id (arete/*) so that bulk suppressions
+// Rules with custom AST checks. Each has its own rule id (arete/*) so that suppressions
 // (eslint-suppressions.json) count per concern: a new violation of one kind cannot hide behind
-// a fixed violation of another. Re-record with: npm run lint:rebaseline
+// a fixed violation of another. Prune resolved suppressions with: npm run lint:tighten
 const ratchet = (selector, message) => ({
 	meta: { type: 'suggestion', schema: [] },
 	create: (context) => ({ [selector]: (node) => context.report({ node, message }) }),
@@ -73,8 +73,9 @@ const aretePlugin = {
 			'Literal[value=/\\p{Extended_Pictographic}/u], TemplateElement[value.raw=/\\p{Extended_Pictographic}/u]',
 			'No emoji in UI text; use setIcon with a Lucide icon.',
 		), // N4
+		// Excludes iframe accessibility title (frame.title).
 		'no-title-tooltip': ratchet(
-			"CallExpression[callee.property.name='setAttribute'][arguments.0.value=/^(title|aria-label)$/], AssignmentExpression[left.property.name='title'][left.object.type!='ThisExpression'], Property[key.name='attr'] > ObjectExpression > Property:matches([key.name='title'], [key.value='title'], [key.value='aria-label'])",
+			"CallExpression[callee.property.name='setAttribute'][arguments.0.value=/^(title|aria-label)$/], AssignmentExpression[left.property.name='title'][left.object.type!='ThisExpression'][left.object.name!='frame'], Property[key.name='attr'] > ObjectExpression > Property:matches([key.name='title'], [key.value='title'], [key.value='aria-label'])",
 			'Tooltips go through setTooltip(el, text).',
 		), // N5
 		'no-hand-built-button': ratchet(
@@ -93,6 +94,36 @@ const aretePlugin = {
 			"CallExpression[callee.property.name='addText'] CallExpression[callee.property.name='saveSettings']",
 			'A text field saves on every keystroke; debounce it or save on blur.',
 		), // T2
+		'log-prefix': {
+			meta: { type: 'suggestion', schema: [] },
+			create: (context) => ({
+				CallExpression(node) {
+					const { callee } = node;
+					const isConsole =
+						callee.type === 'MemberExpression' &&
+						callee.object.type === 'Identifier' &&
+						callee.object.name === 'console' &&
+						callee.property.type === 'Identifier' &&
+						['log', 'warn', 'error', 'info', 'debug'].includes(callee.property.name);
+					const isDebugLog = callee.type === 'Identifier' && callee.name === 'debugLog';
+					if (!isConsole && !isDebugLog) return;
+					const first = node.arguments[0];
+					if (!first) return;
+					let text = null;
+					if (first.type === 'Literal' && typeof first.value === 'string') {
+						text = first.value;
+					} else if (first.type === 'TemplateLiteral' && first.quasis.length > 0) {
+						text = first.quasis[0].value.cooked ?? first.quasis[0].value.raw;
+					}
+					if (text !== null && !text.startsWith('[Arete]')) {
+						context.report({
+							node: first,
+							message: 'Console and debugLog messages must start with "[Arete]".',
+						});
+					}
+				},
+			}),
+		}, // G2
 	},
 };
 
@@ -116,10 +147,6 @@ export default defineConfig([
 		rules: {
 			'@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
 			'@typescript-eslint/no-explicit-any': 'off',
-			// Rules newly escalated by ESLint 10 + typescript-eslint 8 that the
-			// prior config never enforced. Keep them as warnings so this deps bump
-			// doesn't turn pre-existing, intentional patterns into hard errors
-			// (no source/UI changes are in scope for a deps-only release).
 			'@typescript-eslint/no-require-imports': 'warn',
 			'no-useless-assignment': 'warn',
 		},
@@ -148,6 +175,7 @@ export default defineConfig([
 			'arete/no-hand-built-button': 'error',
 			'arete/no-literal-delay': 'error',
 			'arete/no-keystroke-save': 'error',
+			'arete/log-prefix': 'error',
 		},
 	},
 	{

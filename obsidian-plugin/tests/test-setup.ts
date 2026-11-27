@@ -336,13 +336,13 @@ jest.mock('obsidian', () => {
 		},
 		Setting: jest.fn().mockImplementation(() => (global as any).mockCreateMockSetting()),
 		Notice: jest.fn(),
-		// Tests flip `Platform.isMacOS`; `Keymap.isModEvent` reads it as the real one does.
 		SearchComponent: class {
 			setPlaceholder = jest.fn().mockReturnThis();
 			setValue = jest.fn().mockReturnThis();
 			onChange = jest.fn().mockReturnThis();
 		},
 		Platform,
+		// Tests flip `Platform.isMacOS`; `Keymap.isModEvent` reads it as the real one does.
 		Keymap: {
 			isModEvent: (evt: { metaKey?: boolean; ctrlKey?: boolean }) =>
 				Platform.isMacOS ? !!evt.metaKey : !!evt.ctrlKey,
@@ -412,9 +412,8 @@ jest.mock('obsidian', () => {
 		TFile: class {},
 		ItemView: class extends Component {
 			contentEl = (global as any).mockCreateMockElement('div');
-			constructor(leaf: any) {
+			constructor(_leaf: any) {
 				super();
-				/* no-op */
 			}
 		},
 		MarkdownRenderer: {
@@ -434,10 +433,10 @@ jest.mock('obsidian', () => {
 			getItems(): any[] {
 				return [];
 			}
-			getItemText(item: any): string {
+			getItemText(_item: any): string {
 				return '';
 			}
-			onChooseItem(item: any, evt: any) {
+			onChooseItem(_item: any, _evt: any) {
 				/* no-op */
 			}
 		},

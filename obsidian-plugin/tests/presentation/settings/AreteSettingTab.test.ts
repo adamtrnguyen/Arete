@@ -2,6 +2,8 @@ import '../../test-setup';
 import { App, Setting } from 'obsidian';
 import AretePlugin from '@/main';
 import { AreteSettingTab } from '@presentation/settings/SettingTab';
+import { CheckResultModal } from '@presentation/modals/CheckResultModal';
+import { isSentenceCase } from '../../helpers/sentenceCase';
 
 describe('AreteSettingTab Interaction Tests', () => {
 	let plugin: AretePlugin;
@@ -119,13 +121,7 @@ describe('AreteSettingTab Interaction Tests', () => {
 		settingTab.display();
 		for (const result of (Setting as jest.Mock).mock.results) {
 			for (const [name] of result.value.setName.mock.calls) {
-				const words = (name as string).split(' ').slice(1);
-				for (const word of words) {
-					expect(
-						['AnkiConnect', 'Anki', 'FSRS', 'Python'].includes(word) ||
-							!/^[A-Z][a-z]/.test(word),
-					).toBe(true);
-				}
+				expect(isSentenceCase(name as string)).toBe(true);
 			}
 		}
 	});
@@ -184,13 +180,15 @@ describe('AreteSettingTab Interaction Tests', () => {
 		expect(plugin.testConfig).toHaveBeenCalled();
 	});
 
-	test('Open Sample Modal button works', async () => {
+	test('Open Sample Modal button opens CheckResultModal', async () => {
 		plugin.settings.debug_mode = true;
 		settingTab.display();
 		const debugSetting = findSettingByName('Sample check modal');
 		expect(debugSetting).toBeDefined();
 
+		const openSpy = jest.spyOn(CheckResultModal.prototype, 'open');
 		await debugSetting.mockButton._onClick();
-		// Just verify it doesn't crash
+		expect(openSpy).toHaveBeenCalledTimes(1);
+		openSpy.mockRestore();
 	});
 });

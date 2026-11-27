@@ -167,7 +167,6 @@ async function pluginCommandLines(): Promise<{
 	const calls: Record<string, () => Promise<unknown>> = {
 		getCardStats: () => client.getCardStats([1]),
 		suspendCards: () => client.suspendCards([1]),
-		unsuspendCards: () => client.unsuspendCards([1]),
 		browse: () => client.browse('nid:1'),
 		modelStyling: () => client.modelStyling('Basic'),
 		modelTemplates: () => client.modelTemplates('Basic'),
@@ -223,7 +222,7 @@ describe('plugin command lines against the registered CLI', () => {
 	test('every command line names a registered command and its own options', async () => {
 		jest.spyOn(console, 'error').mockImplementation(() => undefined);
 		const { lines } = await pluginCommandLines();
-		expect(lines).toHaveLength(15);
+		expect(lines).toHaveLength(14);
 		expect(lines).toContainEqual(
 			expect.arrayContaining(['sync', '--json', '--prune', '--yes']),
 		);
@@ -236,7 +235,7 @@ describe('plugin command lines against the registered CLI', () => {
 	test('every command runs with the vault as ARETE_VAULT_ROOT', async () => {
 		jest.spyOn(console, 'error').mockImplementation(() => undefined);
 		const { vaultRoots } = await pluginCommandLines();
-		expect(vaultRoots).toHaveLength(15);
+		expect(vaultRoots).toHaveLength(14);
 		expect(vaultRoots).toEqual(vaultRoots.map(() => '/vault'));
 	});
 

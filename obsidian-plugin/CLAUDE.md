@@ -88,7 +88,7 @@ view holds its own cut-off. A bar or dot shows the worst state of its card.
 | # | Rule | Why | Enforced by |
 |---|---|---|---|
 | G1 | Use `debugLog` (`src/domain/debugLog.ts`) for diagnostics. No `console.log` elsewhere; a command whose output is a console report disables the rule on that line, with a reason. | Obsidian: the console shows errors only by default. | ESLint `no-console` |
-| G2 | Start every console and `debugLog` message with `[Arete]`. | One filter finds plugin output. | review |
+| G2 | Start every console and `debugLog` message with `[Arete]`. | One filter finds plugin output. | ESLint (`arete/log-prefix`) |
 
 ### Settings and persisted data
 
@@ -112,7 +112,7 @@ view holds its own cut-off. A bar or dot shows the worst state of its card.
 |---|---|---|---|
 | Q1 | Put a test at the source's path under `tests/`: `src/a/B.ts` → `tests/a/B.test.ts`. | Findable. | review |
 | Q2 | Every fix gets a test that fails without it. A performance fix pins a number (calls, renders, reads, spawns) before → after. A guard pins its no-op. | `CONTRIBUTING.md`. | review |
-| Q3 | `import … from 'obsidian'` gets the `jest.mock('obsidian', …)` factory in `tests/test-setup.ts`; add API there. That file also mocks `fs` and `child_process` for every test. A test that reads files uses `jest.requireActual('fs')`; a test that runs esbuild or TypeScript calls `jest.unmock('child_process')` and `jest.unmock('fs')` first. Mocks keep the real module's shape. | esbuild throws under the mock. | review |
+| Q3 | `import … from 'obsidian'` gets the `jest.mock('obsidian', …)` factory in `tests/test-setup.ts` (`tests/obsidian-mock.ts` is the empty moduleNameMapper stub for Jest); add API in `tests/test-setup.ts`. That file also mocks `fs` and `child_process` for every test. A test that reads files uses `jest.requireActual('fs')`; a test that runs esbuild or TypeScript calls `jest.unmock('child_process')` and `jest.unmock('fs')` first. Mocks keep the real module's shape. | esbuild throws under the mock. | review |
 | Q4 | What jest cannot see (rendering, CSS, layout, timing, WebGL, real input), check in a live Obsidian with `skills/gui-test`, and report it as seen, measured or traced. | Jest runs no layout, paint or WebGL. | review |
 
 ### Working rules for agents
@@ -123,5 +123,4 @@ view holds its own cut-off. A bar or dot shows the worst state of its card.
 | W2 | Format only the files you touch: `npx prettier --write <files>`. Never `just fix` or `npm run format` for a scoped change. | Both rewrite the whole plugin. | review |
 | W3 | One concern per commit. The body gives the reason, before → after numbers and the test command. | Reviewable history. | review |
 | W4 | Never `git stash`. | The stash list is shared across worktrees. | review |
-| W5 | Comments state the contract and the present-tense reason; no history, no commented-out code. | History belongs in git. | review |
-| W6 | Deploying is a manual copy of `main.js`, `styles.css` and `manifest.json`. Reload the plugin and close views opened before the reload. | `CLAUDE.md`. | review |
+| W5 | Deploying is a manual copy of `main.js`, `styles.css` and `manifest.json`. Reload the plugin and close views opened before the reload. | `CLAUDE.md`. | review |

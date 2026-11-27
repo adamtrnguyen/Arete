@@ -2,14 +2,6 @@ import { LocalGraphView } from '@/presentation/views/LocalGraphView';
 import { GlobalGraphView } from '@/presentation/views/GlobalGraphView';
 import { createMockElement as baseElement } from '../../test-setup';
 
-const fs = jest.requireActual('fs');
-const path = jest.requireActual('path');
-const read = (rel: string) => fs.readFileSync(path.join(__dirname, '../../../', rel), 'utf8');
-const VIEWS = [
-	'src/presentation/views/LocalGraphView.ts',
-	'src/presentation/views/GlobalGraphView.ts',
-];
-
 function element(tag?: string, opts?: any): any {
 	const el = baseElement(tag, { clientWidth: 400, clientHeight: 300, ...opts });
 	el.classes = new Set<string>();
@@ -30,47 +22,6 @@ beforeEach(() => {
 });
 
 const tips = () => setTooltip.mock.calls.map((c) => c[1]);
-
-describe('graph views: source stays native', () => {
-	it.each(VIEWS)('%s has no literal inline style, hex colour or d3 .style()', (file) => {
-		const src = read(file);
-		expect(src).not.toMatch(/\.style\.\w+\s*=\s*['"]/);
-		expect(src).not.toMatch(/\.style\(/);
-		expect(src).not.toMatch(/#[0-9a-fA-F]{6}\b/);
-		expect(src).not.toMatch(/'(?:white|red)'/);
-		expect(src).not.toMatch(/setAttribute\(\s*'title'/);
-	});
-
-	it.each(VIEWS)('%s logs only with the [Arete] prefix', (file) => {
-		const src = read(file);
-		expect(src).not.toMatch(/\[Arete (Graph|Server)/);
-	});
-
-	it.each(VIEWS)('%s does not import 3d-force-graph itself', (file) => {
-		const src = read(file);
-		expect(src).not.toMatch(/require\('3d-force-graph'\)/);
-		expect(src).toMatch(/loadForceGraph3D/);
-	});
-
-	it('uses state classes in is-* form', () => {
-		const css = read('src/styles/global-graph.css');
-		const src = read(VIEWS[1]);
-		expect(css + src).not.toMatch(/arete-(hovering|connected)/);
-		expect(css).toMatch(/is-hovering/);
-		expect(css).toMatch(/is-connected/);
-	});
-
-	it('styles graph colours with --graph-* variables and no transition: all', () => {
-		const css = read('src/styles/global-graph.css');
-		expect(css).toMatch(/var\(--graph-node\)/);
-		expect(css).toMatch(/var\(--graph-line\)/);
-		expect(css).toMatch(/var\(--graph-text\)/);
-		expect(css).toMatch(/var\(--graph-node-focused\)/);
-		expect(css).not.toMatch(/transition:\s*all/);
-		expect(css).not.toMatch(/cursor:\s*pointer/);
-		expect(css).not.toMatch(/-rgb/);
-	});
-});
 
 describe('LocalGraphView native look', () => {
 	function make() {

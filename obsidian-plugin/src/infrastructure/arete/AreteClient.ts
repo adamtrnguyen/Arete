@@ -66,11 +66,6 @@ export class AreteClient
 		return res?.ok === true;
 	}
 
-	async unsuspendCards(cardIds: number[]): Promise<boolean> {
-		const res = await this.runAnki(['unsuspend', '--cids', JSON.stringify(cardIds)]);
-		return res?.ok === true;
-	}
-
 	async browse(query: string): Promise<boolean> {
 		const res = await this.runAnki(['browse', '--query', query]);
 		return res?.ok === true;

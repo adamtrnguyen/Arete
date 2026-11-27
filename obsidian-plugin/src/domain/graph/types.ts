@@ -61,7 +61,7 @@ export interface LocalGraphResult {
 }
 
 /**
- * The resolved graph as the Python side exports it (`arete graph export`, POST /graph).
+ * The resolved graph as the Python side exports it (`arete graph export`).
  * Edges are `[card, target]`; `requires` points at the prerequisite. `file` is vault-relative.
  */
 export interface GraphExport {

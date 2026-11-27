@@ -1,6 +1,5 @@
 import '../../test-setup';
 import { AreteProcesses, resolvePythonCommand } from '@infrastructure/arete/PythonProcess';
-import * as path from 'path';
 import { spawn } from 'child_process';
 import { createMockChildProcess, onLinux } from '../../test-setup';
 

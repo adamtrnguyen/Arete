@@ -307,18 +307,17 @@ export class SyncService {
 			return 'failed';
 		}
 
-		// No report on stdout: the CLI predates --json or crashed before printing it.
-		if (result.code === 0) {
-			new Notice('Sync completed.');
-			updateStatusBar('success');
-			return 'success';
-		}
-
-		console.error(`[Arete] Sync failed with exit code ${result.code}`, result.stderr);
+		// No valid JSON report on stdout (unexpected output or CLI crash).
+		console.error(
+			`[Arete] Sync exited with code ${result.code} without a JSON report`,
+			result.stderr,
+		);
 		updateStatusBar('error');
 		new Notice(
 			knownFailure(result.stderr) ??
-				`Sync failed with exit code ${result.code}, see the log.`,
+				(result.code === 0
+					? 'Sync did not return a valid report, see the log.'
+					: `Sync failed with exit code ${result.code}, see the log.`),
 		);
 		return 'failed';
 	}

@@ -48,11 +48,4 @@ describe('LeechService', () => {
 		expect(areteClient.suspendCards).toHaveBeenCalledWith([123]);
 		expect(result).toBe(true);
 	});
-
-	test('unsuspendCard calls areteClient', async () => {
-		areteClient.unsuspendCards = jest.fn().mockResolvedValue(true);
-		const result = await service.unsuspendCard(123);
-		expect(areteClient.unsuspendCards).toHaveBeenCalledWith([123]);
-		expect(result).toBe(true);
-	});
 });

@@ -75,11 +75,21 @@ describe('SyncService', () => {
 		service = new SyncService(app, settings, { dir: 'test-plugin-dir' });
 	});
 
+	const okReportJson = JSON.stringify({
+		ok: true,
+		generated: 1,
+		changed: 1,
+		errors: 0,
+		message: null,
+		prune: null,
+	});
+
 	test('runSync for a specific file', async () => {
 		const mockChild = createMockChildProcess();
 		(spawn as jest.Mock).mockReturnValue(mockChild);
 
 		const syncPromise = service.runSync(false, '/mock/path/file.md', true, updateStatusBar);
+		mockChild.stdout.emit('data', Buffer.from(okReportJson));
 		mockChild.emit('close', 0);
 		await syncPromise;
 
@@ -100,6 +110,7 @@ describe('SyncService', () => {
 		(spawn as jest.Mock).mockReturnValue(mockChild);
 
 		const syncPromise = service.runSync(true, null, true, updateStatusBar);
+		mockChild.stdout.emit('data', Buffer.from(okReportJson));
 		mockChild.emit('close', 0);
 		await syncPromise;
 
@@ -143,6 +154,7 @@ describe('SyncService', () => {
 		const run = service.runSync(false, null, false, updateStatusBar).then((o) => (outcome = o));
 		await settle();
 		expect(outcome).toBeUndefined();
+		mockChild.stdout.emit('data', Buffer.from(okReportJson));
 		mockChild.emit('close', 0);
 		await run;
 
@@ -267,10 +279,17 @@ describe('SyncService', () => {
 			expect(lastNotice()).toMatch(/Nothing was deleted\. Some cards failed\.$/);
 		});
 
-		test('stdout that is not JSON falls back to the exit code', async () => {
+		test('stdout that is not JSON fails cleanly even on exit 0', async () => {
+			const errSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
 			scriptedRuns(['INFO: done', 0]);
-			expect(await service.runSync(false, null, false, updateStatusBar)).toBe('success');
-			expect(notices()).toContain('Sync completed.');
+			expect(await service.runSync(false, null, false, updateStatusBar)).toBe('failed');
+			expect(updateStatusBar).toHaveBeenCalledWith('error');
+			expect(notices()).toContain('Sync did not return a valid report, see the log.');
+			expect(errSpy).toHaveBeenCalledWith(
+				expect.stringContaining('[Arete] Sync exited with code 0 without a JSON report'),
+				expect.any(String),
+			);
+			errSpy.mockRestore();
 		});
 	});
 
@@ -487,6 +506,7 @@ describe('SyncService', () => {
 
 		test('many output lines become one async append, never a sync write', async () => {
 			jest.spyOn(console, 'log').mockImplementation(() => undefined);
+			const errSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
 			const mockChild = createMockChildProcess();
 			(spawn as jest.Mock).mockReturnValue(mockChild);
 			const run = service.runSync(false, null, false, updateStatusBar);
@@ -503,6 +523,7 @@ describe('SyncService', () => {
 			expect(pathArg).toBe(logPath);
 			expect(chunk).toContain('STDOUT: note 0\n');
 			expect(chunk).toContain('STDOUT: note 499\n');
+			errSpy.mockRestore();
 		});
 
 		test('the tail of a failed run is on disk once the process closes', async () => {

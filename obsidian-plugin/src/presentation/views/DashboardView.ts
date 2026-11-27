@@ -31,7 +31,6 @@ export interface DashboardHost {
 	linkCheckerService: LinkCheckerService;
 	leechService: LeechService;
 	areteClient: StudyQueueClient;
-	saveSettings(): Promise<void>;
 	saveStats(): Promise<void>;
 	/** Persist the `ui_expanded_*` settings soon; repeated calls coalesce into one write. */
 	requestSaveUiState(): void;
