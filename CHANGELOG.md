@@ -1,5 +1,75 @@
 # Changelog
 
+## 4.1.0
+
+FSRS-6 forgetting-curve support, broad sync/add-on/plugin hardening across Python,
+`arete_ankiconnect`, and the Obsidian plugin, responsive plugin views, and Obsidian
+Community Plugin release readiness.
+
+### Breaking
+
+- **Obsidian command IDs drop the redundant `arete-` prefix** (`arete:sync`,
+  `arete:open-dashboard`, `arete:open-yaml-editor`, etc. instead of `arete:arete-sync`)
+  to match Obsidian's Community Plugin guidelines. Re-bind any custom Obsidian hotkeys
+  for Arete commands after updating.
+
+### Added
+
+- **FSRS-6 forgetting curve and retention adherence.** Stats and `arete_ankiconnect`'s
+  `getFSRSStats` now use Anki's 21-parameter FSRS-6 power-law decay curve (`w20`),
+  per-deck desired retention, and review duration (`time_ms`), and resolve home-deck
+  config safely for cards inside filtered decks.
+- **Responsive Dashboard and Global Graph layouts.** CSS `@container` queries stack
+  Dashboard deck metrics below `50rem` and the Global Graph detail panel below `35rem`
+  so medium and narrow sidebars never crush deck titles or collapse the graph canvas.
+- **Obsidian Community Plugin release structure.** Root `versions.json` stays synced
+  with `obsidian-plugin/versions.json`, release tags support bare SemVer (`4.1.0`)
+  alongside `v*` tags for BRAT, and CI enforces `eslint-plugin-obsidianmd`,
+  `check:min-app-version`, and `tsc --noEmit`.
+- **CLI additions.** Added `arete --version` / `-V`, `--anki-base` on `arete sync`,
+  `--json` and backend flags on `arete report --clear`, and `no_args_is_help` on
+  subgroups.
+
+### Fixed
+
+- **Sync, cache, and vault data safety:**
+  - Fixed a full-queue deadlock when an outdated add-on aborts a sync mid-run.
+  - Keyed duplicate-note claims properly, auto-recovered corrupt `cache.db` files with
+    WAL + `busy_timeout`, pruned hidden directories during vault scans, and recorded
+    synced state only when files did not change during sync.
+  - Fixed unclosed-frontmatter backslash false positives, MathJax `&amp;` / code-fence
+    conversion edge cases, tilde expansion in config paths, and `vault check` card-field
+    validation parity.
+- **CLI reliability:**
+  - Fixed `-v`/`--verbose` being a no-op (restoring Obsidian's Debug mode).
+  - Stopped default CLI boolean flags from clobbering `config.toml` / `ARETE_*` settings.
+  - Removed duplicate sync log lines, routed sync logs cleanly to `stderr`, tightened
+    ID validation in `arete anki`, and improved directory and unknown-vault-root handling.
+- **Anki add-on (`arete_ankiconnect`):**
+  - Replaced raw SQL deck updates with integer card-ID validation and `col.set_deck`,
+    and migrated package import/export to Anki 26 native APIs.
+  - Prevented Qt modal re-entrancy inside `WebServer.advanceClients()`, fixed
+    `deleteDecks` parent+child ghost resurrection, stopped read-only actions from
+    creating missing decks, and hardened `retrieveMediaFile` symlink checks without
+    deprecation warnings (preserving all 116 AnkiConnect API actions).
+- **Obsidian plugin:**
+  - Fixed `CardYamlEditorView` debounce/sync metadata clobbering and stale cross-file
+    pending-sync leaks.
+  - Matched Anki's night-mode specificity in `CardPreviewFrame` so default Anki note
+    types render dark in Obsidian dark mode, and capped runaway `100vh` resize loops.
+  - Preserved Mustache triple braces (`{{{Field}}}`) and `{{hint:}}` newlines in
+    `TemplateRenderer`, restricted `--clear-cache` to full-vault force syncs, synced
+    Dashboard and Local Graph on file renames/deletes, normalized malformed `data.json`
+    on load, and closed WebGL/popout/timer leaks.
+
+### Changed
+
+- Modularized `arete_ankiconnect` actions, extracted a shared `AnkiConnectClient`, and
+  replaced Python `Protocol` definitions with explicit `abc.ABC` ports.
+- Upgraded the Obsidian plugin toolchain to TypeScript 6 / ES2022 strict with standalone
+  Prettier and esbuild-backed Jest, de-bloated plugin CSS to rely on Obsidian's native
+  variables, and published the Anki add-on guide in the MkDocs site.
+
 ## 4.0.0
 
 The vault is the single source of truth, and the command line is the single interface.
